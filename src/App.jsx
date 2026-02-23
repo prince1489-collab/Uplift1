@@ -255,11 +255,147 @@ const COUNTRY_OPTIONS = [
   "Zimbabwe",
 ];
 
+const GLOBAL_CITY_OPTIONS = [
+  "Amsterdam",
+  "Ankara",
+  "Athens",
+  "Auckland",
+  "Baghdad",
+  "Baku",
+  "Bangkok",
+  "Barcelona",
+  "Beijing",
+  "Beirut",
+  "Belgrade",
+  "Berlin",
+  "Bogota",
+  "Brisbane",
+  "Brussels",
+  "Bucharest",
+  "Budapest",
+  "Buenos Aires",
+  "Cairo",
+  "Cape Town",
+  "Casablanca",
+  "Chicago",
+  "Copenhagen",
+  "Dallas",
+  "Delhi",
+  "Dhaka",
+  "Doha",
+  "Dubai",
+  "Dublin",
+  "Edinburgh",
+  "Frankfurt",
+  "Geneva",
+  "Guangzhou",
+  "Hamburg",
+  "Hanoi",
+  "Helsinki",
+  "Hong Kong",
+  "Houston",
+  "Istanbul",
+  "Jakarta",
+  "Johannesburg",
+  "Karachi",
+  "Kuala Lumpur",
+  "Kyiv",
+  "Lagos",
+  "Lahore",
+  "Lima",
+  "Lisbon",
+  "London",
+  "Los Angeles",
+  "Madrid",
+  "Manila",
+  "Melbourne",
+  "Mexico City",
+  "Miami",
+  "Milan",
+  "Montreal",
+  "Moscow",
+  "Mumbai",
+  "Munich",
+  "Nairobi",
+  "New York",
+  "Osaka",
+  "Oslo",
+  "Paris",
+  "Perth",
+  "Prague",
+  "Quito",
+  "Reykjavik",
+  "Riyadh",
+  "Rome",
+  "San Francisco",
+  "Santiago",
+  "Sao Paulo",
+  "Seoul",
+  "Shanghai",
+  "Singapore",
+  "Stockholm",
+  "Sydney",
+  "Taipei",
+  "Tehran",
+  "Tokyo",
+  "Toronto",
+  "Vancouver",
+  "Vienna",
+  "Warsaw",
+  "Washington",
+  "Zurich",
+];
+
 const CITIES_BY_COUNTRY = {
-  "United States": ["New York", "Los Angeles", "Chicago", "Houston"],
-  "United Kingdom": ["London", "Manchester", "Birmingham"],
-  India: ["Mumbai", "Delhi", "Bangalore"],
-  Canada: ["Toronto", "Montreal", "Vancouver"],
+  Argentina: ["Buenos Aires", "Cordoba", "Rosario", "Mendoza", "La Plata"],
+  Australia: ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Canberra", "Gold Coast"],
+  Bangladesh: ["Dhaka", "Chittagong", "Khulna", "Rajshahi", "Sylhet"],
+  Brazil: ["Sao Paulo", "Rio de Janeiro", "Brasilia", "Salvador", "Fortaleza", "Belo Horizonte"],
+  Canada: ["Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg"],
+  China: ["Beijing", "Shanghai", "Guangzhou", "Shenzhen", "Chengdu", "Wuhan", "Hangzhou"],
+  Colombia: ["Bogota", "Medellin", "Cali", "Barranquilla", "Cartagena"],
+  Denmark: ["Copenhagen", "Aarhus", "Odense", "Aalborg", "Esbjerg"],
+  Egypt: ["Cairo", "Alexandria", "Giza", "Port Said", "Luxor"],
+  France: ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Nantes", "Lille"],
+  Germany: ["Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart", "Dusseldorf"],
+  India: ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune", "Ahmedabad"],
+  Indonesia: ["Jakarta", "Surabaya", "Bandung", "Medan", "Semarang", "Makassar"],
+  Ireland: ["Dublin", "Cork", "Limerick", "Galway", "Waterford"],
+  Italy: ["Rome", "Milan", "Naples", "Turin", "Florence", "Bologna", "Venice"],
+  Japan: ["Tokyo", "Osaka", "Yokohama", "Nagoya", "Sapporo", "Fukuoka", "Kyoto"],
+  Kenya: ["Nairobi", "Mombasa", "Kisumu", "Nakuru", "Eldoret"],
+  Mexico: ["Mexico City", "Guadalajara", "Monterrey", "Puebla", "Tijuana", "Leon"],
+  Netherlands: ["Amsterdam", "Rotterdam", "The Hague", "Utrecht", "Eindhoven"],
+  "New Zealand": ["Auckland", "Wellington", "Christchurch", "Hamilton", "Tauranga"],
+  Nigeria: ["Lagos", "Abuja", "Kano", "Ibadan", "Port Harcourt", "Benin City"],
+  Norway: ["Oslo", "Bergen", "Trondheim", "Stavanger", "Drammen"],
+  Pakistan: ["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Peshawar"],
+  Philippines: ["Manila", "Quezon City", "Cebu City", "Davao", "Makati", "Taguig"],
+  Russia: ["Moscow", "Saint Petersburg", "Novosibirsk", "Yekaterinburg", "Kazan"],
+  "Saudi Arabia": ["Riyadh", "Jeddah", "Mecca", "Medina", "Dammam"],
+  "South Africa": ["Johannesburg", "Cape Town", "Durban", "Pretoria", "Port Elizabeth"],
+  "South Korea": ["Seoul", "Busan", "Incheon", "Daegu", "Daejeon", "Gwangju"],
+  Spain: ["Madrid", "Barcelona", "Valencia", "Seville", "Bilbao", "Malaga"],
+  Sweden: ["Stockholm", "Gothenburg", "Malmo", "Uppsala", "Vasteras"],
+  Thailand: ["Bangkok", "Chiang Mai", "Phuket", "Pattaya", "Khon Kaen"],
+  Turkey: ["Istanbul", "Ankara", "Izmir", "Bursa", "Antalya", "Adana"],
+  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah", "Al Ain", "Ajman"],
+  "United Kingdom": ["London", "Manchester", "Birmingham", "Liverpool", "Leeds", "Glasgow", "Bristol"],
+  "United States": [
+    "New York",
+    "Los Angeles",
+    "Chicago",
+    "Houston",
+    "Phoenix",
+    "Philadelphia",
+    "San Antonio",
+    "San Diego",
+    "Dallas",
+    "San Jose",
+    "Austin",
+    "Jacksonville",
+  ],
+  Vietnam: ["Ho Chi Minh City", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"],
 };
 
 const GREETINGS = [
@@ -297,6 +433,7 @@ function Onboarding({ onComplete, loading, initialData = null }) {
 
     const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData.dob || "").replace(",", "").split(" ");
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect  
     setForm({
       country: initialData.country || "",
       city: initialData.city || "",
@@ -308,7 +445,13 @@ function Onboarding({ onComplete, loading, initialData = null }) {
     });
   }, [initialData]);
   
-  const cities = form.country ? CITIES_BY_COUNTRY[form.country] || [] : [];
+  const cities = useMemo(() => {
+    if (!form.country) {
+      return [];
+    }
+
+    return CITIES_BY_COUNTRY[form.country] || GLOBAL_CITY_OPTIONS;
+  }, [form.country]);
   const valid =
     Boolean(form.country) &&
     Boolean(form.fullName) &&
@@ -316,7 +459,7 @@ function Onboarding({ onComplete, loading, initialData = null }) {
     Boolean(form.dobMonth) &&
     Boolean(form.dobDay) &&
     Boolean(form.dobYear) &&
-    (cities.length === 0 || Boolean(form.city));
+    Boolean(form.city);
 
   if (loading) {
     return (
@@ -394,11 +537,11 @@ function Onboarding({ onComplete, loading, initialData = null }) {
             name="city"
             value={form.city}
             onChange={onChange}
-            disabled={!form.country || cities.length === 0}
+            disabled={!form.country}
             className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-400 disabled:opacity-100"
           >
             <option value="">
-              {!form.country ? "Select Country First" : cities.length ? "Select City" : "City Not Required"}
+              {!form.country ? "Select Country First" : "Select City or Town"}
             </option>
             {cities.map((city) => (
               <option key={city} value={city}>
