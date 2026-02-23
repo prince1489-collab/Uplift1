@@ -40,8 +40,18 @@ const db = getFirestore(app);
 const appId = firebaseConfig.appId;
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
@@ -53,20 +63,21 @@ const COUNTRIES = {
   Canada: ["Toronto", "Montreal", "Vancouver"],
 };
 
-const nowMs = () => Date.now();
-
 const GREETINGS = [
   { id: "morning", text: "Good Morning, have a nice day! ☀️" },
   { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛" },
   { id: "night", text: "Good Night! Sleep well 🌙" },
 ];
 
-function InputRow({ icon, children }) {
+const nowMs = () => Date.now();
+
+function InputRow({ icon, children, rightIcon = null }) {
   const Icon = icon;
   return (
     <div className="relative">
-      <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+      <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
       {children}
+      {rightIcon}
     </div>
   );
 }
@@ -83,7 +94,6 @@ function Onboarding({ onComplete, loading }) {
   });
 
   const cities = form.country ? COUNTRIES[form.country] || [] : [];
-  const dobComplete = form.dobMonth && form.dobDay && form.dobYear;
   const valid = Object.values(form).every(Boolean);
 
   if (loading) {
@@ -97,55 +107,79 @@ function Onboarding({ onComplete, loading }) {
   const onChange = (e) => {
     const { name, value } = e.target;
     if (name === "country") {
-      setForm((p) => ({ ...p, country: value, city: "" }));
+      setForm((prev) => ({ ...prev, country: value, city: "" }));
       return;
     }
-    setForm((p) => ({ ...p, [name]: value }));
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   return (
-    <div className="h-full flex items-center justify-center p-5">
+    <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
       <form
-        className="w-full max-w-sm space-y-3"
+        className="mx-auto w-full max-w-sm space-y-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (!valid) return;
-          onComplete({ ...form, dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` });
+
+          onComplete({
+            ...form,
+            dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}`,
+          });
         }}
       >
-        <div className="flex justify-center">
-          <div className="bg-gradient-to-tr from-teal-500 to-emerald-500 p-3 rounded-2xl text-white shadow-lg">
-            <Sparkles />
+        <div className="flex justify-center gap-2 pb-3">
+          <span className="h-2 w-8 rounded-full bg-teal-500" />
+          <span className="h-2 w-8 rounded-full bg-slate-300" />
+        </div>
+
+        <div className="flex justify-center pb-3">
+          <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
+            <Sparkles size={24} />
           </div>
         </div>
-        <h1 className="text-xl font-bold text-center text-slate-800">Welcome to Uplift</h1>
-        <p className="text-sm text-center text-slate-500">Quick setup to start chatting live.</p>
 
-        <InputRow icon={Globe}>
+        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800 sm:text-[44px]">
+          Welcome to Uplift
+        </h1>
+        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500 sm:text-2xl">
+          Tell us a bit about yourself to start connecting.
+        </p>
+
+        <InputRow
+          icon={Globe}
+          rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}
+        >
           <select
             name="country"
             value={form.country}
             onChange={onChange}
-            className="w-full pl-9 pr-3 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm"
+            className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-500"
           >
             <option value="">Select Country</option>
-            {Object.keys(COUNTRIES).map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {Object.keys(COUNTRIES).map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
             ))}
           </select>
         </InputRow>
 
-        <InputRow icon={MapPin}>
+        <InputRow
+          icon={MapPin}
+          rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}
+        >
           <select
             name="city"
             value={form.city}
             onChange={onChange}
             disabled={!form.country}
-            className="w-full pl-9 pr-3 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm disabled:opacity-50"
+            className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-400 disabled:opacity-100"
           >
-            <option value="">Select City</option>
-            {cities.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            <option value="">Select Country First</option>
+            {cities.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
             ))}
           </select>
         </InputRow>
@@ -156,7 +190,7 @@ function Onboarding({ onComplete, loading }) {
             value={form.fullName}
             onChange={onChange}
             placeholder="Full Name"
-            className="w-full pl-9 pr-3 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
           />
         </InputRow>
 
@@ -167,38 +201,72 @@ function Onboarding({ onComplete, loading }) {
             value={form.email}
             onChange={onChange}
             placeholder="Email Address"
-            className="w-full pl-9 pr-3 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
           />
         </InputRow>
 
-        <div className="rounded-2xl border border-teal-200 bg-teal-50/60 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-bold uppercase tracking-wide text-teal-700">Date of Birth *</label>
-            {!dobComplete && <span className="text-[11px] font-semibold text-teal-600">Required</span>}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <select name="dobMonth" value={form.dobMonth} onChange={onChange} aria-label="Date of birth month" className="py-2 px-2 rounded-lg border border-slate-200 text-sm bg-white">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="relative">
+            <select
+              name="dobMonth"
+              value={form.dobMonth}
+              onChange={onChange}
+              aria-label="Date of birth month"
+              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+            >
               <option value="">Month</option>
-              {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+              {MONTHS.map((month) => (
+                <option key={month} value={month}>
+                  {month}
+                </option>
+              ))}
             </select>
-            <select name="dobDay" value={form.dobDay} onChange={onChange} aria-label="Date of birth day" className="py-2 px-2 rounded-lg border border-slate-200 text-sm bg-white">
-              <option value="">Day</option>
-              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select name="dobYear" value={form.dobYear} onChange={onChange} aria-label="Date of birth year" className="py-2 px-2 rounded-lg border border-slate-200 text-sm bg-white">
-              <option value="">Year</option>
-              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           </div>
-          <p className="text-[11px] mt-2 text-teal-700">Used for age checks and birthday shout-outs.</p>
+
+          <div className="relative">
+            <select
+              name="dobDay"
+              value={form.dobDay}
+              onChange={onChange}
+              aria-label="Date of birth day"
+              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+            >
+              <option value="">Day</option>
+              {DAYS.map((day) => (
+                <option key={day} value={day}>
+                  {day}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          </div>
+
+          <div className="relative">
+            <select
+              name="dobYear"
+              value={form.dobYear}
+              onChange={onChange}
+              aria-label="Date of birth year"
+              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+            >
+              <option value="">Year</option>
+              {YEARS.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          </div>
         </div>
 
         <button
           type="submit"
           disabled={!valid}
-          className="w-full py-3 rounded-xl bg-slate-800 text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-400 py-4 text-xl font-semibold text-white disabled:bg-slate-400 disabled:opacity-100"
         >
-          Join Chat <ArrowRight size={16} />
+          Continue <ArrowRight size={18} />
         </button>
       </form>
     </div>
@@ -231,7 +299,11 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const q = query(collection(db, "artifacts", appId, "public", "data", "messages"), orderBy("timestamp", "asc"), limit(100));
+    const q = query(
+      collection(db, "artifacts", appId, "public", "data", "messages"),
+      orderBy("timestamp", "asc"),
+      limit(100)
+    );
 
     const unsub = onSnapshot(
       q,
@@ -240,7 +312,15 @@ export default function App() {
         setMessages(
           live.length
             ? live
-            : [{ id: "welcome", sender: "Uplift Bot", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }]
+            : [
+                {
+                  id: "welcome",
+                  sender: "Uplift Bot",
+                  text: "Welcome! Chat is live and ready ✨",
+                  uid: "system",
+                  timestamp: Date.now(),
+                },
+              ]
         );
         setIsChatLive(true);
         setLastLiveAt(new Date());
@@ -275,31 +355,33 @@ export default function App() {
 
   const sendGreeting = async (greeting) => {
     if (!currentUser || !profile) return;
+
     await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
       uid: currentUser.uid,
       sender: profile.fullName,
       text: greeting.text,
       timestamp: nowMs(),
     });
+
     setPickerOpen(false);
   };
 
   if (!currentUser || isAuthLoading) {
     return (
-      <div className="h-screen grid place-items-center bg-slate-50">
+      <div className="grid h-screen place-items-center bg-slate-50">
         <Loader2 className="animate-spin text-teal-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6 flex items-center justify-center">
-      <div className="w-full max-w-md h-[100dvh] sm:h-[90vh] rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-2xl overflow-hidden flex flex-col relative">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+      <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
         {!profile ? (
           <Onboarding onComplete={completeOnboarding} loading={isAuthLoading} />
         ) : (
           <>
-            <header className="px-4 py-3 border-b border-slate-100 bg-white/90 backdrop-blur">
+            <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-sm font-bold text-slate-800">Hey {profile.fullName.split(" ")[0]} 👋</h1>
@@ -309,23 +391,42 @@ export default function App() {
               </div>
 
               <div className="mt-2 flex items-center justify-between text-[11px]">
-                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-semibold ${isChatLive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${isChatLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${
+                    isChatLive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isChatLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                    }`}
+                  />
                   {chatStatusText}
                 </span>
+
                 {lastLiveAt && (
-                  <span className="text-slate-400">Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-slate-400">
+                    Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
                 )}
               </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 bg-slate-50/60">
+            <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
               {messages.map((m) => {
                 const mine = m.uid === currentUser.uid;
                 return (
                   <div key={m.id} className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[82%] px-3 py-2 rounded-2xl border text-sm ${mine ? "bg-teal-600 text-white border-teal-600 rounded-br-none" : "bg-white text-slate-700 border-slate-200 rounded-bl-none"}`}>
-                      <div className={`text-[10px] mb-1 font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>{m.sender}</div>
+                    <div
+                      className={`max-w-[82%] rounded-2xl border px-3 py-2 text-sm ${
+                        mine
+                          ? "rounded-br-none border-teal-600 bg-teal-600 text-white"
+                          : "rounded-bl-none border-slate-200 bg-white text-slate-700"
+                      }`}
+                    >
+                      <div className={`mb-1 text-[10px] font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>
+                        {m.sender}
+                      </div>
                       <p>{m.text}</p>
                     </div>
                   </div>
@@ -338,26 +439,29 @@ export default function App() {
               {!pickerOpen ? (
                 <button
                   onClick={() => setPickerOpen(true)}
-                  className="w-full py-3 px-4 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-between"
+                  className="flex w-full items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-slate-600"
                 >
                   <span>Select a greeting...</span>
-                  <span className="p-2 rounded-full bg-teal-500 text-white"><Send size={14} /></span>
+                  <span className="rounded-full bg-teal-500 p-2 text-white">
+                    <Send size={14} />
+                  </span>
                 </button>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase">Choose Message</span>
-                    <button onClick={() => setPickerOpen(false)} className="p-1 rounded-full bg-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
+                    <button onClick={() => setPickerOpen(false)} className="rounded-full bg-slate-100 p-1">
                       <ChevronDown size={16} className="text-slate-500" />
                     </button>
                   </div>
-                  {GREETINGS.map((g) => (
+
+                  {GREETINGS.map((greeting) => (
                     <button
-                      key={g.id}
-                      onClick={() => sendGreeting(g)}
-                      className="w-full p-3 rounded-xl border border-slate-200 bg-white text-left text-sm font-medium text-slate-700 hover:border-teal-400"
+                      key={greeting.id}
+                      onClick={() => sendGreeting(greeting)}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
                     >
-                      {g.text}
+                      {greeting.text}
                     </button>
                   ))}
                 </div>
