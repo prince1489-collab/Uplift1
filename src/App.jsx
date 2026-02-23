@@ -82,7 +82,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function Onboarding({ onComplete, loading }) {
+function Onboarding({ onComplete, loading, initialData = null }) {
   const [form, setForm] = useState({
     country: "",
     city: "",
@@ -93,6 +93,22 @@ function Onboarding({ onComplete, loading }) {
     dobYear: "",
   });
 
+    useEffect(() => {
+    if (!initialData) return;
+
+    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData.dob || "").replace(",", "").split(" ");
+
+    setForm({
+      country: initialData.country || "",
+      city: initialData.city || "",
+      fullName: initialData.fullName || "",
+      email: initialData.email || "",
+      dobMonth,
+      dobDay,
+      dobYear,
+    });
+  }, [initialData]);
+  
   const cities = form.country ? COUNTRIES[form.country] || [] : [];
   const valid = Object.values(form).every(Boolean);
 
@@ -281,6 +297,7 @@ export default function App() {
   const [isChatLive, setIsChatLive] = useState(false);
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -351,6 +368,9 @@ export default function App() {
       text: `${data.fullName} just joined Uplift 👋`,
       timestamp: nowMs(),
     });
+
+    setProfile(data);
+    setHasCompletedOnboarding(true);
   };
 
   const sendGreeting = async (greeting) => {
@@ -377,8 +397,8 @@ export default function App() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
-        {!profile ? (
-          <Onboarding onComplete={completeOnboarding} loading={isAuthLoading} />
+        {!hasCompletedOnboarding ? (
+          <Onboarding onComplete={completeOnboarding} loading={isAuthLoading} initialData={profile} />
         ) : (
           <>
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
