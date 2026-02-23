@@ -308,7 +308,11 @@ export default function App() {
       if (!user) return;
 
       const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
-      return onSnapshot(profileRef, (snap) => setProfile(snap.exists() ? snap.data() : null));
+       return onSnapshot(profileRef, (snap) => {
+        const nextProfile = snap.exists() ? snap.data() : null;
+        setProfile(nextProfile);
+        setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
+      });
     });
 
     return () => unsub();
@@ -360,7 +364,12 @@ export default function App() {
   const completeOnboarding = async (data) => {
     if (!currentUser) return;
 
-    await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), data);
+    const profileData = {
+      ...data,
+      onboardingCompletedAt: nowMs(),
+    };
+
+    await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), profileData);
 
     await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
       uid: "system",
@@ -397,7 +406,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
-        {!hasCompletedOnboarding ? (
+        {!hasCompletedOnboarding || !profile ? (
           <Onboarding onComplete={completeOnboarding} loading={isAuthLoading} initialData={profile} />
         ) : (
           <>
