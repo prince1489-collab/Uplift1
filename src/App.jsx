@@ -280,7 +280,9 @@ function Onboarding({ onComplete, loading, initialData = null }) {
         <button
           type="submit"
           disabled={!valid}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-400 py-4 text-xl font-semibold text-white disabled:bg-slate-400 disabled:opacity-100"
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${
+            valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"
+          } disabled:cursor-not-allowed disabled:opacity-100`}
         >
           Continue <ArrowRight size={18} />
         </button>
