@@ -14,7 +14,7 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -485,7 +485,18 @@ export default function App() {
   useEffect(() => {
     let profileUnsub = null;
     
-    signInAnonymously(auth).catch(console.error);
+    const initializeAuth = async () => {
+      try {
+        if (auth.currentUser) {
+          await signOut(auth);
+        }
+        await signInAnonymously(auth);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    initializeAuth();
     const unsub = onAuthStateChanged(auth, (user) => {
       if (profileUnsub) {
         profileUnsub();
