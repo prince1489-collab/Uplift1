@@ -1,40 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { Loader2, Mail, Sparkles } from "lucide-react";
 
-const SignInStep = () => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+function SignInStep({ onExistingSignIn, onStartNewUser, loading }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
 
-    const handleSubmit = (event) => {
-        event.preventDefault();
-        // Here you can add the authentication logic
-        console.log('Sign In Data:', { email, password });
-    };
+  const submit = async (event) => {
+    event.preventDefault();
 
-    return (
-        <form onSubmit={handleSubmit}>
-            <div>
-                <label htmlFor="email">Email:</label>
-                <input 
-                    type="email" 
-                    id="email" 
-                    value={email} 
-                    onChange={(e) => setEmail(e.target.value)} 
-                    required 
-                />
-            </div>
-            <div>
-                <label htmlFor="password">Password:</label>
-                <input 
-                    type="password" 
-                    id="password" 
-                    value={password} 
-                    onChange={(e) => setPassword(e.target.value)} 
-                    required 
-                />
-            </div>
-            <button type="submit">Sign In</button>
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    setError("");
+    const nextError = await onExistingSignIn(email.trim());
+    if (nextError) setError(nextError);
+  };
+
+  return (
+    <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+      <div className="mx-auto w-full max-w-sm">
+        <div className="flex justify-center pb-4">
+          <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
+            <Sparkles size={24} />
+          </div>
+        </div>
+
+        <h1 className="text-center text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800 sm:text-[44px]">
+          Welcome back
+        </h1>
+        <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
+          Current users can sign in. New users can create a profile.
+        </p>
+
+        <form className="space-y-3" onSubmit={submit}>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email Address"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
+            />
+          </div>
+
+          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-600 py-4 text-xl font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign In"}
+          </button>
         </form>
-    );
-};
+
+        <button
+          onClick={onStartNewUser}
+          className="mt-4 w-full rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700"
+        >
+          I&apos;m new to Uplift
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default SignInStep;
