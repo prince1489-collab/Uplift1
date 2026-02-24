@@ -40,7 +40,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = firebaseConfig.appId;
+const appId = import.meta.env.VITE_APP_ID || firebaseConfig.projectId;
 
 const MONTHS = [
   "January",
@@ -472,7 +472,9 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isChatLive, setIsChatLive] = useState(false);
+  const [chatError, setChatError] = useState("");
   const [lastLiveAt, setLastLiveAt] = useState(null);
+  const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
@@ -536,6 +538,8 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
+    let retryTimer = null;
+    
     const q = query(
       collection(db, "artifacts", appId, "public", "data", "messages"),
       orderBy("timestamp", "asc"),
@@ -560,13 +564,25 @@ export default function App() {
               ]
         );
         setIsChatLive(true);
+        setChatError("");
         setLastLiveAt(new Date());
       },
-      () => setIsChatLive(false)
+      (error) => {
+        console.error("Live chat disconnected", error);
+        setIsChatLive(false);
+        setChatError(error?.code || "unknown");
+
+        retryTimer = setTimeout(() => {
+          setChatRetryCount((count) => count + 1);
+        }, 3000);
+      }
     );
 
-    return () => unsub();
-  }, [currentUser]);
+     return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      unsub();
+    };
+  }, [currentUser, chatRetryCount]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -716,6 +732,14 @@ export default function App() {
                   </span>
                 )}
               </div>
+
+              {!isChatLive && chatError ? (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  Chat is offline ({chatError}). Check Firestore rules for
+                  <code className="mx-1 rounded bg-amber-100 px-1">artifacts/{appId}/public/data/messages</code>
+                  and make sure your internet connection is stable.
+                </p>
+              ) : null}
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
