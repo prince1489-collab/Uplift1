@@ -29,4 +29,4 @@ In this app, chat is already implemented with Firebase Auth + Firestore and appe
 
 - Make sure your Firebase project is reachable and the app can authenticate (the app signs in users anonymously first).
 - Ensure Firestore Security Rules allow authenticated users to read/write under `artifacts/{appId}/public/data/messages`.
-- Verify the browser has network access to Firebase
+- Verify the browser has network access to Firebase.
