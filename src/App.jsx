@@ -479,17 +479,32 @@ export default function App() {
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
   const endRef = useRef(null);
 
   useEffect(() => {
+    let profileUnsub = null;
+    
     signInAnonymously(auth).catch(console.error);
     const unsub = onAuthStateChanged(auth, (user) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+      
       setCurrentUser(user);
       setIsAuthLoading(false);
-      if (!user) return;
-
+      if (!user) {
+        setProfile(null);
+        setHasCompletedOnboarding(false);
+        setOnboardingStep("entry");
+        setIsProfileLoading(false);
+        return;
+      }
+      
       const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
-       return onSnapshot(profileRef, (snap) => {
+      setIsProfileLoading(true);
+      profileUnsub = onSnapshot(profileRef, (snap) => {
         const nextProfile = snap.exists() ? snap.data() : null;
         setProfile(nextProfile);
         setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
@@ -498,10 +513,14 @@ export default function App() {
         } else {
           setOnboardingStep("entry");
         }
+        setIsProfileLoading(false);
       });
     });
 
-    return () => unsub();
+    return () => {
+      if (profileUnsub) profileUnsub();
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -620,7 +639,7 @@ export default function App() {
     setPickerOpen(false);
   };
 
-  if (!currentUser || isAuthLoading) {
+  if (!currentUser || isAuthLoading || isProfileLoading) {
     return (
       <div className="grid h-screen place-items-center bg-slate-50">
         <Loader2 className="animate-spin text-teal-600" />
