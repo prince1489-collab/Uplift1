@@ -10,12 +10,16 @@ import {
   User,
 } from "lucide-react";
 
+import ProfilePhotoStep from "./ProfilePhotoStep";
+import SignInStep from "./SignInStep";
+
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getFirestore,
   limit,
   onSnapshot,
@@ -261,6 +265,7 @@ const GREETINGS = [
 ];
 
 const nowMs = () => Date.now();
+const toEmailKey = (email) => email.trim().toLowerCase();
 
 function InputRow({ icon, children, rightIcon = null }) {
   const Icon = icon;
@@ -273,7 +278,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function Onboarding({ onComplete, loading, initialData = null }) {
+function Onboarding({ onContinue, loading, initialData = null }) {
   const [form, setForm] = useState({
     country: "",
     fullName: "",
@@ -327,7 +332,7 @@ function Onboarding({ onComplete, loading, initialData = null }) {
           e.preventDefault();
           if (!valid) return;
 
-          onComplete({
+          onContinue({
             ...form,
             dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}`,
           });
@@ -470,6 +475,10 @@ export default function App() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState("entry");
+  const [pendingProfileData, setPendingProfileData] = useState(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -484,6 +493,11 @@ export default function App() {
         const nextProfile = snap.exists() ? snap.data() : null;
         setProfile(nextProfile);
         setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
+        if (nextProfile?.onboardingCompletedAt) {
+          setOnboardingStep("done");
+        } else {
+          setOnboardingStep("entry");
+        }
       });
     });
 
@@ -533,25 +547,64 @@ export default function App() {
     return "Live chat connected";
   }, [isChatLive]);
 
+    const signInExistingUser = async (email) => {
+    if (!currentUser) return "Authentication is still loading. Please try again.";
+
+    try {
+      setIsSigningIn(true);
+      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(email));
+      const indexedProfile = await getDoc(profileIndexRef);
+
+      if (!indexedProfile.exists()) {
+        return "No user found with that email. Please create a new account.";
+      }
+
+      const profileData = indexedProfile.data();
+
+      await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), {
+        ...profileData,
+        lastSignedInAt: nowMs(),
+      });
+
+      setProfile(profileData);
+      setHasCompletedOnboarding(true);
+      setOnboardingStep("done");
+      return "";
+    } catch (error) {
+      console.error(error);
+      return "Unable to sign in right now. Please try again.";
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
   const completeOnboarding = async (data) => {
     if (!currentUser) return;
+    setIsSavingProfile(true);
 
     const profileData = {
       ...data,
       onboardingCompletedAt: nowMs(),
     };
 
-    await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), profileData);
+    try {
+      await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), profileData);
+      await setDoc(doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(data.email)), profileData);
 
-    await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
-      uid: "system",
-      sender: "Uplift Bot",
-      text: `${data.fullName} just joined Uplift 👋`,
-      timestamp: nowMs(),
-    });
+      await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
+        uid: "system",
+        sender: "Uplift Bot",
+        text: `${data.fullName} just joined Uplift 👋`,
+        timestamp: nowMs(),
+      });
 
-    setProfile(data);
-    setHasCompletedOnboarding(true);
+      setProfile(profileData);
+      setHasCompletedOnboarding(true);
+      setOnboardingStep("done");
+      setPendingProfileData(null);
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const sendGreeting = async (greeting) => {
@@ -579,7 +632,29 @@ export default function App() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
         {!hasCompletedOnboarding || !profile ? (
-          <Onboarding onComplete={completeOnboarding} loading={isAuthLoading} initialData={profile} />
+          onboardingStep === "entry" ? (
+            <SignInStep
+              onExistingSignIn={signInExistingUser}
+              onStartNewUser={() => setOnboardingStep("details")}
+              loading={isSigningIn}
+            />
+          ) : onboardingStep === "details" ? (
+            <Onboarding
+              onContinue={(data) => {
+                setPendingProfileData(data);
+                setOnboardingStep("photo");
+              }}
+              loading={isSavingProfile}
+              initialData={pendingProfileData}
+            />
+          ) : (
+            <ProfilePhotoStep
+              onBack={() => setOnboardingStep("details")}
+              onComplete={(photoDataUrl) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })}
+              loading={isSavingProfile}
+              initialPhoto={pendingProfileData?.profilePhoto || ""}
+            />
+          )
         ) : (
           <>
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
