@@ -14,7 +14,7 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
+import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -41,6 +41,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = import.meta.env.VITE_APP_ID || firebaseConfig.projectId;
+const googleProvider = new GoogleAuthProvider();
 
 const MONTHS = [
   "January",
@@ -482,23 +483,12 @@ export default function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
     let profileUnsub = null;
     
-    const initializeAuth = async () => {
-      try {
-        if (auth.currentUser) {
-          await signOut(auth);
-        }
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    initializeAuth();
     const unsub = onAuthStateChanged(auth, (user) => {
       if (profileUnsub) {
         profileUnsub();
@@ -535,6 +525,17 @@ export default function App() {
       unsub();
     };
   }, []);
+
+  const signInWithGoogle = async () => {
+    setIsGoogleSigningIn(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
 
   useEffect(() => {
     if (!currentUser) return;
@@ -594,7 +595,7 @@ export default function App() {
   }, [isChatLive]);
 
     const signInExistingUser = async (email) => {
-    if (!currentUser) return "Authentication is still loading. Please try again.";
+    if (!currentUser) return "Please sign in with Google first.";
 
     try {
       setIsSigningIn(true);
@@ -666,7 +667,7 @@ export default function App() {
     setPickerOpen(false);
   };
 
-  if (!currentUser || isAuthLoading || isProfileLoading) {
+  if (isAuthLoading || (currentUser && isProfileLoading)) {
     return (
       <div className="grid h-screen place-items-center bg-slate-50">
         <Loader2 className="animate-spin text-teal-600" />
@@ -674,6 +675,22 @@ export default function App() {
     );
   }
 
+  if (!currentUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+        <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+          <SignInStep
+            onExistingSignIn={signInExistingUser}
+            onStartNewUser={() => setOnboardingStep("details")}
+            loading={isSigningIn}
+            onGoogleSignIn={signInWithGoogle}
+            googleLoading={isGoogleSigningIn}
+          />
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
