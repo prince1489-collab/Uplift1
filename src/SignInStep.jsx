@@ -67,3 +67,13 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn,
 
         <button
           onClick={onStartNewUser}
+           className="mt-4 w-full text-center text-sm font-medium text-teal-700 hover:text-teal-800"
+        >
+          I am a new user
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default SignInStep;
