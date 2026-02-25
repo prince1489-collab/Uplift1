@@ -484,6 +484,7 @@ export default function App() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState("");
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -497,6 +498,7 @@ export default function App() {
       
       setCurrentUser(user);
       setIsAuthLoading(false);
+      setProfileLoadError("");
       if (!user) {
         setProfile(null);
         setHasCompletedOnboarding(false);
@@ -507,17 +509,29 @@ export default function App() {
       
       const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
       setIsProfileLoading(true);
-      profileUnsub = onSnapshot(profileRef, (snap) => {
-        const nextProfile = snap.exists() ? snap.data() : null;
-        setProfile(nextProfile);
-        setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
-        if (nextProfile?.onboardingCompletedAt) {
-          setOnboardingStep("done");
-        } else {
+     profileUnsub = onSnapshot(
+        profileRef,
+        (snap) => {
+          const nextProfile = snap.exists() ? snap.data() : null;
+          setProfile(nextProfile);
+          setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
+          if (nextProfile?.onboardingCompletedAt) {
+            setOnboardingStep("done");
+          } else {
+            setOnboardingStep("entry");
+          }
+          setProfileLoadError("");
+          setIsProfileLoading(false);
+        },
+        (error) => {
+          console.error("Unable to load profile", error);
+          setProfile(null);
+          setHasCompletedOnboarding(false);
           setOnboardingStep("entry");
+          setProfileLoadError(error?.code || "unknown");
+          setIsProfileLoading(false);
         }
-        setIsProfileLoading(false);
-      });
+      );
     });
 
     return () => {
@@ -695,29 +709,38 @@ export default function App() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
         {!hasCompletedOnboarding || !profile ? (
-          onboardingStep === "entry" ? (
-            <SignInStep
-              onExistingSignIn={signInExistingUser}
-              onStartNewUser={() => setOnboardingStep("details")}
-              loading={isSigningIn}
-            />
-          ) : onboardingStep === "details" ? (
-            <Onboarding
-              onContinue={(data) => {
-                setPendingProfileData(data);
-                setOnboardingStep("photo");
-              }}
-              loading={isSavingProfile}
-              initialData={pendingProfileData}
-            />
-          ) : (
-            <ProfilePhotoStep
-              onBack={() => setOnboardingStep("details")}
-              onComplete={(photoDataUrl) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })}
-              loading={isSavingProfile}
-              initialPhoto={pendingProfileData?.profilePhoto || ""}
-            />
-          )
+          <>
+            {profileLoadError ? (
+              <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                We couldn&apos;t read your profile yet ({profileLoadError}). Please check your Firestore rules for
+                <code className="mx-1 rounded bg-amber-100 px-1">artifacts/{appId}/users/{currentUser.uid}/data/profile</code>
+                and refresh.
+              </p>
+            ) : null}
+            {onboardingStep === "entry" ? (
+              <SignInStep
+                onExistingSignIn={signInExistingUser}
+                onStartNewUser={() => setOnboardingStep("details")}
+                loading={isSigningIn}
+              />
+            ) : onboardingStep === "details" ? (
+              <Onboarding
+                onContinue={(data) => {
+                  setPendingProfileData(data);
+                  setOnboardingStep("photo");
+                }}
+                loading={isSavingProfile}
+                initialData={pendingProfileData}
+              />
+            ) : (
+              <ProfilePhotoStep
+                onBack={() => setOnboardingStep("details")}
+                onComplete={(photoDataUrl) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })}
+                loading={isSavingProfile}
+                initialPhoto={pendingProfileData?.profilePhoto || ""}
+              />
+            )}
+          </>
         ) : (
           <>
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
