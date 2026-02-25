@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Loader2, Mail, Sparkles } from "lucide-react";
 
-function SignInStep({ onExistingSignIn, onStartNewUser, loading }) {
+function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn, googleLoading }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
@@ -31,8 +31,16 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading }) {
           Welcome back
         </h1>
         <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
-          Current users can sign in. New users can create a profile.
+          Sign in with Google, then continue with your Uplift profile.
         </p>
+
+        <button
+          onClick={onGoogleSignIn}
+          disabled={googleLoading}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
+        </button>
 
         <form className="space-y-3" onSubmit={submit}>
           <div className="relative">
@@ -59,13 +67,3 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading }) {
 
         <button
           onClick={onStartNewUser}
-          className="mt-4 w-full rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700"
-        >
-          I&apos;m new to Uplift
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export default SignInStep;
