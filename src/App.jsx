@@ -12,6 +12,7 @@ import {
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
+import WelcomeStep from "./WelcomeStep";
 
 import { initializeApp } from "firebase/app";
 import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup } from "firebase/auth";
@@ -485,8 +486,9 @@ export default function App() {
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
+  const [unauthScreen, setUnauthScreen] = useState("welcome");
   const endRef = useRef(null);
-
+  
   useEffect(() => {
     let profileUnsub = null;
     
@@ -503,6 +505,7 @@ export default function App() {
         setProfile(null);
         setHasCompletedOnboarding(false);
         setOnboardingStep("entry");
+        setUnauthScreen("welcome");
         setIsProfileLoading(false);
         return;
       }
@@ -693,13 +696,17 @@ export default function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
-          <SignInStep
-            onExistingSignIn={signInExistingUser}
-            onStartNewUser={() => setOnboardingStep("details")}
-            loading={isSigningIn}
-            onGoogleSignIn={signInWithGoogle}
-            googleLoading={isGoogleSigningIn}
-          />
+          {unauthScreen === "welcome" ? (
+            <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
+          ) : (
+            <SignInStep
+              onExistingSignIn={signInExistingUser}
+              onStartNewUser={() => setOnboardingStep("details")}
+              loading={isSigningIn}
+              onGoogleSignIn={signInWithGoogle}
+              googleLoading={isGoogleSigningIn}
+            />
+          )}
         </div>
       </div>
     );
