@@ -1,1 +1,120 @@
+.welcome-step {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px 20px 28px;
+  background: linear-gradient(180deg, #edf5f6 0%, #f6f5f2 100%);
+}
 
+.welcome-step__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.welcome-step__logo-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #22c55e, #14b8a6);
+  box-shadow: 0 10px 26px rgba(20, 184, 166, 0.35);
+}
+
+.welcome-step__title {
+  margin: 18px 0 0;
+  color: #1e293b;
+  font-size: 50px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.welcome-step__subtitle {
+  margin: 14px 0 0;
+  max-width: 300px;
+  text-align: center;
+  color: #5a6c85;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.welcome-step__list {
+  margin-top: 28px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-step__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px 14px;
+  background-color: #eef2f5;
+}
+
+.welcome-step__icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.welcome-step__icon-wrap--sun {
+  color: #ea580c;
+  background-color: #ffedd5;
+}
+
+.welcome-step__icon-wrap--heart {
+  color: #ec4899;
+  background-color: #fce7f3;
+}
+
+.welcome-step__icon-wrap--zap {
+  color: #d97706;
+  background-color: #fef3c7;
+}
+
+.welcome-step__item-title {
+  margin: 0;
+  color: #24324a;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.welcome-step__item-detail {
+  margin: 2px 0 0;
+  color: #617085;
+  font-size: 14px;
+}
+
+.welcome-step__cta {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 16px;
+  background-color: #1e2b47;
+  padding: 16px;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.welcome-step__cta:hover {
+  background-color: #152138;
+}
