@@ -31,16 +31,18 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn,
           Welcome back
         </h1>
         <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
-          Sign in with Google, then continue with your Uplift profile.
+          Continue with Google or sign in with the email you used for Uplift.
         </p>
 
-        <button
-          onClick={onGoogleSignIn}
-          disabled={googleLoading}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
-        </button>
+        {onGoogleSignIn ? (
+          <button
+            onClick={onGoogleSignIn}
+            disabled={googleLoading}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
+          </button>
+        ) : null}
 
         <form className="space-y-3" onSubmit={submit}>
           <div className="relative">
