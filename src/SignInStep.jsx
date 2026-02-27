@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Loader2, Mail, Sparkles } from "lucide-react";
 
-function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn, googleLoading }) {
+function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn, googleLoading, googleError }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
@@ -35,13 +35,16 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn,
         </p>
 
         {onGoogleSignIn ? (
-          <button
-            onClick={onGoogleSignIn}
-            disabled={googleLoading}
-            className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
-          </button>
+         <>
+            <button
+              onClick={onGoogleSignIn}
+              disabled={googleLoading}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
+            </button>
+            {googleError ? <p className="mb-3 text-sm text-rose-600">{googleError}</p> : null}
+          </>
         ) : null}
 
         <form className="space-y-3" onSubmit={submit}>
