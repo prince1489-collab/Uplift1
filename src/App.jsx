@@ -15,7 +15,14 @@ import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 
 import { initializeApp } from "firebase/app";
-import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithPopup,
+  signInWithRedirect,
+} from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -548,12 +555,23 @@ export default function App() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
+       if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       console.error(error);
     } finally {
       setIsGoogleSigningIn(false);
     }
   };
 
+    const ensureAuthSession = async () => {
+    if (auth.currentUser) return auth.currentUser;
+
+    const result = await signInAnonymously(auth);
+    return result.user;
+  };
+  
   useEffect(() => {
     if (!currentUser) return;
     let retryTimer = null;
@@ -612,10 +630,9 @@ export default function App() {
   }, [isChatLive]);
 
     const signInExistingUser = async (email) => {
-    if (!currentUser) return "Please sign in with Google first.";
-
     try {
       setIsSigningIn(true);
+      const user = await ensureAuthSession();
       const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(email));
       const indexedProfile = await getDoc(profileIndexRef);
 
@@ -625,7 +642,7 @@ export default function App() {
 
       const profileData = indexedProfile.data();
 
-      await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), {
+      await setDoc(doc(db, "artifacts", appId, "users", user.uid, "data", "profile"), {
         ...profileData,
         lastSignedInAt: nowMs(),
       });
@@ -643,7 +660,6 @@ export default function App() {
   };
 
   const completeOnboarding = async (data) => {
-    if (!currentUser) return;
     setIsSavingProfile(true);
 
     const profileData = {
@@ -652,7 +668,8 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile"), profileData);
+      const user = await ensureAuthSession();
+      await setDoc(doc(db, "artifacts", appId, "users", user.uid, "data", "profile"), profileData);
       await setDoc(doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(data.email)), profileData);
 
       await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
@@ -668,6 +685,16 @@ export default function App() {
       setPendingProfileData(null);
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const startNewUserFlow = async () => {
+    try {
+      await ensureAuthSession();
+      setOnboardingStep("details");
+      setUnauthScreen("signin");
+    } catch (error) {
+      console.error("Unable to start new user flow", error);
     }
   };
 
@@ -701,7 +728,7 @@ export default function App() {
           ) : (
             <SignInStep
               onExistingSignIn={signInExistingUser}
-              onStartNewUser={() => setOnboardingStep("details")}
+              onStartNewUser={startNewUserFlow}
               loading={isSigningIn}
               onGoogleSignIn={signInWithGoogle}
               googleLoading={isGoogleSigningIn}
@@ -727,7 +754,7 @@ export default function App() {
             {onboardingStep === "entry" ? (
               <SignInStep
                 onExistingSignIn={signInExistingUser}
-                onStartNewUser={() => setOnboardingStep("details")}
+                onStartNewUser={startNewUserFlow}
                 loading={isSigningIn}
               />
             ) : onboardingStep === "details" ? (
