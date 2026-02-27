@@ -5,6 +5,7 @@ import {
   Globe,
   Loader2,
   Mail,
+  LogOut,
   Send,
   Sparkles,
   User,
@@ -19,6 +20,7 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  signOut,
   signInAnonymously,
   signInWithPopup,
   signInWithRedirect,
@@ -492,6 +494,7 @@ export default function App() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const endRef = useRef(null);
@@ -628,6 +631,20 @@ export default function App() {
     if (!isChatLive) return "Reconnecting chat...";
     return "Live chat connected";
   }, [isChatLive]);
+
+   const handleSignOut = async () => {
+    if (isSigningOut) return;
+
+    try {
+      setIsSigningOut(true);
+      await signOut(auth);
+      setPickerOpen(false);
+    } catch (error) {
+      console.error("Unable to sign out", error);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
     const signInExistingUser = async (email) => {
     try {
@@ -783,7 +800,19 @@ export default function App() {
                   <h1 className="text-sm font-bold text-slate-800">Hey {profile.fullName.split(" ")[0]} 👋</h1>
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
-                <Sparkles className="text-teal-500" size={18} />
+               <div className="flex items-center gap-2">
+                  <Sparkles className="text-teal-500" size={18} />
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Sign out"
+                  >
+                    <LogOut size={12} />
+                    {isSigningOut ? "Signing out..." : "Sign out"}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-2 flex items-center justify-between text-[11px]">
