@@ -494,6 +494,7 @@ export default function App() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [googleSignInError, setGoogleSignInError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [unauthScreen, setUnauthScreen] = useState("welcome");
@@ -555,12 +556,21 @@ export default function App() {
 
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true);
+    setGoogleSignInError("");
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
        if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
         await signInWithRedirect(auth, googleProvider);
         return;
+      }
+
+        if (error?.code === "auth/unauthorized-domain") {
+        setGoogleSignInError("This domain is not allowed in Firebase Auth. Add it under Authentication > Settings > Authorized domains.");
+      } else if (error?.code === "auth/operation-not-allowed") {
+        setGoogleSignInError("Google sign-in is disabled for this Firebase project. Enable it under Authentication > Sign-in method.");
+      } else {
+        setGoogleSignInError("Google sign-in failed. Check Firebase Auth settings and try again.");
       }
       console.error(error);
     } finally {
@@ -749,6 +759,7 @@ export default function App() {
               loading={isSigningIn}
               onGoogleSignIn={signInWithGoogle}
               googleLoading={isGoogleSigningIn}
+              googleError={googleSignInError}
             />
           )}
         </div>
