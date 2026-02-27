@@ -566,7 +566,8 @@ export default function App() {
       }
 
         if (error?.code === "auth/unauthorized-domain") {
-        setGoogleSignInError("This domain is not allowed in Firebase Auth. Add it under Authentication > Settings > Authorized domains.");
+        const currentDomain = window.location.hostname;
+        setGoogleSignInError(`This domain (${currentDomain}) is not allowed in Firebase Auth. Add it under Authentication > Settings > Authorized domains.`);
       } else if (error?.code === "auth/operation-not-allowed") {
         setGoogleSignInError("Google sign-in is disabled for this Firebase project. Enable it under Authentication > Sign-in method.");
       } else {
