@@ -9,6 +9,7 @@ import {
   LogOut,
   Send,
   Sparkles,
+  Gift,
   User,
 } from "lucide-react";
 
@@ -488,6 +489,32 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   );
 }
 
+function MysteryGiftModal({ open, reward, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div className="absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-3xl border border-white/40 bg-white/95 p-6 text-center shadow-2xl">
+        <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-amber-100 text-amber-600">
+          <Gift className="animate-bounce" size={30} />
+        </div>
+        <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
+        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
+        <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
+        <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700"
+        >
+          Awesome!
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -511,6 +538,8 @@ export default function App() {
   const [profileLoadError, setProfileLoadError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [unauthScreen, setUnauthScreen] = useState("welcome");
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [mysteryReward, setMysteryReward] = useState(0);
   const endRef = useRef(null);
   
   useEffect(() => {
@@ -785,7 +814,7 @@ export default function App() {
     }
   };
 
-  const sendGreeting = async (greeting) => {
+  const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile) return;
 
     await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
@@ -795,6 +824,42 @@ export default function App() {
       timestamp: nowMs(),
     });
 
+    if (Math.random() < 0.2) {
+      const possibleRewards = [25, 50, 75, 100];
+      const bonus = possibleRewards[Math.floor(Math.random() * possibleRewards.length)];
+      const profileRef = doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile");
+      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(profile.email));
+
+      await runTransaction(db, async (transaction) => {
+        const profileSnap = await transaction.get(profileRef);
+        const profileData = profileSnap.exists() ? profileSnap.data() : {};
+        const currentBalance = Number(profileData?.sparkBalance ?? profileData?.sparks ?? 0);
+        const nextBalance = currentBalance + bonus;
+
+        transaction.set(
+          profileRef,
+          {
+            sparkBalance: nextBalance,
+            lastMysteryGiftAt: nowMs(),
+          },
+          { merge: true }
+        );
+
+        transaction.set(
+          profileIndexRef,
+          {
+            sparkBalance: nextBalance,
+            lastMysteryGiftAt: nowMs(),
+          },
+          { merge: true }
+        );
+      });
+
+      setMysteryReward(bonus);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setShowGiftModal(true);
+    }
+    
     setPickerOpen(false);
   };
 
@@ -830,6 +895,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+        <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
         {!hasCompletedOnboarding || !profile ? (
           <>
             {profileLoadError ? (
@@ -981,7 +1047,7 @@ export default function App() {
                   {GREETINGS.map((greeting) => (
                     <button
                       key={greeting.id}
-                      onClick={() => sendGreeting(greeting)}
+                      onClick={() => handleSendMessage(greeting)}
                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
                     >
                       {greeting.text}
