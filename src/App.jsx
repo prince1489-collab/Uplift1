@@ -273,9 +273,18 @@ const COUNTRY_OPTIONS = [
 ];
 
 const GREETINGS = [
-  { id: "morning", text: "Good Morning, have a nice day! ☀️" },
-  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛" },
-  { id: "night", text: "Good Night! Sleep well 🌙" },
+  { id: "morning", text: "Good Morning, have a nice day! ☀️", sparkReward: 10, isMystery: false },
+  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛", sparkReward: 10, isMystery: false },
+  { id: "night", text: "Good Night! Sleep well 🌙", sparkReward: 10, isMystery: false },
+  { id: "mystery", text: "🎁 Mystery Greeting", sparkReward: 25, isMystery: true },
+];
+
+const LEVEL_THRESHOLDS = [
+  { min: 0, title: "Novice Greeter" },
+  { min: 50, title: "Kindness Scout" },
+  { min: 150, title: "Beacon of Hope" },
+  { min: 300, title: "Sunshine Bringer" },
+  { min: 600, title: "Guardian of Joy" },
 ];
 
 const nowMs = () => Date.now();
@@ -686,6 +695,26 @@ export default function App() {
     return "Live chat connected";
   }, [isChatLive]);
 
+  const sparkBalance = Number(profile?.sparkBalance ?? profile?.sparks ?? 0);
+  const currentLevel = useMemo(() => {
+    return LEVEL_THRESHOLDS.reduce((level, threshold) => {
+      if (sparkBalance >= threshold.min) return threshold;
+      return level;
+    }, LEVEL_THRESHOLDS[0]);
+  }, [sparkBalance]);
+
+  const nextLevel = useMemo(() => {
+    return LEVEL_THRESHOLDS.find((threshold) => threshold.min > sparkBalance) || null;
+  }, [sparkBalance]);
+
+  const progressPercent = useMemo(() => {
+    if (!nextLevel) return 100;
+    const span = nextLevel.min - currentLevel.min;
+    if (span <= 0) return 100;
+    const completed = sparkBalance - currentLevel.min;
+    return Math.max(0, Math.min(100, Math.round((completed / span) * 100)));
+  }, [currentLevel.min, nextLevel, sparkBalance]);
+  
    const handleSignOut = async () => {
     if (isSigningOut) return;
 
@@ -824,38 +853,39 @@ export default function App() {
       timestamp: nowMs(),
     });
 
-    if (Math.random() < 0.2) {
-      const possibleRewards = [25, 50, 75, 100];
-      const bonus = possibleRewards[Math.floor(Math.random() * possibleRewards.length)];
-      const profileRef = doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile");
-      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(profile.email));
+     const reward = Number(greeting.sparkReward || 0);
+    const profileRef = doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile");
+    const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(profile.email));
 
       await runTransaction(db, async (transaction) => {
-        const profileSnap = await transaction.get(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : {};
-        const currentBalance = Number(profileData?.sparkBalance ?? profileData?.sparks ?? 0);
-        const nextBalance = currentBalance + bonus;
+      const profileSnap = await transaction.get(profileRef);
+      const profileData = profileSnap.exists() ? profileSnap.data() : {};
+      const currentBalance = Number(profileData?.sparkBalance ?? profileData?.sparks ?? 0);
+      const nextBalance = currentBalance + reward;
 
         transaction.set(
-          profileRef,
-          {
-            sparkBalance: nextBalance,
-            lastMysteryGiftAt: nowMs(),
-          },
-          { merge: true }
-        );
+        profileRef,
+        {
+          sparkBalance: nextBalance,
+          lastGreetingAt: nowMs(),
+          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+        },
+        { merge: true }
+      );
 
-        transaction.set(
-          profileIndexRef,
-          {
-            sparkBalance: nextBalance,
-            lastMysteryGiftAt: nowMs(),
-          },
-          { merge: true }
-        );
-      });
+      transaction.set(
+        profileIndexRef,
+        {
+          sparkBalance: nextBalance,
+          lastGreetingAt: nowMs(),
+          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+        },
+        { merge: true }
+      );
+    });
 
-      setMysteryReward(bonus);
+    if (greeting.isMystery) {
+      setMysteryReward(reward);
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setShowGiftModal(true);
     }
@@ -971,6 +1001,25 @@ export default function App() {
                 </div>
               </div>
 
+               <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks`}
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                    <Sparkles size={12} />
+                    {sparkBalance}
+                  </div>
+                </div>
+
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
+
               <div className="mt-2 flex items-center justify-between text-[11px]">
                 <span
                   className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${
@@ -1050,7 +1099,8 @@ export default function App() {
                       onClick={() => handleSendMessage(greeting)}
                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
                     >
-                      {greeting.text}
+                      <span>{greeting.text}</span>
+                      <span className="ml-2 text-xs text-teal-600">+{greeting.sparkReward} sparks</span>
                     </button>
                   ))}
                 </div>
