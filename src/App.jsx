@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  Calendar,
   ChevronDown,
   Globe,
   Loader2,
@@ -35,6 +36,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
 } from "firebase/firestore";
 
@@ -289,7 +291,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function Onboarding({ onContinue, loading, initialData = null }) {
+function Onboarding({ onContinue, loading, initialData = null, errorMessage = "" }) {
   const [form, setForm] = useState({
     country: "",
     fullName: "",
@@ -407,14 +409,22 @@ function Onboarding({ onContinue, loading, initialData = null }) {
           />
         </InputRow>
 
-        <div className="grid grid-cols-3 gap-2">
+        {errorMessage ? <p className="px-1 text-sm text-rose-600">{errorMessage}</p> : null}
+
+        <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
+            <Calendar size={13} />
+            <span>Date of Birth</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
           <div className="relative">
             <select
               name="dobMonth"
               value={form.dobMonth}
               onChange={onChange}
               aria-label="Date of birth month"
-              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+              className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
             >
               <option value="">Month</option>
               {MONTHS.map((month) => (
@@ -423,7 +433,7 @@ function Onboarding({ onContinue, loading, initialData = null }) {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           </div>
 
           <div className="relative">
@@ -432,7 +442,7 @@ function Onboarding({ onContinue, loading, initialData = null }) {
               value={form.dobDay}
               onChange={onChange}
               aria-label="Date of birth day"
-              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+               className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
             >
               <option value="">Day</option>
               {DAYS.map((day) => (
@@ -441,7 +451,7 @@ function Onboarding({ onContinue, loading, initialData = null }) {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           </div>
 
           <div className="relative">
@@ -450,7 +460,7 @@ function Onboarding({ onContinue, loading, initialData = null }) {
               value={form.dobYear}
               onChange={onChange}
               aria-label="Date of birth year"
-              className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-8 pl-3 text-base text-slate-700"
+             className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
             >
               <option value="">Year</option>
               {YEARS.map((year) => (
@@ -459,7 +469,8 @@ function Onboarding({ onContinue, loading, initialData = null }) {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          </div>
           </div>
         </div>
 
@@ -497,6 +508,7 @@ export default function App() {
   const [googleSignInError, setGoogleSignInError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
+  const [onboardingError, setOnboardingError] = useState("");
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const endRef = useRef(null);
   
@@ -517,6 +529,7 @@ export default function App() {
         setHasCompletedOnboarding(false);
         setOnboardingStep("entry");
         setUnauthScreen("welcome");
+        setOnboardingError("");
         setIsProfileLoading(false);
         return;
       }
@@ -688,17 +701,38 @@ export default function App() {
   };
 
   const completeOnboarding = async (data) => {
+    setOnboardingError("");
     setIsSavingProfile(true);
-
-    const profileData = {
-      ...data,
-      onboardingCompletedAt: nowMs(),
-    };
 
     try {
       const user = await ensureAuthSession();
-      await setDoc(doc(db, "artifacts", appId, "users", user.uid, "data", "profile"), profileData);
-      await setDoc(doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(data.email)), profileData);
+      const normalizedEmail = data.email.trim();
+      const emailKey = toEmailKey(normalizedEmail);
+      const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
+      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
+      const profileData = {
+        ...data,
+        email: normalizedEmail,
+        emailKey,
+        ownerUid: user.uid,
+        onboardingCompletedAt: nowMs(),
+      };
+
+      await runTransaction(db, async (transaction) => {
+        const indexedProfile = await transaction.get(profileIndexRef);
+
+        if (indexedProfile.exists()) {
+          const indexData = indexedProfile.data();
+          const indexedOwner = indexData.ownerUid || indexData.userUid || indexData.uid || null;
+
+          if (!indexedOwner || indexedOwner !== user.uid) {
+            throw new Error("EMAIL_ALREADY_USED");
+          }
+        }
+
+        transaction.set(profileRef, profileData);
+        transaction.set(profileIndexRef, profileData);
+      });
 
       await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
         uid: "system",
@@ -711,6 +745,14 @@ export default function App() {
       setHasCompletedOnboarding(true);
       setOnboardingStep("done");
       setPendingProfileData(null);
+      } catch (error) {
+      if (error?.message === "EMAIL_ALREADY_USED") {
+        setOnboardingError("That email address is already in use. Please use a different email.");
+        return;
+      }
+
+      console.error("Unable to complete onboarding", error);
+      setOnboardingError("Unable to save your profile right now. Please try again.");  
     } finally {
       setIsSavingProfile(false);
     }
@@ -721,6 +763,7 @@ export default function App() {
       await ensureAuthSession();
       setOnboardingStep("details");
       setUnauthScreen("signin");
+      setOnboardingError("");
     } catch (error) {
       console.error("Unable to start new user flow", error);
     }
@@ -789,11 +832,13 @@ export default function App() {
             ) : onboardingStep === "details" ? (
               <Onboarding
                 onContinue={(data) => {
+                  setOnboardingError("");
                   setPendingProfileData(data);
                   setOnboardingStep("photo");
                 }}
                 loading={isSavingProfile}
                 initialData={pendingProfileData}
+                errorMessage={onboardingError}
               />
             ) : (
               <ProfilePhotoStep
