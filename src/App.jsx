@@ -505,6 +505,7 @@ export default function App() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [googleSignInError, setGoogleSignInError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
@@ -758,6 +759,21 @@ export default function App() {
     }
   };
 
+  const validateEmailBeforeNextStep = async (email) => {
+    const normalizedEmail = email.trim();
+    const emailKey = toEmailKey(normalizedEmail);
+    const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
+    const indexedProfile = await getDoc(profileIndexRef);
+
+    if (!indexedProfile.exists()) {
+      return true;
+    }
+
+    const indexData = indexedProfile.data();
+    const indexedOwner = indexData.ownerUid || indexData.userUid || indexData.uid || null;
+    return Boolean(indexedOwner && currentUser && indexedOwner === currentUser.uid);
+  };
+  
   const startNewUserFlow = async () => {
     try {
       await ensureAuthSession();
@@ -831,12 +847,29 @@ export default function App() {
               />
             ) : onboardingStep === "details" ? (
               <Onboarding
-                onContinue={(data) => {
+                onContinue={async (data) => {
                   setOnboardingError("");
+
+                   try {
+                    setIsCheckingEmail(true);
+                    const canProceed = await validateEmailBeforeNextStep(data.email);
+
+                    if (!canProceed) {
+                      setOnboardingError("That email address is already in use. Please use a different email.");
+                      return;
+                    }
+                  } catch (error) {
+                    console.error("Unable to validate email", error);
+                    setOnboardingError("Unable to validate your email right now. Please try again.");
+                    return;
+                  } finally {
+                    setIsCheckingEmail(false);
+                  }
+
                   setPendingProfileData(data);
                   setOnboardingStep("photo");
                 }}
-                loading={isSavingProfile}
+                loading={isSavingProfile || isCheckingEmail}
                 initialData={pendingProfileData}
                 errorMessage={onboardingError}
               />
