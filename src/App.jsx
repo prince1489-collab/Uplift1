@@ -25,6 +25,9 @@ import {
   signOut,
   signInWithPopup,
   signInWithRedirect,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
 } from "firebase/auth";
 import {
   addDoc,
@@ -535,10 +538,11 @@ export default function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
-  const isSigningIn = false;
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [isSendingEmailLink, setIsSendingEmailLink] = useState(false);
+  const [emailLinkMessage, setEmailLinkMessage] = useState("");
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [googleSignInError, setGoogleSignInError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -605,9 +609,80 @@ export default function App() {
     };
   }, []);
 
+
+
+  useEffect(() => {
+    const completeEmailLinkSignIn = async () => {
+      if (!isSignInWithEmailLink(auth, window.location.href)) return;
+
+      let email = window.localStorage.getItem("upliftEmailForSignIn");
+
+      if (!email) {
+        email = window.prompt("Please confirm your email address to complete sign-in.");
+      }
+
+      if (!email) return;
+
+      try {
+        setIsAuthLoading(true);
+        await signInWithEmailLink(auth, email, window.location.href);
+        window.localStorage.removeItem("upliftEmailForSignIn");
+        setEmailLinkMessage("");
+        setOnboardingError("");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (error) {
+        console.error("Unable to complete email link sign-in", error);
+        setOnboardingError("Your sign-in link is invalid or expired. Please request a new one.");
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    completeEmailLinkSignIn();
+  }, []);
+
+  const sendEmailSignInLink = async (email) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return "Please enter your email address.";
+    }
+
+    setIsSendingEmailLink(true);
+    setEmailLinkMessage("");
+    setGoogleSignInError("");
+
+    try {
+      const actionCodeSettings = {
+        url: window.location.origin,
+        handleCodeInApp: true,
+      };
+
+      await sendSignInLinkToEmail(auth, normalizedEmail, actionCodeSettings);
+      window.localStorage.setItem("upliftEmailForSignIn", normalizedEmail);
+      setEmailLinkMessage(`We sent a sign-in link to ${normalizedEmail}. Check your inbox.`);
+      return "";
+    } catch (error) {
+      console.error("Unable to send email sign-in link", error);
+
+      if (error?.code === "auth/invalid-email") {
+        return "That email address is invalid.";
+      }
+
+      if (error?.code === "auth/operation-not-allowed") {
+        return "Email link sign-in is disabled in Firebase. Enable Email/Password and Email link in Authentication.";
+      }
+
+      return "Unable to send the sign-in link right now. Please try again.";
+    } finally {
+      setIsSendingEmailLink(false);
+    }
+  };
+  
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true);
     setGoogleSignInError("");
+    setEmailLinkMessage("");
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -721,8 +796,8 @@ export default function App() {
     }
   };
 
-    const signInExistingUser = async () => {
-    return "Please continue with Google to sign in.";
+    const signInExistingUser = async (email) => {
+    return await sendEmailSignInLink(email);
   };
 
   const completeOnboarding = async (data) => {
@@ -733,11 +808,16 @@ export default function App() {
       const user = auth.currentUser;
 
       if (!user || user.isAnonymous) {
-        setOnboardingError("Please sign in with Google before continuing.");
+        setOnboardingError("Please sign in before continuing.");
         return;
       }
 
-      const normalizedEmail = data.email.trim().toLowerCase();
+      if (!user.email) {
+        setOnboardingError("We could not verify your account email. Please sign in again.");
+        return;
+      }
+
+      const normalizedEmail = user.email.trim().toLowerCase();
       const emailKey = toEmailKey(normalizedEmail);
       const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
       const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
@@ -790,7 +870,8 @@ export default function App() {
   };
 
   const validateEmailBeforeNextStep = async (email) => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const authEmail = currentUser?.email?.trim().toLowerCase() || "";
+    const normalizedEmail = authEmail || email.trim().toLowerCase();
     const emailKey = toEmailKey(normalizedEmail);
     const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
     const indexedProfile = await getDoc(profileIndexRef);
@@ -808,6 +889,7 @@ export default function App() {
     setOnboardingStep("details");
     setUnauthScreen("signin");
     setOnboardingError("");
+    setEmailLinkMessage("");
   };
 
   const handleSendMessage = async (greeting) => {
@@ -877,10 +959,11 @@ export default function App() {
             <SignInStep
               onExistingSignIn={signInExistingUser}
               onStartNewUser={startNewUserFlow}
-              loading={isSigningIn}
+              loading={isSendingEmailLink}
               onGoogleSignIn={signInWithGoogle}
               googleLoading={isGoogleSigningIn}
               googleError={googleSignInError}
+              emailLinkMessage={emailLinkMessage}
             />
           )}
         </div>
@@ -907,10 +990,11 @@ export default function App() {
               <SignInStep
                 onExistingSignIn={signInExistingUser}
                 onStartNewUser={startNewUserFlow}
-                loading={isSigningIn}
-                 onGoogleSignIn={signInWithGoogle}
+                loading={isSendingEmailLink}
+                onGoogleSignIn={signInWithGoogle}
                 googleLoading={isGoogleSigningIn}
                 googleError={googleSignInError}
+                emailLinkMessage={emailLinkMessage}
               />
             ) : onboardingStep === "details" ? (
               <Onboarding
