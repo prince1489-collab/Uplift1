@@ -23,7 +23,6 @@ import {
   getAuth,
   onAuthStateChanged,
   signOut,
-  signInAnonymously,
   signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
@@ -563,7 +562,7 @@ export default function App() {
       setCurrentUser(user);
       setIsAuthLoading(false);
       setProfileLoadError("");
-      if (!user) {
+      if (!user || user.isAnonymous) {
         setProfile(null);
         setHasCompletedOnboarding(false);
         setOnboardingStep("entry");
@@ -630,16 +629,9 @@ export default function App() {
       setIsGoogleSigningIn(false);
     }
   };
-
-    const ensureAuthSession = async () => {
-    if (auth.currentUser) return auth.currentUser;
-
-    const result = await signInAnonymously(auth);
-    return result.user;
-  };
   
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
     
     const q = query(
@@ -732,7 +724,12 @@ export default function App() {
     const signInExistingUser = async (email) => {
     try {
       setIsSigningIn(true);
-      const user = await ensureAuthSession();
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        return "Please continue with Google before signing in with email.";
+      }
+      
       const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(email));
       const indexedProfile = await getDoc(profileIndexRef);
 
@@ -764,8 +761,14 @@ export default function App() {
     setIsSavingProfile(true);
 
     try {
-      const user = await ensureAuthSession();
-      const normalizedEmail = data.email.trim();
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        setOnboardingError("Please sign in with Google before continuing.");
+        return;
+      }
+
+      const normalizedEmail = data.email.trim().toLowerCase();
       const emailKey = toEmailKey(normalizedEmail);
       const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
       const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
@@ -818,7 +821,7 @@ export default function App() {
   };
 
   const validateEmailBeforeNextStep = async (email) => {
-    const normalizedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
     const emailKey = toEmailKey(normalizedEmail);
     const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
     const indexedProfile = await getDoc(profileIndexRef);
@@ -832,15 +835,10 @@ export default function App() {
     return Boolean(indexedOwner && currentUser && indexedOwner === currentUser.uid);
   };
   
-  const startNewUserFlow = async () => {
-    try {
-      await ensureAuthSession();
-      setOnboardingStep("details");
-      setUnauthScreen("signin");
-      setOnboardingError("");
-    } catch (error) {
-      console.error("Unable to start new user flow", error);
-    }
+  const startNewUserFlow = () => {
+    setOnboardingStep("details");
+    setUnauthScreen("signin");
+    setOnboardingError("");
   };
 
   const handleSendMessage = async (greeting) => {
@@ -901,7 +899,9 @@ export default function App() {
     );
   }
 
-  if (!currentUser) {
+   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
+
+  if (!isRealSignedInUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
@@ -940,6 +940,9 @@ export default function App() {
                 onExistingSignIn={signInExistingUser}
                 onStartNewUser={startNewUserFlow}
                 loading={isSigningIn}
+                 onGoogleSignIn={signInWithGoogle}
+                googleLoading={isGoogleSigningIn}
+                googleError={googleSignInError}
               />
             ) : onboardingStep === "details" ? (
               <Onboarding
