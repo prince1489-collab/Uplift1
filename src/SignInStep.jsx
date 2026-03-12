@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Loader2, Mail, Sparkles } from "lucide-react";
 
-function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn, googleLoading, googleError }) {
+function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn, googleLoading, googleError, emailLinkMessage }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
@@ -31,7 +31,7 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn,
           Welcome back
         </h1>
         <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
-          Continue with Google or sign in with the email you used for Uplift.
+          Continue with Google or enter your email to get a sign-in link.
         </p>
 
         {onGoogleSignIn ? (
@@ -60,13 +60,14 @@ function SignInStep({ onExistingSignIn, onStartNewUser, loading, onGoogleSignIn,
           </div>
 
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-
+          {emailLinkMessage ? <p className="text-sm text-emerald-600">{emailLinkMessage}</p> : null}
+          
           <button
             type="submit"
             disabled={loading}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-600 py-4 text-xl font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign In"}
+             {loading ? <Loader2 className="animate-spin" size={20} /> : "Email me a sign-in link"}
           </button>
         </form>
 
