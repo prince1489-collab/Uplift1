@@ -37,7 +37,6 @@ import {
   orderBy,
   query,
   runTransaction,
-  setDoc,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -300,7 +299,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function Onboarding({ onContinue, loading, initialData = null, errorMessage = "" }) {
+function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
   const [form, setForm] = useState({
     country: "",
     fullName: "",
@@ -325,6 +324,13 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
       dobYear,
     });
   }, [initialData]);
+
+  useEffect(() => {
+    if (!initialEmail) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm((prev) => ({ ...prev, email: initialEmail }));
+  }, [initialEmail]);
   const valid =
     Boolean(form.country) &&
     Boolean(form.fullName) &&
@@ -414,7 +420,8 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             value={form.email}
             onChange={onChange}
             placeholder="Email Address"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
+            readOnly={Boolean(initialEmail)}
+            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${initialEmail ? "bg-slate-100" : "bg-slate-50"}`}
           />
         </InputRow>
 
@@ -549,6 +556,7 @@ export default function App() {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
   const endRef = useRef(null);
+  const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   
   useEffect(() => {
     let profileUnsub = null;
@@ -583,7 +591,7 @@ export default function App() {
           if (nextProfile?.onboardingCompletedAt) {
             setOnboardingStep("done");
           } else {
-            setOnboardingStep("entry");
+            setOnboardingStep("details");
           }
           setProfileLoadError("");
           setIsProfileLoading(false);
@@ -721,39 +729,10 @@ export default function App() {
     }
   };
 
-    const signInExistingUser = async (email) => {
-    try {
-      setIsSigningIn(true);
-      const user = auth.currentUser;
-
-      if (!user || user.isAnonymous) {
-        return "Please continue with Google before signing in with email.";
-      }
-      
-      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(email));
-      const indexedProfile = await getDoc(profileIndexRef);
-
-      if (!indexedProfile.exists()) {
-        return "No user found with that email. Please create a new account.";
-      }
-
-      const profileData = indexedProfile.data();
-
-      await setDoc(doc(db, "artifacts", appId, "users", user.uid, "data", "profile"), {
-        ...profileData,
-        lastSignedInAt: nowMs(),
-      });
-
-      setProfile(profileData);
-      setHasCompletedOnboarding(true);
-      setOnboardingStep("done");
-      return "";
-    } catch (error) {
-      console.error(error);
-      return "Unable to sign in right now. Please try again.";
-    } finally {
-      setIsSigningIn(false);
-    }
+    const signInExistingUser = async () => {
+    setIsSigningIn(true);
+    setIsSigningIn(false);
+    return "Please continue with Google to sign in.";
   };
 
   const completeOnboarding = async (data) => {
@@ -891,16 +870,13 @@ export default function App() {
     setPickerOpen(false);
   };
 
-  if (isAuthLoading || (currentUser && isProfileLoading)) {
+  if (isAuthLoading || (isRealSignedInUser && isProfileLoading)) {
     return (
       <div className="grid h-screen place-items-center bg-slate-50">
         <Loader2 className="animate-spin text-teal-600" />
       </div>
     );
   }
-
-   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
-
   if (!isRealSignedInUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
@@ -970,6 +946,7 @@ export default function App() {
                 }}
                 loading={isSavingProfile || isCheckingEmail}
                 initialData={pendingProfileData}
+                initialEmail={currentUser?.email || ""}
                 errorMessage={onboardingError}
               />
             ) : (
