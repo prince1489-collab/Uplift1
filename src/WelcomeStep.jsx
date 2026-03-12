@@ -38,17 +38,21 @@ function WelcomeStep({ onStartJourney }) {
         </p>
 
         <div className="welcome-step__list">
-          {HIGHLIGHTS.map(({ title, detail, icon: Icon, iconClassName }) => (
-            <article className="welcome-step__item" key={title}>
-              <div className={`welcome-step__icon-wrap ${iconClassName}`}>
-                <Icon size={16} />
-              </div>
-              <div>
-                <h2 className="welcome-step__item-title">{title}</h2>
-                <p className="welcome-step__item-detail">{detail}</p>
-              </div>
-            </article>
-          ))}
+         {HIGHLIGHTS.map((highlight) => {
+            const IconComponent = highlight.icon;
+
+            return (
+              <article className="welcome-step__item" key={highlight.title}>
+                <div className={`welcome-step__icon-wrap ${highlight.iconClassName}`}>
+                  <IconComponent size={16} />
+                </div>
+                <div>
+                  <h2 className="welcome-step__item-title">{highlight.title}</h2>
+                  <p className="welcome-step__item-detail">{highlight.detail}</p>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
 
