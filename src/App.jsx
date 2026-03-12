@@ -310,27 +310,19 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   });
 
     useEffect(() => {
-    if (!initialData) return;
+    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
 
-    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData.dob || "").replace(",", "").split(" ");
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect  
-    setForm({
-      country: initialData.country || "",
-      fullName: initialData.fullName || "",
-      email: initialData.email || "",
+     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm((prev) => ({
+      ...prev,
+      country: initialData?.country || "",
+      fullName: initialData?.fullName || "",
+      email: initialEmail || initialData?.email || "",
       dobMonth,
       dobDay,
       dobYear,
-    });
-  }, [initialData]);
-
-  useEffect(() => {
-    if (!initialEmail) return;
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm((prev) => ({ ...prev, email: initialEmail }));
-  }, [initialEmail]);
+   }));
+  }, [initialData, initialEmail]);
   const valid =
     Boolean(form.country) &&
     Boolean(form.fullName) &&
@@ -543,7 +535,7 @@ export default function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  const isSigningIn = false;
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
@@ -730,8 +722,6 @@ export default function App() {
   };
 
     const signInExistingUser = async () => {
-    setIsSigningIn(true);
-    setIsSigningIn(false);
     return "Please continue with Google to sign in.";
   };
 
@@ -897,6 +887,8 @@ export default function App() {
       </div>
     );
   }
+
+  const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || "there";
   
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
@@ -963,7 +955,7 @@ export default function App() {
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-sm font-bold text-slate-800">Hey {profile.fullName.split(" ")[0]} 👋</h1>
+                  <h1 className="text-sm font-bold text-slate-800">Hey {firstName} 👋</h1>
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
                <div className="flex items-center gap-2">
