@@ -862,6 +862,25 @@ export default function App() {
         return;
       }
 
+      if (error?.code === "permission-denied") {
+        setOnboardingError(
+          "Your account could not be saved because Firestore permissions are blocking profile writes. Update your Firebase Security Rules and try again."
+        );
+        return;
+      }
+
+      if (error?.code === "unavailable") {
+        setOnboardingError("Firebase is temporarily unavailable. Please check your connection and try again.");
+        return;
+      }
+
+      if (error?.code === "failed-precondition") {
+        setOnboardingError(
+          "Your profile could not be saved because Firebase is not fully configured yet. Verify Firestore indexes/rules, then retry."
+        );
+        return;
+      }
+
       console.error("Unable to complete onboarding", error);
       setOnboardingError("Unable to save your profile right now. Please try again.");  
     } finally {
