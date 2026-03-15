@@ -1,19 +1,44 @@
-
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
- 
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowRight,
+  Calendar,
+  ChevronDown,
+  Globe,
+  Loader2,
+  Mail,
+  LogOut,
+  Send,
+  Sparkles,
+  Gift,
+  User,
+} from "lucide-react";
+
+import ProfilePhotoStep from "./ProfilePhotoStep";
+import SignInStep from "./SignInStep";
+import WelcomeStep from "./WelcomeStep";
+
+import { initializeApp } from "firebase/app";
+import {
+  GoogleAuthProvider,
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  signInWithPopup,
+  signInWithRedirect,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as updateAuthProfile,
+} from "firebase/auth";
+
+import {
+  addDoc,
   collection,
   doc,
-  getDoc,
-  getDocs,
+  getFirestore,
   limit,
   onSnapshot,
   orderBy,
@@ -21,1004 +46,1048 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
-  updateDoc,
-  where,
-  arrayUnion,
-  arrayRemove,
-  addDoc,
 } from "firebase/firestore";
- 
+
 import {
-  Flame,
-  Gift,
-  Heart,
-  Sparkles,
-  Star,
-  Users,
-  Shield,
-  Share2,
-  Bell,
-  CheckCircle2,
-  X,
-  Plus,
-  Zap,
-} from "lucide-react";
- 
-// ─────────────────────────────────────────────────────────────────
-// 0. SHARED HELPERS
-// ─────────────────────────────────────────────────────────────────
- 
-/** Returns "YYYY-MM-DD" for today in the user's local timezone. */
-export function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
- 
-/**
- * Mystery pool – rotating weekly bonuses.
- * Each entry: { id, label, sparkReward, emoji }
- * The active one is selected by ISO week number so it changes every Monday.
- */
-export const MYSTERY_POOL = [
-  { id: "m1", label: "Double Joy", sparkReward: 50, emoji: "✨" },
-  { id: "m2", label: "Kind Surge",  sparkReward: 40, emoji: "💛" },
-  { id: "m3", label: "Sunshine Burst", sparkReward: 35, emoji: "☀️" },
-  { id: "m4", label: "Midnight Magic", sparkReward: 45, emoji: "🌙" },
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
+  authDomain: "uplift-6d9ea.firebaseapp.com",
+  projectId: "uplift-6d9ea",
+  storageBucket: "uplift-6d9ea.firebasestorage.app",
+  messagingSenderId: "821891105119",
+  appId: "1:821891105119:web:6245f2bc4c8c8ee96976ea",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const googleProvider = new GoogleAuthProvider();
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
- 
-function isoWeek(date = new Date()) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-}
- 
-/** Returns the mystery pool item active this week. */
-export function thisWeeksMystery() {
-  return MYSTERY_POOL[isoWeek() % MYSTERY_POOL.length];
-}
- 
-/**
- * Computes the final spark reward for a greeting, applying the streak multiplier.
- *
- * streakDays: current streak length
- * baseReward: greeting.sparkReward
- */
-export function computeSparkReward(baseReward, streakDays = 0) {
-  const multiplier =
-    streakDays >= 30 ? 2.0 :
-    streakDays >= 14 ? 1.75 :
-    streakDays >= 7  ? 1.5 :
-    streakDays >= 3  ? 1.25 : 1.0;
-  return Math.round(baseReward * multiplier);
-}
- 
-// ─────────────────────────────────────────────────────────────────
-// 1. STREAK SYSTEM
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   const { streak, freezesAvailable, recordGreetingDay, useFreeze } =
-//     useStreak(db, currentUser?.uid, profile);
-//
-//   // Pass streak to computeSparkReward inside handleSendMessage:
-//   const reward = computeSparkReward(greeting.sparkReward, streak);
-//
-//   // After the transaction in handleSendMessage:
-//   await recordGreetingDay();
-//
-//   // In the header, next to the spark balance badge:
-//   <StreakBadge streak={streak} />
-//   <StreakFreezeButton
-//     freezes={freezesAvailable}
-//     sparkBalance={sparkBalance}
-//     onBuy={() => useFreeze()}   // or show a confirm first
-//   />
- 
-const FREEZE_COST = 10; // sparks
- 
-/**
- * useStreak – manages streak state in Firestore.
- *
- * Stored at users/{uid}:
- *   streakDays        number
- *   lastGreetingDate  "YYYY-MM-DD"
- *   streakFreezes     number   (purchased freeze tokens)
- *   lastFreezeUsed    "YYYY-MM-DD"
- */
-export function useStreak(db, uid, profile) {
-  const [streak, setStreak] = useState(0);
-  const [freezesAvailable, setFreezesAvailable] = useState(0);
- 
-  // Sync from profile snapshot (already live in App.jsx)
-  useEffect(() => {
-    if (!profile) return;
-    setStreak(Number(profile.streakDays ?? 0));
-    setFreezesAvailable(Number(profile.streakFreezes ?? 0));
-  }, [profile]);
- 
-  /**
-   * Call after a successful greeting send.
-   * Increments streak if the user greeted yesterday or today,
-   * resets to 1 otherwise.
-   */
-  const recordGreetingDay = useCallback(async () => {
-    if (!db || !uid) return;
-    const today = todayKey();
-    const userRef = doc(db, "users", uid);
- 
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      const data = snap.exists() ? snap.data() : {};
-      const lastDate = data.lastGreetingDate ?? "";
-      const currentStreak = Number(data.streakDays ?? 0);
- 
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = yesterday.toISOString().slice(0, 10);
- 
-      let newStreak = 1;
-      if (lastDate === today) {
-        newStreak = currentStreak; // already counted today
-      } else if (lastDate === yesterdayKey) {
-        newStreak = currentStreak + 1;
-      }
- 
-      tx.set(userRef, { streakDays: newStreak, lastGreetingDate: today }, { merge: true });
-    });
-  }, [db, uid]);
- 
-  /**
-   * Purchase a streak freeze using sparks.
-   * Returns { ok } or { error }.
-   */
-  const buyFreeze = useCallback(async () => {
-    if (!db || !uid) return { error: "Not signed in." };
-    const userRef = doc(db, "users", uid);
- 
-    try {
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        const data = snap.exists() ? snap.data() : {};
-        const balance = Number(data.sparkBalance ?? 0);
- 
-        if (balance < FREEZE_COST) throw new Error("insufficient_sparks");
- 
-        tx.set(
-          userRef,
-          {
-            sparkBalance: balance - FREEZE_COST,
-            streakFreezes: Number(data.streakFreezes ?? 0) + 1,
-          },
-          { merge: true }
-        );
-      });
-      return { ok: true };
-    } catch (e) {
-      return { error: e.message === "insufficient_sparks" ? "Not enough sparks." : "Failed." };
-    }
-  }, [db, uid]);
- 
-  /**
-   * Use one freeze to protect today's streak from breaking.
-   */
-  const useFreeze = useCallback(async () => {
-    if (!db || !uid) return { error: "Not signed in." };
-    const userRef = doc(db, "users", uid);
-    const today = todayKey();
- 
-    try {
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        const data = snap.exists() ? snap.data() : {};
-        const freezes = Number(data.streakFreezes ?? 0);
- 
-        if (freezes < 1) throw new Error("no_freezes");
- 
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yKey = yesterday.toISOString().slice(0, 10);
- 
-        tx.set(
-          userRef,
-          {
-            streakFreezes: freezes - 1,
-            lastGreetingDate: yKey, // pretend they greeted yesterday
-            lastFreezeUsed: today,
-          },
-          { merge: true }
-        );
-      });
-      return { ok: true };
-    } catch (e) {
-      return { error: e.message === "no_freezes" ? "No freezes left." : "Failed." };
-    }
-  }, [db, uid]);
- 
-  return { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze };
-}
- 
-/** Flame badge showing current streak. */
-export function StreakBadge({ streak }) {
-  if (!streak || streak < 1) return null;
-  const hot = streak >= 7;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border ${
-        hot
-          ? "bg-orange-50 border-orange-200 text-orange-700"
-          : "bg-slate-50 border-slate-200 text-slate-600"
-      }`}
-    >
-      <Flame size={12} className={hot ? "text-orange-500" : "text-slate-400"} />
-      {streak}d
-    </span>
-  );
-}
- 
-/** Button to buy a streak freeze for 10 sparks. */
-export function StreakFreezeButton({ freezes, sparkBalance, onBuy }) {
-  const canAfford = sparkBalance >= FREEZE_COST;
-  return (
-    <button
-      type="button"
-      onClick={onBuy}
-      disabled={!canAfford}
-      title={freezes > 0 ? `You have ${freezes} freeze(s)` : `Buy a streak freeze for ${FREEZE_COST} sparks`}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-        freezes > 0
-          ? "border-cyan-200 bg-cyan-50 text-cyan-700"
-          : canAfford
-          ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
-          : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
-      }`}
-    >
-      <Shield size={11} />
-      {freezes > 0 ? `${freezes} freeze` : `Freeze (${FREEZE_COST}✨)`}
-    </button>
-  );
-}
- 
-// ─────────────────────────────────────────────────────────────────
-// 2. KINDNESS PLEDGE
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   // In the main authenticated view, above the chat:
-//   <KindnessPledge
-//     db={db}
-//     uid={currentUser.uid}
-//     todayMessageCount={messages.filter(m => m.uid === currentUser.uid &&
-//       m.timestamp > startOfToday()).length}
-//   />
- 
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
- 
-/**
- * Stores pledge at users/{uid}/pledges/{YYYY-MM-DD}
- *   { target: number, completedAt?: timestamp }
- */
-export function KindnessPledge({ db, uid, todayMessageCount = 0 }) {
-  const [target, setTarget] = useState(null);  // null = no pledge yet
-  const [loading, setLoading] = useState(true);
-  const [picking, setPicking] = useState(false);
-  const [saving, setSaving] = useState(false);
- 
-  const pledgeRef = useMemo(
-    () => (db && uid ? doc(db, "users", uid, "pledges", todayKey()) : null),
-    [db, uid]
-  );
- 
-  useEffect(() => {
-    if (!pledgeRef) return;
-    const unsub = onSnapshot(pledgeRef, (snap) => {
-      setTarget(snap.exists() ? snap.data().target ?? null : null);
-      setLoading(false);
-    });
-    return unsub;
-  }, [pledgeRef]);
- 
-  const savePledge = async (n) => {
-    if (!pledgeRef) return;
-    setSaving(true);
-    try {
-      await setDoc(pledgeRef, { target: n, createdAt: serverTimestamp() });
-      setTarget(n);
-      setPicking(false);
-    } finally {
-      setSaving(false);
-    }
-  };
- 
-  if (loading) return null;
- 
-  const fulfilled = target !== null && todayMessageCount >= target;
-  const remaining = target !== null ? Math.max(0, target - todayMessageCount) : null;
- 
-  if (target === null && !picking) {
-    return (
-      <button
-        onClick={() => setPicking(true)}
-        className="flex w-full items-center gap-2 rounded-2xl border border-dashed border-teal-300 bg-teal-50/60 px-4 py-2.5 text-sm text-teal-700 hover:bg-teal-50 transition-colors"
-      >
-        <CheckCircle2 size={14} className="text-teal-500" />
-        Set today's kindness pledge
-      </button>
-    );
-  }
- 
-  if (picking) {
-    return (
-      <div className="rounded-2xl border border-teal-200 bg-teal-50/60 px-4 py-3">
-        <p className="mb-2 text-xs font-semibold text-teal-800">How many greetings will you send today?</p>
-        <div className="flex gap-2">
-          {[1, 3, 5, 10].map((n) => (
-            <button
-              key={n}
-              disabled={saving}
-              onClick={() => savePledge(n)}
-              className="flex-1 rounded-xl border border-teal-300 bg-white py-2 text-sm font-bold text-teal-700 hover:bg-teal-100 transition-colors"
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
- 
-  return (
-    <div
-      className={`flex items-center justify-between rounded-2xl border px-4 py-2.5 text-sm transition-colors ${
-        fulfilled
-          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-          : "border-amber-200 bg-amber-50 text-amber-800"
-      }`}
-    >
-      <span className="flex items-center gap-2">
-        <CheckCircle2 size={14} className={fulfilled ? "text-emerald-500" : "text-amber-500"} />
-        {fulfilled
-          ? `Pledge complete! ${todayMessageCount}/${target} greetings ✨`
-          : `Pledge: ${todayMessageCount}/${target} greetings — ${remaining} to go`}
-      </span>
-    </div>
-  );
-}
- 
-// ─────────────────────────────────────────────────────────────────
-// 3. UPLIFT BUDDIES + SPARK GIFTING
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   // Add a "Buddies" tab or collapsible section in the header or sidebar:
-//   <BuddyPanel db={db} currentUser={currentUser} profile={profile} />
-//
-//   // In the message bubble for non-self messages, add:
-//   <SparkGiftButton
-//     db={db}
-//     senderUid={m.uid}
-//     currentUser={currentUser}
-//     profile={profile}
-//   />
- 
-const GIFT_AMOUNT = 5;
- 
-/**
- * BuddyPanel – shows up to 5 buddies.
- * Buddies are stored in users/{uid}.buddies as an array of UIDs.
- * We display them by fetching their profile docs.
- */
-export function BuddyPanel({ db, currentUser, profile }) {
-  const [buddyProfiles, setBuddyProfiles] = useState([]);
-  const [addOpen, setAddOpen] = useState(false);
-  const [searchEmail, setSearchEmail] = useState("");
-  const [searchResult, setSearchResult] = useState(null);
-  const [searchError, setSearchError] = useState("");
-  const [searching, setSearching] = useState(false);
- 
-  const buddyUids = profile?.buddies ?? [];
- 
-  // Load buddy profiles
-  useEffect(() => {
-    if (!db || buddyUids.length === 0) { setBuddyProfiles([]); return; }
-    const load = async () => {
-      const docs = await Promise.all(
-        buddyUids.slice(0, 5).map((uid) => getDoc(doc(db, "users", uid)))
-      );
-      setBuddyProfiles(
-        docs.filter((d) => d.exists()).map((d) => ({ uid: d.id, ...d.data() }))
-      );
-    };
-    load();
-  }, [db, JSON.stringify(buddyUids)]);
- 
-  const searchForUser = async () => {
-    if (!db || !searchEmail.trim()) return;
-    setSearching(true);
-    setSearchError("");
-    setSearchResult(null);
-    try {
-      const q = query(
-        collection(db, "users"),
-        where("email", "==", searchEmail.trim().toLowerCase()),
-        limit(1)
-      );
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        setSearchError("No user found with that email.");
-      } else {
-        const d = snap.docs[0];
-        setSearchResult({ uid: d.id, ...d.data() });
-      }
-    } catch {
-      setSearchError("Search failed. Try again.");
-    } finally {
-      setSearching(false);
-    }
-  };
- 
-  const addBuddy = async (targetUid) => {
-    if (!db || !currentUser) return;
-    const userRef = doc(db, "users", currentUser.uid);
-    await updateDoc(userRef, { buddies: arrayUnion(targetUid) });
-    setAddOpen(false);
-    setSearchResult(null);
-    setSearchEmail("");
-  };
- 
-  const removeBuddy = async (targetUid) => {
-    if (!db || !currentUser) return;
-    const userRef = doc(db, "users", currentUser.uid);
-    await updateDoc(userRef, { buddies: arrayRemove(targetUid) });
-  };
- 
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mt-2">
-      <div className="flex items-center justify-between mb-2">
-        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wide">
-          <Users size={12} /> Uplift Buddies
-        </span>
-        {buddyUids.length < 5 && (
-          <button
-            onClick={() => setAddOpen((v) => !v)}
-            className="rounded-full border border-slate-200 p-0.5 hover:bg-slate-200 transition-colors"
-          >
-            <Plus size={13} className="text-slate-500" />
-          </button>
-        )}
-      </div>
- 
-      {buddyProfiles.length === 0 && !addOpen && (
-        <p className="text-[11px] text-slate-400">Add up to 5 buddies to see their greetings first.</p>
-      )}
- 
-      <div className="space-y-1.5">
-        {buddyProfiles.map((b) => (
-          <div key={b.uid} className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {b.profilePhotoUrl ? (
-                <img src={b.profilePhotoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
-              ) : (
-                <div className="h-6 w-6 rounded-full bg-teal-100 flex items-center justify-center text-[10px] font-bold text-teal-700">
-                  {(b.fullName ?? "?")[0]}
-                </div>
-              )}
-              <span className="text-xs text-slate-700">{b.fullName}</span>
-            </div>
-            <button
-              onClick={() => removeBuddy(b.uid)}
-              className="text-slate-300 hover:text-rose-400 transition-colors"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ))}
-      </div>
- 
-      {addOpen && (
-        <div className="mt-2 space-y-1.5">
-          <input
-            value={searchEmail}
-            onChange={(e) => setSearchEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
-            placeholder="Friend's email…"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400"
-          />
-          <button
-            onClick={searchForUser}
-            disabled={searching}
-            className="w-full rounded-xl bg-teal-600 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 transition-colors"
-          >
-            {searching ? "Searching…" : "Search"}
-          </button>
-          {searchError && <p className="text-[11px] text-rose-500">{searchError}</p>}
-          {searchResult && searchResult.uid !== currentUser?.uid && (
-            <div className="flex items-center justify-between rounded-xl border border-teal-200 bg-white px-3 py-2">
-              <span className="text-xs text-slate-700">{searchResult.fullName}</span>
-              <button
-                onClick={() => addBuddy(searchResult.uid)}
-                className="text-xs font-semibold text-teal-600 hover:text-teal-800"
-              >
-                Add
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
- 
-/**
- * SparkGiftButton – shown on other users' messages.
- * Gifts GIFT_AMOUNT sparks from the current user to the message sender.
- *
- * INTEGRATION: render inside the message bubble for non-self messages:
- *   {!mine && (
- *     <SparkGiftButton
- *       db={db}
- *       senderUid={m.uid}
- *       currentUser={currentUser}
- *       profile={profile}
- *     />
- *   )}
- */
-export function SparkGiftButton({ db, senderUid, currentUser, profile }) {
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
- 
-  const canGift =
-    !sent &&
-    !sending &&
-    currentUser &&
-    senderUid &&
-    senderUid !== currentUser.uid &&
-    Number(profile?.sparkBalance ?? 0) >= GIFT_AMOUNT;
- 
-  const sendGift = async () => {
-    if (!canGift || !db) return;
-    setSending(true);
-    try {
-      const senderRef = doc(db, "users", currentUser.uid);
-      const receiverRef = doc(db, "users", senderUid);
- 
-      await runTransaction(db, async (tx) => {
-        const [sSnap, rSnap] = await Promise.all([tx.get(senderRef), tx.get(receiverRef)]);
-        const sBalance = Number(sSnap.exists() ? sSnap.data().sparkBalance ?? 0 : 0);
-        if (sBalance < GIFT_AMOUNT) throw new Error("insufficient");
-        const rBalance = Number(rSnap.exists() ? rSnap.data().sparkBalance ?? 0 : 0);
-        tx.set(senderRef, { sparkBalance: sBalance - GIFT_AMOUNT }, { merge: true });
-        tx.set(receiverRef, { sparkBalance: rBalance + GIFT_AMOUNT }, { merge: true });
-      });
- 
-      setSent(true);
-    } catch {
-      // silently fail – not critical
-    } finally {
-      setSending(false);
-    }
-  };
- 
-  if (!currentUser || senderUid === currentUser.uid) return null;
- 
-  return (
-    <button
-      type="button"
-      onClick={sendGift}
-      disabled={!canGift}
-      title={sent ? "Gift sent!" : `Gift ${GIFT_AMOUNT} sparks`}
-      className={`mt-1 flex items-center gap-1 text-[10px] font-semibold transition-colors ${
-        sent
-          ? "text-amber-600"
-          : canGift
-          ? "text-slate-400 hover:text-amber-500"
-          : "text-slate-300 cursor-not-allowed"
-      }`}
-    >
-      <Gift size={10} />
-      {sent ? `+${GIFT_AMOUNT} gifted!` : sending ? "…" : `Gift ${GIFT_AMOUNT}✨`}
-    </button>
-  );
-}
- 
-// ─────────────────────────────────────────────────────────────────
-// 4. SOCIAL PRESENCE – LIVE GREETER COUNT + EMOJI REACTIONS
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   // In the header status bar:
-//   <LiveGreeterCount db={db} currentUser={currentUser} />
-//
-//   // In the message bubble (both mine and others):
-//   <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
- 
-const PRESENCE_COLLECTION = "presence";
-const PRESENCE_TTL_MS = 5 * 60 * 1000; // 5 minutes
- 
-/**
- * LiveGreeterCount – tracks who's active.
- * Writes a presence doc at presence/{uid} with lastSeen timestamp.
- * Counts docs updated within PRESENCE_TTL_MS.
- */
-export function LiveGreeterCount({ db, currentUser }) {
-  const [count, setCount] = useState(1);
- 
-  // Heartbeat: write own presence every 60 s
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const presenceRef = doc(db, PRESENCE_COLLECTION, currentUser.uid);
-    const write = () =>
-      setDoc(presenceRef, { lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }).catch(() => {});
-    write();
-    const id = setInterval(write, 60_000);
-    return () => clearInterval(id);
-  }, [db, currentUser]);
- 
-  // Listen and count active presences
-  useEffect(() => {
-    if (!db) return;
-    const cutoff = Date.now() - PRESENCE_TTL_MS;
-    const q = query(
-      collection(db, PRESENCE_COLLECTION),
-      where("lastSeen", ">=", cutoff)
-    );
-    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => {});
-    return unsub;
-  }, [db]);
- 
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-      {count} greeting{count !== 1 ? "s" : ""} now
-    </span>
-  );
-}
- 
-/**
- * MessageReactions – emoji reaction row below a message.
- *
- * Stored at publicMessages/{messageId}/reactions/{emoji}
- *   { count: number, uids: string[] }
- *
- * INTEGRATION: add below <p>{m.text}</p> in the message bubble.
- */
-const REACTION_EMOJIS = ["❤️", "🌟", "🙏", "😊", "✨"];
- 
-export function MessageReactions({ db, messageId, currentUser }) {
-  const [reactions, setReactions] = useState({});
-  const [adding, setAdding] = useState(false);
- 
-  useEffect(() => {
-    if (!db || !messageId) return;
-    const reactionsRef = collection(db, "publicMessages", messageId, "reactions");
-    const unsub = onSnapshot(reactionsRef, (snap) => {
-      const r = {};
-      snap.forEach((d) => { r[d.id] = d.data(); });
-      setReactions(r);
-    }, () => {});
-    return unsub;
-  }, [db, messageId]);
- 
-  const react = async (emoji) => {
-    if (!db || !currentUser || !messageId) return;
-    const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(rRef);
-      const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
-      const uids = data.uids ?? [];
-      const alreadyReacted = uids.includes(currentUser.uid);
-      if (alreadyReacted) {
-        tx.set(rRef, {
-          count: Math.max(0, (data.count ?? 0) - 1),
-          uids: uids.filter((u) => u !== currentUser.uid),
-        });
-      } else {
-        tx.set(rRef, {
-          count: (data.count ?? 0) + 1,
-          uids: [...uids, currentUser.uid],
-        });
-      }
-    });
-    setAdding(false);
-  };
- 
-  const hasReactions = Object.values(reactions).some((r) => (r.count ?? 0) > 0);
- 
-  return (
-    <div className="flex flex-wrap items-center gap-1 mt-1">
-      {REACTION_EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0).map((e) => {
-        const mine = reactions[e]?.uids?.includes(currentUser?.uid);
-        return (
-          <button
-            key={e}
-            onClick={() => react(e)}
-            className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
-              mine
-                ? "border-teal-300 bg-teal-50 text-teal-700"
-                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-            }`}
-          >
-            {e} <span>{reactions[e]?.count}</span>
-          </button>
-        );
-      })}
-      <button
-        onClick={() => setAdding((v) => !v)}
-        className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-400 hover:border-slate-300 transition-colors"
-      >
-        {adding ? "×" : "+"}
-      </button>
-      {adding && (
-        <div className="flex gap-1 flex-wrap">
-          {REACTION_EMOJIS.map((e) => (
-            <button
-              key={e}
-              onClick={() => react(e)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-sm hover:bg-slate-50 transition-colors"
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
- 
-// ─────────────────────────────────────────────────────────────────
-// 5. SHAREABLE PROFILE CARD
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   const [showProfileCard, setShowProfileCard] = useState(false);
-//
-//   // Trigger button in header:
-//   <button onClick={() => setShowProfileCard(true)}>
-//     <Share2 size={14} /> Share
-//   </button>
-//
-//   // Overlay:
-//   {showProfileCard && (
-//     <ProfileCard
-//       profile={profile}
-//       streak={streak}
-//       currentLevel={currentLevel}
-//       sparkBalance={sparkBalance}
-//       onClose={() => setShowProfileCard(false)}
-//     />
-//   )}
- 
+
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
+
+const COUNTRY_OPTIONS = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola",
+  "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus",
+  "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina",
+  "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+  "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic",
+  "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Democratic Republic of the Congo",
+  "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
+  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini",
+  "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia",
+  "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea",
+  "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland",
+  "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+  "Ivory Coast", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya",
+  "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon",
+  "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta",
+  "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique",
+  "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand",
+  "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
+  "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama",
+  "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland",
+  "Portugal", "Qatar", "Romania", "Russia", "Rwanda",
+  "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines",
+  "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal",
+  "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia",
+  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea",
+  "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden",
+  "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand",
+  "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey",
+  "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates",
+  "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu",
+  "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
+];
+
+const GREETINGS = [
+  { id: "morning", text: "Good Morning, have a nice day! ☀️", sparkReward: 10, isMystery: false },
+  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛", sparkReward: 10, isMystery: false },
+  { id: "night", text: "Good Night! Sleep well 🌙", sparkReward: 10, isMystery: false },
+  { id: "mystery", text: "🎁 Mystery Greeting", sparkReward: 25, isMystery: true },
+];
+
 const LEVEL_THRESHOLDS = [
-  { min: 0,   title: "Novice Greeter" },
-  { min: 50,  title: "Kindness Scout" },
+  { min: 0, title: "Novice Greeter" },
+  { min: 50, title: "Kindness Scout" },
   { min: 150, title: "Beacon of Hope" },
   { min: 300, title: "Sunshine Bringer" },
   { min: 600, title: "Guardian of Joy" },
 ];
- 
-function getLevelForBalance(balance) {
-  return LEVEL_THRESHOLDS.reduce((l, t) => (balance >= t.min ? t : l), LEVEL_THRESHOLDS[0]);
-}
- 
-/**
- * ProfileCard – a shareable card overlay.
- * Uses html2canvas (CDN) to let users screenshot/share.
- */
-export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
-  const cardRef = useRef(null);
-  const [copying, setCopying] = useState(false);
-  const level = getLevelForBalance(sparkBalance);
- 
-  const handleShare = async () => {
-    setCopying(true);
-    try {
-      // Dynamically load html2canvas if not already present
-      if (!window.html2canvas) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-          s.onload = resolve;
-          s.onerror = reject;
-          document.head.appendChild(s);
-        });
-      }
-      const canvas = await window.html2canvas(cardRef.current, { scale: 2, useCORS: true });
-      canvas.toBlob(async (blob) => {
-        if (navigator.share && blob) {
-          await navigator.share({
-            files: [new File([blob], "uplift-card.png", { type: "image/png" })],
-            title: "My Uplift Profile",
-          });
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "uplift-card.png";
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      }, "image/png");
-    } catch {
-      // fallback: just close
-    } finally {
-      setCopying(false);
-    }
-  };
- 
+
+const nowMs = () => Date.now();
+const normalizeEmail = (email = "") => email.trim().toLowerCase();
+
+function InputRow({ icon, children, rightIcon = null }) {
+  const Icon = icon;
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm">
-        {/* The shareable card */}
-        <div
-          ref={cardRef}
-          className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl"
+    <div className="relative">
+      <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+      {children}
+      {rightIcon}
+    </div>
+  );
+}
+
+function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
+  const [form, setForm] = useState({
+    country: "",
+    fullName: "",
+    email: "",
+    dobMonth: "",
+    dobDay: "",
+    dobYear: "",
+  });
+
+  useEffect(() => {
+    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "")
+      .replace(",", "")
+      .split(" ");
+
+    setForm((prev) => ({
+      ...prev,
+      country: initialData?.country || "",
+      fullName: initialData?.fullName || "",
+      email: initialEmail || initialData?.email || "",
+      dobMonth,
+      dobDay,
+      dobYear,
+    }));
+  }, [initialData, initialEmail]);
+
+  const valid =
+    Boolean(form.country) &&
+    Boolean(form.fullName) &&
+    Boolean(form.email) &&
+    Boolean(form.dobMonth) &&
+    Boolean(form.dobDay) &&
+    Boolean(form.dobYear);
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+      <form
+        className="mx-auto w-full max-w-sm space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid) return;
+
+          onContinue({
+            ...form,
+            dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}`,
+          });
+        }}
+      >
+        <div className="flex justify-center gap-2 pb-3">
+          <span className="h-2 w-8 rounded-full bg-teal-500" />
+          <span className="h-2 w-8 rounded-full bg-slate-300" />
+        </div>
+
+        <div className="flex justify-center pb-3">
+          <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
+            <Sparkles size={24} />
+          </div>
+        </div>
+
+        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800 sm:text-[44px]">
+          Welcome to Uplift
+        </h1>
+        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500 sm:text-2xl">
+          Tell us a bit about yourself to start connecting.
+        </p>
+
+        <InputRow
+          icon={Globe}
+          rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}
         >
-          <div className="flex items-center gap-3 mb-4">
-            {profile?.profilePhotoUrl ? (
-              <img
-                src={profile.profilePhotoUrl}
-                alt=""
-                className="h-14 w-14 rounded-full border-2 border-white/40 object-cover"
-                crossOrigin="anonymous"
-              />
-            ) : (
-              <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">
-                {(profile?.fullName ?? "?")[0]}
-              </div>
-            )}
-            <div>
-              <p className="text-lg font-extrabold">{profile?.fullName}</p>
-              <p className="text-sm text-white/80">{profile?.country}</p>
-            </div>
+          <select
+            name="country"
+            value={form.country}
+            onChange={onChange}
+            className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-500"
+          >
+            <option value="">Select Country</option>
+            {COUNTRY_OPTIONS.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </select>
+        </InputRow>
+
+        <InputRow icon={User}>
+          <input
+            name="fullName"
+            value={form.fullName}
+            onChange={onChange}
+            placeholder="Full Name"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
+          />
+        </InputRow>
+
+        <InputRow icon={Mail}>
+          <input
+            type="email"
+            name="email"
+            value={form.email}
+            onChange={onChange}
+            placeholder="Email Address"
+            readOnly={Boolean(initialEmail)}
+            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${
+              initialEmail ? "bg-slate-100" : "bg-slate-50"
+            }`}
+          />
+        </InputRow>
+
+        {errorMessage ? <p className="px-1 text-sm text-rose-600">{errorMessage}</p> : null}
+
+        <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
+            <Calendar size={13} />
+            <span>Date of Birth</span>
           </div>
- 
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Flame size={16} className="mx-auto mb-1 text-orange-200" />
-              <p className="text-xl font-extrabold">{streak ?? 0}</p>
-              <p className="text-[10px] text-white/70">day streak</p>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="relative">
+              <select
+                name="dobMonth"
+                value={form.dobMonth}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Month</option>
+                {MONTHS.map((month) => (
+                  <option key={month} value={month}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
-              <p className="text-xl font-extrabold">{sparkBalance}</p>
-              <p className="text-[10px] text-white/70">sparks</p>
+
+            <div className="relative">
+              <select
+                name="dobDay"
+                value={form.dobDay}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Day</option>
+                {DAYS.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Star size={16} className="mx-auto mb-1 text-white/80" />
-              <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
-              <p className="text-[10px] text-white/70">level</p>
+
+            <div className="relative">
+              <select
+                name="dobYear"
+                value={form.dobYear}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Year</option>
+                {YEARS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             </div>
-          </div>
- 
-          <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
-            <Heart size={12} className="text-pink-200" />
-            <p className="text-xs text-white/90">Spreading positivity with Uplift 🌟</p>
           </div>
         </div>
- 
-        {/* Controls */}
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={handleShare}
-            disabled={copying}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors"
-          >
-            <Share2 size={14} />
-            {copying ? "Preparing…" : "Share / Save"}
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
-          >
-            Close
-          </button>
+
+        <button
+          type="submit"
+          disabled={!valid}
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${
+            valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"
+          } disabled:cursor-not-allowed disabled:opacity-100`}
+        >
+          Continue <ArrowRight size={18} />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function MysteryGiftModal({ open, reward, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div className="absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-3xl border border-white/40 bg-white/95 p-6 text-center shadow-2xl">
+        <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-amber-100 text-amber-600">
+          <Gift className="animate-bounce" size={30} />
         </div>
+        <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
+        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
+        <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
+        <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700"
+        >
+          Awesome!
+        </button>
       </div>
     </div>
   );
 }
- 
-// ─────────────────────────────────────────────────────────────────
-// 6. GENTLE NUDGES – GREETING WINDOW NOTIFICATION HELPER
-// ─────────────────────────────────────────────────────────────────
-//
-// INTEGRATION in App.jsx:
-//
-//   // Call once after the user completes onboarding / on every mount:
-//   useEffect(() => {
-//     if (isRealSignedInUser && hasCompletedOnboarding) {
-//       scheduleGreetingWindowNotification(profile);
-//     }
-//   }, [isRealSignedInUser, hasCompletedOnboarding]);
-//
-//   // Show the permission prompt in your header or a banner:
-//   <NotificationPermissionBanner />
- 
-/**
- * Schedules a Web Push notification reminder.
- * Learns the user's typical greeting hour from profile.lastGreetingAt (ms).
- * Falls back to 08:00 if no data yet.
- *
- * NOTE: This uses the Notifications API.  For full PWA push you would
- * additionally need a service worker + VAPID keys.  This helper fires
- * in-tab reminders via setTimeout for immediate value without that setup.
- */
-export function scheduleGreetingWindowNotification(profile) {
-  if (typeof Notification === "undefined") return;
-  if (Notification.permission !== "granted") return;
- 
-  const now = new Date();
-  const lastMs = profile?.lastGreetingAt ?? null;
- 
-  // Determine target hour: use last greeting's hour or default to 8am
-  let targetHour = 8;
-  if (lastMs) {
-    const lastDate = new Date(lastMs);
-    targetHour = lastDate.getHours();
-  }
- 
-  // Schedule for today if the window hasn't passed; tomorrow otherwise
-  const target = new Date(now);
-  target.setHours(targetHour, 0, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1);
- 
-  const msUntil = target.getTime() - now.getTime();
- 
-  // Cap at 23 h to avoid runaway timers
-  if (msUntil > 23 * 60 * 60 * 1000) return;
- 
-  const timerId = setTimeout(() => {
-    new Notification("Uplift 🌟", {
-      body: "Your daily greeting window is open — spread some kindness!",
-      icon: "/icons/icon-192.png",
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  const [profile, setProfile] = useState(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState("");
+
+  const [messages, setMessages] = useState([]);
+  const [isChatLive, setIsChatLive] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [lastLiveAt, setLastLiveAt] = useState(null);
+  const [chatRetryCount, setChatRetryCount] = useState(0);
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState("entry");
+  const [pendingProfileData, setPendingProfileData] = useState(null);
+
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
+  const [emailLinkMessage, setEmailLinkMessage] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [onboardingError, setOnboardingError] = useState("");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const [unauthScreen, setUnauthScreen] = useState("welcome");
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [mysteryReward, setMysteryReward] = useState(0);
+
+  const endRef = useRef(null);
+  const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
+
+  const userProfileRef = (uid) => doc(db, "users", uid);
+  const publicMessagesRef = collection(db, "publicMessages");
+
+  useEffect(() => {
+    let unsubscribeProfile = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+      setAuthError("");
+      setEmailLinkMessage("");
+
+      if (!user || user.isAnonymous) {
+        setProfile(null);
+        setHasCompletedOnboarding(false);
+        setOnboardingStep("entry");
+        setUnauthScreen("welcome");
+        setOnboardingError("");
+        setIsProfileLoading(false);
+        return;
+      }
+
+      setIsProfileLoading(true);
+      const refDoc = userProfileRef(user.uid);
+
+      unsubscribeProfile = onSnapshot(
+        refDoc,
+        (snap) => {
+          const nextProfile = snap.exists() ? snap.data() : null;
+          setProfile(nextProfile);
+          const done =
+            Boolean(nextProfile?.onboardingCompletedAt) ||
+            Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
+
+          setHasCompletedOnboarding(done);
+          setOnboardingStep(done ? "done" : "details");
+          setProfileLoadError("");
+          setIsProfileLoading(false);
+        },
+        (error) => {
+          console.error("Unable to load profile", error);
+          setProfile(null);
+          setHasCompletedOnboarding(false);
+          setOnboardingStep("details");
+          setProfileLoadError(error?.code || "unknown");
+          setIsProfileLoading(false);
+        }
+      );
     });
-  }, msUntil);
- 
-  // Return cleanup
-  return () => clearTimeout(timerId);
-}
- 
-/** Banner to request notification permission. */
-export function NotificationPermissionBanner() {
-  const [status, setStatus] = useState(
-    typeof Notification !== "undefined" ? Notification.permission : "denied"
-  );
-  const [dismissed, setDismissed] = useState(false);
- 
-  if (status === "granted" || status === "denied" || dismissed) return null;
- 
-  const request = async () => {
-    const result = await Notification.requestPermission();
-    setStatus(result);
+
+    return () => {
+      if (unsubscribeProfile) unsubscribeProfile();
+      unsubscribeAuth();
+    };
+  }, []);
+
+  useEffect(() => {
+    const completeEmailLinkSignIn = async () => {
+      if (!isSignInWithEmailLink(auth, window.location.href)) return;
+
+      setIsAuthLoading(true);
+      setAuthError("");
+
+      try {
+        const storedEmail = window.localStorage.getItem("upliftEmailForSignIn");
+
+        if (!storedEmail) {
+          setAuthError("This sign-in link was opened on a different device or browser. Please request a new link.");
+          return;
+        }
+
+        await signInWithEmailLink(auth, storedEmail, window.location.href);
+        window.localStorage.removeItem("upliftEmailForSignIn");
+        setEmailLinkMessage("");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (error) {
+        console.error("Unable to complete email link sign-in", error);
+
+        if (error?.code === "auth/invalid-action-code") {
+          setAuthError("This sign-in link is invalid.");
+        } else if (error?.code === "auth/expired-action-code") {
+          setAuthError("This sign-in link has expired. Please request a new one.");
+        } else {
+          setAuthError("Unable to complete sign-in from the email link.");
+        }
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    completeEmailLinkSignIn();
+  }, []);
+
+  const sendEmailSignInLink = async (email) => {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail) {
+      return { error: "Please enter your email address." };
+    }
+
+    setIsEmailActionLoading(true);
+    setEmailLinkMessage("");
+    setAuthError("");
+
+    try {
+      const actionCodeSettings = {
+        url: `${window.location.origin}/`,
+        handleCodeInApp: true,
+      };
+
+      await sendSignInLinkToEmail(auth, normalizedEmail, actionCodeSettings);
+      window.localStorage.setItem("upliftEmailForSignIn", normalizedEmail);
+      setEmailLinkMessage(`We sent a sign-in link to ${normalizedEmail}. Check your inbox.`);
+      return { ok: true };
+    } catch (error) {
+      console.error("Unable to send email sign-in link", error);
+
+      if (error?.code === "auth/invalid-email") {
+        return { error: "That email address is invalid." };
+      }
+
+      if (error?.code === "auth/operation-not-allowed") {
+        return { error: "Email link sign-in is not enabled in Firebase Authentication." };
+      }
+
+      return { error: "Unable to send a sign-in link right now. Please try again." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
   };
- 
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-      <div className="flex items-center gap-2">
-        <Bell size={12} className="text-blue-500 shrink-0" />
-        <span>Enable daily reminders to keep your streak alive.</span>
+
+  const signInWithPassword = async (email, password) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
+      return { ok: true };
+    } catch (error) {
+      console.error("Password sign-in failed", error);
+
+      if (error?.code === "auth/invalid-credential") {
+        return { error: "Incorrect email or password." };
+      }
+
+      if (error?.code === "auth/user-disabled") {
+        return { error: "This account has been disabled." };
+      }
+
+      return { error: "Unable to sign in right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
+  const signUpWithPassword = async ({ email, password, fullName }) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
+
+      if (fullName) {
+        await updateAuthProfile(credential.user, { displayName: fullName });
+      }
+
+      setPendingProfileData((prev) => ({
+        ...prev,
+        fullName,
+        email: normalizeEmail(email),
+      }));
+
+      return { ok: true };
+    } catch (error) {
+      console.error("Password sign-up failed", error);
+
+      if (error?.code === "auth/email-already-in-use") {
+        return { error: "That email address is already in use." };
+      }
+
+      if (error?.code === "auth/weak-password") {
+        return { error: "Password must be at least 6 characters." };
+      }
+
+      if (error?.code === "auth/invalid-email") {
+        return { error: "That email address is invalid." };
+      }
+
+      return { error: "Unable to create your account right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      await sendPasswordResetEmail(auth, normalizeEmail(email));
+      return { ok: true };
+    } catch (error) {
+      console.error("Unable to send password reset email", error);
+
+      if (error?.code === "auth/user-not-found") {
+        return { error: "No account exists for that email address." };
+      }
+
+      if (error?.code === "auth/invalid-email") {
+        return { error: "That email address is invalid." };
+      }
+
+      return { error: "Unable to send password reset email right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setIsGoogleSigningIn(true);
+    setAuthError("");
+    setEmailLinkMessage("");
+
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      if (
+        error?.code === "auth/popup-blocked" ||
+        error?.code === "auth/cancelled-popup-request"
+      ) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      if (error?.code === "auth/unauthorized-domain") {
+        setAuthError(`This domain (${window.location.hostname}) is not in Firebase Authorized domains.`);
+      } else if (error?.code === "auth/operation-not-allowed") {
+        setAuthError("Google sign-in is not enabled in Firebase Authentication.");
+      } else {
+        setAuthError("Google sign-in failed. Please try again.");
+      }
+
+      console.error(error);
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentUser || currentUser.isAnonymous) return;
+
+    let retryTimer = null;
+
+    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limit(100));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        setMessages(
+          live.length
+            ? live
+            : [
+                {
+                  id: "welcome",
+                  sender: "Uplift Bot",
+                  text: "Welcome! Chat is live and ready ✨",
+                  uid: "system",
+                  timestamp: Date.now(),
+                },
+              ]
+        );
+
+        setIsChatLive(true);
+        setChatError("");
+        setLastLiveAt(new Date());
+      },
+      (error) => {
+        console.error("Live chat disconnected", error);
+        setIsChatLive(false);
+        setChatError(error?.code || "unknown");
+
+        retryTimer = setTimeout(() => {
+          setChatRetryCount((count) => count + 1);
+        }, 3000);
+      }
+    );
+
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      unsubscribe();
+    };
+  }, [currentUser, chatRetryCount]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const chatStatusText = useMemo(() => {
+    if (!isChatLive) return "Reconnecting chat...";
+    return "Live chat connected";
+  }, [isChatLive]);
+
+  const sparkBalance = Number(profile?.sparkBalance ?? 0);
+
+  const currentLevel = useMemo(() => {
+    return LEVEL_THRESHOLDS.reduce((level, threshold) => {
+      if (sparkBalance >= threshold.min) return threshold;
+      return level;
+    }, LEVEL_THRESHOLDS[0]);
+  }, [sparkBalance]);
+
+  const nextLevel = useMemo(() => {
+    return LEVEL_THRESHOLDS.find((threshold) => threshold.min > sparkBalance) || null;
+  }, [sparkBalance]);
+
+  const progressPercent = useMemo(() => {
+    if (!nextLevel) return 100;
+    const span = nextLevel.min - currentLevel.min;
+    if (span <= 0) return 100;
+    const completed = sparkBalance - currentLevel.min;
+    return Math.max(0, Math.min(100, Math.round((completed / span) * 100)));
+  }, [currentLevel.min, nextLevel, sparkBalance]);
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+
+    try {
+      setIsSigningOut(true);
+      await signOut(auth);
+      setPickerOpen(false);
+    } catch (error) {
+      console.error("Unable to sign out", error);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const completeOnboarding = async (data) => {
+    setOnboardingError("");
+    setIsSavingProfile(true);
+
+    try {
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        setOnboardingError("Please sign in before continuing.");
+        return;
+      }
+
+      const normalizedEmail = normalizeEmail(user.email || data.email);
+
+      if (!normalizedEmail) {
+        setOnboardingError("We could not verify your account email. Please sign in again.");
+        return;
+      }
+
+      let profilePhotoUrl = profile?.profilePhotoUrl || "";
+
+      if (data.profilePhoto instanceof File) {
+        const extension = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
+        const photoRef = ref(storage, `profilePhotos/${user.uid}/avatar.${extension}`);
+
+        await uploadBytes(photoRef, data.profilePhoto, {
+          contentType: data.profilePhoto.type,
+        });
+
+        profilePhotoUrl = await getDownloadURL(photoRef);
+      }
+
+      const profileData = {
+        fullName: data.fullName,
+        email: normalizedEmail,
+        country: data.country,
+        dob: data.dob,
+        profilePhotoUrl,
+        ownerUid: user.uid,
+        sparkBalance: Number(profile?.sparkBalance ?? 0),
+        updatedAt: serverTimestamp(),
+        onboardingCompletedAt: serverTimestamp(),
+      };
+
+      await setDoc(userProfileRef(user.uid), profileData, { merge: true });
+      console.log("profile saved successfully");
+
+      setPendingProfileData(null);
+      setHasCompletedOnboarding(true);
+      setOnboardingStep("done");
+    } catch (error) {
+      console.error("Unable to complete onboarding", {
+        code: error?.code,
+        message: error?.message,
+        error,
+      });
+
+      if (error?.code === "storage/unauthorized") {
+        setOnboardingError("Storage rules are blocking photo upload.");
+        return;
+      }
+
+      if (error?.code === "permission-denied") {
+        setOnboardingError("Firestore rules are blocking profile save.");
+        return;
+      }
+
+      if (error?.code === "unavailable") {
+        setOnboardingError("Firebase is temporarily unavailable. Please try again.");
+        return;
+      }
+
+      if (error?.code) {
+        setOnboardingError(`Unable to save your profile right now (${error.code}).`);
+        return;
+      }
+
+      setOnboardingError("Unable to save your profile right now. Please try again.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleSendMessage = async (greeting) => {
+    if (!currentUser || !profile) return;
+
+    await addDoc(publicMessagesRef, {
+      uid: currentUser.uid,
+      sender: profile.fullName,
+      text: greeting.text,
+      timestamp: nowMs(),
+    });
+
+    const reward = Number(greeting.sparkReward || 0);
+    const refDoc = userProfileRef(currentUser.uid);
+
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(refDoc);
+      const profileData = snap.exists() ? snap.data() : {};
+      const currentBalance = Number(profileData?.sparkBalance ?? 0);
+      const nextBalance = currentBalance + reward;
+
+      transaction.set(
+        refDoc,
+        {
+          sparkBalance: nextBalance,
+          lastGreetingAt: nowMs(),
+          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+        },
+        { merge: true }
+      );
+    });
+
+    if (greeting.isMystery) {
+      setMysteryReward(reward);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setShowGiftModal(true);
+    }
+
+    setPickerOpen(false);
+  };
+
+  if (isAuthLoading || (isRealSignedInUser && isProfileLoading)) {
+    return (
+      <div className="grid h-screen place-items-center bg-slate-50">
+        <Loader2 className="animate-spin text-teal-600" />
       </div>
-      <div className="flex gap-2 shrink-0">
-        <button
-          onClick={request}
-          className="rounded-lg bg-blue-600 px-2 py-1 text-white font-semibold hover:bg-blue-700 transition-colors"
-        >
-          Enable
-        </button>
-        <button
-          onClick={() => setDismissed(true)}
-          className="text-blue-400 hover:text-blue-600"
-        >
-          <X size={12} />
-        </button>
+    );
+  }
+
+  if (!isRealSignedInUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+        <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+          {unauthScreen === "welcome" ? (
+            <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
+          ) : (
+            <SignInStep
+              onEmailLinkSignIn={sendEmailSignInLink}
+              onPasswordSignIn={signInWithPassword}
+              onPasswordSignUp={signUpWithPassword}
+              onForgotPassword={forgotPassword}
+              onGoogleSignIn={signInWithGoogle}
+              loading={isEmailActionLoading}
+              googleLoading={isGoogleSigningIn}
+              googleError={authError}
+              emailLinkMessage={emailLinkMessage}
+              authError={authError}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const firstName =
+    profile?.fullName?.trim()?.split(" ")?.[0] ||
+    currentUser?.displayName?.split(" ")?.[0] ||
+    "there";
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+      <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+        <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
+
+        {!hasCompletedOnboarding || !profile ? (
+          <>
+            {profileLoadError ? (
+              <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                We couldn&apos;t read your profile yet ({profileLoadError}). Check your Firestore rules for
+                <code className="mx-1 rounded bg-amber-100 px-1">users/{currentUser.uid}</code>.
+              </p>
+            ) : null}
+
+            {onboardingStep === "entry" ? (
+              <SignInStep
+                onEmailLinkSignIn={sendEmailSignInLink}
+                onPasswordSignIn={signInWithPassword}
+                onPasswordSignUp={signUpWithPassword}
+                onForgotPassword={forgotPassword}
+                onGoogleSignIn={signInWithGoogle}
+                loading={isEmailActionLoading}
+                googleLoading={isGoogleSigningIn}
+                googleError={authError}
+                emailLinkMessage={emailLinkMessage}
+                authError={authError}
+              />
+            ) : onboardingStep === "details" ? (
+              <Onboarding
+                onContinue={async (data) => {
+                  setOnboardingError("");
+                  setPendingProfileData(data);
+                  setOnboardingStep("photo");
+                }}
+                loading={isSavingProfile}
+                initialData={pendingProfileData}
+                initialEmail={currentUser?.email || ""}
+                errorMessage={onboardingError}
+              />
+            ) : (
+              <ProfilePhotoStep
+                onBack={() => setOnboardingStep("details")}
+                onComplete={(photoFile) =>
+                  completeOnboarding({ ...pendingProfileData, profilePhoto: photoFile })
+                }
+                loading={isSavingProfile}
+                initialPhoto={pendingProfileData?.profilePhotoUrl || ""}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-sm font-bold text-slate-800">Hey {firstName} 👋</h1>
+                  <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Sparkles className="text-teal-500" size={18} />
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Sign out"
+                  >
+                    <LogOut size={12} />
+                    {isSigningOut ? "Signing out..." : "Sign out"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks`}
+                    </p>
+                  </div>
+
+                  <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                    <Sparkles size={12} />
+                    {sparkBalance}
+                  </div>
+                </div>
+
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[11px]">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${
+                    isChatLive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isChatLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                    }`}
+                  />
+                  {chatStatusText}
+                </span>
+
+                {lastLiveAt ? (
+                  <span className="text-slate-400">
+                    Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                ) : null}
+              </div>
+
+              {!isChatLive && chatError ? (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  Chat is offline ({chatError}). Check Firestore rules for
+                  <code className="mx-1 rounded bg-amber-100 px-1">publicMessages</code>.
+                </p>
+              ) : null}
+            </header>
+
+            <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+              {messages.map((m) => {
+                const mine = m.uid === currentUser.uid;
+                return (
+                  <div key={m.id} className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[82%] rounded-2xl border px-3 py-2 text-sm ${
+                        mine
+                          ? "rounded-br-none border-teal-600 bg-teal-600 text-white"
+                          : "rounded-bl-none border-slate-200 bg-white text-slate-700"
+                      }`}
+                    >
+                      <div className={`mb-1 text-[10px] font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>
+                        {m.sender}
+                      </div>
+                      <p>{m.text}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={endRef} />
+            </main>
+
+            <footer className="border-t border-slate-100 bg-white p-3">
+              {!pickerOpen ? (
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  className="flex w-full items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-slate-600"
+                >
+                  <span>Select a greeting...</span>
+                  <span className="rounded-full bg-teal-500 p-2 text-white">
+                    <Send size={14} />
+                  </span>
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
+                    <button onClick={() => setPickerOpen(false)} className="rounded-full bg-slate-100 p-1">
+                      <ChevronDown size={16} className="text-slate-500" />
+                    </button>
+                  </div>
+
+                  {GREETINGS.map((greeting) => (
+                    <button
+                      key={greeting.id}
+                      onClick={() => handleSendMessage(greeting)}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
+                    >
+                      <span>{greeting.text}</span>
+                      <span className="ml-2 text-xs text-teal-600">+{greeting.sparkReward} sparks</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </footer>
+          </>
+        )}
       </div>
     </div>
   );
