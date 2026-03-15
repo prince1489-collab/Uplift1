@@ -11,12 +11,13 @@ import {
   Sparkles,
   Gift,
   User,
+  Share2,
 } from "lucide-react";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
-import {                                          // ← add this block
+import {
   useStreak,
   computeSparkReward,
   StreakBadge,
@@ -148,6 +149,12 @@ const LEVEL_THRESHOLDS = [
 const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 function InputRow({ icon, children, rightIcon = null }) {
   const Icon = icon;
   return (
@@ -213,7 +220,6 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
         onSubmit={(e) => {
           e.preventDefault();
           if (!valid) return;
-
           onContinue({
             ...form,
             dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}`,
@@ -250,9 +256,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           >
             <option value="">Select Country</option>
             {COUNTRY_OPTIONS.map((country) => (
-              <option key={country} value={country}>
-                {country}
-              </option>
+              <option key={country} value={country}>{country}</option>
             ))}
           </select>
         </InputRow>
@@ -299,9 +303,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
               >
                 <option value="">Month</option>
                 {MONTHS.map((month) => (
-                  <option key={month} value={month}>
-                    {month}
-                  </option>
+                  <option key={month} value={month}>{month}</option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -316,9 +318,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
               >
                 <option value="">Day</option>
                 {DAYS.map((day) => (
-                  <option key={day} value={day}>
-                    {day}
-                  </option>
+                  <option key={day} value={day}>{day}</option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -333,9 +333,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
               >
                 <option value="">Year</option>
                 {YEARS.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
+                  <option key={year} value={year}>{year}</option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -370,7 +368,6 @@ function MysteryGiftModal({ open, reward, onClose }) {
         <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
         <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
         <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
-
         <button
           type="button"
           onClick={onClose}
@@ -414,11 +411,20 @@ export default function App() {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
 
+  // ── NEW: retention feature state ──────────────────────────────
+  const [showProfileCard, setShowProfileCard] = useState(false);
+  // ─────────────────────────────────────────────────────────────
+
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
 
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
+
+  // ── NEW: streak hook ──────────────────────────────────────────
+  const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze } =
+    useStreak(db, currentUser?.uid, profile);
+  // ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -477,6 +483,14 @@ export default function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  // ── NEW: schedule greeting window notification ─────────────────
+  useEffect(() => {
+    if (isRealSignedInUser && hasCompletedOnboarding) {
+      scheduleGreetingWindowNotification(profile);
+    }
+  }, [isRealSignedInUser, hasCompletedOnboarding]);
+  // ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const completeEmailLinkSignIn = async () => {
@@ -854,7 +868,9 @@ export default function App() {
       timestamp: nowMs(),
     });
 
-    const reward = Number(greeting.sparkReward || 0);
+    // ── CHANGED: apply streak multiplier to reward ────────────
+    const reward = computeSparkReward(greeting.sparkReward, streak);
+    // ─────────────────────────────────────────────────────────
     const refDoc = userProfileRef(currentUser.uid);
 
     await runTransaction(db, async (transaction) => {
@@ -873,6 +889,10 @@ export default function App() {
         { merge: true }
       );
     });
+
+    // ── NEW: record this greeting for streak tracking ──────────
+    await recordGreetingDay();
+    // ─────────────────────────────────────────────────────────
 
     if (greeting.isMystery) {
       setMysteryReward(reward);
@@ -921,10 +941,25 @@ export default function App() {
     currentUser?.displayName?.split(" ")?.[0] ||
     "there";
 
+  // Count today's messages from this user (for Kindness Pledge)
+  const todayMessageCount = messages.filter(
+    (m) => m.uid === currentUser.uid && m.timestamp > startOfToday()
+  ).length;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
+
+        {/* ── NEW: Profile Card overlay ── */}
+        {showProfileCard && (
+          <ProfileCard
+            profile={profile}
+            streak={streak}
+            sparkBalance={sparkBalance}
+            onClose={() => setShowProfileCard(false)}
+          />
+        )}
 
         {!hasCompletedOnboarding || !profile ? (
           <>
@@ -981,7 +1016,19 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Sparkles className="text-teal-500" size={18} />
+                  {/* ── NEW: Streak badge ── */}
+                  <StreakBadge streak={streak} />
+
+                  {/* ── NEW: Share profile button ── */}
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileCard(true)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800"
+                  >
+                    <Share2 size={11} />
+                    Share
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleSignOut}
@@ -1004,9 +1051,18 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                    <Sparkles size={12} />
-                    {sparkBalance}
+                  <div className="flex items-center gap-2">
+                    {/* ── NEW: Streak freeze button ── */}
+                    <StreakFreezeButton
+                      freezes={freezesAvailable}
+                      sparkBalance={sparkBalance}
+                      onBuy={buyFreeze}
+                    />
+
+                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                      <Sparkles size={12} />
+                      {sparkBalance}
+                    </div>
                   </div>
                 </div>
 
@@ -1015,19 +1071,14 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ── NEW: Notification permission banner ── */}
+              <div className="mt-2">
+                <NotificationPermissionBanner />
+              </div>
+
               <div className="mt-2 flex items-center justify-between text-[11px]">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${
-                    isChatLive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      isChatLive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
-                    }`}
-                  />
-                  {chatStatusText}
-                </span>
+                {/* ── NEW: Live greeter count replaces static status ── */}
+                <LiveGreeterCount db={db} currentUser={currentUser} />
 
                 {lastLiveAt ? (
                   <span className="text-slate-400">
@@ -1042,9 +1093,21 @@ export default function App() {
                   <code className="mx-1 rounded bg-amber-100 px-1">publicMessages</code>.
                 </p>
               ) : null}
+
+              {/* ── NEW: Buddies panel ── */}
+              <BuddyPanel db={db} currentUser={currentUser} profile={profile} />
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+              {/* ── NEW: Kindness Pledge ── */}
+              <div className="mb-3">
+                <KindnessPledge
+                  db={db}
+                  uid={currentUser.uid}
+                  todayMessageCount={todayMessageCount}
+                />
+              </div>
+
               {messages.map((m) => {
                 const mine = m.uid === currentUser.uid;
                 return (
@@ -1060,6 +1123,23 @@ export default function App() {
                         {m.sender}
                       </div>
                       <p>{m.text}</p>
+
+                      {/* ── NEW: Spark gift button on others' messages ── */}
+                      {!mine && (
+                        <SparkGiftButton
+                          db={db}
+                          senderUid={m.uid}
+                          currentUser={currentUser}
+                          profile={profile}
+                        />
+                      )}
+
+                      {/* ── NEW: Emoji reactions on all messages ── */}
+                      <MessageReactions
+                        db={db}
+                        messageId={m.id}
+                        currentUser={currentUser}
+                      />
                     </div>
                   </div>
                 );
@@ -1094,7 +1174,11 @@ export default function App() {
                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
                     >
                       <span>{greeting.text}</span>
-                      <span className="ml-2 text-xs text-teal-600">+{greeting.sparkReward} sparks</span>
+                      {/* ── CHANGED: show multiplied reward if streak active ── */}
+                      <span className="ml-2 text-xs text-teal-600">
+                        +{computeSparkReward(greeting.sparkReward, streak)} sparks
+                        {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
+                      </span>
                     </button>
                   ))}
                 </div>
