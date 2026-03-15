@@ -438,7 +438,10 @@ export default function App() {
         (snap) => {
           const nextProfile = snap.exists() ? snap.data() : null;
           setProfile(nextProfile);
-          const done = Boolean(nextProfile?.onboardingCompletedAt);
+          const done =
+            Boolean(nextProfile?.onboardingCompletedAt) ||
+            Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
+
           setHasCompletedOnboarding(done);
           setOnboardingStep(done ? "done" : "details");
           setProfileLoadError("");
