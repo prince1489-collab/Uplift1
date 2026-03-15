@@ -48,11 +48,18 @@ import {
   setDoc,
 } from "firebase/firestore";
 
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
   authDomain: "uplift-6d9ea.firebaseapp.com",
   projectId: "uplift-6d9ea",
-  storageBucket: "uplift-6d9ea.appspot.com",
+  storageBucket: "uplift-6d9ea.firebasestorage.app",
   messagingSenderId: "821891105119",
   appId: "1:821891105119:web:6245f2bc4c8c8ee96976ea",
 };
@@ -60,6 +67,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
 const MONTHS = [
@@ -423,10 +431,10 @@ export default function App() {
       }
 
       setIsProfileLoading(true);
-      const ref = userProfileRef(user.uid);
+      const refDoc = userProfileRef(user.uid);
 
       unsubscribeProfile = onSnapshot(
-        ref,
+        refDoc,
         (snap) => {
           const nextProfile = snap.exists() ? snap.data() : null;
           setProfile(nextProfile);
@@ -755,24 +763,33 @@ export default function App() {
         return;
       }
 
+      let profilePhotoUrl = profile?.profilePhotoUrl || "";
+
+      if (data.profilePhoto instanceof File) {
+        const extension = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
+        const photoRef = ref(storage, `profilePhotos/${user.uid}/avatar.${extension}`);
+
+        await uploadBytes(photoRef, data.profilePhoto, {
+          contentType: data.profilePhoto.type,
+        });
+
+        profilePhotoUrl = await getDownloadURL(photoRef);
+      }
+
       const profileData = {
         fullName: data.fullName,
         email: normalizedEmail,
         country: data.country,
         dob: data.dob,
-        profilePhoto: data.profilePhoto || "",
+        profilePhotoUrl,
         ownerUid: user.uid,
         sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(),
         onboardingCompletedAt: serverTimestamp(),
       };
-      
-      console.log("profile photo length", data.profilePhoto?.length || 0);
 
       await setDoc(userProfileRef(user.uid), profileData, { merge: true });
-
-      // Intentionally removed the onboarding "system" chat message here
-      // because Firestore rules require request.resource.data.uid === request.auth.uid.
+      console.log("profile saved successfully");
 
       setPendingProfileData(null);
       setHasCompletedOnboarding(true);
@@ -783,6 +800,11 @@ export default function App() {
         message: error?.message,
         error,
       });
+
+      if (error?.code === "storage/unauthorized") {
+        setOnboardingError("Storage rules are blocking photo upload.");
+        return;
+      }
 
       if (error?.code === "permission-denied") {
         setOnboardingError("Firestore rules are blocking profile save.");
@@ -816,16 +838,16 @@ export default function App() {
     });
 
     const reward = Number(greeting.sparkReward || 0);
-    const ref = userProfileRef(currentUser.uid);
+    const refDoc = userProfileRef(currentUser.uid);
 
     await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(ref);
+      const snap = await transaction.get(refDoc);
       const profileData = snap.exists() ? snap.data() : {};
       const currentBalance = Number(profileData?.sparkBalance ?? 0);
       const nextBalance = currentBalance + reward;
 
       transaction.set(
-        ref,
+        refDoc,
         {
           sparkBalance: nextBalance,
           lastGreetingAt: nowMs(),
@@ -867,7 +889,7 @@ export default function App() {
               onGoogleSignIn={signInWithGoogle}
               loading={isEmailActionLoading}
               googleLoading={isGoogleSigningIn}
-              googleError=""
+              googleError={authError}
               emailLinkMessage={emailLinkMessage}
               authError={authError}
             />
@@ -905,7 +927,7 @@ export default function App() {
                 onGoogleSignIn={signInWithGoogle}
                 loading={isEmailActionLoading}
                 googleLoading={isGoogleSigningIn}
-                googleError=""
+                googleError={authError}
                 emailLinkMessage={emailLinkMessage}
                 authError={authError}
               />
@@ -924,11 +946,11 @@ export default function App() {
             ) : (
               <ProfilePhotoStep
                 onBack={() => setOnboardingStep("details")}
-                onComplete={(photoDataUrl) =>
-                  completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })
+                onComplete={(photoFile) =>
+                  completeOnboarding({ ...pendingProfileData, profilePhoto: photoFile })
                 }
                 loading={isSavingProfile}
-                initialPhoto={pendingProfileData?.profilePhoto || ""}
+                initialPhoto={pendingProfileData?.profilePhotoUrl || ""}
               />
             )}
           </>
