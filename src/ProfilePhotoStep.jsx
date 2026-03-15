@@ -10,6 +10,14 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
     setPreviewUrl(initialPhoto);
   }, [initialPhoto]);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   const onPickPhoto = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -17,17 +25,26 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
     setError("");
 
     if (!file.type.startsWith("image/")) {
+      setPhotoFile(null);
+      setPreviewUrl(initialPhoto || "");
       setError("Please choose an image file.");
       return;
     }
 
     if (file.size > 8 * 1024 * 1024) {
+      setPhotoFile(null);
+      setPreviewUrl(initialPhoto || "");
       setError("That image is too large. Please choose a smaller photo.");
       return;
     }
 
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(file);
     setPhotoFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewUrl(nextPreviewUrl);
   };
 
   return (
@@ -48,11 +65,22 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
         <div className="flex justify-center py-2">
           <label className="flex h-40 w-40 cursor-pointer items-center justify-center overflow-hidden rounded-full border-4 border-dashed border-slate-300 bg-white text-slate-500">
             {previewUrl ? (
-              <img src={previewUrl} alt="Profile preview" className="h-full w-full object-cover" />
+              <img
+                src={previewUrl}
+                alt="Profile preview"
+                className="h-full w-full object-cover"
+              />
             ) : (
-              <span className="px-6 text-center text-sm font-semibold">Upload photo</span>
+              <span className="px-6 text-center text-sm font-semibold">
+                Upload photo
+              </span>
             )}
-            <input type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPickPhoto}
+            />
           </label>
         </div>
 
@@ -61,7 +89,8 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
         <button
           type="button"
           onClick={onBack}
-          className="w-full rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700"
+          disabled={loading}
+          className="w-full rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
         >
           Back
         </button>
