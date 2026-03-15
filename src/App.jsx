@@ -766,6 +766,8 @@ export default function App() {
         updatedAt: serverTimestamp(),
         onboardingCompletedAt: serverTimestamp(),
       };
+      
+      console.log("profile photo length", data.profilePhoto?.length || 0);
 
       await setDoc(userProfileRef(user.uid), profileData, { merge: true });
 
