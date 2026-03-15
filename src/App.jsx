@@ -28,7 +28,12 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as updateAuthProfile,
 } from "firebase/auth";
+
 import {
   addDoc,
   collection,
@@ -40,6 +45,8 @@ import {
   orderBy,
   query,
   runTransaction,
+  serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -54,223 +61,52 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = import.meta.env.VITE_APP_ID || firebaseConfig.projectId;
 const googleProvider = new GoogleAuthProvider();
 
 const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
+
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
 
 const COUNTRY_OPTIONS = [
-  "Afghanistan",
-  "Albania",
-  "Algeria",
-  "Andorra",
-  "Angola",
-  "Antigua and Barbuda",
-  "Argentina",
-  "Armenia",
-  "Australia",
-  "Austria",
-  "Azerbaijan",
-  "Bahamas",
-  "Bahrain",
-  "Bangladesh",
-  "Barbados",
-  "Belarus",
-  "Belgium",
-  "Belize",
-  "Benin",
-  "Bhutan",
-  "Bolivia",
-  "Bosnia and Herzegovina",
-  "Botswana",
-  "Brazil",
-  "Brunei",
-  "Bulgaria",
-  "Burkina Faso",
-  "Burundi",
-  "Cabo Verde",
-  "Cambodia",
-  "Cameroon",
-  "Canada",
-  "Central African Republic",
-  "Chad",
-  "Chile",
-  "China",
-  "Colombia",
-  "Comoros",
-  "Congo",
-  "Costa Rica",
-  "Croatia",
-  "Cuba",
-  "Cyprus",
-  "Czech Republic",
-  "Democratic Republic of the Congo",
-  "Denmark",
-  "Djibouti",
-  "Dominica",
-  "Dominican Republic",
-  "Ecuador",
-  "Egypt",
-  "El Salvador",
-  "Equatorial Guinea",
-  "Eritrea",
-  "Estonia",
-  "Eswatini",
-  "Ethiopia",
-  "Fiji",
-  "Finland",
-  "France",
-  "Gabon",
-  "Gambia",
-  "Georgia",
-  "Germany",
-  "Ghana",
-  "Greece",
-  "Grenada",
-  "Guatemala",
-  "Guinea",
-  "Guinea-Bissau",
-  "Guyana",
-  "Haiti",
-  "Honduras",
-  "Hungary",
-  "Iceland",
-  "India",
-  "Indonesia",
-  "Iran",
-  "Iraq",
-  "Ireland",
-  "Israel",
-  "Italy",
-  "Ivory Coast",
-  "Jamaica",
-  "Japan",
-  "Jordan",
-  "Kazakhstan",
-  "Kenya",
-  "Kiribati",
-  "Kuwait",
-  "Kyrgyzstan",
-  "Laos",
-  "Latvia",
-  "Lebanon",
-  "Lesotho",
-  "Liberia",
-  "Libya",
-  "Liechtenstein",
-  "Lithuania",
-  "Luxembourg",
-  "Madagascar",
-  "Malawi",
-  "Malaysia",
-  "Maldives",
-  "Mali",
-  "Malta",
-  "Marshall Islands",
-  "Mauritania",
-  "Mauritius",
-  "Mexico",
-  "Micronesia",
-  "Moldova",
-  "Monaco",
-  "Mongolia",
-  "Montenegro",
-  "Morocco",
-  "Mozambique",
-  "Myanmar",
-  "Namibia",
-  "Nauru",
-  "Nepal",
-  "Netherlands",
-  "New Zealand",
-  "Nicaragua",
-  "Niger",
-  "Nigeria",
-  "North Korea",
-  "North Macedonia",
-  "Norway",
-  "Oman",
-  "Pakistan",
-  "Palau",
-  "Palestine",
-  "Panama",
-  "Papua New Guinea",
-  "Paraguay",
-  "Peru",
-  "Philippines",
-  "Poland",
-  "Portugal",
-  "Qatar",
-  "Romania",
-  "Russia",
-  "Rwanda",
-  "Saint Kitts and Nevis",
-  "Saint Lucia",
-  "Saint Vincent and the Grenadines",
-  "Samoa",
-  "San Marino",
-  "Sao Tome and Principe",
-  "Saudi Arabia",
-  "Senegal",
-  "Serbia",
-  "Seychelles",
-  "Sierra Leone",
-  "Singapore",
-  "Slovakia",
-  "Slovenia",
-  "Solomon Islands",
-  "Somalia",
-  "South Africa",
-  "South Korea",
-  "South Sudan",
-  "Spain",
-  "Sri Lanka",
-  "Sudan",
-  "Suriname",
-  "Sweden",
-  "Switzerland",
-  "Syria",
-  "Taiwan",
-  "Tajikistan",
-  "Tanzania",
-  "Thailand",
-  "Timor-Leste",
-  "Togo",
-  "Tonga",
-  "Trinidad and Tobago",
-  "Tunisia",
-  "Turkey",
-  "Turkmenistan",
-  "Tuvalu",
-  "Uganda",
-  "Ukraine",
-  "United Arab Emirates",
-  "United Kingdom",
-  "United States",
-  "Uruguay",
-  "Uzbekistan",
-  "Vanuatu",
-  "Vatican City",
-  "Venezuela",
-  "Vietnam",
-  "Yemen",
-  "Zambia",
-  "Zimbabwe",
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola",
+  "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus",
+  "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina",
+  "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+  "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic",
+  "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Democratic Republic of the Congo",
+  "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
+  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini",
+  "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia",
+  "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea",
+  "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland",
+  "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+  "Ivory Coast", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya",
+  "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon",
+  "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta",
+  "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique",
+  "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand",
+  "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
+  "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama",
+  "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland",
+  "Portugal", "Qatar", "Romania", "Russia", "Rwanda",
+  "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines",
+  "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal",
+  "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia",
+  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea",
+  "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden",
+  "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand",
+  "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey",
+  "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates",
+  "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu",
+  "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
 ];
 
 const GREETINGS = [
@@ -289,7 +125,7 @@ const LEVEL_THRESHOLDS = [
 ];
 
 const nowMs = () => Date.now();
-const toEmailKey = (email) => email.trim().toLowerCase();
+const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
 function InputRow({ icon, children, rightIcon = null }) {
   const Icon = icon;
@@ -312,10 +148,11 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
     dobYear: "",
   });
 
-    useEffect(() => {
-    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
+  useEffect(() => {
+    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "")
+      .replace(",", "")
+      .split(" ");
 
-     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm((prev) => ({
       ...prev,
       country: initialData?.country || "",
@@ -324,15 +161,21 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
       dobMonth,
       dobDay,
       dobYear,
-   }));
+    }));
   }, [initialData, initialEmail]);
+
   const valid =
     Boolean(form.country) &&
     Boolean(form.fullName) &&
     Boolean(form.email) &&
     Boolean(form.dobMonth) &&
     Boolean(form.dobDay) &&
-    Boolean(form.dobYear)
+    Boolean(form.dobYear);
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   if (loading) {
     return (
@@ -341,11 +184,6 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
       </div>
     );
   }
-
-  const onChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
 
   return (
     <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
@@ -416,7 +254,9 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             onChange={onChange}
             placeholder="Email Address"
             readOnly={Boolean(initialEmail)}
-            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${initialEmail ? "bg-slate-100" : "bg-slate-50"}`}
+            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${
+              initialEmail ? "bg-slate-100" : "bg-slate-50"
+            }`}
           />
         </InputRow>
 
@@ -429,59 +269,56 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-          <div className="relative">
-            <select
-              name="dobMonth"
-              value={form.dobMonth}
-              onChange={onChange}
-              aria-label="Date of birth month"
-              className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-            >
-              <option value="">Month</option>
-              {MONTHS.map((month) => (
-                <option key={month} value={month}>
-                  {month}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          </div>
+            <div className="relative">
+              <select
+                name="dobMonth"
+                value={form.dobMonth}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Month</option>
+                {MONTHS.map((month) => (
+                  <option key={month} value={month}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            </div>
 
-          <div className="relative">
-            <select
-              name="dobDay"
-              value={form.dobDay}
-              onChange={onChange}
-              aria-label="Date of birth day"
-               className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-            >
-              <option value="">Day</option>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {day}
-                </option>
-              ))}
-            </select>
-             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          </div>
+            <div className="relative">
+              <select
+                name="dobDay"
+                value={form.dobDay}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Day</option>
+                {DAYS.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            </div>
 
-          <div className="relative">
-            <select
-              name="dobYear"
-              value={form.dobYear}
-              onChange={onChange}
-              aria-label="Date of birth year"
-             className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-            >
-              <option value="">Year</option>
-              {YEARS.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          </div>
+            <div className="relative">
+              <select
+                name="dobYear"
+                value={form.dobYear}
+                onChange={onChange}
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
+              >
+                <option value="">Year</option>
+                {YEARS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            </div>
           </div>
         </div>
 
@@ -528,44 +365,54 @@ function MysteryGiftModal({ open, reward, onClose }) {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   const [profile, setProfile] = useState(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState("");
+
   const [messages, setMessages] = useState([]);
   const [isChatLive, setIsChatLive] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
+
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
+
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
-  const [isSendingEmailLink, setIsSendingEmailLink] = useState(false);
+  const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
   const [emailLinkMessage, setEmailLinkMessage] = useState("");
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
-  const [googleSignInError, setGoogleSignInError] = useState("");
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [profileLoadError, setProfileLoadError] = useState("");
+  const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
+
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
-  
+
+  const userProfileRef = (uid) => doc(db, "users", uid);
+  const publicMessagesRef = collection(db, "publicMessages");
+
   useEffect(() => {
-    let profileUnsub = null;
-    
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (profileUnsub) {
-        profileUnsub();
-        profileUnsub = null;
+    let unsubscribeProfile = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
       }
-      
+
       setCurrentUser(user);
       setIsAuthLoading(false);
-      setProfileLoadError("");
+      setAuthError("");
+      setEmailLinkMessage("");
+
       if (!user || user.isAnonymous) {
         setProfile(null);
         setHasCompletedOnboarding(false);
@@ -575,20 +422,18 @@ export default function App() {
         setIsProfileLoading(false);
         return;
       }
-      
-      const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
+
       setIsProfileLoading(true);
-     profileUnsub = onSnapshot(
-        profileRef,
+      const ref = userProfileRef(user.uid);
+
+      unsubscribeProfile = onSnapshot(
+        ref,
         (snap) => {
           const nextProfile = snap.exists() ? snap.data() : null;
           setProfile(nextProfile);
-          setHasCompletedOnboarding(Boolean(nextProfile?.onboardingCompletedAt));
-          if (nextProfile?.onboardingCompletedAt) {
-            setOnboardingStep("done");
-          } else {
-            setOnboardingStep("details");
-          }
+          const done = Boolean(nextProfile?.onboardingCompletedAt);
+          setHasCompletedOnboarding(done);
+          setOnboardingStep(done ? "done" : "details");
           setProfileLoadError("");
           setIsProfileLoading(false);
         },
@@ -596,7 +441,7 @@ export default function App() {
           console.error("Unable to load profile", error);
           setProfile(null);
           setHasCompletedOnboarding(false);
-          setOnboardingStep("entry");
+          setOnboardingStep("details");
           setProfileLoadError(error?.code || "unknown");
           setIsProfileLoading(false);
         }
@@ -604,35 +449,40 @@ export default function App() {
     });
 
     return () => {
-      if (profileUnsub) profileUnsub();
-      unsub();
+      if (unsubscribeProfile) unsubscribeProfile();
+      unsubscribeAuth();
     };
   }, []);
-
-
 
   useEffect(() => {
     const completeEmailLinkSignIn = async () => {
       if (!isSignInWithEmailLink(auth, window.location.href)) return;
 
-      let email = window.localStorage.getItem("upliftEmailForSignIn");
-
-      if (!email) {
-        email = window.prompt("Please confirm your email address to complete sign-in.");
-      }
-
-      if (!email) return;
+      setIsAuthLoading(true);
+      setAuthError("");
 
       try {
-        setIsAuthLoading(true);
-        await signInWithEmailLink(auth, email, window.location.href);
+        const storedEmail = window.localStorage.getItem("upliftEmailForSignIn");
+
+        if (!storedEmail) {
+          setAuthError("This sign-in link was opened on a different device or browser. Please request a new link.");
+          return;
+        }
+
+        await signInWithEmailLink(auth, storedEmail, window.location.href);
         window.localStorage.removeItem("upliftEmailForSignIn");
         setEmailLinkMessage("");
-        setOnboardingError("");
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (error) {
         console.error("Unable to complete email link sign-in", error);
-        setOnboardingError("Your sign-in link is invalid or expired. Please request a new one.");
+
+        if (error?.code === "auth/invalid-action-code") {
+          setAuthError("This sign-in link is invalid.");
+        } else if (error?.code === "auth/expired-action-code") {
+          setAuthError("This sign-in link has expired. Please request a new one.");
+        } else {
+          setAuthError("Unable to complete sign-in from the email link.");
+        }
       } finally {
         setIsAuthLoading(false);
       }
@@ -642,83 +492,172 @@ export default function App() {
   }, []);
 
   const sendEmailSignInLink = async (email) => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail) {
-      return "Please enter your email address.";
+      return { error: "Please enter your email address." };
     }
 
-    setIsSendingEmailLink(true);
+    setIsEmailActionLoading(true);
     setEmailLinkMessage("");
-    setGoogleSignInError("");
+    setAuthError("");
 
     try {
       const actionCodeSettings = {
-        url: window.location.origin,
+        url: `${window.location.origin}/`,
         handleCodeInApp: true,
       };
 
       await sendSignInLinkToEmail(auth, normalizedEmail, actionCodeSettings);
       window.localStorage.setItem("upliftEmailForSignIn", normalizedEmail);
       setEmailLinkMessage(`We sent a sign-in link to ${normalizedEmail}. Check your inbox.`);
-      return "";
+      return { ok: true };
     } catch (error) {
       console.error("Unable to send email sign-in link", error);
 
       if (error?.code === "auth/invalid-email") {
-        return "That email address is invalid.";
+        return { error: "That email address is invalid." };
       }
 
       if (error?.code === "auth/operation-not-allowed") {
-        return "Email link sign-in is disabled in Firebase. Enable Email/Password and Email link in Authentication.";
+        return { error: "Email link sign-in is not enabled in Firebase Authentication." };
       }
 
-      return "Unable to send the sign-in link right now. Please try again.";
+      return { error: "Unable to send a sign-in link right now. Please try again." };
     } finally {
-      setIsSendingEmailLink(false);
+      setIsEmailActionLoading(false);
     }
   };
-  
+
+  const signInWithPassword = async (email, password) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
+      return { ok: true };
+    } catch (error) {
+      console.error("Password sign-in failed", error);
+
+      if (error?.code === "auth/invalid-credential") {
+        return { error: "Incorrect email or password." };
+      }
+
+      if (error?.code === "auth/user-disabled") {
+        return { error: "This account has been disabled." };
+      }
+
+      return { error: "Unable to sign in right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
+  const signUpWithPassword = async ({ email, password, fullName }) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
+
+      if (fullName) {
+        await updateAuthProfile(credential.user, { displayName: fullName });
+      }
+
+      setPendingProfileData((prev) => ({
+        ...prev,
+        fullName,
+        email: normalizeEmail(email),
+      }));
+
+      return { ok: true };
+    } catch (error) {
+      console.error("Password sign-up failed", error);
+
+      if (error?.code === "auth/email-already-in-use") {
+        return { error: "That email address is already in use." };
+      }
+
+      if (error?.code === "auth/weak-password") {
+        return { error: "Password must be at least 6 characters." };
+      }
+
+      if (error?.code === "auth/invalid-email") {
+        return { error: "That email address is invalid." };
+      }
+
+      return { error: "Unable to create your account right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    setIsEmailActionLoading(true);
+    setAuthError("");
+
+    try {
+      await sendPasswordResetEmail(auth, normalizeEmail(email));
+      return { ok: true };
+    } catch (error) {
+      console.error("Unable to send password reset email", error);
+
+      if (error?.code === "auth/user-not-found") {
+        return { error: "No account exists for that email address." };
+      }
+
+      if (error?.code === "auth/invalid-email") {
+        return { error: "That email address is invalid." };
+      }
+
+      return { error: "Unable to send password reset email right now." };
+    } finally {
+      setIsEmailActionLoading(false);
+    }
+  };
+
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true);
-    setGoogleSignInError("");
+    setAuthError("");
     setEmailLinkMessage("");
+
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-       if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+      if (
+        error?.code === "auth/popup-blocked" ||
+        error?.code === "auth/cancelled-popup-request"
+      ) {
         await signInWithRedirect(auth, googleProvider);
         return;
       }
 
-        if (error?.code === "auth/unauthorized-domain") {
-        const currentDomain = window.location.hostname;
-        setGoogleSignInError(`This domain (${currentDomain}) is not allowed in Firebase Auth. Add it under Authentication > Settings > Authorized domains.`);
+      if (error?.code === "auth/unauthorized-domain") {
+        setAuthError(`This domain (${window.location.hostname}) is not in Firebase Authorized domains.`);
       } else if (error?.code === "auth/operation-not-allowed") {
-        setGoogleSignInError("Google sign-in is disabled for this Firebase project. Enable it under Authentication > Sign-in method.");
+        setAuthError("Google sign-in is not enabled in Firebase Authentication.");
       } else {
-        setGoogleSignInError("Google sign-in failed. Check Firebase Auth settings and try again.");
+        setAuthError("Google sign-in failed. Please try again.");
       }
+
       console.error(error);
     } finally {
       setIsGoogleSigningIn(false);
     }
   };
-  
+
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
-    let retryTimer = null;
-    
-    const q = query(
-      collection(db, "artifacts", appId, "public", "data", "messages"),
-      orderBy("timestamp", "asc"),
-      limit(100)
-    );
 
-    const unsub = onSnapshot(
+    let retryTimer = null;
+
+    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limit(100));
+
+    const unsubscribe = onSnapshot(
       q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
         setMessages(
           live.length
             ? live
@@ -732,6 +671,7 @@ export default function App() {
                 },
               ]
         );
+
         setIsChatLive(true);
         setChatError("");
         setLastLiveAt(new Date());
@@ -747,9 +687,9 @@ export default function App() {
       }
     );
 
-     return () => {
+    return () => {
       if (retryTimer) clearTimeout(retryTimer);
-      unsub();
+      unsubscribe();
     };
   }, [currentUser, chatRetryCount]);
 
@@ -762,7 +702,8 @@ export default function App() {
     return "Live chat connected";
   }, [isChatLive]);
 
-  const sparkBalance = Number(profile?.sparkBalance ?? profile?.sparks ?? 0);
+  const sparkBalance = Number(profile?.sparkBalance ?? 0);
+
   const currentLevel = useMemo(() => {
     return LEVEL_THRESHOLDS.reduce((level, threshold) => {
       if (sparkBalance >= threshold.min) return threshold;
@@ -781,8 +722,8 @@ export default function App() {
     const completed = sparkBalance - currentLevel.min;
     return Math.max(0, Math.min(100, Math.round((completed / span) * 100)));
   }, [currentLevel.min, nextLevel, sparkBalance]);
-  
-   const handleSignOut = async () => {
+
+  const handleSignOut = async () => {
     if (isSigningOut) return;
 
     try {
@@ -794,10 +735,6 @@ export default function App() {
     } finally {
       setIsSigningOut(false);
     }
-  };
-
-    const signInExistingUser = async (email) => {
-    return await sendEmailSignInLink(email);
   };
 
   const completeOnboarding = async (data) => {
@@ -812,137 +749,77 @@ export default function App() {
         return;
       }
 
-      if (!user.email) {
+      const normalizedEmail = normalizeEmail(user.email || data.email);
+
+      if (!normalizedEmail) {
         setOnboardingError("We could not verify your account email. Please sign in again.");
         return;
       }
 
-      const normalizedEmail = user.email.trim().toLowerCase();
-      const emailKey = toEmailKey(normalizedEmail);
-      const profileRef = doc(db, "artifacts", appId, "users", user.uid, "data", "profile");
-      const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
       const profileData = {
-        ...data,
+        fullName: data.fullName,
         email: normalizedEmail,
-        emailKey,
+        country: data.country,
+        dob: data.dob,
+        profilePhoto: data.profilePhoto || "",
         ownerUid: user.uid,
-        onboardingCompletedAt: nowMs(),
+        sparkBalance: Number(profile?.sparkBalance ?? 0),
+        updatedAt: serverTimestamp(),
+        onboardingCompletedAt: serverTimestamp(),
       };
 
-      await runTransaction(db, async (transaction) => {
-        const indexedProfile = await transaction.get(profileIndexRef);
+      await setDoc(userProfileRef(user.uid), profileData, { merge: true });
 
-        if (indexedProfile.exists()) {
-          const indexData = indexedProfile.data();
-          const indexedOwner = indexData.ownerUid || indexData.userUid || indexData.uid || null;
-
-          if (!indexedOwner || indexedOwner !== user.uid) {
-            throw new Error("EMAIL_ALREADY_USED");
-          }
-        }
-
-        transaction.set(profileRef, profileData);
-        transaction.set(profileIndexRef, profileData);
-      });
-
-      await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
+      await addDoc(publicMessagesRef, {
         uid: "system",
         sender: "Uplift Bot",
         text: `${data.fullName} just joined Uplift 👋`,
         timestamp: nowMs(),
       });
 
-      setProfile(profileData);
+      setPendingProfileData(null);
       setHasCompletedOnboarding(true);
       setOnboardingStep("done");
-      setPendingProfileData(null);
-      } catch (error) {
-      if (error?.message === "EMAIL_ALREADY_USED") {
-        setOnboardingError("That email address is already in use. Please use a different email.");
-        return;
-      }
+    } catch (error) {
+      console.error("Unable to complete onboarding", error);
 
       if (error?.code === "permission-denied") {
-        setOnboardingError(
-          "Your account could not be saved because Firestore permissions are blocking profile writes. Update your Firebase Security Rules and try again."
-        );
+        setOnboardingError("Firestore rules are blocking profile save.");
         return;
       }
 
       if (error?.code === "unavailable") {
-        setOnboardingError("Firebase is temporarily unavailable. Please check your connection and try again.");
+        setOnboardingError("Firebase is temporarily unavailable. Please try again.");
         return;
       }
 
-      if (error?.code === "failed-precondition") {
-        setOnboardingError(
-          "Your profile could not be saved because Firebase is not fully configured yet. Verify Firestore indexes/rules, then retry."
-        );
-        return;
-      }
-
-      console.error("Unable to complete onboarding", error);
-      setOnboardingError("Unable to save your profile right now. Please try again.");  
+      setOnboardingError("Unable to save your profile right now. Please try again.");
     } finally {
       setIsSavingProfile(false);
     }
   };
 
-  const validateEmailBeforeNextStep = async (email) => {
-    const authEmail = currentUser?.email?.trim().toLowerCase() || "";
-    const normalizedEmail = authEmail || email.trim().toLowerCase();
-    const emailKey = toEmailKey(normalizedEmail);
-    const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", emailKey);
-    const indexedProfile = await getDoc(profileIndexRef);
-
-    if (!indexedProfile.exists()) {
-      return true;
-    }
-
-    const indexData = indexedProfile.data();
-    const indexedOwner = indexData.ownerUid || indexData.userUid || indexData.uid || null;
-    return Boolean(indexedOwner && currentUser && indexedOwner === currentUser.uid);
-  };
-  
-  const startNewUserFlow = () => {
-    setOnboardingStep("details");
-    setUnauthScreen("signin");
-    setOnboardingError("");
-    setEmailLinkMessage("");
-  };
-
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile) return;
 
-    await addDoc(collection(db, "artifacts", appId, "public", "data", "messages"), {
+    await addDoc(publicMessagesRef, {
       uid: currentUser.uid,
       sender: profile.fullName,
       text: greeting.text,
       timestamp: nowMs(),
     });
 
-     const reward = Number(greeting.sparkReward || 0);
-    const profileRef = doc(db, "artifacts", appId, "users", currentUser.uid, "data", "profile");
-    const profileIndexRef = doc(db, "artifacts", appId, "public", "data", "userProfiles", toEmailKey(profile.email));
+    const reward = Number(greeting.sparkReward || 0);
+    const ref = userProfileRef(currentUser.uid);
 
-      await runTransaction(db, async (transaction) => {
-      const profileSnap = await transaction.get(profileRef);
-      const profileData = profileSnap.exists() ? profileSnap.data() : {};
-      const currentBalance = Number(profileData?.sparkBalance ?? profileData?.sparks ?? 0);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const profileData = snap.exists() ? snap.data() : {};
+      const currentBalance = Number(profileData?.sparkBalance ?? 0);
       const nextBalance = currentBalance + reward;
 
-        transaction.set(
-        profileRef,
-        {
-          sparkBalance: nextBalance,
-          lastGreetingAt: nowMs(),
-          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
-        },
-        { merge: true }
-      );
-
       transaction.set(
-        profileIndexRef,
+        ref,
         {
           sparkBalance: nextBalance,
           lastGreetingAt: nowMs(),
@@ -957,7 +834,7 @@ export default function App() {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setShowGiftModal(true);
     }
-    
+
     setPickerOpen(false);
   };
 
@@ -968,6 +845,7 @@ export default function App() {
       </div>
     );
   }
+
   if (!isRealSignedInUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
@@ -976,13 +854,16 @@ export default function App() {
             <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
           ) : (
             <SignInStep
-              onExistingSignIn={signInExistingUser}
-              onStartNewUser={startNewUserFlow}
-              loading={isSendingEmailLink}
+              onEmailLinkSignIn={sendEmailSignInLink}
+              onPasswordSignIn={signInWithPassword}
+              onPasswordSignUp={signUpWithPassword}
+              onForgotPassword={forgotPassword}
               onGoogleSignIn={signInWithGoogle}
+              loading={isEmailActionLoading}
               googleLoading={isGoogleSigningIn}
-              googleError={googleSignInError}
+              googleError=""
               emailLinkMessage={emailLinkMessage}
+              authError={authError}
             />
           )}
         </div>
@@ -990,56 +871,43 @@ export default function App() {
     );
   }
 
-  const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || "there";
-  
+  const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
+
         {!hasCompletedOnboarding || !profile ? (
           <>
             {profileLoadError ? (
               <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                We couldn&apos;t read your profile yet ({profileLoadError}). Please check your Firestore rules for
-                <code className="mx-1 rounded bg-amber-100 px-1">artifacts/{appId}/users/{currentUser.uid}/data/profile</code>
-                and refresh.
+                We couldn&apos;t read your profile yet ({profileLoadError}). Check your Firestore rules for
+                <code className="mx-1 rounded bg-amber-100 px-1">users/{currentUser.uid}</code>.
               </p>
             ) : null}
+
             {onboardingStep === "entry" ? (
               <SignInStep
-                onExistingSignIn={signInExistingUser}
-                onStartNewUser={startNewUserFlow}
-                loading={isSendingEmailLink}
+                onEmailLinkSignIn={sendEmailSignInLink}
+                onPasswordSignIn={signInWithPassword}
+                onPasswordSignUp={signUpWithPassword}
+                onForgotPassword={forgotPassword}
                 onGoogleSignIn={signInWithGoogle}
+                loading={isEmailActionLoading}
                 googleLoading={isGoogleSigningIn}
-                googleError={googleSignInError}
+                googleError=""
                 emailLinkMessage={emailLinkMessage}
+                authError={authError}
               />
             ) : onboardingStep === "details" ? (
               <Onboarding
                 onContinue={async (data) => {
                   setOnboardingError("");
-
-                   try {
-                    setIsCheckingEmail(true);
-                    const canProceed = await validateEmailBeforeNextStep(data.email);
-
-                    if (!canProceed) {
-                      setOnboardingError("That email address is already in use. Please use a different email.");
-                      return;
-                    }
-                  } catch (error) {
-                    console.error("Unable to validate email", error);
-                    setOnboardingError("Unable to validate your email right now. Please try again.");
-                    return;
-                  } finally {
-                    setIsCheckingEmail(false);
-                  }
-
                   setPendingProfileData(data);
                   setOnboardingStep("photo");
                 }}
-                loading={isSavingProfile || isCheckingEmail}
+                loading={isSavingProfile}
                 initialData={pendingProfileData}
                 initialEmail={currentUser?.email || ""}
                 errorMessage={onboardingError}
@@ -1047,7 +915,9 @@ export default function App() {
             ) : (
               <ProfilePhotoStep
                 onBack={() => setOnboardingStep("details")}
-                onComplete={(photoDataUrl) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })}
+                onComplete={(photoDataUrl) =>
+                  completeOnboarding({ ...pendingProfileData, profilePhoto: photoDataUrl })
+                }
                 loading={isSavingProfile}
                 initialPhoto={pendingProfileData?.profilePhoto || ""}
               />
@@ -1061,7 +931,8 @@ export default function App() {
                   <h1 className="text-sm font-bold text-slate-800">Hey {firstName} 👋</h1>
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
-               <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2">
                   <Sparkles className="text-teal-500" size={18} />
                   <button
                     type="button"
@@ -1076,7 +947,7 @@ export default function App() {
                 </div>
               </div>
 
-               <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+              <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
@@ -1084,6 +955,7 @@ export default function App() {
                       {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks`}
                     </p>
                   </div>
+
                   <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
                     <Sparkles size={12} />
                     {sparkBalance}
@@ -1109,18 +981,17 @@ export default function App() {
                   {chatStatusText}
                 </span>
 
-                {lastLiveAt && (
+                {lastLiveAt ? (
                   <span className="text-slate-400">
                     Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                )}
+                ) : null}
               </div>
 
               {!isChatLive && chatError ? (
                 <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
                   Chat is offline ({chatError}). Check Firestore rules for
-                  <code className="mx-1 rounded bg-amber-100 px-1">artifacts/{appId}/public/data/messages</code>
-                  and make sure your internet connection is stable.
+                  <code className="mx-1 rounded bg-amber-100 px-1">publicMessages</code>.
                 </p>
               ) : null}
             </header>
