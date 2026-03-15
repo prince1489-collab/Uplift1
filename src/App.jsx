@@ -16,6 +16,20 @@ import {
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
+import {                                          // ← add this block
+  useStreak,
+  computeSparkReward,
+  StreakBadge,
+  StreakFreezeButton,
+  KindnessPledge,
+  BuddyPanel,
+  SparkGiftButton,
+  LiveGreeterCount,
+  MessageReactions,
+  ProfileCard,
+  scheduleGreetingWindowNotification,
+  NotificationPermissionBanner,
+} from "./UpliftRetentionFeatures";
 
 import { initializeApp } from "firebase/app";
 import {
