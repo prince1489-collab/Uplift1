@@ -38,7 +38,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
   getFirestore,
   limit,
   onSnapshot,
@@ -770,18 +769,18 @@ export default function App() {
 
       await setDoc(userProfileRef(user.uid), profileData, { merge: true });
 
-      await addDoc(publicMessagesRef, {
-        uid: "system",
-        sender: "Uplift Bot",
-        text: `${data.fullName} just joined Uplift 👋`,
-        timestamp: nowMs(),
-      });
+      // Intentionally removed the onboarding "system" chat message here
+      // because Firestore rules require request.resource.data.uid === request.auth.uid.
 
       setPendingProfileData(null);
       setHasCompletedOnboarding(true);
       setOnboardingStep("done");
     } catch (error) {
-      console.error("Unable to complete onboarding", error);
+      console.error("Unable to complete onboarding", {
+        code: error?.code,
+        message: error?.message,
+        error,
+      });
 
       if (error?.code === "permission-denied") {
         setOnboardingError("Firestore rules are blocking profile save.");
@@ -790,6 +789,11 @@ export default function App() {
 
       if (error?.code === "unavailable") {
         setOnboardingError("Firebase is temporarily unavailable. Please try again.");
+        return;
+      }
+
+      if (error?.code) {
+        setOnboardingError(`Unable to save your profile right now (${error.code}).`);
         return;
       }
 
@@ -871,7 +875,10 @@ export default function App() {
     );
   }
 
-  const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
+  const firstName =
+    profile?.fullName?.trim()?.split(" ")?.[0] ||
+    currentUser?.displayName?.split(" ")?.[0] ||
+    "there";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
