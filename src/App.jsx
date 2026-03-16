@@ -577,19 +577,24 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+
+      {/* World map — OUTSIDE the inner container so overflow-hidden never clips it */}
+      {showMap && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-2 sm:p-6">
+          <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
+            <WorldMap
+              db={db}
+              currentUser={currentUser}
+              profile={profile}
+              onClose={() => setShowMap(false)}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
-
-        {/* World map overlay — must be first so it covers header + main */}
-        {showMap && (
-          <WorldMap
-            db={db}
-            currentUser={currentUser}
-            profile={profile}
-            onClose={() => setShowMap(false)}
-          />
-        )}
 
         {showProfileCard && (
           <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
@@ -762,6 +767,5 @@ export default function App() {
         )}
       </div>
     </div>
-    
   );
 }
