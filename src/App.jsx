@@ -3,6 +3,7 @@ import {
   ArrowRight, Calendar, ChevronDown, Globe,
   Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2,
 } from "lucide-react";
+import WorldMap from "./WorldMap";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
@@ -315,6 +316,7 @@ export default function App() {
   // Retention feature state
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);   // Gap 4
+  const [showMap, setShowMap] = useState(false);           // World map
 
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
@@ -586,6 +588,16 @@ export default function App() {
         {/* Gap 4: Premium upgrade overlay */}
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
 
+        {/* World map overlay */}
+        {showMap && (
+          <WorldMap
+            db={db}
+            currentUser={currentUser}
+            profile={profile}
+            onClose={() => setShowMap(false)}
+          />
+        )}
+
         {!hasCompletedOnboarding || !profile ? (
           <>
             {profileLoadError && (
@@ -621,6 +633,10 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <StreakBadge streak={streak} />
+                  <button type="button" onClick={() => setShowMap(true)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300">
+                    <Globe size={11} /> World
+                  </button>
                   <button type="button" onClick={() => setShowProfileCard(true)}
                     className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300">
                     <Share2 size={11} /> Share
