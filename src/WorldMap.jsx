@@ -281,13 +281,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
   return (
     <div style={{
-      position: "absolute",
-      top: 0, left: 0, right: 0, bottom: 0,
-      zIndex: 60,
       display: "flex", flexDirection: "column",
+      height: "100%", width: "100%",
       background: "var(--color-background-primary)",
       overflowY: "auto",
-      borderRadius: "inherit",
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)", flexShrink: 0 }}>
