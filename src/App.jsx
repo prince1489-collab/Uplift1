@@ -578,9 +578,9 @@ export default function App() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
 
-      {/* World map — OUTSIDE the inner container so overflow-hidden never clips it */}
+      {/* World map — fixed to viewport so it always covers everything */}
       {showMap && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center p-2 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
             <WorldMap
               db={db}
