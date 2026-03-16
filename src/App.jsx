@@ -1,74 +1,47 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight,
-  Calendar,
-  ChevronDown,
-  Globe,
-  Loader2,
-  Mail,
-  LogOut,
-  Send,
-  Sparkles,
-  Gift,
-  User,
-  Share2,
+  ArrowRight, Calendar, ChevronDown, Globe,
+  Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2,
 } from "lucide-react";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
+
+// ── Gap fixes imported ────────────────────────────────────────────
 import {
-  useStreak,
-  computeSparkReward,
-  StreakBadge,
-  StreakFreezeButton,
-  KindnessPledge,
-  BuddyPanel,
-  SparkGiftButton,
-  LiveGreeterCount,
-  MessageReactions,
+  useStreak, computeSparkReward,
+  StreakBadge, StreakFreezeButton,
+  KindnessPledge, BuddyPanel, SparkGiftButton,
+  LiveGreeterCount, MessageReactions,
   ProfileCard,
+  WaveBackButton, WaveNotifications,   // Gap 1 — seen
+  MoodSelector, MoodPill,              // Gap 2 — identity
+  PremiumUpgradePrompt,                // Gap 4 — monetize
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
 } from "./UpliftRetentionFeatures";
 
+// Gap 3 — variety
+import { getGreetingsByCategory, getAccessibleGreetings } from "./greetings";
+// ─────────────────────────────────────────────────────────────────
+
 import { initializeApp } from "firebase/app";
 import {
-  GoogleAuthProvider,
-  getAuth,
-  onAuthStateChanged,
-  signOut,
-  signInWithPopup,
-  signInWithRedirect,
-  sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile as updateAuthProfile,
+  GoogleAuthProvider, getAuth, onAuthStateChanged, signOut,
+  signInWithPopup, signInWithRedirect, sendSignInLinkToEmail,
+  isSignInWithEmailLink, signInWithEmailLink,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  sendPasswordResetEmail, updateProfile as updateAuthProfile,
 } from "firebase/auth";
 
 import {
-  addDoc,
-  collection,
-  doc,
-  getFirestore,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
+  addDoc, collection, doc, getFirestore,
+  limit, onSnapshot, orderBy, query,
+  runTransaction, serverTimestamp, setDoc,
 } from "firebase/firestore";
 
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "firebase/storage";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -85,62 +58,37 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
 
 const COUNTRY_OPTIONS = [
-  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola",
-  "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus",
-  "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina",
-  "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
-  "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic",
-  "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
-  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Democratic Republic of the Congo",
-  "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
-  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini",
-  "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia",
-  "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea",
-  "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland",
-  "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
-  "Ivory Coast", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya",
-  "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon",
-  "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
-  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta",
-  "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
-  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique",
-  "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand",
-  "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
-  "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama",
-  "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland",
-  "Portugal", "Qatar", "Romania", "Russia", "Rwanda",
-  "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines",
-  "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal",
-  "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia",
-  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea",
-  "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden",
-  "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand",
-  "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey",
-  "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates",
-  "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu",
-  "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
-];
-
-const GREETINGS = [
-  { id: "morning", text: "Good Morning, have a nice day! ☀️", sparkReward: 10, isMystery: false },
-  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛", sparkReward: 10, isMystery: false },
-  { id: "night", text: "Good Night! Sleep well 🌙", sparkReward: 10, isMystery: false },
-  { id: "mystery", text: "🎁 Mystery Greeting", sparkReward: 25, isMystery: true },
+  "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
+  "Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia",
+  "Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cabo Verde","Cambodia",
+  "Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica",
+  "Croatia","Cuba","Cyprus","Czech Republic","Democratic Republic of the Congo","Denmark","Djibouti","Dominica",
+  "Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia",
+  "Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea",
+  "Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel",
+  "Italy","Ivory Coast","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kiribati","Kuwait","Kyrgyzstan","Laos",
+  "Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi",
+  "Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova",
+  "Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nauru","Nepal","Netherlands",
+  "New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palau",
+  "Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania",
+  "Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino",
+  "Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia",
+  "Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan",
+  "Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo",
+  "Tonga","Trinidad and Tobago","Tunisia","Turkey","Turkmenistan","Tuvalu","Uganda","Ukraine","United Arab Emirates",
+  "United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen",
+  "Zambia","Zimbabwe",
 ];
 
 const LEVEL_THRESHOLDS = [
-  { min: 0, title: "Novice Greeter" },
-  { min: 50, title: "Kindness Scout" },
+  { min: 0,   title: "Novice Greeter" },
+  { min: 50,  title: "Kindness Scout" },
   { min: 150, title: "Beacon of Hope" },
   { min: 300, title: "Sunshine Bringer" },
   { min: 600, title: "Guardian of Joy" },
@@ -150,9 +98,7 @@ const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
 function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
 }
 
 function InputRow({ icon, children, rightIcon = null }) {
@@ -167,187 +113,87 @@ function InputRow({ icon, children, rightIcon = null }) {
 }
 
 function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
-  const [form, setForm] = useState({
-    country: "",
-    fullName: "",
-    email: "",
-    dobMonth: "",
-    dobDay: "",
-    dobYear: "",
-  });
+  const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "" });
 
   useEffect(() => {
-    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "")
-      .replace(",", "")
-      .split(" ");
-
+    const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
     setForm((prev) => ({
       ...prev,
       country: initialData?.country || "",
       fullName: initialData?.fullName || "",
       email: initialEmail || initialData?.email || "",
-      dobMonth,
-      dobDay,
-      dobYear,
+      dobMonth, dobDay, dobYear,
     }));
   }, [initialData, initialEmail]);
 
-  const valid =
-    Boolean(form.country) &&
-    Boolean(form.fullName) &&
-    Boolean(form.email) &&
-    Boolean(form.dobMonth) &&
-    Boolean(form.dobDay) &&
-    Boolean(form.dobYear);
+  const valid = Boolean(form.country) && Boolean(form.fullName) && Boolean(form.email)
+    && Boolean(form.dobMonth) && Boolean(form.dobDay) && Boolean(form.dobYear);
 
-  const onChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="animate-spin text-teal-600" />
-      </div>
-    );
-  }
+  if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-teal-600" /></div>;
 
   return (
     <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
-      <form
-        className="mx-auto w-full max-w-sm space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!valid) return;
-          onContinue({
-            ...form,
-            dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}`,
-          });
-        }}
-      >
+      <form className="mx-auto w-full max-w-sm space-y-3"
+        onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` }); }}>
         <div className="flex justify-center gap-2 pb-3">
           <span className="h-2 w-8 rounded-full bg-teal-500" />
           <span className="h-2 w-8 rounded-full bg-slate-300" />
         </div>
-
         <div className="flex justify-center pb-3">
           <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
             <Sparkles size={24} />
           </div>
         </div>
+        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800">Welcome to Uplift</h1>
+        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
 
-        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800 sm:text-[44px]">
-          Welcome to Uplift
-        </h1>
-        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500 sm:text-2xl">
-          Tell us a bit about yourself to start connecting.
-        </p>
-
-        <InputRow
-          icon={Globe}
-          rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}
-        >
-          <select
-            name="country"
-            value={form.country}
-            onChange={onChange}
-            className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-500"
-          >
+        <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
+          <select name="country" value={form.country} onChange={onChange}
+            className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-500">
             <option value="">Select Country</option>
-            {COUNTRY_OPTIONS.map((country) => (
-              <option key={country} value={country}>{country}</option>
-            ))}
+            {COUNTRY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </InputRow>
 
         <InputRow icon={User}>
-          <input
-            name="fullName"
-            value={form.fullName}
-            onChange={onChange}
-            placeholder="Full Name"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400"
-          />
+          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Full Name"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
         </InputRow>
 
         <InputRow icon={Mail}>
-          <input
-            type="email"
-            name="email"
-            value={form.email}
-            onChange={onChange}
-            placeholder="Email Address"
+          <input type="email" name="email" value={form.email} onChange={onChange} placeholder="Email Address"
             readOnly={Boolean(initialEmail)}
-            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${
-              initialEmail ? "bg-slate-100" : "bg-slate-50"
-            }`}
-          />
+            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${initialEmail ? "bg-slate-100" : "bg-slate-50"}`} />
         </InputRow>
 
-        {errorMessage ? <p className="px-1 text-sm text-rose-600">{errorMessage}</p> : null}
+        {errorMessage && <p className="px-1 text-sm text-rose-600">{errorMessage}</p>}
 
         <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
-            <Calendar size={13} />
-            <span>Date of Birth</span>
+            <Calendar size={13} /><span>Date of Birth</span>
           </div>
-
           <div className="grid grid-cols-3 gap-2">
-            <div className="relative">
-              <select
-                name="dobMonth"
-                value={form.dobMonth}
-                onChange={onChange}
-                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-              >
-                <option value="">Month</option>
-                {MONTHS.map((month) => (
-                  <option key={month} value={month}>{month}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            </div>
-
-            <div className="relative">
-              <select
-                name="dobDay"
-                value={form.dobDay}
-                onChange={onChange}
-                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-              >
-                <option value="">Day</option>
-                {DAYS.map((day) => (
-                  <option key={day} value={day}>{day}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            </div>
-
-            <div className="relative">
-              <select
-                name="dobYear"
-                value={form.dobYear}
-                onChange={onChange}
-                className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700"
-              >
-                <option value="">Year</option>
-                {YEARS.map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            </div>
+            {[
+              { name: "dobMonth", placeholder: "Month", options: MONTHS },
+              { name: "dobDay",   placeholder: "Day",   options: DAYS },
+              { name: "dobYear",  placeholder: "Year",  options: YEARS },
+            ].map(({ name, placeholder, options }) => (
+              <div key={name} className="relative">
+                <select name={name} value={form[name]} onChange={onChange}
+                  className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pr-8 pl-3 text-sm text-slate-700">
+                  <option value="">{placeholder}</option>
+                  {options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              </div>
+            ))}
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={!valid}
-          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${
-            valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"
-          } disabled:cursor-not-allowed disabled:opacity-100`}
-        >
+        <button type="submit" disabled={!valid}
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"} disabled:cursor-not-allowed`}>
           Continue <ArrowRight size={18} />
         </button>
       </form>
@@ -357,7 +203,6 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
 
 function MysteryGiftModal({ open, reward, onClose }) {
   if (!open) return null;
-
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-3xl border border-white/40 bg-white/95 p-6 text-center shadow-2xl">
@@ -368,13 +213,74 @@ function MysteryGiftModal({ open, reward, onClose }) {
         <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
         <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
         <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700"
-        >
+        <button type="button" onClick={onClose}
+          className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700">
           Awesome!
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Gap 3: Greeting picker with categories ────────────────────────
+function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade }) {
+  const isPremium = Boolean(profile?.isPremium);
+  const categories = getGreetingsByCategory(isPremium);
+  const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
+
+  const activeGreetings = categories.find((c) => c.id === activeCategory)?.greetings ?? [];
+  const allCategories = [
+    { id: "core", label: "Greetings", emoji: "☀️", isPremium: false },
+    { id: "warmth", label: "Warmth", emoji: "💛", isPremium: true },
+    { id: "strength", label: "Strength", emoji: "💪", isPremium: true },
+    { id: "celebrate", label: "Celebrate", emoji: "🎉", isPremium: true },
+    { id: "calm", label: "Calm", emoji: "🌿", isPremium: true },
+    { id: "cultural", label: "World", emoji: "🌍", isPremium: true },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
+        <button onClick={onClose} className="rounded-full bg-slate-100 p-1">
+          <ChevronDown size={16} className="text-slate-500" />
+        </button>
+      </div>
+
+      {/* Category tabs */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {allCategories.map((cat) => {
+          const locked = cat.isPremium && !isPremium;
+          return (
+            <button key={cat.id}
+              onClick={() => locked ? onUpgrade() : setActiveCategory(cat.id)}
+              className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                activeCategory === cat.id && !locked
+                  ? "border-teal-400 bg-teal-50 text-teal-700"
+                  : locked
+                  ? "border-amber-200 bg-amber-50 text-amber-600"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}>
+              <span style={{ fontSize: "11px" }}>{cat.emoji}</span>
+              {cat.label}
+              {locked && <span className="text-[9px]">✨</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Greeting options */}
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {activeGreetings.map((greeting) => (
+          <button key={greeting.id} onClick={() => onSelect(greeting)}
+            className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400 transition-colors">
+            <span>{greeting.text}</span>
+            <span className="ml-2 text-xs text-teal-600">
+              +{computeSparkReward(greeting.sparkReward, streak)} sparks
+              {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -383,22 +289,18 @@ function MysteryGiftModal({ open, reward, onClose }) {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-
   const [profile, setProfile] = useState(null);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [profileLoadError, setProfileLoadError] = useState("");
-
   const [messages, setMessages] = useState([]);
   const [isChatLive, setIsChatLive] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
-
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
-
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
@@ -406,493 +308,240 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
-
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
 
-  // ── NEW: retention feature state ──────────────────────────────
+  // Retention feature state
   const [showProfileCard, setShowProfileCard] = useState(false);
-  // ─────────────────────────────────────────────────────────────
+  const [showUpgrade, setShowUpgrade] = useState(false);   // Gap 4
 
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
-
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
-  // ── NEW: streak hook ──────────────────────────────────────────
+  // Streak hook
   const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze } =
     useStreak(db, currentUser?.uid, profile);
-  // ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let unsubscribeProfile = null;
-
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
-
-      setCurrentUser(user);
-      setIsAuthLoading(false);
-      setAuthError("");
-      setEmailLinkMessage("");
-
+      if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
+      setCurrentUser(user); setIsAuthLoading(false); setAuthError(""); setEmailLinkMessage("");
       if (!user || user.isAnonymous) {
-        setProfile(null);
-        setHasCompletedOnboarding(false);
-        setOnboardingStep("entry");
-        setUnauthScreen("welcome");
-        setOnboardingError("");
-        setIsProfileLoading(false);
-        return;
+        setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("entry");
+        setUnauthScreen("welcome"); setOnboardingError(""); setIsProfileLoading(false); return;
       }
-
       setIsProfileLoading(true);
-      const refDoc = userProfileRef(user.uid);
-
-      unsubscribeProfile = onSnapshot(
-        refDoc,
+      unsubscribeProfile = onSnapshot(userProfileRef(user.uid),
         (snap) => {
           const nextProfile = snap.exists() ? snap.data() : null;
           setProfile(nextProfile);
-          const done =
-            Boolean(nextProfile?.onboardingCompletedAt) ||
-            Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
-
-          setHasCompletedOnboarding(done);
-          setOnboardingStep(done ? "done" : "details");
-          setProfileLoadError("");
-          setIsProfileLoading(false);
+          const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
+          setHasCompletedOnboarding(done); setOnboardingStep(done ? "done" : "details");
+          setProfileLoadError(""); setIsProfileLoading(false);
         },
         (error) => {
-          console.error("Unable to load profile", error);
-          setProfile(null);
-          setHasCompletedOnboarding(false);
-          setOnboardingStep("details");
-          setProfileLoadError(error?.code || "unknown");
-          setIsProfileLoading(false);
+          setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("details");
+          setProfileLoadError(error?.code || "unknown"); setIsProfileLoading(false);
         }
       );
     });
-
-    return () => {
-      if (unsubscribeProfile) unsubscribeProfile();
-      unsubscribeAuth();
-    };
+    return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
 
-  // ── NEW: schedule greeting window notification ─────────────────
+  // Notification scheduling
   useEffect(() => {
-    if (isRealSignedInUser && hasCompletedOnboarding) {
-      scheduleGreetingWindowNotification(profile);
-    }
+    if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
   }, [isRealSignedInUser, hasCompletedOnboarding]);
-  // ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const completeEmailLinkSignIn = async () => {
+    const complete = async () => {
       if (!isSignInWithEmailLink(auth, window.location.href)) return;
-
-      setIsAuthLoading(true);
-      setAuthError("");
-
+      setIsAuthLoading(true); setAuthError("");
       try {
-        const storedEmail = window.localStorage.getItem("upliftEmailForSignIn");
-
-        if (!storedEmail) {
-          setAuthError("This sign-in link was opened on a different device or browser. Please request a new link.");
-          return;
-        }
-
-        await signInWithEmailLink(auth, storedEmail, window.location.href);
+        const stored = window.localStorage.getItem("upliftEmailForSignIn");
+        if (!stored) { setAuthError("This sign-in link was opened on a different device."); return; }
+        await signInWithEmailLink(auth, stored, window.location.href);
         window.localStorage.removeItem("upliftEmailForSignIn");
         setEmailLinkMessage("");
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (error) {
-        console.error("Unable to complete email link sign-in", error);
-
-        if (error?.code === "auth/invalid-action-code") {
-          setAuthError("This sign-in link is invalid.");
-        } else if (error?.code === "auth/expired-action-code") {
-          setAuthError("This sign-in link has expired. Please request a new one.");
-        } else {
-          setAuthError("Unable to complete sign-in from the email link.");
-        }
-      } finally {
-        setIsAuthLoading(false);
-      }
+        if (error?.code === "auth/invalid-action-code") setAuthError("This sign-in link is invalid.");
+        else if (error?.code === "auth/expired-action-code") setAuthError("This sign-in link has expired.");
+        else setAuthError("Unable to complete sign-in from the email link.");
+      } finally { setIsAuthLoading(false); }
     };
-
-    completeEmailLinkSignIn();
+    complete();
   }, []);
 
   const sendEmailSignInLink = async (email) => {
     const normalizedEmail = normalizeEmail(email);
-
-    if (!normalizedEmail) {
-      return { error: "Please enter your email address." };
-    }
-
-    setIsEmailActionLoading(true);
-    setEmailLinkMessage("");
-    setAuthError("");
-
+    if (!normalizedEmail) return { error: "Please enter your email address." };
+    setIsEmailActionLoading(true); setEmailLinkMessage(""); setAuthError("");
     try {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/`,
-        handleCodeInApp: true,
-      };
-
-      await sendSignInLinkToEmail(auth, normalizedEmail, actionCodeSettings);
+      await sendSignInLinkToEmail(auth, normalizedEmail, { url: `${window.location.origin}/`, handleCodeInApp: true });
       window.localStorage.setItem("upliftEmailForSignIn", normalizedEmail);
       setEmailLinkMessage(`We sent a sign-in link to ${normalizedEmail}. Check your inbox.`);
       return { ok: true };
     } catch (error) {
-      console.error("Unable to send email sign-in link", error);
-
-      if (error?.code === "auth/invalid-email") {
-        return { error: "That email address is invalid." };
-      }
-
-      if (error?.code === "auth/operation-not-allowed") {
-        return { error: "Email link sign-in is not enabled in Firebase Authentication." };
-      }
-
-      return { error: "Unable to send a sign-in link right now. Please try again." };
-    } finally {
-      setIsEmailActionLoading(false);
-    }
+      if (error?.code === "auth/invalid-email") return { error: "That email address is invalid." };
+      if (error?.code === "auth/operation-not-allowed") return { error: "Email link sign-in is not enabled." };
+      return { error: "Unable to send a sign-in link right now." };
+    } finally { setIsEmailActionLoading(false); }
   };
 
   const signInWithPassword = async (email, password) => {
-    setIsEmailActionLoading(true);
-    setAuthError("");
-
+    setIsEmailActionLoading(true); setAuthError("");
     try {
       await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
       return { ok: true };
     } catch (error) {
-      console.error("Password sign-in failed", error);
-
-      if (error?.code === "auth/invalid-credential") {
-        return { error: "Incorrect email or password." };
-      }
-
-      if (error?.code === "auth/user-disabled") {
-        return { error: "This account has been disabled." };
-      }
-
+      if (error?.code === "auth/invalid-credential") return { error: "Incorrect email or password." };
+      if (error?.code === "auth/user-disabled") return { error: "This account has been disabled." };
       return { error: "Unable to sign in right now." };
-    } finally {
-      setIsEmailActionLoading(false);
-    }
+    } finally { setIsEmailActionLoading(false); }
   };
 
   const signUpWithPassword = async ({ email, password, fullName }) => {
-    setIsEmailActionLoading(true);
-    setAuthError("");
-
+    setIsEmailActionLoading(true); setAuthError("");
     try {
       const credential = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
-
-      if (fullName) {
-        await updateAuthProfile(credential.user, { displayName: fullName });
-      }
-
-      setPendingProfileData((prev) => ({
-        ...prev,
-        fullName,
-        email: normalizeEmail(email),
-      }));
-
+      if (fullName) await updateAuthProfile(credential.user, { displayName: fullName });
+      setPendingProfileData((prev) => ({ ...prev, fullName, email: normalizeEmail(email) }));
       return { ok: true };
     } catch (error) {
-      console.error("Password sign-up failed", error);
-
-      if (error?.code === "auth/email-already-in-use") {
-        return { error: "That email address is already in use." };
-      }
-
-      if (error?.code === "auth/weak-password") {
-        return { error: "Password must be at least 6 characters." };
-      }
-
-      if (error?.code === "auth/invalid-email") {
-        return { error: "That email address is invalid." };
-      }
-
+      if (error?.code === "auth/email-already-in-use") return { error: "That email address is already in use." };
+      if (error?.code === "auth/weak-password") return { error: "Password must be at least 6 characters." };
+      if (error?.code === "auth/invalid-email") return { error: "That email address is invalid." };
       return { error: "Unable to create your account right now." };
-    } finally {
-      setIsEmailActionLoading(false);
-    }
+    } finally { setIsEmailActionLoading(false); }
   };
 
   const forgotPassword = async (email) => {
-    setIsEmailActionLoading(true);
-    setAuthError("");
-
+    setIsEmailActionLoading(true); setAuthError("");
     try {
       await sendPasswordResetEmail(auth, normalizeEmail(email));
       return { ok: true };
     } catch (error) {
-      console.error("Unable to send password reset email", error);
-
-      if (error?.code === "auth/user-not-found") {
-        return { error: "No account exists for that email address." };
-      }
-
-      if (error?.code === "auth/invalid-email") {
-        return { error: "That email address is invalid." };
-      }
-
+      if (error?.code === "auth/user-not-found") return { error: "No account exists for that email address." };
+      if (error?.code === "auth/invalid-email") return { error: "That email address is invalid." };
       return { error: "Unable to send password reset email right now." };
-    } finally {
-      setIsEmailActionLoading(false);
-    }
+    } finally { setIsEmailActionLoading(false); }
   };
 
   const signInWithGoogle = async () => {
-    setIsGoogleSigningIn(true);
-    setAuthError("");
-    setEmailLinkMessage("");
-
+    setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      if (
-        error?.code === "auth/popup-blocked" ||
-        error?.code === "auth/cancelled-popup-request"
-      ) {
-        await signInWithRedirect(auth, googleProvider);
-        return;
+      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+        await signInWithRedirect(auth, googleProvider); return;
       }
-
-      if (error?.code === "auth/unauthorized-domain") {
-        setAuthError(`This domain (${window.location.hostname}) is not in Firebase Authorized domains.`);
-      } else if (error?.code === "auth/operation-not-allowed") {
-        setAuthError("Google sign-in is not enabled in Firebase Authentication.");
-      } else {
-        setAuthError("Google sign-in failed. Please try again.");
-      }
-
-      console.error(error);
-    } finally {
-      setIsGoogleSigningIn(false);
-    }
+      if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
+      else if (error?.code === "auth/operation-not-allowed") setAuthError("Google sign-in is not enabled.");
+      else setAuthError("Google sign-in failed. Please try again.");
+    } finally { setIsGoogleSigningIn(false); }
   };
 
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
-
     let retryTimer = null;
-
     const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limit(100));
-
-    const unsubscribe = onSnapshot(
-      q,
+    const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-        setMessages(
-          live.length
-            ? live
-            : [
-                {
-                  id: "welcome",
-                  sender: "Uplift Bot",
-                  text: "Welcome! Chat is live and ready ✨",
-                  uid: "system",
-                  timestamp: Date.now(),
-                },
-              ]
-        );
-
-        setIsChatLive(true);
-        setChatError("");
-        setLastLiveAt(new Date());
+        setMessages(live.length ? live : [{ id: "welcome", sender: "Uplift Bot", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }]);
+        setIsChatLive(true); setChatError(""); setLastLiveAt(new Date());
       },
       (error) => {
-        console.error("Live chat disconnected", error);
-        setIsChatLive(false);
-        setChatError(error?.code || "unknown");
-
-        retryTimer = setTimeout(() => {
-          setChatRetryCount((count) => count + 1);
-        }, 3000);
+        setIsChatLive(false); setChatError(error?.code || "unknown");
+        retryTimer = setTimeout(() => setChatRetryCount((c) => c + 1), 3000);
       }
     );
-
-    return () => {
-      if (retryTimer) clearTimeout(retryTimer);
-      unsubscribe();
-    };
+    return () => { if (retryTimer) clearTimeout(retryTimer); unsubscribe(); };
   }, [currentUser, chatRetryCount]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const chatStatusText = useMemo(() => {
-    if (!isChatLive) return "Reconnecting chat...";
-    return "Live chat connected";
-  }, [isChatLive]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
 
-  const currentLevel = useMemo(() => {
-    return LEVEL_THRESHOLDS.reduce((level, threshold) => {
-      if (sparkBalance >= threshold.min) return threshold;
-      return level;
-    }, LEVEL_THRESHOLDS[0]);
-  }, [sparkBalance]);
-
-  const nextLevel = useMemo(() => {
-    return LEVEL_THRESHOLDS.find((threshold) => threshold.min > sparkBalance) || null;
-  }, [sparkBalance]);
-
+  const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
+  const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
   const progressPercent = useMemo(() => {
     if (!nextLevel) return 100;
     const span = nextLevel.min - currentLevel.min;
-    if (span <= 0) return 100;
-    const completed = sparkBalance - currentLevel.min;
-    return Math.max(0, Math.min(100, Math.round((completed / span) * 100)));
+    return span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((sparkBalance - currentLevel.min) / span) * 100)));
   }, [currentLevel.min, nextLevel, sparkBalance]);
+
+  const todayMessageCount = useMemo(() =>
+    messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
+    [messages, currentUser]
+  );
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
-
-    try {
-      setIsSigningOut(true);
-      await signOut(auth);
-      setPickerOpen(false);
-    } catch (error) {
-      console.error("Unable to sign out", error);
-    } finally {
-      setIsSigningOut(false);
-    }
+    try { setIsSigningOut(true); await signOut(auth); setPickerOpen(false); }
+    catch (error) { console.error(error); }
+    finally { setIsSigningOut(false); }
   };
 
   const completeOnboarding = async (data) => {
-    setOnboardingError("");
-    setIsSavingProfile(true);
-
+    setOnboardingError(""); setIsSavingProfile(true);
     try {
       const user = auth.currentUser;
-
-      if (!user || user.isAnonymous) {
-        setOnboardingError("Please sign in before continuing.");
-        return;
-      }
-
+      if (!user || user.isAnonymous) { setOnboardingError("Please sign in before continuing."); return; }
       const normalizedEmail = normalizeEmail(user.email || data.email);
-
-      if (!normalizedEmail) {
-        setOnboardingError("We could not verify your account email. Please sign in again.");
-        return;
-      }
-
+      if (!normalizedEmail) { setOnboardingError("We could not verify your account email."); return; }
       let profilePhotoUrl = profile?.profilePhotoUrl || "";
-
       if (data.profilePhoto instanceof File) {
-        const extension = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
-        const photoRef = ref(storage, `profilePhotos/${user.uid}/avatar.${extension}`);
-
-        await uploadBytes(photoRef, data.profilePhoto, {
-          contentType: data.profilePhoto.type,
-        });
-
+        const ext = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
+        const photoRef = ref(storage, `profilePhotos/${user.uid}/avatar.${ext}`);
+        await uploadBytes(photoRef, data.profilePhoto, { contentType: data.profilePhoto.type });
         profilePhotoUrl = await getDownloadURL(photoRef);
       }
-
-      const profileData = {
-        fullName: data.fullName,
-        email: normalizedEmail,
-        country: data.country,
-        dob: data.dob,
-        profilePhotoUrl,
-        ownerUid: user.uid,
-        sparkBalance: Number(profile?.sparkBalance ?? 0),
-        updatedAt: serverTimestamp(),
-        onboardingCompletedAt: serverTimestamp(),
-      };
-
-      await setDoc(userProfileRef(user.uid), profileData, { merge: true });
-      console.log("profile saved successfully");
-
-      setPendingProfileData(null);
-      setHasCompletedOnboarding(true);
-      setOnboardingStep("done");
+      await setDoc(userProfileRef(user.uid), {
+        fullName: data.fullName, email: normalizedEmail, country: data.country, dob: data.dob,
+        profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
+        updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
+      }, { merge: true });
+      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done");
     } catch (error) {
-      console.error("Unable to complete onboarding", {
-        code: error?.code,
-        message: error?.message,
-        error,
-      });
-
-      if (error?.code === "storage/unauthorized") {
-        setOnboardingError("Storage rules are blocking photo upload.");
-        return;
-      }
-
-      if (error?.code === "permission-denied") {
-        setOnboardingError("Firestore rules are blocking profile save.");
-        return;
-      }
-
-      if (error?.code === "unavailable") {
-        setOnboardingError("Firebase is temporarily unavailable. Please try again.");
-        return;
-      }
-
-      if (error?.code) {
-        setOnboardingError(`Unable to save your profile right now (${error.code}).`);
-        return;
-      }
-
-      setOnboardingError("Unable to save your profile right now. Please try again.");
-    } finally {
-      setIsSavingProfile(false);
-    }
+      if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
+      if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
+      if (error?.code === "unavailable") { setOnboardingError("Firebase is temporarily unavailable."); return; }
+      setOnboardingError(error?.code ? `Unable to save your profile (${error.code}).` : "Unable to save your profile right now.");
+    } finally { setIsSavingProfile(false); }
   };
 
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile) return;
 
+    // Gap 2: include moodTag in message
     await addDoc(publicMessagesRef, {
       uid: currentUser.uid,
       sender: profile.fullName,
       text: greeting.text,
       timestamp: nowMs(),
+      moodTag: profile?.moodTag ?? null,
     });
 
-    // ── CHANGED: apply streak multiplier to reward ────────────
     const reward = computeSparkReward(greeting.sparkReward, streak);
-    // ─────────────────────────────────────────────────────────
     const refDoc = userProfileRef(currentUser.uid);
 
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(refDoc);
       const profileData = snap.exists() ? snap.data() : {};
-      const currentBalance = Number(profileData?.sparkBalance ?? 0);
-      const nextBalance = currentBalance + reward;
-
-      transaction.set(
-        refDoc,
-        {
-          sparkBalance: nextBalance,
-          lastGreetingAt: nowMs(),
-          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
-        },
-        { merge: true }
-      );
+      transaction.set(refDoc, {
+        sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
+        lastGreetingAt: nowMs(),
+        ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+      }, { merge: true });
     });
 
-    // ── NEW: record this greeting for streak tracking ──────────
     await recordGreetingDay();
-    // ─────────────────────────────────────────────────────────
 
     if (greeting.isMystery) {
       setMysteryReward(reward);
@@ -904,145 +553,88 @@ export default function App() {
   };
 
   if (isAuthLoading || (isRealSignedInUser && isProfileLoading)) {
-    return (
-      <div className="grid h-screen place-items-center bg-slate-50">
-        <Loader2 className="animate-spin text-teal-600" />
-      </div>
-    );
+    return <div className="grid h-screen place-items-center bg-slate-50"><Loader2 className="animate-spin text-teal-600" /></div>;
   }
 
   if (!isRealSignedInUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
-          {unauthScreen === "welcome" ? (
-            <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
-          ) : (
-            <SignInStep
-              onEmailLinkSignIn={sendEmailSignInLink}
-              onPasswordSignIn={signInWithPassword}
-              onPasswordSignUp={signUpWithPassword}
-              onForgotPassword={forgotPassword}
-              onGoogleSignIn={signInWithGoogle}
-              loading={isEmailActionLoading}
-              googleLoading={isGoogleSigningIn}
-              googleError={authError}
-              emailLinkMessage={emailLinkMessage}
-              authError={authError}
-            />
-          )}
+          {unauthScreen === "welcome"
+            ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
+            : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
+                onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
+                loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
+                emailLinkMessage={emailLinkMessage} authError={authError} />}
         </div>
       </div>
     );
   }
 
-  const firstName =
-    profile?.fullName?.trim()?.split(" ")?.[0] ||
-    currentUser?.displayName?.split(" ")?.[0] ||
-    "there";
-
-  // Count today's messages from this user (for Kindness Pledge)
-  const todayMessageCount = messages.filter(
-    (m) => m.uid === currentUser.uid && m.timestamp > startOfToday()
-  ).length;
+  const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
-        {/* ── NEW: Profile Card overlay ── */}
         {showProfileCard && (
-          <ProfileCard
-            profile={profile}
-            streak={streak}
-            sparkBalance={sparkBalance}
-            onClose={() => setShowProfileCard(false)}
-          />
+          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
         )}
+
+        {/* Gap 4: Premium upgrade overlay */}
+        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
 
         {!hasCompletedOnboarding || !profile ? (
           <>
-            {profileLoadError ? (
+            {profileLoadError && (
               <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                We couldn&apos;t read your profile yet ({profileLoadError}). Check your Firestore rules for
-                <code className="mx-1 rounded bg-amber-100 px-1">users/{currentUser.uid}</code>.
+                Couldn't read your profile ({profileLoadError}).
               </p>
-            ) : null}
-
+            )}
             {onboardingStep === "entry" ? (
-              <SignInStep
-                onEmailLinkSignIn={sendEmailSignInLink}
-                onPasswordSignIn={signInWithPassword}
-                onPasswordSignUp={signUpWithPassword}
-                onForgotPassword={forgotPassword}
-                onGoogleSignIn={signInWithGoogle}
-                loading={isEmailActionLoading}
-                googleLoading={isGoogleSigningIn}
-                googleError={authError}
-                emailLinkMessage={emailLinkMessage}
-                authError={authError}
-              />
+              <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
+                onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
+                loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
+                emailLinkMessage={emailLinkMessage} authError={authError} />
             ) : onboardingStep === "details" ? (
-              <Onboarding
-                onContinue={async (data) => {
-                  setOnboardingError("");
-                  setPendingProfileData(data);
-                  setOnboardingStep("photo");
-                }}
-                loading={isSavingProfile}
-                initialData={pendingProfileData}
-                initialEmail={currentUser?.email || ""}
-                errorMessage={onboardingError}
-              />
+              <Onboarding onContinue={async (data) => { setOnboardingError(""); setPendingProfileData(data); setOnboardingStep("photo"); }}
+                loading={isSavingProfile} initialData={pendingProfileData}
+                initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
             ) : (
-              <ProfilePhotoStep
-                onBack={() => setOnboardingStep("details")}
-                onComplete={(photoFile) =>
-                  completeOnboarding({ ...pendingProfileData, profilePhoto: photoFile })
-                }
-                loading={isSavingProfile}
-                initialPhoto={pendingProfileData?.profilePhotoUrl || ""}
-              />
+              <ProfilePhotoStep onBack={() => setOnboardingStep("details")}
+                onComplete={(photoFile) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoFile })}
+                loading={isSavingProfile} initialPhoto={pendingProfileData?.profilePhotoUrl || ""} />
             )}
           </>
         ) : (
           <>
+            {/* ── Gap 5: Decluttered header ── */}
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
+
+              {/* Row 1: name + actions */}
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-sm font-bold text-slate-800">Hey {firstName} 👋</h1>
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {/* ── NEW: Streak badge ── */}
+                <div className="flex items-center gap-1.5">
                   <StreakBadge streak={streak} />
-
-                  {/* ── NEW: Share profile button ── */}
-                  <button
-                    type="button"
-                    onClick={() => setShowProfileCard(true)}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800"
-                  >
-                    <Share2 size={11} />
-                    Share
+                  <button type="button" onClick={() => setShowProfileCard(true)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300">
+                    <Share2 size={11} /> Share
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    disabled={isSigningOut}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Sign out"
-                  >
-                    <LogOut size={12} />
-                    {isSigningOut ? "Signing out..." : "Sign out"}
+                  <button type="button" onClick={handleSignOut} disabled={isSigningOut}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 disabled:opacity-60">
+                    <LogOut size={11} />
+                    {isSigningOut ? "…" : "Out"}
                   </button>
                 </div>
               </div>
 
-              <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+              {/* Row 2: level + sparks + freeze */}
+              <div className="mt-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
@@ -1050,96 +642,81 @@ export default function App() {
                       {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks`}
                     </p>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    {/* ── NEW: Streak freeze button ── */}
-                    <StreakFreezeButton
-                      freezes={freezesAvailable}
-                      sparkBalance={sparkBalance}
-                      onBuy={buyFreeze}
-                    />
-
+                  <div className="flex items-center gap-1.5">
+                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
                     <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                      <Sparkles size={12} />
-                      {sparkBalance}
+                      <Sparkles size={12} />{sparkBalance}
                     </div>
                   </div>
                 </div>
-
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
                   <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${progressPercent}%` }} />
                 </div>
               </div>
 
-              {/* ── NEW: Notification permission banner ── */}
-              <div className="mt-2">
+              {/* Gap 2: Mood selector */}
+              <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
+
+              {/* Row 3: status + notification banner (compact) */}
+              <div className="mt-2 space-y-1.5">
                 <NotificationPermissionBanner />
+                <div className="flex items-center justify-between text-[11px]">
+                  <LiveGreeterCount db={db} currentUser={currentUser} />
+                  {lastLiveAt && (
+                    <span className="text-slate-400">
+                      Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-2 flex items-center justify-between text-[11px]">
-                {/* ── NEW: Live greeter count replaces static status ── */}
-                <LiveGreeterCount db={db} currentUser={currentUser} />
-
-                {lastLiveAt ? (
-                  <span className="text-slate-400">
-                    Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                ) : null}
-              </div>
-
-              {!isChatLive && chatError ? (
-                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                  Chat is offline ({chatError}). Check Firestore rules for
-                  <code className="mx-1 rounded bg-amber-100 px-1">publicMessages</code>.
+              {!isChatLive && chatError && (
+                <p className="mt-1 rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  Chat offline ({chatError}).
                 </p>
-              ) : null}
+              )}
 
-              {/* ── NEW: Buddies panel ── */}
+              {/* Buddies — collapsible to save space */}
               <BuddyPanel db={db} currentUser={currentUser} profile={profile} />
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-              {/* ── NEW: Kindness Pledge ── */}
+              {/* Gap 1: Wave notifications */}
+              <WaveNotifications db={db} currentUser={currentUser} />
+
+              {/* Kindness Pledge */}
               <div className="mb-3">
-                <KindnessPledge
-                  db={db}
-                  uid={currentUser.uid}
-                  todayMessageCount={todayMessageCount}
-                />
+                <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
               </div>
 
               {messages.map((m) => {
                 const mine = m.uid === currentUser.uid;
                 return (
                   <div key={m.id} className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-[82%] rounded-2xl border px-3 py-2 text-sm ${
-                        mine
-                          ? "rounded-br-none border-teal-600 bg-teal-600 text-white"
-                          : "rounded-bl-none border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      <div className={`mb-1 text-[10px] font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>
-                        {m.sender}
+                    <div className={`max-w-[82%] rounded-2xl border px-3 py-2 text-sm ${
+                      mine ? "rounded-br-none border-teal-600 bg-teal-600 text-white"
+                           : "rounded-bl-none border-slate-200 bg-white text-slate-700"
+                    }`}>
+                      {/* Sender name + Gap 2: mood pill */}
+                      <div className={`mb-1 flex items-center gap-1.5 text-[10px] font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>
+                        <span>{m.sender}</span>
+                        {m.moodTag && <MoodPill mood={m.moodTag} tiny />}
                       </div>
+
                       <p>{m.text}</p>
 
-                      {/* ── NEW: Spark gift button on others' messages ── */}
+                      {/* Gap 1: Wave back */}
                       {!mine && (
-                        <SparkGiftButton
-                          db={db}
-                          senderUid={m.uid}
-                          currentUser={currentUser}
-                          profile={profile}
-                        />
+                        <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />
                       )}
 
-                      {/* ── NEW: Emoji reactions on all messages ── */}
-                      <MessageReactions
-                        db={db}
-                        messageId={m.id}
-                        currentUser={currentUser}
-                      />
+                      {/* Spark gift */}
+                      {!mine && (
+                        <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />
+                      )}
+
+                      {/* Reactions */}
+                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
                     </div>
                   </div>
                 );
@@ -1147,41 +724,22 @@ export default function App() {
               <div ref={endRef} />
             </main>
 
+            {/* Gap 3: Category-based greeting picker */}
             <footer className="border-t border-slate-100 bg-white p-3">
               {!pickerOpen ? (
-                <button
-                  onClick={() => setPickerOpen(true)}
-                  className="flex w-full items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-slate-600"
-                >
+                <button onClick={() => setPickerOpen(true)}
+                  className="flex w-full items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-slate-600">
                   <span>Select a greeting...</span>
-                  <span className="rounded-full bg-teal-500 p-2 text-white">
-                    <Send size={14} />
-                  </span>
+                  <span className="rounded-full bg-teal-500 p-2 text-white"><Send size={14} /></span>
                 </button>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
-                    <button onClick={() => setPickerOpen(false)} className="rounded-full bg-slate-100 p-1">
-                      <ChevronDown size={16} className="text-slate-500" />
-                    </button>
-                  </div>
-
-                  {GREETINGS.map((greeting) => (
-                    <button
-                      key={greeting.id}
-                      onClick={() => handleSendMessage(greeting)}
-                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400"
-                    >
-                      <span>{greeting.text}</span>
-                      {/* ── CHANGED: show multiplied reward if streak active ── */}
-                      <span className="ml-2 text-xs text-teal-600">
-                        +{computeSparkReward(greeting.sparkReward, streak)} sparks
-                        {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                <GreetingPicker
+                  profile={profile}
+                  streak={streak}
+                  onSelect={handleSendMessage}
+                  onClose={() => setPickerOpen(false)}
+                  onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
+                />
               )}
             </footer>
           </>
