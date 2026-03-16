@@ -581,14 +581,7 @@ export default function App() {
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
-        {showProfileCard && (
-          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
-        )}
-
-        {/* Gap 4: Premium upgrade overlay */}
-        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
-
-        {/* World map overlay */}
+        {/* World map overlay — must be first so it covers header + main */}
         {showMap && (
           <WorldMap
             db={db}
@@ -597,6 +590,13 @@ export default function App() {
             onClose={() => setShowMap(false)}
           />
         )}
+
+        {showProfileCard && (
+          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
+        )}
+
+        {/* Gap 4: Premium upgrade overlay */}
+        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
 
         {!hasCompletedOnboarding || !profile ? (
           <>
