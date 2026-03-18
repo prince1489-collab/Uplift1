@@ -132,7 +132,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
       // Set up Natural Earth projection
       const projection = d3.geoNaturalEarth1()
-        .scale(160)
+        .scale(153)
         .translate([W / 2, H / 2]);
 
       projRef.current = projection;
@@ -303,7 +303,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             width="100%" height="100%"
-            preserveAspectRatio="xMidYMid slice"
+            preserveAspectRatio="xMidYMid meet"
             style={{ display: "block", cursor: "crosshair" }}
             onMouseMove={handleSvgMouseMove}
             onMouseLeave={() => setTooltip(null)}
