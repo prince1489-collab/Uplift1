@@ -283,41 +283,18 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     <div style={{
       display: "flex", flexDirection: "column",
       height: "100%", width: "100%",
-      background: "var(--color-background-primary)",
-      overflowY: "auto",
+      background: "#0d1f1a",
+      overflow: "hidden",
+      position: "relative",
     }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)", flexShrink: 0 }}>
-        <div>
-          <p style={{ fontSize: "15px", fontWeight: 500, margin: 0, color: "var(--color-text-primary)" }}>World of Seen</p>
-          <p style={{ fontSize: "11px", color: "var(--color-text-secondary)", margin: 0 }}>Kindness crossing borders</p>
-        </div>
-        <button onClick={onClose} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: "50%", padding: "6px", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center" }}>
-          <X size={14} color="var(--color-text-secondary)" />
-        </button>
-      </div>
+      {/* ── FULL-WIDTH MAP (fills most of the screen) ── */}
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0 }}>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: "8px", padding: "12px 16px 0", flexShrink: 0 }}>
-        {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 500, cursor: "pointer",
-            border: tab === t ? "1px solid #1D9E75" : "0.5px solid var(--color-border-tertiary)",
-            background: tab === t ? "#E1F5EE" : "transparent",
-            color: tab === t ? "#085041" : "var(--color-text-secondary)",
-          }}>{label}</button>
-        ))}
-        <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--color-text-tertiary)", display: "flex", alignItems: "center", gap: "5px" }}>
-          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#1D9E75", display: "inline-block", animation: "seenLive 1.5s infinite" }} />
-          Live
-        </span>
-      </div>
-
-      {/* Map */}
-      <div style={{ margin: "12px 16px 0", borderRadius: "14px", overflow: "hidden", border: "0.5px solid var(--color-border-tertiary)", flexShrink: 0, background: "#a8d5e8", position: "relative" }}>
+        {/* Loading state */}
         {!mapReady && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "200px", color: "var(--color-text-secondary)", fontSize: "13px" }}>
-            Loading map…
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "10px" }}>
+            <div style={{ width: "32px", height: "32px", border: "3px solid #1D9E75", borderTopColor: "transparent", borderRadius: "50%", animation: "seenSpin 0.8s linear infinite" }} />
+            <p style={{ color: "#5DCAA5", fontSize: "13px", margin: 0 }}>Loading map…</p>
           </div>
         )}
 
@@ -325,37 +302,29 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           <svg
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
-            width="100%"
+            width="100%" height="100%"
+            preserveAspectRatio="xMidYMid slice"
             style={{ display: "block", cursor: "crosshair" }}
             onMouseMove={handleSvgMouseMove}
             onMouseLeave={() => setTooltip(null)}
           >
-            {/* Ocean */}
-            <rect width={W} height={H} fill="#a8d5e8" />
+            <rect width={W} height={H} fill="#1a3a4a" />
 
-            {/* Graticule */}
             {d3Ref.current && projRef.current && (() => {
               const graticule = d3Ref.current.geoGraticule()();
               const pathGen = d3Ref.current.geoPath().projection(projRef.current);
-              return <path d={pathGen(graticule)} fill="none" stroke="white" strokeWidth="0.3" opacity="0.4" />;
+              return <path d={pathGen(graticule)} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />;
             })()}
 
-            {/* Globe outline */}
             {d3Ref.current && projRef.current && (() => {
               const sphere = { type: "Sphere" };
               const pathGen = d3Ref.current.geoPath().projection(projRef.current);
-              return <path d={pathGen(sphere)} fill="none" stroke="#7ab8d0" strokeWidth="1" />;
+              return <path d={pathGen(sphere)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />;
             })()}
 
-            {/* Countries */}
+            {/* Country fills — darker palette to contrast dots */}
             {geoPath && countries.map((feature) => (
-              <path
-                key={feature.id}
-                d={geoPath(feature)}
-                fill="#c8dfa8"
-                stroke="#8ab870"
-                strokeWidth="0.5"
-              />
+              <path key={feature.id} d={geoPath(feature)} fill="#2d5a3d" stroke="#1a3a2a" strokeWidth="0.4" />
             ))}
 
             {/* Greeting arcs */}
@@ -364,7 +333,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
               if (!d) return null;
               return (
                 <path key={arc.id} d={d} fill="none"
-                  stroke="#1D9E75" strokeWidth="2" strokeLinecap="round"
+                  stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round"
                   opacity="0"
                   style={{ animation: "seenArc 3s ease-in-out forwards" }} />
               );
@@ -376,7 +345,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
               if (!coords) return null;
               const d = makeArcPath(coords, myCoords);
               if (!d) return null;
-              return <path key={country} d={d} fill="none" stroke="#5DCAA5" strokeWidth="1" strokeDasharray="5 4" opacity="0.7" />;
+              return <path key={country} d={d} fill="none" stroke="#5DCAA5" strokeWidth="1" strokeDasharray="5 4" opacity="0.6" />;
             })}
 
             {/* World dots */}
@@ -386,13 +355,13 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
               const pt = projRef.current(coords);
               if (!pt) return null;
               const [cx, cy] = pt;
-              const r = isMe ? 8 : Math.min(4 + count * 0.8, 7);
+              const r = isMe ? 9 : Math.min(4 + count * 0.8, 7);
               return (
                 <g key={country}>
-                  {isMe && <circle cx={cx} cy={cy} r={r + 10} fill="none" stroke="#1D9E75" strokeWidth="1.5" opacity="0.3" style={{ animation: "seenRing 2s ease-out infinite" }} />}
-                  <circle cx={cx} cy={cy} r={r + 3} fill={isMe ? "#1D9E75" : "#5DCAA5"} opacity="0.2" style={{ animation: "seenGlow 2s ease-in-out infinite" }} />
-                  <circle cx={cx} cy={cy} r={r} fill={isMe ? "#1D9E75" : "#0F8A68"} stroke="white" strokeWidth={isMe ? 2 : 1.5} />
-                  {isMe && <text x={cx} y={cy + r + 12} textAnchor="middle" fontSize="10" fill="#085041" fontWeight="700">You</text>}
+                  {isMe && <circle cx={cx} cy={cy} r={r + 12} fill="none" stroke="#4DFFB0" strokeWidth="1" opacity="0.2" style={{ animation: "seenRing 2s ease-out infinite" }} />}
+                  <circle cx={cx} cy={cy} r={r + 4} fill={isMe ? "#4DFFB0" : "#5DCAA5"} opacity="0.15" style={{ animation: "seenGlow 2.2s ease-in-out infinite" }} />
+                  <circle cx={cx} cy={cy} r={r} fill={isMe ? "#4DFFB0" : "#1D9E75"} stroke={isMe ? "#0d1f1a" : "rgba(255,255,255,0.3)"} strokeWidth={isMe ? 2 : 1} />
+                  {isMe && <text x={cx} y={cy + r + 13} textAnchor="middle" fontSize="9" fill="#4DFFB0" fontWeight="700" letterSpacing="0.5">YOU</text>}
                 </g>
               );
             })}
@@ -412,19 +381,19 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
                     const [cx, cy] = cpt;
                     return (
                       <g key={country}>
-                        <circle cx={cx} cy={cy} r={6} fill="#0F8A68" stroke="white" strokeWidth="1.5" opacity="0.85" style={{ animation: "seenGlow 2s ease-in-out infinite" }} />
+                        <circle cx={cx} cy={cy} r={5} fill="#1D9E75" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" style={{ animation: "seenGlow 2s ease-in-out infinite" }} />
                       </g>
                     );
                   })}
                   {myConnectionCountries.length === 0 && (
-                    <text x={W / 2} y={H / 2 + 20} textAnchor="middle" fontSize="14" fill="#555">
-                      Send greetings to start connecting with the world
+                    <text x={W / 2} y={H / 2 + 20} textAnchor="middle" fontSize="14" fill="rgba(255,255,255,0.4)">
+                      Send greetings to connect with the world
                     </text>
                   )}
-                  <circle cx={mx} cy={my} r={20} fill="none" stroke="#1D9E75" strokeWidth="1.5" opacity="0.2" style={{ animation: "seenRing 2s ease-out infinite" }} />
-                  <circle cx={mx} cy={my} r={10} fill="#1D9E75" opacity="0.25" style={{ animation: "seenGlow 1.6s ease-in-out infinite" }} />
-                  <circle cx={mx} cy={my} r={8} fill="#1D9E75" stroke="white" strokeWidth="2" />
-                  <text x={mx} y={my + 22} textAnchor="middle" fontSize="10" fill="#085041" fontWeight="700">You</text>
+                  <circle cx={mx} cy={my} r={20} fill="none" stroke="#4DFFB0" strokeWidth="1" opacity="0.2" style={{ animation: "seenRing 2s ease-out infinite" }} />
+                  <circle cx={mx} cy={my} r={10} fill="#4DFFB0" opacity="0.2" style={{ animation: "seenGlow 1.6s ease-in-out infinite" }} />
+                  <circle cx={mx} cy={my} r={8} fill="#4DFFB0" stroke="#0d1f1a" strokeWidth="2" />
+                  <text x={mx} y={my + 21} textAnchor="middle" fontSize="9" fill="#4DFFB0" fontWeight="700" letterSpacing="0.5">YOU</text>
                 </g>
               );
             })()}
@@ -437,90 +406,153 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
               const ty = tooltip.y < 60 ? tooltip.y + 18 : tooltip.y - 32;
               return (
                 <g>
-                  <rect x={tx} y={ty} width={tw} height={24} rx="6" fill="#1a2e1a" opacity="0.85" />
+                  <rect x={tx} y={ty} width={tw} height={24} rx="5" fill="rgba(0,0,0,0.75)" />
                   <text x={tx + tw / 2} y={ty + 15} textAnchor="middle" fontSize="11" fill="white">{label}</text>
                 </g>
               );
             })()}
           </svg>
         )}
+
+        {/* ── FLOATING HEADER (top overlay on map) ── */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0,
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+          padding: "14px 16px",
+          background: "linear-gradient(to bottom, rgba(13,31,26,0.85) 0%, transparent 100%)",
+        }}>
+          <div>
+            <p style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: "white", letterSpacing: "-0.01em" }}>World of Seen</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", margin: "2px 0 0" }}>Kindness crossing borders</p>
+          </div>
+          <button onClick={onClose} style={{
+            border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", padding: "6px",
+            background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", alignItems: "center", backdropFilter: "blur(4px)",
+          }}>
+            <X size={14} color="rgba(255,255,255,0.8)" />
+          </button>
+        </div>
+
+        {/* ── FLOATING TABS (bottom overlay on map) ── */}
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 16px 12px",
+          background: "linear-gradient(to top, rgba(13,31,26,0.9) 0%, transparent 100%)",
+        }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
+              <button key={t} onClick={() => setTab(t)} style={{
+                borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)",
+                background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)",
+                color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)",
+                backdropFilter: "blur(4px)",
+              }}>{label}</button>
+            ))}
+          </div>
+          {/* Live pulse */}
+          <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />
+            Live
+          </span>
+        </div>
       </div>
 
       {/* CSS */}
       <style>{`
         @keyframes seenArc {
           0%   { stroke-dasharray:3000; stroke-dashoffset:3000; opacity:0; }
-          10%  { opacity:.95; }
-          70%  { opacity:.7; }
+          10%  { opacity:.9; }
+          70%  { opacity:.6; }
           100% { stroke-dashoffset:0; opacity:0; }
         }
-        @keyframes seenGlow { 0%,100%{opacity:.15} 50%{opacity:.35} }
+        @keyframes seenGlow { 0%,100%{opacity:.1} 50%{opacity:.3} }
         @keyframes seenRing { 0%{opacity:.3} 100%{opacity:0;transform:scale(1.8);transform-origin:center} }
         @keyframes seenLive { 0%,100%{opacity:.4} 50%{opacity:1} }
+        @keyframes seenSpin { to{transform:rotate(360deg)} }
       `}</style>
 
-      {/* Legend */}
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", padding: "8px 16px 0", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0, flexWrap: "wrap" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#1D9E75", border: "2px solid white", boxShadow: "0 0 0 1px #1D9E75", display: "inline-block" }} />
-          You
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0F8A68", border: "1.5px solid white", display: "inline-block" }} />
-          {tab === "world" ? "Active user" : "Waved at you"}
-        </span>
-        {tab === "world" && (
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-            <svg width="24" height="10" viewBox="0 0 24 10"><path d="M1,8 Q12,1 23,8" fill="none" stroke="#1D9E75" strokeWidth="2" strokeLinecap="round" /></svg>
-            Greeting in flight
-          </span>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: "8px", padding: "10px 16px", flexShrink: 0 }}>
-        {tab === "world" ? (
-          <>
-            <StatCard label="Active now" value={activeUsers.length} />
-            <StatCard label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} />
-            <StatCard label="Today" value={totalToday} sub="greetings" />
-          </>
-        ) : (
-          <>
-            <StatCard label="Seen from" value={myConnectionCountries.length} sub="countries" />
-            <StatCard label="Waves" value={myWaves.length} sub="received" />
-            <StatCard label="Furthest"
-              value={furthestCountry ? furthestCountry.country.split(" ")[0] : "—"}
-              sub={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "keep greeting"} />
-          </>
-        )}
-      </div>
-
-      {/* Country badges (mine) */}
-      {tab === "mine" && myConnectionCountries.length > 0 && (
-        <div style={{ padding: "0 16px 16px", flexShrink: 0 }}>
-          <p style={{ fontSize: "11px", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)", marginBottom: "8px" }}>
-            Countries that saw you
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {myConnectionCountries.map((c) => (
-              <span key={c} style={{ borderRadius: "20px", border: "0.5px solid #9FE1CB", background: "#E1F5EE", padding: "3px 10px", fontSize: "11px", fontWeight: 500, color: "#085041" }}>
-                {c}
-              </span>
-            ))}
-          </div>
+      {/* ── IMPACT BAR (pinned bottom strip) ── */}
+      <div style={{
+        flexShrink: 0,
+        background: "#0d1f1a",
+        borderTop: "1px solid rgba(77,255,176,0.12)",
+        padding: "0",
+      }}>
+        {/* Stats row */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: tab === "world" ? "repeat(3,1fr)" : "repeat(3,1fr)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}>
+          {tab === "world" ? (
+            <>
+              <ImpactStat label="Active now" value={activeUsers.length} icon="🟢" />
+              <ImpactStat label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} icon="🌍" divider />
+              <ImpactStat label="Greetings today" value={totalToday} icon="💬" divider />
+            </>
+          ) : (
+            <>
+              <ImpactStat label="Seen from" value={`${myConnectionCountries.length} countries`} icon="🌐" />
+              <ImpactStat label="Waves received" value={myWaves.length} icon="👋" divider />
+              <ImpactStat label="Furthest reach" value={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "—"} icon="📡" divider />
+            </>
+          )}
         </div>
-      )}
+
+        {/* Country badges for "mine" tab */}
+        {tab === "mine" && myConnectionCountries.length > 0 && (
+          <div style={{ padding: "10px 16px 14px", overflowX: "auto" }}>
+            <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(77,255,176,0.6)", margin: "0 0 8px" }}>
+              Countries that saw you
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+              {myConnectionCountries.map((c) => (
+                <span key={c} style={{
+                  borderRadius: "20px", border: "1px solid rgba(77,255,176,0.25)",
+                  background: "rgba(77,255,176,0.08)", padding: "3px 10px",
+                  fontSize: "11px", fontWeight: 500, color: "#5DCAA5",
+                }}>
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Legend strip */}
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />
+            You
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />
+            {tab === "world" ? "Active user" : "Waved at you"}
+          </span>
+          {tab === "world" && (
+            <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+              <svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>
+              Greeting arc
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value, sub }) {
+function ImpactStat({ label, value, icon, divider }) {
   return (
-    <div style={{ background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", padding: "10px 12px", textAlign: "center" }}>
-      <p style={{ fontSize: "11px", color: "var(--color-text-secondary)", margin: "0 0 2px" }}>{label}</p>
-      <p style={{ fontSize: "20px", fontWeight: 500, margin: 0, color: "var(--color-text-primary)", lineHeight: 1.1 }}>{value}</p>
-      {sub && <p style={{ fontSize: "9px", color: "var(--color-text-tertiary)", margin: "2px 0 0" }}>{sub}</p>}
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "12px 8px",
+      borderLeft: divider ? "1px solid rgba(255,255,255,0.06)" : "none",
+      textAlign: "center",
+    }}>
+      <p style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "white", lineHeight: 1.1 }}>{value}</p>
+      <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", margin: "3px 0 0", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
     </div>
   );
 }
