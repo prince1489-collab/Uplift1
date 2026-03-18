@@ -287,8 +287,8 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       overflow: "hidden",
       position: "relative",
     }}>
-      {/* ── FULL-WIDTH MAP (fills most of the screen) ── */}
-      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0 }}>
+      {/* ── FULL-WIDTH MAP — aspect-ratio locked to eliminate black bars ── */}
+      <div style={{ position: "relative", width: "100%", aspectRatio: "960 / 343", flexShrink: 0, overflow: "hidden" }}>
 
         {/* Loading state */}
         {!mapReady && (
@@ -301,9 +301,9 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         {mapReady && (
           <svg
             ref={svgRef}
-            viewBox={`0 57 960 343`}
+            viewBox="0 57 960 343"
             width="100%" height="100%"
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="xMidYMid slice"
             style={{ display: "block", cursor: "crosshair" }}
             onMouseMove={handleSvgMouseMove}
             onMouseLeave={() => setTooltip(null)}
