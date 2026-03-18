@@ -132,7 +132,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
       // Set up Natural Earth projection
       const projection = d3.geoNaturalEarth1()
-        .scale(153)
+        .scale(163)
         .translate([W / 2, H / 2]);
 
       projRef.current = projection;
@@ -260,11 +260,11 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     if (!projRef.current || tab !== "world") return;
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    // Scale mouse position to SVG coordinates
+    // Scale mouse position to SVG coordinates, accounting for cropped viewBox (y offset = 57)
     const scaleX = W / rect.width;
-    const scaleY = H / rect.height;
+    const scaleY = 343 / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
+    const my = (e.clientY - rect.top) * scaleY + 57;
 
     let closest = null;
     let minDist = 20; // threshold in SVG units
@@ -301,14 +301,14 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         {mapReady && (
           <svg
             ref={svgRef}
-            viewBox={`0 0 ${W} ${H}`}
+            viewBox={`0 57 960 343`}
             width="100%" height="100%"
             preserveAspectRatio="xMidYMid meet"
             style={{ display: "block", cursor: "crosshair" }}
             onMouseMove={handleSvgMouseMove}
             onMouseLeave={() => setTooltip(null)}
           >
-            <rect width={W} height={H} fill="#1a3a4a" />
+            <rect x="0" y="0" width={W} height={H} fill="#1a3a4a" />
 
             {d3Ref.current && projRef.current && (() => {
               const graticule = d3Ref.current.geoGraticule()();
