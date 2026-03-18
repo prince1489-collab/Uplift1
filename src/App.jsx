@@ -287,6 +287,73 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade }) {
   );
 }
 
+// ── Suggestion 1: Meatball menu for low-freq header actions ─────
+function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors">
+        <span className="text-[18px] leading-none tracking-tighter font-bold">···</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-30 w-44 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+          <button type="button" onClick={() => { onWorld(); setOpen(false); }}
+            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <Globe size={14} className="text-slate-400" /> World Map
+          </button>
+          <button type="button" onClick={() => { onShare(); setOpen(false); }}
+            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <Share2 size={14} className="text-slate-400" /> Share Profile
+          </button>
+          <div className="h-px bg-slate-100 mx-3" />
+          <button type="button" onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
+            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-50">
+            <LogOut size={14} /> {isSigningOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Suggestion 1: Spark progress ring ───────────────────────────
+function SparkRing({ value, max, percent }) {
+  const size = 44, stroke = 3.5, r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = circ * (percent / 100);
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke="url(#sparkGrad)" strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ - filled}
+          style={{ transition: "stroke-dashoffset 0.7s ease" }} />
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#2dd4bf" />
+            <stop offset="100%" stopColor="#34d399" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span style={{ fontSize: "11px", fontWeight: 700, color: "#0f766e", lineHeight: 1 }}>✨</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -627,58 +694,50 @@ export default function App() {
           </>
         ) : (
           <>
-            {/* ── Gap 5: Decluttered header ── */}
+            {/* ── REDESIGNED HEADER ── */}
             <header className="border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
 
-              {/* Row 1: name + actions */}
+              {/* Row 1: name with mood emoji baked in + meatball menu */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-sm font-bold text-slate-800">Hey {firstName} 👋</h1>
+                  <h1 className="text-sm font-bold text-slate-800">
+                    Hey {firstName} 👋
+                    {profile?.moodTag && (() => {
+                      const ME = { grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" };
+                      return <span className="ml-1">{ME[profile.moodTag]}</span>;
+                    })()}
+                  </h1>
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <StreakBadge streak={streak} />
-                  <button type="button" onClick={() => setShowMap(true)}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300">
-                    <Globe size={11} /> World
-                  </button>
-                  <button type="button" onClick={() => setShowProfileCard(true)}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300">
-                    <Share2 size={11} /> Share
-                  </button>
-                  <button type="button" onClick={handleSignOut} disabled={isSigningOut}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 disabled:opacity-60">
-                    <LogOut size={11} />
-                    {isSigningOut ? "…" : "Out"}
-                  </button>
+                  <MeatballMenu
+                    onWorld={() => setShowMap(true)}
+                    onShare={() => setShowProfileCard(true)}
+                    onSignOut={handleSignOut}
+                    isSigningOut={isSigningOut}
+                  />
                 </div>
               </div>
 
-              {/* Row 2: level + sparks + freeze */}
-              <div className="mt-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
-                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                      <Sparkles size={12} />{sparkBalance}
-                    </div>
+              {/* Row 2: spark ring + level + gradient bar + freeze */}
+              <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                <SparkRing value={sparkBalance} max={nextLevel?.min ?? sparkBalance} percent={progressPercent} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks · Max level!`}
+                  </p>
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500 transition-all duration-700"
+                      style={{ width: `${progressPercent}%` }} />
                   </div>
                 </div>
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${progressPercent}%` }} />
-                </div>
+                <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
               </div>
 
-              {/* Gap 2: Mood selector */}
               <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
 
-              {/* Row 3: status + notification banner (compact) */}
               <div className="mt-2 space-y-1.5">
                 <NotificationPermissionBanner />
                 <div className="flex items-center justify-between text-[11px]">
@@ -697,62 +756,79 @@ export default function App() {
                 </p>
               )}
 
-              {/* Buddies — collapsible to save space */}
               <BuddyPanel db={db} currentUser={currentUser} profile={profile} />
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-              {/* Gap 1: Wave notifications */}
               <WaveNotifications db={db} currentUser={currentUser} />
-
-              {/* Kindness Pledge */}
               <div className="mb-3">
                 <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
               </div>
 
-              {messages.map((m) => {
-                const mine = m.uid === currentUser.uid;
-                return (
-                  <div key={m.id} className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[82%] rounded-2xl border px-3 py-2 text-sm ${
-                      mine ? "rounded-br-none border-teal-600 bg-teal-600 text-white"
-                           : "rounded-bl-none border-slate-200 bg-white text-slate-700"
-                    }`}>
-                      {/* Sender name + Gap 2: mood pill */}
-                      <div className={`mb-1 flex items-center gap-1.5 text-[10px] font-semibold ${mine ? "text-teal-100" : "text-slate-400"}`}>
-                        <span>{m.sender}</span>
-                        {m.moodTag && <MoodPill mood={m.moodTag} tiny />}
+              {/* Grouped messages */}
+              {(() => {
+                const grouped = [];
+                messages.forEach((m) => {
+                  const last = grouped[grouped.length - 1];
+                  if (last && last.uid === m.uid) { last.items.push(m); }
+                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.moodTag, items: [m] }); }
+                });
+                return grouped.map((group) => {
+                  const mine = group.uid === currentUser.uid;
+                  return (
+                    <div key={group.items[0].id} className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div className="max-w-[82%] space-y-1">
+                        <div className={`flex items-center gap-1.5 px-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
+                          {!mine && <span>{group.sender}</span>}
+                          {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
+                          {mine && <span>{group.sender}</span>}
+                        </div>
+                        {group.items.map((m, idx) => {
+                          const isLast = idx === group.items.length - 1;
+                          const isMystery = Boolean(m.isMystery);
+                          return (
+                            <div key={m.id}
+                              className={`rounded-2xl border px-3 py-2 text-sm font-medium ${
+                                mine
+                                  ? `bg-teal-600 text-white border-teal-600 ${isLast ? "rounded-br-none" : ""}`
+                                  : isMystery
+                                  ? `bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 ${isLast ? "rounded-bl-none" : ""}`
+                                  : `bg-white border-slate-200 text-slate-700 ${isLast ? "rounded-bl-none" : ""}`
+                              }`}
+                              style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
+                              {isMystery && !mine && <span className="mr-1.5">🎁</span>}
+                              {m.text}
+                              {isLast && !mine && (
+                                <>
+                                  <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />
+                                  <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />
+                                </>
+                              )}
+                              <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
+                            </div>
+                          );
+                        })}
                       </div>
-
-                      <p>{m.text}</p>
-
-                      {/* Gap 1: Wave back */}
-                      {!mine && (
-                        <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />
-                      )}
-
-                      {/* Spark gift */}
-                      {!mine && (
-                        <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />
-                      )}
-
-                      {/* Reactions */}
-                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
               <div ref={endRef} />
             </main>
 
-            {/* Gap 3: Category-based greeting picker */}
-            <footer className="border-t border-slate-100 bg-white p-3">
+            {/* FAB-style footer */}
+            <footer className="border-t border-slate-100 bg-white px-4 py-3">
               {!pickerOpen ? (
-                <button onClick={() => setPickerOpen(true)}
-                  className="flex w-full items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-slate-600">
-                  <span>Select a greeting...</span>
-                  <span className="rounded-full bg-teal-500 p-2 text-white"><Send size={14} /></span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2.5 text-sm text-slate-400 cursor-pointer"
+                    onClick={() => setPickerOpen(true)}>
+                    Send a kind greeting…
+                  </div>
+                  <button onClick={() => setPickerOpen(true)}
+                    className="h-11 w-11 flex-shrink-0 rounded-full bg-teal-500 shadow-lg shadow-teal-200 flex items-center justify-center hover:bg-teal-600 active:scale-95 transition-all">
+                    <Send size={16} className="text-white" />
+                  </button>
+                </div>
               ) : (
                 <GreetingPicker
                   profile={profile}
@@ -763,6 +839,7 @@ export default function App() {
                 />
               )}
             </footer>
+          <>
           </>
         )}
       </div>
