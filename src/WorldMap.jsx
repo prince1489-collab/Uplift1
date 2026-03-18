@@ -553,7 +553,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         )}
 
         {/* ── FLOATING HEADER (top overlay on map) ── */}
-        <div style={{
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          style={{
           position: "absolute", top: 0, left: 0, right: 0,
           display: "flex", alignItems: "flex-start", justifyContent: "space-between",
           padding: "14px 16px",
@@ -572,27 +575,32 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         </div>
 
         {/* ── ZOOM CONTROLS (right side overlay) ── */}
-        <div style={{
-          position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)",
-          display: "flex", flexDirection: "column", gap: "6px",
-          zIndex: 10,
-        }}>
-          <button onClick={() => setTransform(prev => {
-            const rect = svgRef.current?.getBoundingClientRect();
-            const newScale = Math.min(MAX_SCALE, prev.scale * 1.4);
-            return clampTransform(prev.x, prev.y, newScale);
-          })} style={{
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          style={{
+            position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)",
+            display: "flex", flexDirection: "column", gap: "6px",
+            zIndex: 10,
+          }}>
+          <button onClick={(e) => {
+            e.stopPropagation();
+            const { x, y, scale } = transformRef.current;
+            const newScale = Math.min(MAX_SCALE, scale * 1.4);
+            setTransform(clamp(x, y, newScale));
+          }} style={{
             width: "32px", height: "32px", borderRadius: "8px",
             background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
             color: "white", fontSize: "18px", cursor: "pointer", display: "flex",
             alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
             fontWeight: 300, lineHeight: 1,
           }}>+</button>
-          <button onClick={() => setTransform(prev => {
-            const rect = svgRef.current?.getBoundingClientRect();
-            const newScale = Math.max(MIN_SCALE, prev.scale / 1.4);
-            return clampTransform(prev.x, prev.y, newScale);
-          })} style={{
+          <button onClick={(e) => {
+            e.stopPropagation();
+            const { x, y, scale } = transformRef.current;
+            const newScale = Math.max(MIN_SCALE, scale / 1.4);
+            setTransform(clamp(x, y, newScale));
+          }} style={{
             width: "32px", height: "32px", borderRadius: "8px",
             background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
             color: "white", fontSize: "20px", cursor: "pointer", display: "flex",
@@ -600,7 +608,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             fontWeight: 300, lineHeight: 1,
           }}>−</button>
           {transform.scale > 1.05 && (
-            <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} style={{
+            <button onClick={(e) => {
+              e.stopPropagation();
+              setTransform(clamp(0, 0, 1));
+            }} style={{
               width: "32px", height: "32px", borderRadius: "8px",
               background: "rgba(77,255,176,0.15)", border: "1px solid rgba(77,255,176,0.4)",
               color: "#4DFFB0", fontSize: "10px", cursor: "pointer", display: "flex",
@@ -611,7 +622,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         </div>
 
         {/* ── FLOATING TABS (bottom overlay on map) ── */}
-        <div style={{
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          style={{
           position: "absolute", bottom: 0, left: 0, right: 0,
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "10px 16px 12px",
