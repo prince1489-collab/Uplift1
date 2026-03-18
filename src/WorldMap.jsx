@@ -92,87 +92,38 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   const d3Ref = useRef(null);
   const projRef = useRef(null);
 
-  // ── Zoom / pan state ─────────────────────────────────────────
-  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  // ── Zoom / pan ────────────────────────────────────────────────
+  // Store transform in BOTH a ref (always current, no stale closures) and
+  // state (triggers re-render). All event handlers read from the ref.
   const MIN_SCALE = 1, MAX_SCALE = 8;
-  const dragRef = useRef(null);   // { startX, startY, startTx, startTy }
-  const lastPinchRef = useRef(null); // last pinch distance
+  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+  const [transform, setTransformState] = useState({ x: 0, y: 0, scale: 1 });
+  const dragRef = useRef(null);
+  const lastPinchRef = useRef(null);
+  const worldDotsRef = useRef([]);
 
-  // Helper: base SVG scale (how many screen px per SVG unit, ignoring zoom)
-  const getSVGScale = useCallback(() => {
+  const setTransform = (t) => {
+    transformRef.current = t;
+    setTransformState(t);
+  };
+
+  // Get base SVG → screen scale factor (xMidYMid slice)
+  const getSVGScale = () => {
     const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return 1;
-    // xMidYMid slice: fill container with SVG → scale = max(cW/W, cH/H)
+    if (!rect || !rect.width || !rect.height) return 1;
     return Math.max(rect.width / W, rect.height / H);
-  }, []);
+  };
 
-  // Convert a screen-space point to SVG coordinate space, accounting for base SVG
-  // scale (slice mode) AND the current zoom/pan transform applied to the <g> group.
-  // tx, ty are the current transform.x, transform.y (in SVG coord units).
-  const screenToSVGCoords = useCallback((screenX, screenY, tx, ty, scale) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return [0, 0];
-    const svgScale = Math.max(rect.width / W, rect.height / H);
-    // Invert base SVG transform (slice centering)
-    const preZoomX = (screenX - rect.left - rect.width / 2) / svgScale + W / 2;
-    const preZoomY = (screenY - rect.top - rect.height / 2) / svgScale + H / 2;
-    // Invert the <g> zoom transform: translate(W/2+tx,H/2+ty) scale(s) translate(-W/2,-H/2)
-    const svgX = (preZoomX - W / 2 - tx) / scale + W / 2;
-    const svgY = (preZoomY - H / 2 - ty) / scale + H / 2;
-    return [svgX, svgY];
-  }, []);
-
-  const clampTransform = (x, y, scale) => {
-    // x,y are in SVG coordinate units
-    // At scale=1 map fills container; allow panning up to half the "extra" revealed
+  // Clamp x,y (SVG units) so map can't pan off screen
+  const clamp = (x, y, scale) => {
     const maxX = (scale - 1) * W / 2;
     const maxY = (scale - 1) * H / 2;
     return {
-      x: Math.max(-maxX, Math.min(maxX, x)),
-      y: Math.max(-maxY, Math.min(maxY, y)),
-      scale,
+      x: Math.max(-maxX, Math.min(maxX, isNaN(x) ? 0 : x)),
+      y: Math.max(-maxY, Math.min(maxY, isNaN(y) ? 0 : y)),
+      scale: isNaN(scale) ? 1 : scale,
     };
   };
-
-  const handleWheel = useCallback((e) => {
-    e.preventDefault();
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    setTransform(prev => {
-      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
-      // Zoom toward mouse: get the SVG-space point under cursor (before zoom change)
-      const [mouseX, mouseY] = screenToSVGCoords(e.clientX, e.clientY, prev.x, prev.y, prev.scale);
-      // After zoom, keep that SVG point under cursor:
-      // new_tx = mouseX - (mouseX - W/2) * newScale ... simplified:
-      const svgScale = getSVGScale();
-      const screenCX = (e.clientX - rect.left - rect.width / 2) / svgScale;
-      const screenCY = (e.clientY - rect.top - rect.height / 2) / svgScale;
-      const scaleChange = newScale / prev.scale;
-      const newX = screenCX - scaleChange * (screenCX - prev.x);
-      const newY = screenCY - scaleChange * (screenCY - prev.y);
-      return clampTransform(newX, newY, newScale);
-    });
-  }, [getSVGScale, screenToSVGCoords]);
-
-  // Attach wheel listener (non-passive to allow preventDefault)
-  // Also attach global mouseup so drag ends even when mouse released outside SVG
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    const globalMouseUp = () => { dragRef.current = null; };
-    window.addEventListener("mouseup", globalMouseUp);
-    return () => {
-      el.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("mouseup", globalMouseUp);
-    };
-  }, [mapReady, handleWheel]);
-
-  const handleMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: transform.x, startTy: transform.y };
-  }, [transform]);
 
   // ── Derived data ──────────────────────────────────────────────
   const worldDots = useMemo(() => {
@@ -185,84 +136,128 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return Object.values(map);
   }, [activeUsers, currentUser]);
 
-  const handleMouseMoveMap = useCallback((e) => {
-    if (!dragRef.current) {
-      // Tooltip: convert mouse screen position to SVG coords
-      if (!projRef.current || tab !== "world") return;
-      const [mx, my] = screenToSVGCoords(e.clientX, e.clientY, transform.x, transform.y, transform.scale);
-      let closest = null;
-      let minDist = 20 / transform.scale;
-      for (const { country, count, isMe } of worldDots) {
-        const coords = COUNTRY_COORDS[country];
-        if (!coords) continue;
-        const pt = projRef.current(coords);
-        if (!pt) continue;
-        const dist = Math.sqrt((pt[0] - mx) ** 2 + (pt[1] - my) ** 2);
-        if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x: pt[0], y: pt[1] }; }
+  // Keep ref in sync so event handlers always see fresh dots
+  useEffect(() => { worldDotsRef.current = worldDots; }, [worldDots]);
+
+  // ── Native event listeners (attached once, read from refs) ────
+  useEffect(() => {
+    if (!mapReady || !svgRef.current) return;
+    const el = svgRef.current;
+
+    // ── Mouse wheel → zoom ──
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      if (!rect.width) return;
+      const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+      const { x, y, scale } = transformRef.current;
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
+      const svgScale = Math.max(rect.width / W, rect.height / H);
+      // Keep the point under cursor fixed during zoom
+      const cx = (e.clientX - rect.left - rect.width / 2) / svgScale;
+      const cy = (e.clientY - rect.top - rect.height / 2) / svgScale;
+      const ratio = newScale / scale;
+      setTransform(clamp(cx - ratio * (cx - x), cy - ratio * (cy - y), newScale));
+    };
+
+    // ── Mouse drag → pan ──
+    const onMouseDown = (e) => {
+      if (e.button !== 0) return;
+      const { x, y } = transformRef.current;
+      dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: x, startTy: y };
+    };
+    const onMouseMove = (e) => {
+      if (dragRef.current) {
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) return;
+        const svgScale = Math.max(rect.width / W, rect.height / H);
+        const dx = (e.clientX - dragRef.current.startX) / svgScale;
+        const dy = (e.clientY - dragRef.current.startY) / svgScale;
+        const { scale } = transformRef.current;
+        setTransform(clamp(dragRef.current.startTx + dx, dragRef.current.startTy + dy, scale));
+      } else {
+        // Tooltip hit-testing
+        if (!projRef.current) return;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) return;
+        const { x, y, scale } = transformRef.current;
+        const svgScale = Math.max(rect.width / W, rect.height / H);
+        const preX = (e.clientX - rect.left - rect.width / 2) / svgScale + W / 2;
+        const preY = (e.clientY - rect.top - rect.height / 2) / svgScale + H / 2;
+        const mx = (preX - W / 2 - x) / scale + W / 2;
+        const my = (preY - H / 2 - y) / scale + H / 2;
+        let closest = null, minDist = 20 / scale;
+        for (const { country, count, isMe } of worldDotsRef.current) {
+          const coords = COUNTRY_COORDS[country];
+          if (!coords) continue;
+          const pt = projRef.current(coords);
+          if (!pt) continue;
+          const dist = Math.sqrt((pt[0] - mx) ** 2 + (pt[1] - my) ** 2);
+          if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x: pt[0], y: pt[1] }; }
+        }
+        setTooltip(closest);
       }
-      setTooltip(closest);
-      return;
-    }
-    // Drag pan: delta in screen px → SVG units (divide by base SVG scale)
-    const svgScale = getSVGScale();
-    const dx = (e.clientX - dragRef.current.startX) / svgScale;
-    const dy = (e.clientY - dragRef.current.startY) / svgScale;
-    setTransform(prev => clampTransform(
-      dragRef.current.startTx + dx,
-      dragRef.current.startTy + dy,
-      prev.scale
-    ));
-  }, [worldDots, tab, mapReady, transform, screenToSVGCoords, getSVGScale]);
+    };
+    const onMouseUp = () => { dragRef.current = null; };
 
-  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
-
-  // Touch pinch-to-zoom + drag
-  const handleTouchStart = useCallback((e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
-    } else if (e.touches.length === 1) {
-      dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: transform.x, startTy: transform.y };
-    }
-  }, [transform]);
-
-  const handleTouchMove = useCallback((e) => {
-    e.preventDefault(); // eslint-disable-line
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    if (e.touches.length === 2 && lastPinchRef.current) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const zoomFactor = dist / lastPinchRef.current;
-      lastPinchRef.current = dist;
-      setTransform(prev => {
-        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
-        const scaleChange = newScale / prev.scale;
-        const svgScale = getSVGScale();
+    // ── Touch pinch → zoom + drag ──
+    const onTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
+        dragRef.current = null;
+      } else if (e.touches.length === 1) {
+        const { x, y } = transformRef.current;
+        dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: x, startTy: y };
+      }
+    };
+    const onTouchMove = (e) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      if (!rect.width) return;
+      const svgScale = Math.max(rect.width / W, rect.height / H);
+      if (e.touches.length === 2 && lastPinchRef.current) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (!dist) return;
+        const factor = dist / lastPinchRef.current;
+        lastPinchRef.current = dist;
+        const { x, y, scale } = transformRef.current;
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
         const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width / 2) / svgScale;
         const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top - rect.height / 2) / svgScale;
-        const newX = cx - scaleChange * (cx - prev.x);
-        const newY = cy - scaleChange * (cy - prev.y);
-        return clampTransform(newX, newY, newScale);
-      });
-    } else if (e.touches.length === 1 && dragRef.current) {
-      const dx = e.touches[0].clientX - dragRef.current.startX;
-      const dy = e.touches[0].clientY - dragRef.current.startY;
-      const svgScale = getSVGScale();
-      setTransform(prev => clampTransform(
-        dragRef.current.startTx + dx / svgScale,
-        dragRef.current.startTy + dy / svgScale,
-        prev.scale
-      ));
-    }
-  }, [getSVGScale]);
+        const ratio = newScale / scale;
+        setTransform(clamp(cx - ratio * (cx - x), cy - ratio * (cy - y), newScale));
+      } else if (e.touches.length === 1 && dragRef.current) {
+        const dx = (e.touches[0].clientX - dragRef.current.startX) / svgScale;
+        const dy = (e.touches[0].clientY - dragRef.current.startY) / svgScale;
+        const { scale } = transformRef.current;
+        setTransform(clamp(dragRef.current.startTx + dx, dragRef.current.startTy + dy, scale));
+      }
+    };
+    const onTouchEnd = () => { dragRef.current = null; lastPinchRef.current = null; };
 
-  const handleTouchEnd = useCallback(() => {
-    dragRef.current = null;
-    lastPinchRef.current = null;
-  }, []);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("mousedown", onMouseDown);
+    el.addEventListener("mousemove", onMouseMove);
+    el.addEventListener("mouseleave", () => { dragRef.current = null; setTooltip(null); });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("mousedown", onMouseDown);
+      el.removeEventListener("mousemove", onMouseMove);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [mapReady]);  // ← runs once when map is ready; reads all values from refs
 
   const myCountry = profile?.country ?? null;
   const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
@@ -387,8 +382,6 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return () => clearInterval(arcTimerRef.current);
   }, [mapReady, activeUsers, myCoords, myCountry, currentUser]);
 
-  // (worldDots moved above zoom handlers)
-
   const myConnectionCountries = useMemo(() =>
     [...new Set(myWaves.map((w) => myWaveProfiles[w.fromUid]?.country).filter((c) => c && COUNTRY_COORDS[c]))],
     [myWaves, myWaveProfiles]
@@ -418,8 +411,6 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return "M" + validPoints.map((p) => p.map((v) => v.toFixed(1)).join(",")).join("L");
   }, [mapReady]);
 
-  // (mouse/touch handlers now defined above with zoom state)
-
   return (
     <div style={{
       display: "flex", flexDirection: "column",
@@ -445,14 +436,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             viewBox={`0 0 ${W} ${H}`}
             width="100%" height="100%"
             preserveAspectRatio="xMidYMid slice"
-            style={{ display: "block", cursor: dragRef.current ? "grabbing" : transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none", width: "100%", height: "100%", position: "absolute", inset: 0 }}
-            onMouseMove={handleMouseMoveMap}
-            onMouseLeave={() => { setTooltip(null); dragRef.current = null; }}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            style={{ display: "block", cursor: transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none", width: "100%", height: "100%", position: "absolute", inset: 0 }}
           >
             <rect x="0" y="0" width={W} height={H} fill="#1a3a4a" />
             {/* Zoom/pan: scale around centre, then apply pan offset */}
