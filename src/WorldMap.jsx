@@ -139,6 +139,17 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: transform.x, startTy: transform.y };
   }, [transform]);
 
+  // ── Derived data ──────────────────────────────────────────────
+  const worldDots = useMemo(() => {
+    const map = {};
+    for (const u of activeUsers) {
+      if (!map[u.country]) map[u.country] = { country: u.country, count: 0, isMe: false };
+      map[u.country].count++;
+      if (u.uid === currentUser?.uid) map[u.country].isMe = true;
+    }
+    return Object.values(map);
+  }, [activeUsers, currentUser]);
+
   const handleMouseMoveMap = useCallback((e) => {
     // Tooltip logic (existing)
     if (!dragRef.current) {
@@ -348,16 +359,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return () => clearInterval(arcTimerRef.current);
   }, [mapReady, activeUsers, myCoords, myCountry, currentUser]);
 
-  // ── Derived data ──────────────────────────────────────────────
-  const worldDots = useMemo(() => {
-    const map = {};
-    for (const u of activeUsers) {
-      if (!map[u.country]) map[u.country] = { country: u.country, count: 0, isMe: false };
-      map[u.country].count++;
-      if (u.uid === currentUser?.uid) map[u.country].isMe = true;
-    }
-    return Object.values(map);
-  }, [activeUsers, currentUser]);
+  // (worldDots moved above zoom handlers)
 
   const myConnectionCountries = useMemo(() =>
     [...new Set(myWaves.map((w) => myWaveProfiles[w.fromUid]?.country).filter((c) => c && COUNTRY_COORDS[c]))],
