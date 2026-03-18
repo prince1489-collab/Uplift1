@@ -792,32 +792,37 @@ export default function App() {
                           {mine && <span>{group.sender}</span>}
                         </div>
 
-                        {/* Thread container — left border line for multi-message groups */}
+                        {/* Thread container — visible left border line for multi-message groups */}
                         <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
                           {isMulti && (
-                            <div className={`absolute top-2 bottom-2 w-0.5 rounded-full bg-slate-200 ${mine ? "right-0" : "left-0"}`} />
+                            <div className={`absolute top-2 bottom-2 w-0.5 rounded-full ${mine ? "right-0 bg-teal-300" : "left-0 bg-slate-300"}`} />
                           )}
-                          <div className="space-y-1">
+                          <div className="space-y-0.5">
                             {group.items.map((m, idx) => {
+                              const isFirst = idx === 0;
                               const isLast = idx === group.items.length - 1;
                               const isMystery = Boolean(m.isMystery);
+                              // Tighten corners between consecutive bubbles in a group
+                              const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
+                              const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
+                              const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
                               return (
                                 <div key={m.id}>
                                   <div
-                                    className={`rounded-2xl border px-3 py-2.5 text-sm font-semibold ${
+                                    className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
                                       mine
-                                        ? `bg-teal-600 text-white border-teal-600 ${isLast ? "rounded-br-none" : ""}`
+                                        ? "bg-teal-600 text-white border-teal-600"
                                         : isMystery
-                                        ? `bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 ${isLast ? "rounded-bl-none" : ""}`
-                                        : `bg-white border-slate-200 text-slate-800 ${isLast ? "rounded-bl-none" : ""}`
+                                        ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
+                                        : "bg-white border-slate-200 text-slate-800"
                                     }`}
                                     style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
                                     {isMystery && !mine && <span className="mr-1.5">🎁</span>}
                                     {m.text}
                                   </div>
-                                  {/* Inline reaction bar on last message of group, others get nothing */}
+                                  {/* Reaction bar only on last message */}
                                   {isLast && (
-                                    <div className={`flex items-center gap-1.5 mt-1 px-1 ${mine ? "justify-end" : "justify-start"}`}>
+                                    <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
                                       {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />}
                                       {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />}
                                       <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
