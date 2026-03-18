@@ -224,7 +224,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
 }
 
 // ── Gap 3: Greeting picker with categories ────────────────────────
-function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade }) {
+function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false }) {
   const isPremium = Boolean(profile?.isPremium);
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
@@ -273,8 +273,11 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade }) {
       {/* Greeting options */}
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {activeGreetings.map((greeting) => (
-          <button key={greeting.id} onClick={() => onSelect(greeting)}
-            className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-medium text-slate-700 hover:border-teal-400 transition-colors">
+          <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
+            disabled={isSending}
+            className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+              isSending ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed" : "border-slate-200 bg-white text-slate-800 hover:border-teal-400 hover:bg-teal-50"
+            }`}>
             <span>{greeting.text}</span>
             <span className="ml-2 text-xs text-teal-600">
               +{computeSparkReward(greeting.sparkReward, streak)} sparks
@@ -366,6 +369,7 @@ export default function App() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
@@ -586,39 +590,41 @@ export default function App() {
   };
 
   const handleSendMessage = async (greeting) => {
-    if (!currentUser || !profile) return;
+    if (!currentUser || !profile || isSending) return;
+    setIsSending(true);
+    try {
+      await addDoc(publicMessagesRef, {
+        uid: currentUser.uid,
+        sender: profile.fullName,
+        text: greeting.text,
+        timestamp: nowMs(),
+        moodTag: profile?.moodTag ?? null,
+      });
 
-    // Gap 2: include moodTag in message
-    await addDoc(publicMessagesRef, {
-      uid: currentUser.uid,
-      sender: profile.fullName,
-      text: greeting.text,
-      timestamp: nowMs(),
-      moodTag: profile?.moodTag ?? null,
-    });
+      const reward = computeSparkReward(greeting.sparkReward, streak);
+      const refDoc = userProfileRef(currentUser.uid);
 
-    const reward = computeSparkReward(greeting.sparkReward, streak);
-    const refDoc = userProfileRef(currentUser.uid);
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(refDoc);
+        const profileData = snap.exists() ? snap.data() : {};
+        transaction.set(refDoc, {
+          sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
+          lastGreetingAt: nowMs(),
+          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+        }, { merge: true });
+      });
 
-    await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(refDoc);
-      const profileData = snap.exists() ? snap.data() : {};
-      transaction.set(refDoc, {
-        sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
-        lastGreetingAt: nowMs(),
-        ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
-      }, { merge: true });
-    });
+      await recordGreetingDay();
 
-    await recordGreetingDay();
-
-    if (greeting.isMystery) {
-      setMysteryReward(reward);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setShowGiftModal(true);
+      if (greeting.isMystery) {
+        setMysteryReward(reward);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setShowGiftModal(true);
+      }
+      setPickerOpen(false);
+    } finally {
+      setIsSending(false);
     }
-
-    setPickerOpen(false);
   };
 
   if (isAuthLoading || (isRealSignedInUser && isProfileLoading)) {
@@ -728,9 +734,9 @@ export default function App() {
                   <p className="text-[11px] text-slate-500">
                     {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks · Max level!`}
                   </p>
-                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
                     <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500 transition-all duration-700"
-                      style={{ width: `${progressPercent}%` }} />
+                      style={{ width: `${progressPercent}%`, boxShadow: progressPercent > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                   </div>
                 </div>
                 <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
@@ -740,10 +746,10 @@ export default function App() {
 
               <div className="mt-2 space-y-1.5">
                 <NotificationPermissionBanner />
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between">
                   <LiveGreeterCount db={db} currentUser={currentUser} />
                   {lastLiveAt && (
-                    <span className="text-slate-400">
+                    <span className="text-[11px] font-medium text-slate-500">
                       Updated {lastLiveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
@@ -765,7 +771,7 @@ export default function App() {
                 <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
               </div>
 
-              {/* Grouped messages */}
+              {/* Grouped messages with thread lines */}
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
@@ -775,39 +781,53 @@ export default function App() {
                 });
                 return grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
+                  const isMulti = group.items.length > 1;
                   return (
                     <div key={group.items[0].id} className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div className="max-w-[82%] space-y-1">
-                        <div className={`flex items-center gap-1.5 px-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
+                      <div className="max-w-[82%]">
+                        {/* Sender header */}
+                        <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
                           {!mine && <span>{group.sender}</span>}
                           {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
                           {mine && <span>{group.sender}</span>}
                         </div>
-                        {group.items.map((m, idx) => {
-                          const isLast = idx === group.items.length - 1;
-                          const isMystery = Boolean(m.isMystery);
-                          return (
-                            <div key={m.id}
-                              className={`rounded-2xl border px-3 py-2 text-sm font-medium ${
-                                mine
-                                  ? `bg-teal-600 text-white border-teal-600 ${isLast ? "rounded-br-none" : ""}`
-                                  : isMystery
-                                  ? `bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 ${isLast ? "rounded-bl-none" : ""}`
-                                  : `bg-white border-slate-200 text-slate-700 ${isLast ? "rounded-bl-none" : ""}`
-                              }`}
-                              style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
-                              {isMystery && !mine && <span className="mr-1.5">🎁</span>}
-                              {m.text}
-                              {isLast && !mine && (
-                                <>
-                                  <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />
-                                  <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />
-                                </>
-                              )}
-                              <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
-                            </div>
-                          );
-                        })}
+
+                        {/* Thread container — left border line for multi-message groups */}
+                        <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
+                          {isMulti && (
+                            <div className={`absolute top-2 bottom-2 w-0.5 rounded-full bg-slate-200 ${mine ? "right-0" : "left-0"}`} />
+                          )}
+                          <div className="space-y-1">
+                            {group.items.map((m, idx) => {
+                              const isLast = idx === group.items.length - 1;
+                              const isMystery = Boolean(m.isMystery);
+                              return (
+                                <div key={m.id}>
+                                  <div
+                                    className={`rounded-2xl border px-3 py-2.5 text-sm font-semibold ${
+                                      mine
+                                        ? `bg-teal-600 text-white border-teal-600 ${isLast ? "rounded-br-none" : ""}`
+                                        : isMystery
+                                        ? `bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 ${isLast ? "rounded-bl-none" : ""}`
+                                        : `bg-white border-slate-200 text-slate-800 ${isLast ? "rounded-bl-none" : ""}`
+                                    }`}
+                                    style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
+                                    {isMystery && !mine && <span className="mr-1.5">🎁</span>}
+                                    {m.text}
+                                  </div>
+                                  {/* Inline reaction bar on last message of group, others get nothing */}
+                                  {isLast && (
+                                    <div className={`flex items-center gap-1.5 mt-1 px-1 ${mine ? "justify-end" : "justify-start"}`}>
+                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />}
+                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />}
+                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
@@ -817,16 +837,23 @@ export default function App() {
             </main>
 
             {/* FAB-style footer */}
-            <footer className="border-t border-slate-100 bg-white px-4 py-3">
+            <footer className="border-t border-slate-100 bg-white px-4 py-2.5">
               {!pickerOpen ? (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2.5 text-sm text-slate-400 cursor-pointer"
+                <div className="flex items-center gap-2.5">
+                  <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
                     onClick={() => setPickerOpen(true)}>
                     Send a kind greeting…
                   </div>
-                  <button onClick={() => setPickerOpen(true)}
-                    className="h-11 w-11 flex-shrink-0 rounded-full bg-teal-500 shadow-lg shadow-teal-200 flex items-center justify-center hover:bg-teal-600 active:scale-95 transition-all">
-                    <Send size={16} className="text-white" />
+                  {/* FAB with sending state */}
+                  <button onClick={() => setPickerOpen(true)} disabled={isSending}
+                    className={`h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                      isSending
+                        ? "bg-teal-400 shadow-none scale-90 cursor-not-allowed"
+                        : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600 active:scale-90"
+                    }`}>
+                    {isSending
+                      ? <Loader2 size={15} className="text-white animate-spin" />
+                      : <Send size={15} className="text-white" />}
                   </button>
                 </div>
               ) : (
@@ -836,6 +863,7 @@ export default function App() {
                   onSelect={handleSendMessage}
                   onClose={() => setPickerOpen(false)}
                   onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
+                  isSending={isSending}
                 />
               )}
             </footer>
