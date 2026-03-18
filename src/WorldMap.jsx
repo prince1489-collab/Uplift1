@@ -92,6 +92,139 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   const d3Ref = useRef(null);
   const projRef = useRef(null);
 
+  // ── Zoom / pan state ─────────────────────────────────────────
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const MIN_SCALE = 1, MAX_SCALE = 8;
+  const dragRef = useRef(null);   // { startX, startY, startTx, startTy }
+  const lastPinchRef = useRef(null); // last pinch distance
+
+  const clampTransform = (x, y, scale, svgW, svgH) => {
+    // At scale=1 the map fills the container; clamp so user can't pan off-edge
+    const maxX = (scale - 1) * svgW / 2;
+    const maxY = (scale - 1) * svgH / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, x)),
+      y: Math.max(-maxY, Math.min(maxY, y)),
+      scale,
+    };
+  };
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setTransform(prev => {
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
+      // Zoom toward mouse position
+      const mouseX = e.clientX - rect.left - rect.width / 2;
+      const mouseY = e.clientY - rect.top - rect.height / 2;
+      const scaleChange = newScale / prev.scale;
+      const newX = mouseX - scaleChange * (mouseX - prev.x);
+      const newY = mouseY - scaleChange * (mouseY - prev.y);
+      return clampTransform(newX, newY, newScale, rect.width, rect.height);
+    });
+  }, []);
+
+  // Attach wheel listener (non-passive to allow preventDefault)
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [mapReady, handleWheel]);
+
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: transform.x, startTy: transform.y };
+  }, [transform]);
+
+  const handleMouseMoveMap = useCallback((e) => {
+    // Tooltip logic (existing)
+    if (!dragRef.current) {
+      if (!projRef.current || tab !== "world") return;
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const scaleX = W / rect.width;
+      const scaleY = H / rect.height;
+      // Adjust for current zoom transform
+      const relX = (e.clientX - rect.left - rect.width / 2 - transform.x) / transform.scale + rect.width / 2;
+      const relY = (e.clientY - rect.top - rect.height / 2 - transform.y) / transform.scale + rect.height / 2;
+      const mx = relX * scaleX;
+      const my = relY * scaleY;
+      let closest = null;
+      let minDist = 20 / transform.scale;
+      for (const { country, count, isMe } of worldDots) {
+        const coords = COUNTRY_COORDS[country];
+        if (!coords) continue;
+        const pt = projRef.current(coords);
+        if (!pt) continue;
+        const dist = Math.sqrt((pt[0] - mx) ** 2 + (pt[1] - my) ** 2);
+        if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x: pt[0], y: pt[1] }; }
+      }
+      setTooltip(closest);
+      return;
+    }
+    // Drag pan
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setTransform(prev => clampTransform(
+      dragRef.current.startTx + dx,
+      dragRef.current.startTy + dy,
+      prev.scale, rect.width, rect.height
+    ));
+  }, [worldDots, tab, mapReady, transform]);
+
+  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+
+  // Touch pinch-to-zoom + drag
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
+    } else if (e.touches.length === 1) {
+      dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: transform.x, startTy: transform.y };
+    }
+  }, [transform]);
+
+  const handleTouchMove = useCallback((e) => {
+    e.preventDefault();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    if (e.touches.length === 2 && lastPinchRef.current) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const zoomFactor = dist / lastPinchRef.current;
+      lastPinchRef.current = dist;
+      setTransform(prev => {
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
+        const scaleChange = newScale / prev.scale;
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width / 2;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top - rect.height / 2;
+        const newX = cx - scaleChange * (cx - prev.x);
+        const newY = cy - scaleChange * (cy - prev.y);
+        return clampTransform(newX, newY, newScale, rect.width, rect.height);
+      });
+    } else if (e.touches.length === 1 && dragRef.current) {
+      const dx = e.touches[0].clientX - dragRef.current.startX;
+      const dy = e.touches[0].clientY - dragRef.current.startY;
+      setTransform(prev => clampTransform(
+        dragRef.current.startTx + dx,
+        dragRef.current.startTy + dy,
+        prev.scale, rect.width, rect.height
+      ));
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    dragRef.current = null;
+    lastPinchRef.current = null;
+  }, []);
+
   const myCountry = profile?.country ?? null;
   const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
 
@@ -255,29 +388,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return "M" + validPoints.map((p) => p.map((v) => v.toFixed(1)).join(",")).join("L");
   }, [mapReady]);
 
-  // Handle dot hover
-  const handleSvgMouseMove = useCallback((e) => {
-    if (!projRef.current || tab !== "world") return;
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    // Scale mouse position to SVG coordinates
-    const scaleX = W / rect.width;
-    const scaleY = H / rect.height;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
-
-    let closest = null;
-    let minDist = 20; // threshold in SVG units
-    for (const { country, count, isMe } of worldDots) {
-      const coords = COUNTRY_COORDS[country];
-      if (!coords) continue;
-      const pt = projRef.current(coords);
-      if (!pt) continue;
-      const dist = Math.sqrt((pt[0] - mx) ** 2 + (pt[1] - my) ** 2);
-      if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x: pt[0], y: pt[1] }; }
-    }
-    setTooltip(closest);
-  }, [worldDots, tab, mapReady]);
+  // (mouse/touch handlers now defined above with zoom state)
 
   return (
     <div style={{
@@ -304,11 +415,19 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             viewBox={`0 0 ${W} ${H}`}
             width="100%" height="100%"
             preserveAspectRatio="xMidYMid meet"
-            style={{ display: "block", cursor: "crosshair" }}
-            onMouseMove={handleSvgMouseMove}
-            onMouseLeave={() => setTooltip(null)}
+            style={{ display: "block", cursor: dragRef.current ? "grabbing" : transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none" }}
+            onMouseMove={handleMouseMoveMap}
+            onMouseLeave={() => { setTooltip(null); dragRef.current = null; }}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
             <rect x="0" y="0" width={W} height={H} fill="#1a3a4a" />
+            {/* Zoom/pan: scale around centre, then apply pan offset */}
+            <g transform={`translate(${W/2 + transform.x},${H/2 + transform.y}) scale(${transform.scale}) translate(${-W/2},${-H/2})`}>
+            <rect x={-W} y={-H} width={W*3} height={H*3} fill="#1a3a4a" />
 
             {d3Ref.current && projRef.current && (() => {
               const graticule = d3Ref.current.geoGraticule()();
@@ -398,12 +517,17 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
               );
             })()}
 
-            {/* Tooltip */}
+            </g>{/* end zoom group */}
+
+            {/* Tooltip — rendered in screen SVG space accounting for zoom transform */}
             {tooltip && (() => {
+              // Map dot SVG coords → zoomed screen SVG coords
+              const zx = (tooltip.x - W/2) * transform.scale + W/2 + transform.x;
+              const zy = (tooltip.y - H/2) * transform.scale + H/2 + transform.y;
               const label = `${tooltip.country}  ·  ${tooltip.count} active`;
               const tw = Math.min(label.length * 6.5 + 20, 220);
-              const tx = Math.min(Math.max(tooltip.x - tw / 2, 4), W - tw - 4);
-              const ty = tooltip.y < 60 ? tooltip.y + 18 : tooltip.y - 32;
+              const tx = Math.min(Math.max(zx - tw / 2, 4), W - tw - 4);
+              const ty = zy < 60 ? zy + 18 : zy - 32;
               return (
                 <g>
                   <rect x={tx} y={ty} width={tw} height={24} rx="5" fill="rgba(0,0,0,0.75)" />
@@ -431,6 +555,45 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           }}>
             <X size={14} color="rgba(255,255,255,0.8)" />
           </button>
+        </div>
+
+        {/* ── ZOOM CONTROLS (right side overlay) ── */}
+        <div style={{
+          position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)",
+          display: "flex", flexDirection: "column", gap: "6px",
+          zIndex: 10,
+        }}>
+          <button onClick={() => setTransform(prev => {
+            const rect = svgRef.current?.getBoundingClientRect();
+            const newScale = Math.min(MAX_SCALE, prev.scale * 1.4);
+            return clampTransform(prev.x, prev.y, newScale, rect?.width || W, rect?.height || H);
+          })} style={{
+            width: "32px", height: "32px", borderRadius: "8px",
+            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
+            color: "white", fontSize: "18px", cursor: "pointer", display: "flex",
+            alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
+            fontWeight: 300, lineHeight: 1,
+          }}>+</button>
+          <button onClick={() => setTransform(prev => {
+            const rect = svgRef.current?.getBoundingClientRect();
+            const newScale = Math.max(MIN_SCALE, prev.scale / 1.4);
+            return clampTransform(prev.x, prev.y, newScale, rect?.width || W, rect?.height || H);
+          })} style={{
+            width: "32px", height: "32px", borderRadius: "8px",
+            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
+            color: "white", fontSize: "20px", cursor: "pointer", display: "flex",
+            alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
+            fontWeight: 300, lineHeight: 1,
+          }}>−</button>
+          {transform.scale > 1.05 && (
+            <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} style={{
+              width: "32px", height: "32px", borderRadius: "8px",
+              background: "rgba(77,255,176,0.15)", border: "1px solid rgba(77,255,176,0.4)",
+              color: "#4DFFB0", fontSize: "10px", cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
+              fontWeight: 600, letterSpacing: "-0.02em",
+            }}>↺</button>
+          )}
         </div>
 
         {/* ── FLOATING TABS (bottom overlay on map) ── */}
