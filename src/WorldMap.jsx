@@ -132,7 +132,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
       // Set up Natural Earth projection
       const projection = d3.geoNaturalEarth1()
-        .scale(163)
+        .scale(160)
         .translate([W / 2, H / 2]);
 
       projRef.current = projection;
@@ -260,11 +260,11 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     if (!projRef.current || tab !== "world") return;
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    // Scale mouse position to SVG coordinates, accounting for cropped viewBox (y offset = 57)
+    // Scale mouse position to SVG coordinates
     const scaleX = W / rect.width;
-    const scaleY = 343 / rect.height;
+    const scaleY = H / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY + 57;
+    const my = (e.clientY - rect.top) * scaleY;
 
     let closest = null;
     let minDist = 20; // threshold in SVG units
@@ -287,8 +287,8 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       overflow: "hidden",
       position: "relative",
     }}>
-      {/* ── FULL-WIDTH MAP — aspect-ratio locked to eliminate black bars ── */}
-      <div style={{ position: "relative", width: "100%", aspectRatio: "960 / 343", flexShrink: 0, overflow: "hidden" }}>
+      {/* ── FULL-WIDTH MAP (fills most of the screen) ── */}
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0 }}>
 
         {/* Loading state */}
         {!mapReady && (
@@ -301,7 +301,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         {mapReady && (
           <svg
             ref={svgRef}
-            viewBox="0 57 960 343"
+            viewBox={`0 0 ${W} ${H}`}
             width="100%" height="100%"
             preserveAspectRatio="xMidYMid slice"
             style={{ display: "block", cursor: "crosshair" }}
