@@ -98,10 +98,21 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   const dragRef = useRef(null);   // { startX, startY, startTx, startTy }
   const lastPinchRef = useRef(null); // last pinch distance
 
-  const clampTransform = (x, y, scale, svgW, svgH) => {
-    // At scale=1 the map fills the container; clamp so user can't pan off-edge
-    const maxX = (scale - 1) * svgW / 2;
-    const maxY = (scale - 1) * svgH / 2;
+  // Helper: get screen->SVG scale factor for slice mode
+  const getScreenToSVG = useCallback(() => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return 1;
+    // With xMidYMid slice: SVG is scaled so BOTH dimensions fill the container
+    // scale = max(cW/W, cH/H), so 1 screen pixel = 1/svgScale SVG units
+    const svgScale = Math.max(rect.width / W, rect.height / H);
+    return 1 / svgScale;  // screen pixels → SVG units
+  }, []);
+
+  const clampTransform = (x, y, scale) => {
+    // x,y are in SVG coordinate units
+    // At scale=1 map fills container; allow panning up to half the "extra" revealed
+    const maxX = (scale - 1) * W / 2;
+    const maxY = (scale - 1) * H / 2;
     return {
       x: Math.max(-maxX, Math.min(maxX, x)),
       y: Math.max(-maxY, Math.min(maxY, y)),
@@ -113,18 +124,19 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     e.preventDefault();
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const s2v = getScreenToSVG();
     const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     setTransform(prev => {
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
-      // Zoom toward mouse position
-      const mouseX = e.clientX - rect.left - rect.width / 2;
-      const mouseY = e.clientY - rect.top - rect.height / 2;
+      // Zoom toward mouse position (converted to SVG units)
+      const mouseX = (e.clientX - rect.left - rect.width / 2) * s2v;
+      const mouseY = (e.clientY - rect.top - rect.height / 2) * s2v;
       const scaleChange = newScale / prev.scale;
       const newX = mouseX - scaleChange * (mouseX - prev.x);
       const newY = mouseY - scaleChange * (mouseY - prev.y);
-      return clampTransform(newX, newY, newScale, rect.width, rect.height);
+      return clampTransform(newX, newY, newScale);
     });
-  }, []);
+  }, [getScreenToSVG]);
 
   // Attach wheel listener (non-passive to allow preventDefault)
   useEffect(() => {
@@ -176,17 +188,16 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       setTooltip(closest);
       return;
     }
-    // Drag pan
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    // Drag pan — convert screen pixel delta to SVG coordinate delta
+    const s2v = getScreenToSVG();
+    const dx = (e.clientX - dragRef.current.startX) * s2v;
+    const dy = (e.clientY - dragRef.current.startY) * s2v;
     setTransform(prev => clampTransform(
       dragRef.current.startTx + dx,
       dragRef.current.startTy + dy,
-      prev.scale, rect.width, rect.height
+      prev.scale
     ));
-  }, [worldDots, tab, mapReady, transform]);
+  }, [worldDots, tab, mapReady, transform, getScreenToSVG]);
 
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
 
@@ -214,19 +225,21 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       setTransform(prev => {
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * zoomFactor));
         const scaleChange = newScale / prev.scale;
-        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width / 2;
-        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top - rect.height / 2;
+        const s2v = getScreenToSVG();
+        const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width / 2) * s2v;
+        const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top - rect.height / 2) * s2v;
         const newX = cx - scaleChange * (cx - prev.x);
         const newY = cy - scaleChange * (cy - prev.y);
-        return clampTransform(newX, newY, newScale, rect.width, rect.height);
+        return clampTransform(newX, newY, newScale);
       });
     } else if (e.touches.length === 1 && dragRef.current) {
       const dx = e.touches[0].clientX - dragRef.current.startX;
       const dy = e.touches[0].clientY - dragRef.current.startY;
+      const s2v = getScreenToSVG();
       setTransform(prev => clampTransform(
-        dragRef.current.startTx + dx,
-        dragRef.current.startTy + dy,
-        prev.scale, rect.width, rect.height
+        dragRef.current.startTx + dx * s2v,
+        dragRef.current.startTy + dy * s2v,
+        prev.scale
       ));
     }
   }, []);
@@ -401,7 +414,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       position: "relative",
     }}>
       {/* ── FULL-WIDTH MAP (fills most of the screen) ── */}
-      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0 }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, background: "#1a3a4a" }}>
 
         {/* Loading state */}
         {!mapReady && (
@@ -416,8 +429,8 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             width="100%" height="100%"
-            preserveAspectRatio="xMidYMid meet"
-            style={{ display: "block", cursor: dragRef.current ? "grabbing" : transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none" }}
+            preserveAspectRatio="xMidYMid slice"
+            style={{ display: "block", cursor: dragRef.current ? "grabbing" : transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none", width: "100%", height: "100%", position: "absolute", inset: 0 }}
             onMouseMove={handleMouseMoveMap}
             onMouseLeave={() => { setTooltip(null); dragRef.current = null; }}
             onMouseDown={handleMouseDown}
@@ -568,7 +581,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           <button onClick={() => setTransform(prev => {
             const rect = svgRef.current?.getBoundingClientRect();
             const newScale = Math.min(MAX_SCALE, prev.scale * 1.4);
-            return clampTransform(prev.x, prev.y, newScale, rect?.width || W, rect?.height || H);
+            return clampTransform(prev.x, prev.y, newScale);
           })} style={{
             width: "32px", height: "32px", borderRadius: "8px",
             background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
@@ -579,7 +592,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           <button onClick={() => setTransform(prev => {
             const rect = svgRef.current?.getBoundingClientRect();
             const newScale = Math.max(MIN_SCALE, prev.scale / 1.4);
-            return clampTransform(prev.x, prev.y, newScale, rect?.width || W, rect?.height || H);
+            return clampTransform(prev.x, prev.y, newScale);
           })} style={{
             width: "32px", height: "32px", borderRadius: "8px",
             background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
