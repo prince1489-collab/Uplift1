@@ -96,7 +96,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   // Store transform in BOTH a ref (always current, no stale closures) and
   // state (triggers re-render). All event handlers read from the ref.
   const MIN_SCALE = 0.75, MAX_SCALE = 8;
-  const INITIAL_TRANSFORM = { x: 0, y: 0, scale: 0.60 };
+  const INITIAL_TRANSFORM = { x: 0, y: 0, scale: 0.72 };
   const transformRef = useRef(INITIAL_TRANSFORM);
   const [transform, setTransformState] = useState(INITIAL_TRANSFORM);
   const dragRef = useRef(null);
@@ -117,12 +117,15 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
   // Clamp x,y (SVG units) so map can't pan off screen
   const clamp = (x, y, scale) => {
-    const maxX = (scale - 1) * W / 2;
-    const maxY = (scale - 1) * H / 2;
+    const safeScale = isNaN(scale) ? 1 : scale;
+    // When scale >= 1: allow panning up to the extra revealed area
+    // When scale < 1: map is smaller than container, lock to centre (x=0, y=0)
+    const maxX = Math.max(0, (safeScale - 1) * W / 2);
+    const maxY = Math.max(0, (safeScale - 1) * H / 2);
     return {
       x: Math.max(-maxX, Math.min(maxX, isNaN(x) ? 0 : x)),
       y: Math.max(-maxY, Math.min(maxY, isNaN(y) ? 0 : y)),
-      scale: isNaN(scale) ? 1 : scale,
+      scale: safeScale,
     };
   };
 
