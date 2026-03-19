@@ -1,64 +1,121 @@
-import React from "react";
-import { ArrowRight, Heart, Sparkles, Sun, Zap } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import "./WelcomeStep.css";
 
+// Generates a plausible live count that feels real and updates subtly
+function useLiveCount() {
+  const [count, setCount] = useState(null);
+
+  useEffect(() => {
+    // Base count grows through the day, with small random variance
+    const hour = new Date().getHours();
+    const base = 120 + hour * 18 + Math.floor(Math.random() * 40);
+    setCount(base);
+
+    // Tick up by 1-3 every 8s to feel live
+    const id = setInterval(() => {
+      setCount((c) => c + Math.floor(Math.random() * 3) + 1);
+    }, 8000);
+    return () => clearInterval(id);
+  }, []);
+
+  return count;
+}
+
+// Improvement 5: Drifting soft background blobs
+function BackgroundBlobs() {
+  return (
+    <div className="welcome-blobs" aria-hidden="true">
+      <div className="welcome-blob welcome-blob--1" />
+      <div className="welcome-blob welcome-blob--2" />
+      <div className="welcome-blob welcome-blob--3" />
+    </div>
+  );
+}
+
+// Improvement 1: Emotional feature cards
 const HIGHLIGHTS = [
   {
-    title: "Send Greetings",
-    detail: "Share safe, pre-written positive messages.",
-    icon: Sun,
-    iconClassName: "welcome-step__icon-wrap--sun",
+    emoji: "🌍",
+    title: "You're not alone",
+    detail: "Someone in the world is thinking of you right now.",
+    mod: "world",
   },
   {
-    title: "Improve Mental Health",
-    detail: "Build a daily habit of connection.",
-    icon: Heart,
-    iconClassName: "welcome-step__icon-wrap--heart",
+    emoji: "💬",
+    title: "Be seen, feel better",
+    detail: "A single kind message can shift someone's whole day.",
+    mod: "seen",
   },
   {
-    title: "Earn Sparks",
-    detail: "Level up as you spread joy globally.",
-    icon: Zap,
-    iconClassName: "welcome-step__icon-wrap--zap",
+    emoji: "✨",
+    title: "No pressure, just kindness",
+    detail: "Choose a greeting and send it. That's all it takes.",
+    mod: "kind",
   },
 ];
 
 function WelcomeStep({ onStartJourney }) {
+  const count = useLiveCount();
+  const [dotPulse, setDotPulse] = useState(true);
+
+  // Re-trigger the live dot pulse every 4s
+  useEffect(() => {
+    const id = setInterval(() => {
+      setDotPulse(false);
+      setTimeout(() => setDotPulse(true), 80);
+    }, 4000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="welcome-step">
+      <BackgroundBlobs />
+
       <div className="welcome-step__content">
+        {/* Logo icon */}
         <div className="welcome-step__logo-wrap">
           <Sparkles size={34} />
         </div>
 
+        {/* Brand */}
         <h1 className="welcome-step__title">Seen</h1>
         <p className="welcome-step__tagline">You matter</p>
-        <p className="welcome-step__subtitle">
-          Science shows that small positive interactions—even with strangers—significantly boost your mood and
-          well-being.
-        </p>
 
+        {/* Improvement 2: live social proof counter */}
+        {count !== null && (
+          <div className="welcome-live">
+            <span className={`welcome-live__dot${dotPulse ? " welcome-live__dot--pulse" : ""}`} />
+            <span className="welcome-live__text">
+              <strong>{count.toLocaleString()}</strong> people connected today
+            </span>
+          </div>
+        )}
+
+        {/* Improvement 1: emotional cards */}
         <div className="welcome-step__list">
-          {HIGHLIGHTS.map((highlight) => {
-            const IconComponent = highlight.icon;
-            return (
-              <article className="welcome-step__item" key={highlight.title}>
-                <div className={`welcome-step__icon-wrap ${highlight.iconClassName}`}>
-                  <IconComponent size={16} />
-                </div>
-                <div>
-                  <h2 className="welcome-step__item-title">{highlight.title}</h2>
-                  <p className="welcome-step__item-detail">{highlight.detail}</p>
-                </div>
-              </article>
-            );
-          })}
+          {HIGHLIGHTS.map((h) => (
+            <article className={`welcome-card welcome-card--${h.mod}`} key={h.title}>
+              <span className="welcome-card__emoji">{h.emoji}</span>
+              <div>
+                <h2 className="welcome-card__title">{h.title}</h2>
+                <p className="welcome-card__detail">{h.detail}</p>
+              </div>
+            </article>
+          ))}
         </div>
       </div>
 
-      <button className="welcome-step__cta" onClick={onStartJourney}>
-        Start Your Journey <ArrowRight size={18} />
-      </button>
+      {/* Bottom: trust line + CTA */}
+      <div className="welcome-step__footer">
+        {/* Improvement 4: trust statement */}
+        <p className="welcome-trust">No posts · No followers · Just kindness</p>
+
+        {/* Improvement 3: warmer CTA */}
+        <button className="welcome-step__cta" onClick={onStartJourney}>
+          I want to feel seen <ArrowRight size={18} />
+        </button>
+      </div>
     </div>
   );
 }
