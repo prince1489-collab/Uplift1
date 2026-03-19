@@ -346,7 +346,8 @@ export function BuddyPanel({ db, currentUser, profile }) {
   );
 }
 
-export function SparkGiftButton({ db, senderUid, currentUser, profile }) {
+// ── onGift callback added ────────────────────────────────────────
+export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift }) {
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const canGift = !sent && !sending && currentUser && senderUid && senderUid !== currentUser.uid && Number(profile?.sparkBalance ?? 0) >= GIFT_AMOUNT;
@@ -366,6 +367,7 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile }) {
         tx.set(rRef, { sparkBalance: rB + GIFT_AMOUNT }, { merge: true });
       });
       setSent(true);
+      if (onGift) onGift(); // 💛 trigger coin float animation
     } catch { }
     finally { setSending(false); }
   };
@@ -416,7 +418,8 @@ export function LiveGreeterCount({ db, currentUser }) {
 
 const REACTION_EMOJIS = ["❤️", "🌟", "🙏", "😊", "✨"];
 
-export function MessageReactions({ db, messageId, currentUser }) {
+// ── onHeart callback added ───────────────────────────────────────
+export function MessageReactions({ db, messageId, currentUser, onHeart }) {
   const [reactions, setReactions] = useState({});
   const [adding, setAdding] = useState(false);
 
@@ -441,6 +444,8 @@ export function MessageReactions({ db, messageId, currentUser }) {
         ? { count: Math.max(0, (data.count ?? 0) - 1), uids: uids.filter((u) => u !== currentUser.uid) }
         : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
       );
+      // ❤️ trigger heart balloon animation on new heart react
+      if (emoji === "❤️" && !already && onHeart) onHeart();
     });
     setAdding(false);
   };
@@ -477,10 +482,11 @@ export function MessageReactions({ db, messageId, currentUser }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// GAP 1 FIX — WAVE BACK (the "seen" problem)
+// GAP 1 FIX — WAVE BACK
 // ─────────────────────────────────────────────────────────────────
 
-export function WaveBackButton({ db, messageId, senderUid, currentUser }) {
+// ── onWave callback added ────────────────────────────────────────
+export function WaveBackButton({ db, messageId, senderUid, currentUser, onWave }) {
   const [waved, setWaved] = useState(false);
   const [waving, setWaving] = useState(false);
   const canWave = !waved && !waving && currentUser && senderUid && senderUid !== currentUser.uid;
@@ -497,6 +503,7 @@ export function WaveBackButton({ db, messageId, senderUid, currentUser }) {
         read: false,
       });
       setWaved(true);
+      if (onWave) onWave(); // 🌊 trigger ripple animation
     } catch { }
     finally { setWaving(false); }
   };
@@ -567,7 +574,7 @@ export function WaveNotifications({ db, currentUser }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// GAP 2 FIX — MOOD TAG (identity layer)
+// GAP 2 FIX — MOOD TAG
 // ─────────────────────────────────────────────────────────────────
 
 export const MOOD_OPTIONS = [
@@ -639,7 +646,7 @@ export function MoodSelector({ db, uid, currentMood }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// GAP 4 FIX — PREMIUM UPGRADE PROMPT (monetization)
+// GAP 4 FIX — PREMIUM UPGRADE PROMPT
 // ─────────────────────────────────────────────────────────────────
 
 export function PremiumUpgradePrompt({ onClose }) {
@@ -651,7 +658,7 @@ export function PremiumUpgradePrompt({ onClose }) {
             <div className="rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 p-2">
               <Sparkles size={16} className="text-white" />
             </div>
-            <p className="font-bold text-slate-800">Uplift Premium</p>
+            <p className="font-bold text-slate-800">Seen Premium</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
         </div>
@@ -678,7 +685,7 @@ export function PremiumUpgradePrompt({ onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// PROFILE CARD (shareable)
+// PROFILE CARD
 // ─────────────────────────────────────────────────────────────────
 
 const LEVEL_THRESHOLDS = [
@@ -713,10 +720,10 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
       const canvas = await window.html2canvas(cardRef.current, { scale: 2, useCORS: true });
       canvas.toBlob(async (blob) => {
         if (navigator.share && blob) {
-          await navigator.share({ files: [new File([blob], "uplift-card.png", { type: "image/png" })], title: "My Uplift Profile" });
+          await navigator.share({ files: [new File([blob], "seen-card.png", { type: "image/png" })], title: "My Seen Profile" });
         } else {
           const url = URL.createObjectURL(blob);
-          const a = document.createElement("a"); a.href = url; a.download = "uplift-card.png"; a.click();
+          const a = document.createElement("a"); a.href = url; a.download = "seen-card.png"; a.click();
           URL.revokeObjectURL(url);
         }
       }, "image/png");
@@ -757,7 +764,7 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
           </div>
           <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
             <Heart size={12} className="text-pink-200" />
-            <p className="text-xs text-white/90">Spreading positivity with Uplift 🌟</p>
+            <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
           </div>
         </div>
         <div className="mt-3 flex gap-2">
@@ -792,7 +799,7 @@ export function scheduleGreetingWindowNotification(profile) {
   const msUntil = target.getTime() - now.getTime();
   if (msUntil > 23 * 60 * 60 * 1000) return;
   const id = setTimeout(() => {
-    new Notification("Uplift 🌟", { body: "Your daily greeting window is open — spread some kindness!", icon: "/icons/icon-192.png" });
+    new Notification("Seen 🌟", { body: "Your daily greeting window is open — spread some kindness!", icon: "/icons/icon-192.png" });
   }, msUntil);
   return () => clearTimeout(id);
 }
