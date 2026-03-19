@@ -29,9 +29,17 @@
 .welcome-step__title {
   margin: 18px 0 0;
   color: #1e293b;
-  font-size: 50px;
+  font-size: 64px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+}
+
+.welcome-step__tagline {
+  margin: 4px 0 0;
+  color: #14b8a6;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .welcome-step__subtitle {
@@ -71,33 +79,12 @@
   flex-shrink: 0;
 }
 
-.welcome-step__icon-wrap--sun {
-  color: #ea580c;
-  background-color: #ffedd5;
-}
+.welcome-step__icon-wrap--sun   { color: #ea580c; background-color: #ffedd5; }
+.welcome-step__icon-wrap--heart { color: #ec4899; background-color: #fce7f3; }
+.welcome-step__icon-wrap--zap   { color: #d97706; background-color: #fef3c7; }
 
-.welcome-step__icon-wrap--heart {
-  color: #ec4899;
-  background-color: #fce7f3;
-}
-
-.welcome-step__icon-wrap--zap {
-  color: #d97706;
-  background-color: #fef3c7;
-}
-
-.welcome-step__item-title {
-  margin: 0;
-  color: #24324a;
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.welcome-step__item-detail {
-  margin: 2px 0 0;
-  color: #617085;
-  font-size: 14px;
-}
+.welcome-step__item-title  { margin: 0; color: #24324a; font-size: 17px; font-weight: 700; }
+.welcome-step__item-detail { margin: 2px 0 0; color: #617085; font-size: 14px; }
 
 .welcome-step__cta {
   display: flex;
@@ -115,6 +102,4 @@
   cursor: pointer;
 }
 
-.welcome-step__cta:hover {
-  background-color: #152138;
-}
+.welcome-step__cta:hover { background-color: #152138; }
