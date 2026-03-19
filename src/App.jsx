@@ -353,7 +353,6 @@ export default function App() {
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [isSending, setIsSending] = useState(false);        // for SendingIndicator
   const [newMessageIds, setNewMessageIds] = useState(new Set()); // for slide-in
   const [seenCountries, setSeenCountries] = useState(new Set()); // for flag reveal
   const prevMessagesRef = useRef([]);
@@ -857,6 +856,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                    </MessageSlideIn>
                   );
                 });
               })()}
