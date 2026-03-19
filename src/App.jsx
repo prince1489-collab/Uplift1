@@ -4,7 +4,9 @@ import {
   Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
-import { AnimationLayer, useAnimations } from "./MicroAnimations";
+import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
+  MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
+  CountryReveal, LiveCountTick, StreakBadgeWithPulse } from "./MicroAnimations";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
@@ -291,45 +293,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-// ── Suggestion 1: Meatball menu for low-freq header actions ─────
-function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors">
-        <span className="text-[18px] leading-none tracking-tighter font-bold">···</span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-2 z-30 w-44 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-          <button type="button" onClick={() => { onWorld(); setOpen(false); }}
-            className={`flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors ${globePulse ? "seen-globe-pulse" : ""}`}>
-            <Globe size={14} className={globePulse ? "text-emerald-500" : "text-slate-400"} /> World Map
-            {globePulse && <span className="ml-auto text-[10px] font-semibold text-emerald-600 animate-pulse">New country! 🌍</span>}
-          </button>
-          <button type="button" onClick={() => { onShare(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <Share2 size={14} className="text-slate-400" /> Share Profile
-          </button>
-          <div className="h-px bg-slate-100 mx-3" />
-          <button type="button" onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
-            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-50">
-            <LogOut size={14} /> {isSigningOut ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Suggestion 1: Spark progress ring ───────────────────────────
 function SparkRing({ value, max, percent }) {
   const size = 44, stroke = 3.5, r = (size - stroke) / 2;
@@ -388,8 +351,12 @@ export default function App() {
 
   // Retention feature state
   const [showProfileCard, setShowProfileCard] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);   // Gap 4
-  const [showMap, setShowMap] = useState(false);           // World map
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [isSending, setIsSending] = useState(false);        // for SendingIndicator
+  const [newMessageIds, setNewMessageIds] = useState(new Set()); // for slide-in
+  const [seenCountries, setSeenCountries] = useState(new Set()); // for flag reveal
+  const prevMessagesRef = useRef([]);
 
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
@@ -402,6 +369,7 @@ export default function App() {
 
   // Micro-animations controller
   const anim = useAnimations();
+  // Note: displayedSparks and animatedProgress are declared after sparkBalance/progressPercent below
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -531,7 +499,30 @@ export default function App() {
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMessages(live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }]);
+        const finalMessages = live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }];
+
+        // Track which messages are brand new (animation #8 slide-in)
+        const prevIds = new Set(prevMessagesRef.current.map((m) => m.id));
+        const brandNewIds = new Set(finalMessages.filter((m) => !prevIds.has(m.id)).map((m) => m.id));
+        if (brandNewIds.size > 0) {
+          setNewMessageIds((prev) => new Set([...prev, ...brandNewIds]));
+          // Clear new status after animation completes
+          setTimeout(() => setNewMessageIds((prev) => {
+            const next = new Set(prev);
+            brandNewIds.forEach((id) => next.delete(id));
+            return next;
+          }), 800);
+        }
+
+        // Track new countries for flag reveal (animation #7)
+        finalMessages.forEach((m) => {
+          if (m.country && !seenCountries.has(m.id)) {
+            setSeenCountries((prev) => new Set([...prev, m.id]));
+          }
+        });
+
+        prevMessagesRef.current = finalMessages;
+        setMessages(finalMessages);
         setIsChatLive(true); setChatError(""); setLastLiveAt(new Date());
       },
       (error) => {
@@ -553,6 +544,11 @@ export default function App() {
     const span = nextLevel.min - currentLevel.min;
     return span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((sparkBalance - currentLevel.min) / span) * 100)));
   }, [currentLevel.min, nextLevel, sparkBalance]);
+
+  // Animation #10 — animated spark counter
+  const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
+  // Animation #12 — progress bar fills on load
+  const animatedProgress = useProgressBarFill(progressPercent);
 
   const todayMessageCount = useMemo(() =>
     messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
@@ -667,17 +663,19 @@ export default function App() {
       {/* Micro-animation layer — renders floating particles over everything */}
       <AnimationLayer controller={anim} />
 
-      {/* World map — fixed to viewport so it always covers everything */}
+      {/* World map — fixed to viewport with entrance/exit animation #16 */}
       {showMap && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
-          <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
-            <WorldMap
-              db={db}
-              currentUser={currentUser}
-              profile={profile}
-              onClose={() => setShowMap(false)}
-            />
-          </div>
+          <MapTransitionWrapper visible={showMap}>
+            <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
+              <WorldMap
+                db={db}
+                currentUser={currentUser}
+                profile={profile}
+                onClose={() => setShowMap(false)}
+              />
+            </div>
+          </MapTransitionWrapper>
         </div>
       )}
 
@@ -732,7 +730,7 @@ export default function App() {
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <StreakBadge streak={streak} />
+                  <StreakBadgeWithPulse streak={streak} />
                   <MeatballMenu
                     onWorld={() => setShowMap(true)}
                     onShare={() => setShowProfileCard(true)}
@@ -745,15 +743,16 @@ export default function App() {
 
               {/* Row 2: spark ring + level + gradient bar + freeze */}
               <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                <SparkRing value={sparkBalance} max={nextLevel?.min ?? sparkBalance} percent={progressPercent} />
+                <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {nextLevel ? `${sparkBalance} / ${nextLevel.min} Sparks` : `${sparkBalance} Sparks · Max level!`}
+                  <p className="text-[11px] text-slate-500"
+                    style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
+                    {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
                   </p>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500 transition-all duration-700"
-                      style={{ width: `${progressPercent}%`, boxShadow: progressPercent > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
+                    <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
+                      style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                   </div>
                 </div>
                 <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
@@ -799,12 +798,18 @@ export default function App() {
                 return grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
                   const isMulti = group.items.length > 1;
+                  const firstId = group.items[0].id;
+                  const isNewGroup = newMessageIds.has(firstId);
                   return (
-                    <div key={group.items[0].id} className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
+                    <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
                       <div className="max-w-[82%]">
-                        {/* Sender header */}
+                        {/* Sender header with country flag reveal (animation #7) */}
                         <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
                           {!mine && <span>{group.sender}</span>}
+                          {!mine && group.items[0].country && (
+                            <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
+                          )}
                           {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
                           {mine && <span>{group.sender}</span>}
                         </div>
@@ -840,7 +845,7 @@ export default function App() {
                                   {/* Reaction bar only on last message */}
                                   {isLast && (
                                     <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => anim.triggerWaveRipple(15, 70)} />}
+                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { anim.triggerWaveRipple(15, 70); anim.triggerWaveTrail(15, 70); }} />}
                                       {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={() => anim.triggerCoinFloat(20, 65)} />}
                                       <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onHeart={() => anim.triggerHeartBalloon()} />
                                     </div>
@@ -855,6 +860,8 @@ export default function App() {
                   );
                 });
               })()}
+              {/* Animation #9 — typing indicator while send is in flight */}
+              <SendingIndicator visible={isSending} />
               <div ref={endRef} />
             </main>
 
@@ -879,14 +886,16 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                <GreetingPicker
-                  profile={profile}
-                  streak={streak}
-                  onSelect={handleSendMessage}
-                  onClose={() => setPickerOpen(false)}
-                  onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
-                  isSending={isSending}
-                />
+                <GreetingSheetWrapper visible={pickerOpen}>
+                  <GreetingPicker
+                    profile={profile}
+                    streak={streak}
+                    onSelect={handleSendMessage}
+                    onClose={() => setPickerOpen(false)}
+                    onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
+                    isSending={isSending}
+                  />
+                </GreetingSheetWrapper>
               )}
             </footer>
           </>
