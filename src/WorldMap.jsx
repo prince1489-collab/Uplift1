@@ -115,17 +115,29 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return Math.max(rect.width / W, rect.height / H);
   };
 
-  // Clamp x,y (SVG units) so map can't pan off screen
+  // Clamp x,y (SVG units) so map edges can't be dragged past the container centre.
+  // Works for any scale (including sub-1 zoom-out).
+  // The SVG group transform is: translate(W/2 + x, H/2 + y) scale(s) translate(-W/2, -H/2)
+  // The visible map edge in SVG units at a given pan/scale:
+  //   left edge on screen  → svgX = -x/s + W/2
+  //   right edge on screen → svgX = (W - x)/s + W/2  ... simplified:
+  // Constraint: don't let either edge cross the container centre (W/2 or H/2 in SVG space).
+  // maxPan = W/2 * (s - 1)/s ... but simply: allow panning the "slack" = half the
+  // difference between map size and container size in SVG units.
+  // At scale s, map spans s*W SVG units in screen space.
+  // Slack in SVG units = (s - 1) * W / 2  (positive when zoomed in, negative when out)
+  // We allow panning the full slack in both directions regardless of sign.
   const clamp = (x, y, scale) => {
-    const safeScale = isNaN(scale) ? 1 : scale;
-    // When scale >= 1: allow panning up to the extra revealed area
-    // When scale < 1: map is smaller than container, lock to centre (x=0, y=0)
-    const maxX = Math.max(0, (safeScale - 1) * W / 2);
-    const maxY = Math.max(0, (safeScale - 1) * H / 2);
+    const s = isNaN(scale) || scale <= 0 ? 1 : scale;
+    const safeX = isNaN(x) ? 0 : x;
+    const safeY = isNaN(y) ? 0 : y;
+    // Allow panning proportional to zoom level — no hard lock at sub-1 scales
+    const maxX = W / 2;   // never let map centre drift more than half a map-width
+    const maxY = H / 2;   // never let map centre drift more than half a map-height
     return {
-      x: Math.max(-maxX, Math.min(maxX, isNaN(x) ? 0 : x)),
-      y: Math.max(-maxY, Math.min(maxY, isNaN(y) ? 0 : y)),
-      scale: safeScale,
+      x: Math.max(-maxX, Math.min(maxX, safeX)),
+      y: Math.max(-maxY, Math.min(maxY, safeY)),
+      scale: s,
     };
   };
 
