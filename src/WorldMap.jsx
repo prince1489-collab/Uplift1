@@ -1,24 +1,19 @@
 /**
- * WorldMap.jsx
- *
- * Uses D3.js + Natural Earth GeoJSON (fetched from CDN) to render
- * a proper, accurate world map with real country borders.
+ * WorldMap.jsx — Revolving 3D Globe
  *
  * INTEGRATION in App.jsx (no changes needed):
  *   import WorldMap from "./WorldMap";
  *   {showMap && <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} />}
  */
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   collection, doc, getDoc, limit,
   onSnapshot, query, where,
 } from "firebase/firestore";
 import { X } from "lucide-react";
 
-// ─────────────────────────────────────────────────────────────────
-// COUNTRY CENTROIDS [longitude, latitude]
-// ─────────────────────────────────────────────────────────────────
+// ── Country centroids [longitude, latitude] ──────────────────────
 const COUNTRY_COORDS = {
   "Afghanistan": [67.7, 33.9], "Albania": [20.2, 41.2], "Algeria": [3.0, 28.0],
   "Angola": [18.5, -11.2], "Argentina": [-64.0, -34.0], "Armenia": [45.0, 40.2],
@@ -72,76 +67,42 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 }
 
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
-const W = 960, H = 500;
+const AUTO_ROTATE_SPEED = 0.12;
 
 export default function WorldMap({ db, currentUser, profile, onClose }) {
   const canvasRef = useRef(null);
-  const svgRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
   const [activeUsers, setActiveUsers] = useState([]);
-  const [arcs, setArcs] = useState([]);
   const [myWaves, setMyWaves] = useState([]);
   const [myWaveProfiles, setMyWaveProfiles] = useState({});
   const [totalToday, setTotalToday] = useState(0);
   const [tooltip, setTooltip] = useState(null);
-  const [geoPath, setGeoPath] = useState(null);   // d3 path generator
-  const [countries, setCountries] = useState([]); // GeoJSON features
-  const arcIdRef = useRef(0);
-  const arcTimerRef = useRef(null);
+  const [isAutoRotating, setIsAutoRotating] = useState(true);
+
   const d3Ref = useRef(null);
   const projRef = useRef(null);
-
-  // ── Zoom / pan ────────────────────────────────────────────────
-  // Store transform in BOTH a ref (always current, no stale closures) and
-  // state (triggers re-render). All event handlers read from the ref.
-  const MIN_SCALE = 0.75, MAX_SCALE = 8;
-  const INITIAL_TRANSFORM = { x: 0, y: 0, scale: 0.72 };
-  const transformRef = useRef(INITIAL_TRANSFORM);
-  const [transform, setTransformState] = useState(INITIAL_TRANSFORM);
-  const dragRef = useRef(null);
+  const countriesRef = useRef([]);
+  const rotationRef = useRef([0, -20, 0]);
+  const scaleRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef(null);
+  const rotationStartRef = useRef(null);
+  const autoRotateRef = useRef(true);
+  const animFrameRef = useRef(null);
+  const arcsRef = useRef([]);
+  const arcIdRef = useRef(0);
+  const arcTimerRef = useRef(null);
+  const tabRef = useRef("world");
   const lastPinchRef = useRef(null);
   const worldDotsRef = useRef([]);
+  const myConnectionCountriesRef = useRef([]);
 
-  const setTransform = (t) => {
-    transformRef.current = t;
-    setTransformState(t);
-  };
+  const myCountry = profile?.country ?? null;
+  const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
 
-  // Get base SVG → screen scale factor (xMidYMid slice)
-  const getSVGScale = () => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect || !rect.width || !rect.height) return 1;
-    return Math.max(rect.width / W, rect.height / H);
-  };
+  useEffect(() => { tabRef.current = tab; }, [tab]);
 
-  // Clamp x,y (SVG units) so map edges can't be dragged past the container centre.
-  // Works for any scale (including sub-1 zoom-out).
-  // The SVG group transform is: translate(W/2 + x, H/2 + y) scale(s) translate(-W/2, -H/2)
-  // The visible map edge in SVG units at a given pan/scale:
-  //   left edge on screen  → svgX = -x/s + W/2
-  //   right edge on screen → svgX = (W - x)/s + W/2  ... simplified:
-  // Constraint: don't let either edge cross the container centre (W/2 or H/2 in SVG space).
-  // maxPan = W/2 * (s - 1)/s ... but simply: allow panning the "slack" = half the
-  // difference between map size and container size in SVG units.
-  // At scale s, map spans s*W SVG units in screen space.
-  // Slack in SVG units = (s - 1) * W / 2  (positive when zoomed in, negative when out)
-  // We allow panning the full slack in both directions regardless of sign.
-  const clamp = (x, y, scale) => {
-    const s = isNaN(scale) || scale <= 0 ? 1 : scale;
-    const safeX = isNaN(x) ? 0 : x;
-    const safeY = isNaN(y) ? 0 : y;
-    // Allow panning proportional to zoom level — no hard lock at sub-1 scales
-    const maxX = W / 2;   // never let map centre drift more than half a map-width
-    const maxY = H / 2;   // never let map centre drift more than half a map-height
-    return {
-      x: Math.max(-maxX, Math.min(maxX, safeX)),
-      y: Math.max(-maxY, Math.min(maxY, safeY)),
-      scale: s,
-    };
-  };
-
-  // ── Derived data ──────────────────────────────────────────────
   const worldDots = useMemo(() => {
     const map = {};
     for (const u of activeUsers) {
@@ -152,260 +113,18 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return Object.values(map);
   }, [activeUsers, currentUser]);
 
-  // Keep ref in sync so event handlers always see fresh dots
   useEffect(() => { worldDotsRef.current = worldDots; }, [worldDots]);
 
-  // ── Native event listeners (attached once, read from refs) ────
-  useEffect(() => {
-    if (!mapReady || !svgRef.current) return;
-    const el = svgRef.current;
-
-    // ── Mouse wheel → zoom ──
-    const onWheel = (e) => {
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      if (!rect.width) return;
-      const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-      const { x, y, scale } = transformRef.current;
-      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
-      const svgScale = Math.max(rect.width / W, rect.height / H);
-      // Keep the point under cursor fixed during zoom
-      const cx = (e.clientX - rect.left - rect.width / 2) / svgScale;
-      const cy = (e.clientY - rect.top - rect.height / 2) / svgScale;
-      const ratio = newScale / scale;
-      setTransform(clamp(cx - ratio * (cx - x), cy - ratio * (cy - y), newScale));
-    };
-
-    // ── Mouse drag → pan ──
-    const onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      const { x, y } = transformRef.current;
-      dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: x, startTy: y };
-    };
-    const onMouseMove = (e) => {
-      if (dragRef.current) {
-        const rect = el.getBoundingClientRect();
-        if (!rect.width) return;
-        const svgScale = Math.max(rect.width / W, rect.height / H);
-        const dx = (e.clientX - dragRef.current.startX) / svgScale;
-        const dy = (e.clientY - dragRef.current.startY) / svgScale;
-        const { scale } = transformRef.current;
-        setTransform(clamp(dragRef.current.startTx + dx, dragRef.current.startTy + dy, scale));
-      } else {
-        // Tooltip hit-testing
-        if (!projRef.current) return;
-        const rect = el.getBoundingClientRect();
-        if (!rect.width) return;
-        const { x, y, scale } = transformRef.current;
-        const svgScale = Math.max(rect.width / W, rect.height / H);
-        const preX = (e.clientX - rect.left - rect.width / 2) / svgScale + W / 2;
-        const preY = (e.clientY - rect.top - rect.height / 2) / svgScale + H / 2;
-        const mx = (preX - W / 2 - x) / scale + W / 2;
-        const my = (preY - H / 2 - y) / scale + H / 2;
-        let closest = null, minDist = 20 / scale;
-        for (const { country, count, isMe } of worldDotsRef.current) {
-          const coords = COUNTRY_COORDS[country];
-          if (!coords) continue;
-          const pt = projRef.current(coords);
-          if (!pt) continue;
-          const dist = Math.sqrt((pt[0] - mx) ** 2 + (pt[1] - my) ** 2);
-          if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x: pt[0], y: pt[1] }; }
-        }
-        setTooltip(closest);
-      }
-    };
-    const onMouseUp = () => { dragRef.current = null; };
-
-    // ── Touch pinch → zoom + drag ──
-    const onTouchStart = (e) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
-        dragRef.current = null;
-      } else if (e.touches.length === 1) {
-        const { x, y } = transformRef.current;
-        dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: x, startTy: y };
-      }
-    };
-    const onTouchMove = (e) => {
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      if (!rect.width) return;
-      const svgScale = Math.max(rect.width / W, rect.height / H);
-      if (e.touches.length === 2 && lastPinchRef.current) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!dist) return;
-        const factor = dist / lastPinchRef.current;
-        lastPinchRef.current = dist;
-        const { x, y, scale } = transformRef.current;
-        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
-        const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width / 2) / svgScale;
-        const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top - rect.height / 2) / svgScale;
-        const ratio = newScale / scale;
-        setTransform(clamp(cx - ratio * (cx - x), cy - ratio * (cy - y), newScale));
-      } else if (e.touches.length === 1 && dragRef.current) {
-        const dx = (e.touches[0].clientX - dragRef.current.startX) / svgScale;
-        const dy = (e.touches[0].clientY - dragRef.current.startY) / svgScale;
-        const { scale } = transformRef.current;
-        setTransform(clamp(dragRef.current.startTx + dx, dragRef.current.startTy + dy, scale));
-      }
-    };
-    const onTouchEnd = () => { dragRef.current = null; lastPinchRef.current = null; };
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    el.addEventListener("mousedown", onMouseDown);
-    el.addEventListener("mousemove", onMouseMove);
-    el.addEventListener("mouseleave", () => { dragRef.current = null; setTooltip(null); });
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
-    window.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("mousedown", onMouseDown);
-      el.removeEventListener("mousemove", onMouseMove);
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [mapReady]);  // ← runs once when map is ready; reads all values from refs
-
-  const myCountry = profile?.country ?? null;
-  const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
-
-  // ── Load D3 + GeoJSON ─────────────────────────────────────────
-  useEffect(() => {
-    const loadD3AndMap = async () => {
-      // Load D3 from CDN
-      if (!window.d3) {
-        await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-
-      const d3 = window.d3;
-      d3Ref.current = d3;
-
-      // Fetch world GeoJSON (Natural Earth 110m — small, fast, clear)
-      const response = await fetch(
-        "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"
-      );
-      const world = await response.json();
-
-      // Convert topojson → GeoJSON using d3
-      // world-atlas uses topojson, so we need topojson-client
-      if (!window.topojson) {
-        await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-
-      const features = window.topojson.feature(world, world.objects.countries).features;
-
-      // Set up Natural Earth projection
-      const projection = d3.geoNaturalEarth1()
-        .scale(153)
-        .translate([W / 2, H / 2]);
-
-      projRef.current = projection;
-
-      const pathGen = d3.geoPath().projection(projection);
-      setGeoPath(() => pathGen);
-      setCountries(features);
-      setMapReady(true);
-    };
-
-    loadD3AndMap().catch(console.error);
-  }, []);
-
-  // Helper: lon/lat → SVG x,y
-  const project = useCallback((coords) => {
-    if (!projRef.current) return [0, 0];
-    return projRef.current(coords);
-  }, [mapReady]);
-
-  // ── Firestore listeners ───────────────────────────────────────
-  useEffect(() => {
-    if (!db) return;
-    const cutoff = Date.now() - ACTIVE_TTL_MS;
-    const q = query(collection(db, "presence"), where("lastSeen", ">=", cutoff), limit(80));
-    return onSnapshot(q, async (snap) => {
-      const docs = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-      const withCountries = await Promise.all(docs.map(async (p) => {
-        try {
-          const ud = await getDoc(doc(db, "users", p.uid));
-          return { uid: p.uid, country: ud.exists() ? ud.data().country : null };
-        } catch { return { uid: p.uid, country: null }; }
-      }));
-      setActiveUsers(withCountries.filter((u) => u.country && COUNTRY_COORDS[u.country]));
-    }, () => {});
-  }, [db]);
-
-  useEffect(() => {
-    if (!db) return;
-    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
-    const q = query(collection(db, "publicMessages"), where("timestamp", ">=", midnight.getTime()), limit(500));
-    return onSnapshot(q, (snap) => setTotalToday(snap.size), () => {});
-  }, [db]);
-
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), limit(100));
-    return onSnapshot(q, async (snap) => {
-      const waves = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMyWaves(waves);
-      const uids = [...new Set(waves.map((w) => w.fromUid).filter(Boolean))];
-      const profiles = {};
-      await Promise.all(uids.map(async (uid) => {
-        try { const d = await getDoc(doc(db, "users", uid)); if (d.exists()) profiles[uid] = d.data(); } catch {}
-      }));
-      setMyWaveProfiles(profiles);
-    }, () => {});
-  }, [db, currentUser]);
-
-  // ── Arc animation ─────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || activeUsers.length < 2) return;
-    const addArc = () => {
-      const others = activeUsers.filter((u) => u.uid !== currentUser?.uid);
-      if (!others.length) return;
-      const from = others[Math.floor(Math.random() * others.length)];
-      const toCandidates = myCoords
-        ? [{ uid: "me", country: myCountry }]
-        : others.filter((u) => u.country !== from.country);
-      if (!toCandidates.length) return;
-      const to = toCandidates[Math.floor(Math.random() * toCandidates.length)];
-      const fromC = COUNTRY_COORDS[from.country];
-      const toC = COUNTRY_COORDS[to.country];
-      if (!fromC || !toC) return;
-      const id = ++arcIdRef.current;
-      setArcs((prev) => [...prev.slice(-8), { id, fromC, toC }]);
-      setTimeout(() => setArcs((prev) => prev.filter((a) => a.id !== id)), 3000);
-    };
-    addArc();
-    arcTimerRef.current = setInterval(addArc, 2200);
-    return () => clearInterval(arcTimerRef.current);
-  }, [mapReady, activeUsers, myCoords, myCountry, currentUser]);
-
   const myConnectionCountries = useMemo(() =>
-    [...new Set(myWaves.map((w) => myWaveProfiles[w.fromUid]?.country).filter((c) => c && COUNTRY_COORDS[c]))],
+    [...new Set(myWaves.map(w => myWaveProfiles[w.fromUid]?.country).filter(c => c && COUNTRY_COORDS[c]))],
     [myWaves, myWaveProfiles]
   );
 
+  useEffect(() => { myConnectionCountriesRef.current = myConnectionCountries; }, [myConnectionCountries]);
+
   const furthestCountry = useMemo(() => {
     if (!myCoords || !myConnectionCountries.length) return null;
-    let best = null; let max = 0;
+    let best = null, max = 0;
     for (const c of myConnectionCountries) {
       const coords = COUNTRY_COORDS[c];
       if (!coords) continue;
@@ -415,349 +134,504 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     return best;
   }, [myCoords, myConnectionCountries]);
 
-  // Arc SVG path using D3 great-circle interpolation
-  const makeArcPath = useCallback((fromC, toC) => {
-    if (!d3Ref.current || !projRef.current) return "";
+  // ── Load D3 + TopoJSON ───────────────────────────────────────
+  useEffect(() => {
+    const load = async () => {
+      if (!window.d3) {
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js";
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      if (!window.topojson) {
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js";
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      const world = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
+      countriesRef.current = window.topojson.feature(world, world.objects.countries).features;
+      d3Ref.current = window.d3;
+      setMapReady(true);
+    };
+    load().catch(console.error);
+  }, []);
+
+  // ── Canvas draw loop ─────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
     const d3 = d3Ref.current;
-    // Use d3 geo interpolation for a proper great-circle arc
-    const interp = d3.geoInterpolate(fromC, toC);
-    const points = Array.from({ length: 50 }, (_, i) => projRef.current(interp(i / 49)));
-    const validPoints = points.filter((p) => p !== null);
-    if (validPoints.length < 2) return "";
-    return "M" + validPoints.map((p) => p.map((v) => v.toFixed(1)).join(",")).join("L");
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      const size = Math.min(rect.width - 32, rect.height - 20);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      canvas.style.width = size + "px";
+      canvas.style.height = size + "px";
+      ctx.scale(dpr, dpr);
+      if (!scaleRef.current) scaleRef.current = size / 2 * 0.9;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    // Check if a lon/lat is on the visible hemisphere
+    const isVisible = (lon, lat) => {
+      const [rLon, rLat] = rotationRef.current;
+      const dLon = ((lon + rLon + 540) % 360) - 180;
+      const dLat = lat - rLat;
+      return Math.abs(dLon) < 90 && Math.abs(dLat) < 90 &&
+        Math.sqrt(dLon * dLon + dLat * dLat) < 90;
+    };
+
+    const draw = () => {
+      const size = parseFloat(canvas.style.width) || 300;
+      const cx = size / 2, cy = size / 2;
+      const scale = scaleRef.current || cx * 0.9;
+
+      const proj = d3.geoOrthographic()
+        .scale(scale)
+        .translate([cx, cy])
+        .rotate(rotationRef.current)
+        .clipAngle(90);
+      projRef.current = proj;
+      const path = d3.geoPath().projection(proj).context(ctx);
+
+      ctx.clearRect(0, 0, size, size);
+
+      // Ocean with radial gradient
+      const oceanGrad = ctx.createRadialGradient(cx - scale * 0.2, cy - scale * 0.25, scale * 0.1, cx, cy, scale);
+      oceanGrad.addColorStop(0, "#1e5070");
+      oceanGrad.addColorStop(0.6, "#0f2d45");
+      oceanGrad.addColorStop(1, "#081820");
+      ctx.beginPath();
+      path({ type: "Sphere" });
+      ctx.fillStyle = oceanGrad;
+      ctx.fill();
+
+      // Graticule
+      ctx.beginPath();
+      path(d3.geoGraticule()());
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Countries
+      for (const feature of countriesRef.current) {
+        ctx.beginPath();
+        path(feature);
+        ctx.fillStyle = "#2d5a3d";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.25)";
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // Atmosphere rim
+      ctx.beginPath();
+      ctx.arc(cx, cy, scale, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(77,255,176,0.3)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      const atmGrad = ctx.createRadialGradient(cx, cy, scale * 0.88, cx, cy, scale * 1.0);
+      atmGrad.addColorStop(0, "rgba(77,255,176,0)");
+      atmGrad.addColorStop(1, "rgba(77,255,176,0.08)");
+      ctx.fillStyle = atmGrad;
+      ctx.fill();
+
+      // Specular highlight
+      const specGrad = ctx.createRadialGradient(cx - scale * 0.28, cy - scale * 0.3, 0, cx, cy, scale);
+      specGrad.addColorStop(0, "rgba(255,255,255,0.1)");
+      specGrad.addColorStop(0.35, "rgba(255,255,255,0.02)");
+      specGrad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, scale, 0, Math.PI * 2);
+      ctx.fillStyle = specGrad;
+      ctx.fill();
+
+      // ── Arcs ──
+      if (tabRef.current === "world") {
+        for (const { fromC, toC } of arcsRef.current) {
+          const interp = d3.geoInterpolate(fromC, toC);
+          const pts = [];
+          for (let i = 0; i <= 60; i++) {
+            const p = proj(interp(i / 60));
+            if (p) pts.push(p);
+          }
+          if (pts.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.strokeStyle = "rgba(77,255,176,0.7)";
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = "#4DFFB0";
+          ctx.shadowBlur = 6;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // ── Dots ──
+      const dots = tabRef.current === "world"
+        ? worldDotsRef.current
+        : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
+
+      for (const { country, count, isMe } of dots) {
+        const coords = COUNTRY_COORDS[country];
+        if (!coords || !isVisible(coords[0], coords[1])) continue;
+        const pt = proj(coords);
+        if (!pt) continue;
+
+        const r = isMe ? 6 : Math.min(3 + count, 6);
+        const color = isMe ? "#4DFFB0" : "#1D9E75";
+
+        // Glow
+        const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], r * 3.5);
+        glow.addColorStop(0, isMe ? "rgba(77,255,176,0.5)" : "rgba(29,158,117,0.35)");
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], r * 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+
+        // Dot
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Ring for "me"
+        if (isMe) {
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], r + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(77,255,176,0.45)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // YOU label
+          ctx.font = "bold 9px system-ui, sans-serif";
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.textAlign = "center";
+          ctx.fillText("YOU", pt[0], pt[1] - r - 7);
+        }
+      }
+    };
+
+    const tick = () => {
+      if (autoRotateRef.current && !isDraggingRef.current) {
+        rotationRef.current = [rotationRef.current[0] + AUTO_ROTATE_SPEED, rotationRef.current[1], 0];
+      }
+      draw();
+      animFrameRef.current = requestAnimationFrame(tick);
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener("resize", resize);
+    };
   }, [mapReady]);
 
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column",
-      height: "100%", width: "100%",
-      background: "#0d1f1a",
-      overflow: "hidden",
-      position: "relative",
-    }}>
-      {/* ── FULL-WIDTH MAP (fills most of the screen) ── */}
-      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, background: "#1a3a4a" }}>
+  // ── Input handlers ───────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !canvasRef.current) return;
+    const canvas = canvasRef.current;
 
-        {/* Loading state */}
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      autoRotateRef.current = false;
+      setIsAutoRotating(false);
+      dragStartRef.current = [e.clientX, e.clientY];
+      rotationStartRef.current = [...rotationRef.current];
+    };
+
+    const onMouseMove = (e) => {
+      if (isDraggingRef.current) {
+        const scale = scaleRef.current || 150;
+        const dx = e.clientX - dragStartRef.current[0];
+        const dy = e.clientY - dragStartRef.current[1];
+        rotationRef.current = [
+          rotationStartRef.current[0] + dx * (80 / scale),
+          Math.max(-85, Math.min(85, rotationStartRef.current[1] - dy * (80 / scale))),
+          0,
+        ];
+      } else {
+        if (!projRef.current) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const size = parseFloat(canvas.style.width) || 300;
+        const cx = size / 2, cy = size / 2;
+        const scale = scaleRef.current || cx;
+        if ((x - cx) ** 2 + (y - cy) ** 2 > scale ** 2) { setTooltip(null); return; }
+        let closest = null, minDist = 16;
+        for (const { country, count, isMe } of worldDotsRef.current) {
+          const coords = COUNTRY_COORDS[country];
+          if (!coords) continue;
+          const pt = projRef.current(coords);
+          if (!pt) continue;
+          const dist = Math.sqrt((pt[0] - x) ** 2 + (pt[1] - y) ** 2);
+          if (dist < minDist) { minDist = dist; closest = { country, count, isMe, x, y }; }
+        }
+        setTooltip(closest);
+      }
+    };
+
+    const onMouseUp = () => { isDraggingRef.current = false; };
+    const onMouseLeave = () => { isDraggingRef.current = false; setTooltip(null); };
+
+    const onTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        isDraggingRef.current = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastPinchRef.current = { dist: Math.sqrt(dx * dx + dy * dy), scale: scaleRef.current };
+      } else if (e.touches.length === 1) {
+        isDraggingRef.current = true;
+        autoRotateRef.current = false;
+        setIsAutoRotating(false);
+        dragStartRef.current = [e.touches[0].clientX, e.touches[0].clientY];
+        rotationStartRef.current = [...rotationRef.current];
+      }
+    };
+
+    const onTouchMove = (e) => {
+      e.preventDefault();
+      if (e.touches.length === 2 && lastPinchRef.current) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const size = parseFloat(canvas.style.width) || 300;
+        scaleRef.current = Math.max(size * 0.25, Math.min(size * 1.6, lastPinchRef.current.scale * dist / lastPinchRef.current.dist));
+      } else if (e.touches.length === 1 && isDraggingRef.current) {
+        const scale = scaleRef.current || 150;
+        const dx = e.touches[0].clientX - dragStartRef.current[0];
+        const dy = e.touches[0].clientY - dragStartRef.current[1];
+        rotationRef.current = [
+          rotationStartRef.current[0] + dx * (80 / scale),
+          Math.max(-85, Math.min(85, rotationStartRef.current[1] - dy * (80 / scale))),
+          0,
+        ];
+      }
+    };
+
+    const onTouchEnd = () => { isDraggingRef.current = false; lastPinchRef.current = null; };
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      const size = parseFloat(canvas.style.width) || 300;
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      scaleRef.current = Math.max(size * 0.25, Math.min(size * 1.6, (scaleRef.current || size * 0.45) * factor));
+    };
+
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("mousemove", onMouseMove);
+    canvas.addEventListener("mouseleave", onMouseLeave);
+    canvas.addEventListener("touchstart", onTouchStart, { passive: true });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+    canvas.addEventListener("touchend", onTouchEnd);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("mousemove", onMouseMove);
+      canvas.removeEventListener("mouseleave", onMouseLeave);
+      canvas.removeEventListener("touchstart", onTouchStart);
+      canvas.removeEventListener("touchmove", onTouchMove);
+      canvas.removeEventListener("touchend", onTouchEnd);
+      canvas.removeEventListener("wheel", onWheel);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [mapReady]);
+
+  // ── Firestore ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!db) return;
+    const cutoff = Date.now() - ACTIVE_TTL_MS;
+    const q = query(collection(db, "presence"), where("lastSeen", ">=", cutoff), limit(80));
+    return onSnapshot(q, async (snap) => {
+      const docs = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      const withCountries = await Promise.all(docs.map(async (p) => {
+        try {
+          const ud = await getDoc(doc(db, "users", p.uid));
+          return { uid: p.uid, country: ud.exists() ? ud.data().country : null };
+        } catch { return { uid: p.uid, country: null }; }
+      }));
+      setActiveUsers(withCountries.filter(u => u.country && COUNTRY_COORDS[u.country]));
+    }, () => {});
+  }, [db]);
+
+  useEffect(() => {
+    if (!db) return;
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const q = query(collection(db, "publicMessages"), where("timestamp", ">=", midnight.getTime()), limit(500));
+    return onSnapshot(q, snap => setTotalToday(snap.size), () => {});
+  }, [db]);
+
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), limit(100));
+    return onSnapshot(q, async (snap) => {
+      const waves = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMyWaves(waves);
+      const uids = [...new Set(waves.map(w => w.fromUid).filter(Boolean))];
+      const profiles = {};
+      await Promise.all(uids.map(async (uid) => {
+        try { const d = await getDoc(doc(db, "users", uid)); if (d.exists()) profiles[uid] = d.data(); } catch {}
+      }));
+      setMyWaveProfiles(profiles);
+    }, () => {});
+  }, [db, currentUser]);
+
+  // ── Arc animation ────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || activeUsers.length < 2) return;
+    const addArc = () => {
+      const others = activeUsers.filter(u => u.uid !== currentUser?.uid);
+      if (!others.length) return;
+      const from = others[Math.floor(Math.random() * others.length)];
+      const toCandidates = myCoords
+        ? [{ country: myCountry }]
+        : others.filter(u => u.country !== from.country);
+      if (!toCandidates.length) return;
+      const to = toCandidates[Math.floor(Math.random() * toCandidates.length)];
+      const fromC = COUNTRY_COORDS[from.country];
+      const toC = COUNTRY_COORDS[to.country];
+      if (!fromC || !toC) return;
+      const id = ++arcIdRef.current;
+      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC }];
+      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3000);
+    };
+    addArc();
+    arcTimerRef.current = setInterval(addArc, 2500);
+    return () => clearInterval(arcTimerRef.current);
+  }, [mapReady, activeUsers, myCoords, myCountry, currentUser]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: "#060e10", overflow: "hidden", position: "relative" }}>
+
+      {/* ── GLOBE AREA ── */}
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(ellipse at 40% 40%, #0d2535 0%, #060e10 70%)" }}>
+
+        {/* Loading */}
         {!mapReady && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "32px", height: "32px", border: "3px solid #1D9E75", borderTopColor: "transparent", borderRadius: "50%", animation: "seenSpin 0.8s linear infinite" }} />
-            <p style={{ color: "#5DCAA5", fontSize: "13px", margin: 0 }}>Loading map…</p>
+            <p style={{ color: "#5DCAA5", fontSize: "13px", margin: 0 }}>Loading globe…</p>
           </div>
         )}
 
-        {mapReady && (
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${W} ${H}`}
-            width="100%" height="100%"
-            preserveAspectRatio="xMidYMid slice"
-            style={{ display: "block", cursor: transform.scale > 1 ? "grab" : "crosshair", touchAction: "none", userSelect: "none", width: "100%", height: "100%", position: "absolute", inset: 0 }}
-          >
-            <rect x="0" y="0" width={W} height={H} fill="#1a3a4a" />
-            {/* Zoom/pan: scale around centre, then apply pan offset */}
-            <g transform={`translate(${W/2 + transform.x},${H/2 + transform.y}) scale(${transform.scale}) translate(${-W/2},${-H/2})`}>
-            <rect x={-W} y={-H} width={W*3} height={H*3} fill="#1a3a4a" />
+        <canvas ref={canvasRef} style={{ display: mapReady ? "block" : "none", cursor: "grab", borderRadius: "50%", boxShadow: "0 0 80px rgba(77,255,176,0.07), 0 8px 60px rgba(0,0,0,0.9)" }} />
 
-            {d3Ref.current && projRef.current && (() => {
-              const graticule = d3Ref.current.geoGraticule()();
-              const pathGen = d3Ref.current.geoPath().projection(projRef.current);
-              return <path d={pathGen(graticule)} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />;
-            })()}
-
-            {d3Ref.current && projRef.current && (() => {
-              const sphere = { type: "Sphere" };
-              const pathGen = d3Ref.current.geoPath().projection(projRef.current);
-              return <path d={pathGen(sphere)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />;
-            })()}
-
-            {/* Country fills — darker palette to contrast dots */}
-            {geoPath && countries.map((feature) => (
-              <path key={feature.id} d={geoPath(feature)} fill="#2d5a3d" stroke="#1a3a2a" strokeWidth="0.4" />
-            ))}
-
-            {/* Greeting arcs */}
-            {tab === "world" && arcs.map((arc) => {
-              const d = makeArcPath(arc.fromC, arc.toC);
-              if (!d) return null;
-              return (
-                <path key={arc.id} d={d} fill="none"
-                  stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round"
-                  opacity="0"
-                  style={{ animation: "seenArc 3s ease-in-out forwards" }} />
-              );
-            })}
-
-            {/* Mine arcs */}
-            {tab === "mine" && myCoords && myConnectionCountries.map((country) => {
-              const coords = COUNTRY_COORDS[country];
-              if (!coords) return null;
-              const d = makeArcPath(coords, myCoords);
-              if (!d) return null;
-              return <path key={country} d={d} fill="none" stroke="#5DCAA5" strokeWidth="1" strokeDasharray="5 4" opacity="0.6" />;
-            })}
-
-            {/* World dots */}
-            {tab === "world" && worldDots.map(({ country, count, isMe }) => {
-              const coords = COUNTRY_COORDS[country];
-              if (!coords) return null;
-              const pt = projRef.current(coords);
-              if (!pt) return null;
-              const [cx, cy] = pt;
-              const r = isMe ? 9 : Math.min(4 + count * 0.8, 7);
-              return (
-                <g key={country}>
-                  {isMe && <circle cx={cx} cy={cy} r={r + 12} fill="none" stroke="#4DFFB0" strokeWidth="1" opacity="0.2" style={{ animation: "seenRing 2s ease-out infinite" }} />}
-                  <circle cx={cx} cy={cy} r={r + 4} fill={isMe ? "#4DFFB0" : "#5DCAA5"} opacity="0.15" style={{ animation: "seenGlow 2.2s ease-in-out infinite" }} />
-                  <circle cx={cx} cy={cy} r={r} fill={isMe ? "#4DFFB0" : "#1D9E75"} stroke={isMe ? "#0d1f1a" : "rgba(255,255,255,0.3)"} strokeWidth={isMe ? 2 : 1} />
-                  {isMe && <text x={cx} y={cy + r + 13} textAnchor="middle" fontSize="9" fill="#4DFFB0" fontWeight="700" letterSpacing="0.5">YOU</text>}
-                </g>
-              );
-            })}
-
-            {/* Mine dots */}
-            {tab === "mine" && myCoords && (() => {
-              const pt = projRef.current(myCoords);
-              if (!pt) return null;
-              const [mx, my] = pt;
-              return (
-                <g>
-                  {myConnectionCountries.map((country) => {
-                    const coords = COUNTRY_COORDS[country];
-                    if (!coords) return null;
-                    const cpt = projRef.current(coords);
-                    if (!cpt) return null;
-                    const [cx, cy] = cpt;
-                    return (
-                      <g key={country}>
-                        <circle cx={cx} cy={cy} r={5} fill="#1D9E75" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" style={{ animation: "seenGlow 2s ease-in-out infinite" }} />
-                      </g>
-                    );
-                  })}
-                  {myConnectionCountries.length === 0 && (
-                    <text x={W / 2} y={H / 2 + 20} textAnchor="middle" fontSize="14" fill="rgba(255,255,255,0.4)">
-                      Send greetings to connect with the world
-                    </text>
-                  )}
-                  <circle cx={mx} cy={my} r={20} fill="none" stroke="#4DFFB0" strokeWidth="1" opacity="0.2" style={{ animation: "seenRing 2s ease-out infinite" }} />
-                  <circle cx={mx} cy={my} r={10} fill="#4DFFB0" opacity="0.2" style={{ animation: "seenGlow 1.6s ease-in-out infinite" }} />
-                  <circle cx={mx} cy={my} r={8} fill="#4DFFB0" stroke="#0d1f1a" strokeWidth="2" />
-                  <text x={mx} y={my + 21} textAnchor="middle" fontSize="9" fill="#4DFFB0" fontWeight="700" letterSpacing="0.5">YOU</text>
-                </g>
-              );
-            })()}
-
-            </g>{/* end zoom group */}
-
-            {/* Tooltip — rendered in screen SVG space accounting for zoom transform */}
-            {tooltip && (() => {
-              // Map dot SVG coords → zoomed screen SVG coords
-              const zx = (tooltip.x - W/2) * transform.scale + W/2 + transform.x;
-              const zy = (tooltip.y - H/2) * transform.scale + H/2 + transform.y;
-              const label = `${tooltip.country}  ·  ${tooltip.count} active`;
-              const tw = Math.min(label.length * 6.5 + 20, 220);
-              const tx = Math.min(Math.max(zx - tw / 2, 4), W - tw - 4);
-              const ty = zy < 60 ? zy + 18 : zy - 32;
-              return (
-                <g>
-                  <rect x={tx} y={ty} width={tw} height={24} rx="5" fill="rgba(0,0,0,0.75)" />
-                  <text x={tx + tw / 2} y={ty + 15} textAnchor="middle" fontSize="11" fill="white">{label}</text>
-                </g>
-              );
-            })()}
-          </svg>
+        {/* Tooltip */}
+        {tooltip && (
+          <div style={{
+            position: "absolute", left: tooltip.x + 14, top: tooltip.y - 14,
+            background: "rgba(6,14,16,0.92)", border: "1px solid rgba(77,255,176,0.35)",
+            borderRadius: "8px", padding: "5px 11px", fontSize: "12px", color: "white",
+            pointerEvents: "none", backdropFilter: "blur(6px)", whiteSpace: "nowrap",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+          }}>
+            {tooltip.country} · <span style={{ color: "#4DFFB0" }}>{tooltip.count} active</span>
+          </div>
         )}
 
-        {/* ── FLOATING HEADER (top overlay on map) ── */}
-        <div
-          onMouseDown={e => e.stopPropagation()}
-          onTouchStart={e => e.stopPropagation()}
-          style={{
-          position: "absolute", top: 0, left: 0, right: 0,
-          display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-          padding: "14px 16px",
-          background: "linear-gradient(to bottom, rgba(13,31,26,0.85) 0%, transparent 100%)",
-        }}>
+        {/* ── FLOATING HEADER ── */}
+        <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px", background: "linear-gradient(to bottom, rgba(6,14,16,0.92) 0%, transparent 100%)" }}>
           <div>
             <p style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: "white", letterSpacing: "-0.01em" }}>World of Seen</p>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", margin: "2px 0 0" }}>Kindness crossing borders</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", margin: "2px 0 0" }}>Kindness crossing borders</p>
           </div>
-          <button onClick={onClose} style={{
-            border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", padding: "6px",
-            background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", alignItems: "center", backdropFilter: "blur(4px)",
-          }}>
-            <X size={14} color="rgba(255,255,255,0.8)" />
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {/* Auto-rotate toggle */}
+            <button onClick={(e) => { e.stopPropagation(); autoRotateRef.current = !autoRotateRef.current; setIsAutoRotating(r => !r); }}
+              title={isAutoRotating ? "Pause rotation" : "Resume rotation"}
+              style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: "8px", padding: "5px 8px", background: isAutoRotating ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.4)", cursor: "pointer", fontSize: "13px", color: isAutoRotating ? "#4DFFB0" : "rgba(255,255,255,0.6)", backdropFilter: "blur(4px)" }}>
+              {isAutoRotating ? "⟳ Live" : "⟳ Paused"}
+            </button>
+            <button onClick={onClose} style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", padding: "6px", background: "rgba(0,0,0,0.4)", cursor: "pointer", display: "flex", alignItems: "center", backdropFilter: "blur(4px)" }}>
+              <X size={14} color="rgba(255,255,255,0.8)" />
+            </button>
+          </div>
         </div>
 
-        {/* ── ZOOM CONTROLS (right side overlay) ── */}
-        <div
-          onMouseDown={e => e.stopPropagation()}
-          onTouchStart={e => e.stopPropagation()}
-          style={{
-            position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)",
-            display: "flex", flexDirection: "column", gap: "6px",
-            zIndex: 10,
-          }}>
-          <button onClick={(e) => {
-            e.stopPropagation();
-            const { x, y, scale } = transformRef.current;
-            const newScale = Math.min(MAX_SCALE, scale * 1.4);
-            setTransform(clamp(x, y, newScale));
-          }} style={{
-            width: "32px", height: "32px", borderRadius: "8px",
-            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
-            color: "white", fontSize: "18px", cursor: "pointer", display: "flex",
-            alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
-            fontWeight: 300, lineHeight: 1,
-          }}>+</button>
-          <button onClick={(e) => {
-            e.stopPropagation();
-            const { x, y, scale } = transformRef.current;
-            const newScale = Math.max(MIN_SCALE, scale / 1.4);
-            setTransform(clamp(x, y, newScale));
-          }} style={{
-            width: "32px", height: "32px", borderRadius: "8px",
-            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
-            color: "white", fontSize: "20px", cursor: "pointer", display: "flex",
-            alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
-            fontWeight: 300, lineHeight: 1,
-          }}>−</button>
-          {transform.scale > 1.05 && (
-            <button onClick={(e) => {
-              e.stopPropagation();
-              setTransform(clamp(0, 0, 1));
-            }} style={{
-              width: "32px", height: "32px", borderRadius: "8px",
-              background: "rgba(77,255,176,0.15)", border: "1px solid rgba(77,255,176,0.4)",
-              color: "#4DFFB0", fontSize: "10px", cursor: "pointer", display: "flex",
-              alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)",
-              fontWeight: 600, letterSpacing: "-0.02em",
-            }}>↺</button>
-          )}
-        </div>
-
-        {/* ── FLOATING TABS (bottom overlay on map) ── */}
-        <div
-          onMouseDown={e => e.stopPropagation()}
-          onTouchStart={e => e.stopPropagation()}
-          style={{
-          position: "absolute", bottom: 0, left: 0, right: 0,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 16px 12px",
-          background: "linear-gradient(to top, rgba(13,31,26,0.9) 0%, transparent 100%)",
-        }}>
+        {/* ── FLOATING TABS ── */}
+        <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 12px", background: "linear-gradient(to top, rgba(6,14,16,0.95) 0%, transparent 100%)" }}>
           <div style={{ display: "flex", gap: "8px" }}>
             {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)} style={{
-                borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer",
-                border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)",
-                background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)",
-                color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)",
-                backdropFilter: "blur(4px)",
-              }}>{label}</button>
+              <button key={t} onClick={() => setTab(t)} style={{ borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)", background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)", color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>{label}</button>
             ))}
           </div>
-          {/* Live pulse */}
           <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />
-            Live
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />Live
           </span>
         </div>
       </div>
 
-      {/* CSS */}
       <style>{`
-        @keyframes seenArc {
-          0%   { stroke-dasharray:3000; stroke-dashoffset:3000; opacity:0; }
-          10%  { opacity:.9; }
-          70%  { opacity:.6; }
-          100% { stroke-dashoffset:0; opacity:0; }
-        }
-        @keyframes seenGlow { 0%,100%{opacity:.1} 50%{opacity:.3} }
-        @keyframes seenRing { 0%{opacity:.3} 100%{opacity:0;transform:scale(1.8);transform-origin:center} }
         @keyframes seenLive { 0%,100%{opacity:.4} 50%{opacity:1} }
         @keyframes seenSpin { to{transform:rotate(360deg)} }
+        canvas { touch-action: none; user-select: none; }
       `}</style>
 
-      {/* ── IMPACT BAR (pinned bottom strip) ── */}
-      <div style={{
-        flexShrink: 0,
-        background: "#0d1f1a",
-        borderTop: "1px solid rgba(77,255,176,0.12)",
-        padding: "0",
-      }}>
-        {/* Stats row */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: tab === "world" ? "repeat(3,1fr)" : "repeat(3,1fr)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-        }}>
+      {/* ── IMPACT BAR ── */}
+      <div style={{ flexShrink: 0, background: "#0d1f1a", borderTop: "1px solid rgba(77,255,176,0.12)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           {tab === "world" ? (
             <>
-              <ImpactStat label="Active now" value={activeUsers.length} icon="🟢" />
-              <ImpactStat label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} icon="🌍" divider />
-              <ImpactStat label="Greetings today" value={totalToday} icon="💬" divider />
+              <ImpactStat label="Active now" value={activeUsers.length} />
+              <ImpactStat label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} divider />
+              <ImpactStat label="Greetings today" value={totalToday} divider />
             </>
           ) : (
             <>
-              <ImpactStat label="Seen from" value={`${myConnectionCountries.length} countries`} icon="🌐" />
-              <ImpactStat label="Waves received" value={myWaves.length} icon="👋" divider />
-              <ImpactStat label="Furthest reach" value={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "—"} icon="📡" divider />
+              <ImpactStat label="Seen from" value={`${myConnectionCountries.length} countries`} />
+              <ImpactStat label="Waves received" value={myWaves.length} divider />
+              <ImpactStat label="Furthest reach" value={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "—"} divider />
             </>
           )}
         </div>
 
-        {/* Country badges for "mine" tab */}
         {tab === "mine" && myConnectionCountries.length > 0 && (
           <div style={{ padding: "10px 16px 14px", overflowX: "auto" }}>
-            <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(77,255,176,0.6)", margin: "0 0 8px" }}>
-              Countries that saw you
-            </p>
+            <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(77,255,176,0.6)", margin: "0 0 8px" }}>Countries that saw you</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-              {myConnectionCountries.map((c) => (
-                <span key={c} style={{
-                  borderRadius: "20px", border: "1px solid rgba(77,255,176,0.25)",
-                  background: "rgba(77,255,176,0.08)", padding: "3px 10px",
-                  fontSize: "11px", fontWeight: 500, color: "#5DCAA5",
-                }}>
-                  {c}
-                </span>
+              {myConnectionCountries.map(c => (
+                <span key={c} style={{ borderRadius: "20px", border: "1px solid rgba(77,255,176,0.25)", background: "rgba(77,255,176,0.08)", padding: "3px 10px", fontSize: "11px", fontWeight: 500, color: "#5DCAA5" }}>{c}</span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Legend strip */}
         <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />
-            You
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />
-            {tab === "world" ? "Active user" : "Waved at you"}
-          </span>
-          {tab === "world" && (
-            <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>
-              Greeting arc
-            </span>
-          )}
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />{tab === "world" ? "Active user" : "Waved at you"}</span>
+          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>Greeting arc</span>}
         </div>
       </div>
     </div>
   );
 }
 
-function ImpactStat({ label, value, icon, divider }) {
+function ImpactStat({ label, value, divider }) {
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      padding: "12px 8px",
-      borderLeft: divider ? "1px solid rgba(255,255,255,0.06)" : "none",
-      textAlign: "center",
-    }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 8px", borderLeft: divider ? "1px solid rgba(255,255,255,0.06)" : "none", textAlign: "center" }}>
       <p style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "white", lineHeight: 1.1 }}>{value}</p>
       <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", margin: "3px 0 0", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
     </div>
