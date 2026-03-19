@@ -31,16 +31,16 @@ function WelcomeStep({ onStartJourney }) {
           <Sparkles size={34} />
         </div>
 
-        <h1 className="welcome-step__title">Uplift</h1>
+        <h1 className="welcome-step__title">Seen</h1>
+        <p className="welcome-step__tagline">You matter</p>
         <p className="welcome-step__subtitle">
           Science shows that small positive interactions—even with strangers—significantly boost your mood and
           well-being.
         </p>
 
         <div className="welcome-step__list">
-         {HIGHLIGHTS.map((highlight) => {
+          {HIGHLIGHTS.map((highlight) => {
             const IconComponent = highlight.icon;
-
             return (
               <article className="welcome-step__item" key={highlight.title}>
                 <div className={`welcome-step__icon-wrap ${highlight.iconClassName}`}>
