@@ -147,7 +147,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             <Sparkles size={24} />
           </div>
         </div>
-        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800">Welcome to Uplift</h1>
+        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800">Welcome to Seen</h1>
         <p className="pb-4 text-center text-[22px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
 
         <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
@@ -435,10 +435,10 @@ export default function App() {
       if (!isSignInWithEmailLink(auth, window.location.href)) return;
       setIsAuthLoading(true); setAuthError("");
       try {
-        const stored = window.localStorage.getItem("upliftEmailForSignIn");
+        const stored = window.localStorage.getItem("seenEmailForSignIn");
         if (!stored) { setAuthError("This sign-in link was opened on a different device."); return; }
         await signInWithEmailLink(auth, stored, window.location.href);
-        window.localStorage.removeItem("upliftEmailForSignIn");
+        window.localStorage.removeItem("seenEmailForSignIn");
         setEmailLinkMessage("");
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (error) {
@@ -456,7 +456,7 @@ export default function App() {
     setIsEmailActionLoading(true); setEmailLinkMessage(""); setAuthError("");
     try {
       await sendSignInLinkToEmail(auth, normalizedEmail, { url: `${window.location.origin}/`, handleCodeInApp: true });
-      window.localStorage.setItem("upliftEmailForSignIn", normalizedEmail);
+      window.localStorage.setItem("seenEmailForSignIn", normalizedEmail);
       setEmailLinkMessage(`We sent a sign-in link to ${normalizedEmail}. Check your inbox.`);
       return { ok: true };
     } catch (error) {
@@ -526,7 +526,7 @@ export default function App() {
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMessages(live.length ? live : [{ id: "welcome", sender: "Uplift Bot", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }]);
+        setMessages(live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }]);
         setIsChatLive(true); setChatError(""); setLastLiveAt(new Date());
       },
       (error) => {
