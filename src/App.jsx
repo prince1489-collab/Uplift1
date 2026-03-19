@@ -4,6 +4,7 @@ import {
   Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
+import { AnimationLayer, useAnimations } from "./MicroAnimations";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
@@ -291,7 +292,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
 }
 
 // ── Suggestion 1: Meatball menu for low-freq header actions ─────
-function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut }) {
+function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -310,8 +311,9 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut }) {
       {open && (
         <div className="absolute right-0 top-full mt-2 z-30 w-44 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
           <button type="button" onClick={() => { onWorld(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <Globe size={14} className="text-slate-400" /> World Map
+            className={`flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors ${globePulse ? "seen-globe-pulse" : ""}`}>
+            <Globe size={14} className={globePulse ? "text-emerald-500" : "text-slate-400"} /> World Map
+            {globePulse && <span className="ml-auto text-[10px] font-semibold text-emerald-600 animate-pulse">New country! 🌍</span>}
           </button>
           <button type="button" onClick={() => { onShare(); setOpen(false); }}
             className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
@@ -397,6 +399,9 @@ export default function App() {
   // Streak hook
   const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze } =
     useStreak(db, currentUser?.uid, profile);
+
+  // Micro-animations controller
+  const anim = useAnimations();
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -604,6 +609,7 @@ export default function App() {
       const reward = computeSparkReward(greeting.sparkReward, streak);
       const refDoc = userProfileRef(currentUser.uid);
 
+      let newStreak = streak;
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(refDoc);
         const profileData = snap.exists() ? snap.data() : {};
@@ -615,6 +621,13 @@ export default function App() {
       });
 
       await recordGreetingDay();
+      newStreak = streak + 1;
+
+      // 🎉 Animations
+      anim.triggerSparkBurst(85, 92); // near the FAB button
+      if ([3, 7, 14, 30].includes(newStreak)) {
+        setTimeout(() => anim.triggerStreakConfetti(), 300);
+      }
 
       if (greeting.isMystery) {
         setMysteryReward(reward);
@@ -650,6 +663,9 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+
+      {/* Micro-animation layer — renders floating particles over everything */}
+      <AnimationLayer controller={anim} />
 
       {/* World map — fixed to viewport so it always covers everything */}
       {showMap && (
@@ -722,6 +738,7 @@ export default function App() {
                     onShare={() => setShowProfileCard(true)}
                     onSignOut={handleSignOut}
                     isSigningOut={isSigningOut}
+                    globePulse={anim.globePulse}
                   />
                 </div>
               </div>
@@ -823,9 +840,9 @@ export default function App() {
                                   {/* Reaction bar only on last message */}
                                   {isLast && (
                                     <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} />}
-                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} />}
-                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} />
+                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => anim.triggerWaveRipple(15, 70)} />}
+                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={() => anim.triggerCoinFloat(20, 65)} />}
+                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onHeart={() => anim.triggerHeartBalloon()} />
                                     </div>
                                   )}
                                 </div>
