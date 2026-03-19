@@ -95,9 +95,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   // ── Zoom / pan ────────────────────────────────────────────────
   // Store transform in BOTH a ref (always current, no stale closures) and
   // state (triggers re-render). All event handlers read from the ref.
-  const MIN_SCALE = 1, MAX_SCALE = 8;
-  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
-  const [transform, setTransformState] = useState({ x: 0, y: 0, scale: 1 });
+  const MIN_SCALE = 0.75, MAX_SCALE = 8;
+  const INITIAL_TRANSFORM = { x: 0, y: 0, scale: 0.82 };
+  const transformRef = useRef(INITIAL_TRANSFORM);
+  const [transform, setTransformState] = useState(INITIAL_TRANSFORM);
   const dragRef = useRef(null);
   const lastPinchRef = useRef(null);
   const worldDotsRef = useRef([]);
