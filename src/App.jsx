@@ -116,6 +116,44 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
+// ── Suggestion 1: Meatball menu for low-freq header actions ─────────────────
+function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+        aria-label="More options">
+        <span className="text-lg leading-none tracking-widest">···</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 z-50 min-w-[160px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
+          <button onClick={() => { onWorld(); setOpen(false); }}
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <span>{globePulse ? "🌍" : "🌐"}</span> World Map
+          </button>
+          <button onClick={() => { onShare(); setOpen(false); }}
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <span>👤</span> My Profile
+          </button>
+          <div className="my-1 border-t border-slate-100" />
+          <button onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
+            <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
   const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "" });
 
