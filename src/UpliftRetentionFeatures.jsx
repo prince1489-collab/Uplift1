@@ -392,6 +392,8 @@ const PRESENCE_TTL_MS = 5 * 60 * 1000;
 
 export function LiveGreeterCount({ db, currentUser }) {
   const [count, setCount] = useState(1);
+  const [ticking, setTicking] = useState(false);
+  const prevCountRef = useRef(1);
 
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -405,13 +407,25 @@ export function LiveGreeterCount({ db, currentUser }) {
   useEffect(() => {
     if (!db) return;
     const q = query(collection(db, "presence"), where("lastSeen", ">=", Date.now() - PRESENCE_TTL_MS));
-    return onSnapshot(q, (snap) => setCount(snap.size), () => {});
+    return onSnapshot(q, (snap) => {
+      const newCount = snap.size;
+      // Animation #15 — tick when count goes up
+      if (newCount > prevCountRef.current) {
+        setTicking(true);
+        setTimeout(() => setTicking(false), 500);
+      }
+      prevCountRef.current = newCount;
+      setCount(newCount);
+    }, () => {});
   }, [db]);
 
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-      {count} greeting{count !== 1 ? "s" : ""} now
+      <span style={{ display:"inline-block", animation: ticking ? "seenLiveTick 450ms ease-out" : "none" }}>
+        {count}
+      </span>
+      &nbsp;greeting{count !== 1 ? "s" : ""} now
     </span>
   );
 }
