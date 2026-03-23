@@ -654,8 +654,9 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }
   };
 
   return (
-    <div className={`absolute -bottom-2 flex gap-0.5 ${mine ? "right-2" : "left-2"}`}
-      style={{ zIndex: 2 }}>
+    <div
+      className="absolute -bottom-3 right-1 flex gap-0.5"
+      style={{ zIndex: 3 }}>
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid);
         return (
