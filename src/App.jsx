@@ -975,25 +975,27 @@ export default function App() {
                               const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
                               const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
                               return (
-                                <div key={m.id} className="relative">
-                                  {/* Bubble */}
-                                  <div
-                                    className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
-                                      mine
-                                        ? "bg-teal-600 text-white border-teal-600"
-                                        : isMystery
-                                        ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
-                                        : "bg-white border-slate-200 text-slate-800"
-                                    }`}
-                                    style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
-                                    {isMystery && !mine && <span className="mr-1.5">🎁</span>}
-                                    {m.text}
+                                <div key={m.id} className="relative pb-1">
+                                  {/* Bubble — with reaction badge anchored to its bottom-right corner */}
+                                  <div className="relative">
+                                    <div
+                                      className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
+                                        mine
+                                          ? "bg-teal-600 text-white border-teal-600"
+                                          : isMystery
+                                          ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
+                                          : "bg-white border-slate-200 text-slate-800"
+                                      }`}
+                                      style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
+                                      {isMystery && !mine && <span className="mr-1.5">🎁</span>}
+                                      {m.text}
+                                    </div>
+                                    {/* Reaction counts — always bottom-right of the bubble */}
+                                    <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                   </div>
-                                  {/* Reaction counts float on the side of the bubble */}
-                                  <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                   {/* Action bar (Wave / Gift / React +) only on last message */}
                                   {isLast && (
-                                    <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
+                                    <div className={`flex items-center gap-1.5 mt-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
                                       {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); }} />}
                                       {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={(emoji) => triggerReactionBurst(emoji)} />}
                                       <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onReact={(emoji) => triggerReactionBurst(emoji)} />
@@ -1054,4 +1056,3 @@ export default function App() {
     </div>
   );
 }
-
