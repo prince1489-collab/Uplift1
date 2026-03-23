@@ -13,6 +13,7 @@ import {
   getDocs,
   limit,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
@@ -166,15 +167,28 @@ export function StreakBadge({ streak }) {
 export function StreakFreezeButton({ freezes, sparkBalance, onBuy }) {
   const canAfford = sparkBalance >= FREEZE_COST;
   return (
-    <button type="button" onClick={onBuy} disabled={!canAfford}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-        freezes > 0 ? "border-cyan-200 bg-cyan-50 text-cyan-700"
-        : canAfford ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
-        : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
-      }`}>
-      <Shield size={11} />
-      {freezes > 0 ? `${freezes} freeze` : `Freeze (${FREEZE_COST}✨)`}
-    </button>
+    <div className="relative group/freeze flex-shrink-0">
+      <button type="button" onClick={onBuy} disabled={!canAfford}
+        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+          freezes > 0 ? "border-cyan-200 bg-cyan-50 text-cyan-700"
+          : canAfford ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+          : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
+        }`}>
+        <Shield size={11} />
+        {freezes > 0 ? `${freezes} ❄️ freeze${freezes > 1 ? "s" : ""}` : `Freeze (${FREEZE_COST}✨)`}
+      </button>
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute right-0 bottom-full mb-2 w-52 rounded-xl bg-slate-800 px-3 py-2 text-[10px] leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/freeze:opacity-100 z-50">
+        <p className="font-semibold mb-0.5">❄️ Streak Freeze</p>
+        {freezes > 0
+          ? <p>You have <span className="text-cyan-300">{freezes} freeze{freezes > 1 ? "s" : ""}</span>. Miss a day? A freeze saves your streak automatically.</p>
+          : canAfford
+            ? <p>Buy a freeze for <span className="text-amber-300">{FREEZE_COST} sparks</span> to protect your streak if you miss a day.</p>
+            : <p>Earn more sparks by sending greetings to unlock a streak freeze.</p>
+        }
+        <span className="absolute right-4 top-full border-4 border-transparent border-t-slate-800" />
+      </div>
+    </div>
   );
 }
 
@@ -374,15 +388,24 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
 
   if (!currentUser || senderUid === currentUser.uid) return null;
   return (
-    <button type="button" onClick={sendGift} disabled={!canGift}
-      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all ${
-        sent ? "border-amber-300 bg-amber-50 text-amber-600"
-          : canGift ? "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-500 hover:scale-105"
-          : "border-slate-100 text-slate-300 cursor-not-allowed"
-      }`}>
-      <Gift size={10} />
-      {sent ? `+${GIFT_AMOUNT} sent! ✨` : sending ? "…" : `Gift ${GIFT_AMOUNT} ✨`}
-    </button>
+    <div className="relative group/gift">
+      <button type="button" onClick={sendGift} disabled={!canGift}
+        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all ${
+          sent ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+            : canGift ? "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-500 hover:scale-105 active:scale-95"
+            : "border-slate-100 text-slate-300 cursor-not-allowed"
+        }`}>
+        <Gift size={10} />
+        {sent ? `Gifted! 🎉` : sending ? "…" : `Gift ${GIFT_AMOUNT} ✨`}
+      </button>
+      {/* Tooltip */}
+      {!sent && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-[10px] text-white opacity-0 shadow-lg transition-opacity group-hover/gift:opacity-100 z-50">
+          {canGift ? `Send ${GIFT_AMOUNT} sparks from your balance` : `You need ${GIFT_AMOUNT} sparks to gift`}
+          <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -491,22 +514,31 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
       {/* + button to toggle emoji tray */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
-          open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:border-slate-300"
+        className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+          open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:border-teal-200 hover:text-teal-500"
         }`}>
-        {open ? "×" : "+"}
+        {open ? "× close" : "💛 React"}
       </button>
 
-      {/* Emoji tray */}
+      {/* Emoji tray with per-emoji tooltips */}
       {open && (
         <div className="flex gap-1">
-          {REACTION_EMOJIS.map((e) => (
-            <button key={e} onClick={() => react(e)}
-              style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
-              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
-              {e}
-            </button>
-          ))}
+          {REACTION_EMOJIS.map((e) => {
+            const LABELS = { "❤️": "Love this", "🙏": "Thank you", "😊": "Made me smile", "🌟": "You're a star" };
+            return (
+              <div key={e} className="relative group/emoji">
+                <button onClick={() => react(e)}
+                  style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
+                  {e}
+                </button>
+                <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[9px] text-white opacity-0 shadow-lg transition-opacity group-hover/emoji:opacity-100 z-50">
+                  {LABELS[e]}
+                  <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -535,19 +567,123 @@ export function WaveBackButton({ db, messageId, senderUid, currentUser, onWave }
         read: false,
       });
       setWaved(true);
-      if (onWave) onWave(); // 🌊 trigger ripple animation
+      if (onWave) onWave();
     } catch { }
     finally { setWaving(false); }
   };
 
   if (!currentUser || senderUid === currentUser.uid) return null;
   return (
-    <button type="button" onClick={sendWave} disabled={!canWave}
-      className={`mt-1 flex items-center gap-1 text-[10px] font-semibold transition-all ${
-        waved ? "text-teal-600" : canWave ? "text-slate-300 hover:text-teal-500" : "text-slate-200 cursor-not-allowed"
-      }`}>
-      {waved ? "👋 waved!" : waving ? "…" : "👋 wave"}
-    </button>
+    <div className="relative group/wave">
+      <button type="button" onClick={sendWave} disabled={!canWave}
+        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all ${
+          waved ? "border-teal-300 bg-teal-50 text-teal-600"
+            : canWave ? "border-slate-200 bg-white text-slate-500 hover:border-teal-200 hover:text-teal-500 hover:scale-105 active:scale-95"
+            : "border-slate-100 text-slate-300 cursor-not-allowed"
+        }`}>
+        {waved ? "👋 Sent warmth!" : waving ? "…" : "👋 Send warmth"}
+      </button>
+      {/* Tooltip */}
+      {!waved && canWave && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-[10px] text-white opacity-0 shadow-lg transition-opacity group-hover/wave:opacity-100 z-50">
+          Let them know you&apos;re here 🤝
+          <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// REACTIONS INBOX — shows reactions your messages have received
+// ─────────────────────────────────────────────────────────────────
+
+const REACTION_LABEL = {
+  "❤️": "loved your message",
+  "🙏": "thanked you",
+  "😊": "said you made them smile",
+  "🌟": "called you a star",
+};
+
+export function ReactionsInbox({ db, currentUser }) {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    // Listen to all public messages by this user
+    const q = query(
+      collection(db, "publicMessages"),
+      where("uid", "==", currentUser.uid),
+      orderBy("timestamp", "desc"),
+      limit(20)
+    );
+    return onSnapshot(q, (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, text: d.data().text }));
+
+      // For each message, listen to its reactions subcollection
+      // We cache unsubscribers and merge results
+      const allReactions = [];
+      const unsubs = msgs.map(({ id: msgId, text }) =>
+        onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          rSnap.forEach((rDoc) => {
+            const data = rDoc.data();
+            const emoji = rDoc.id;
+            const count = data.count ?? 0;
+            if (count > 0) {
+              allReactions.push({ msgId, text, emoji, count });
+            }
+          });
+          // Deduplicate and sort by count desc
+          const seen = new Set();
+          const deduped = allReactions.filter(({ msgId: m, emoji: e }) => {
+            const key = `${m}:${e}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setItems(deduped.slice(0, 5));
+        }, () => {})
+      );
+      return () => unsubs.forEach((u) => u());
+    }, () => {});
+  }, [db, currentUser]);
+
+  const [dismissed, setDismissed] = useState(new Set());
+  const visible = items.filter((x) => !dismissed.has(`${x.msgId}:${x.emoji}`));
+
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="mb-3 rounded-2xl border border-violet-100 bg-violet-50/60 px-3 py-2.5">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-violet-500">
+        <span>💌</span> Reactions to your messages
+      </p>
+      <div className="space-y-1">
+        {visible.map(({ msgId, text, emoji, count }) => {
+          const key = `${msgId}:${emoji}`;
+          const label = REACTION_LABEL[emoji] ?? "reacted";
+          const short = text.length > 28 ? text.slice(0, 28) + "…" : text;
+          return (
+            <div key={key}
+              className="flex items-center justify-between gap-2 rounded-xl bg-white/80 px-2.5 py-1.5 text-[11px] text-slate-700 shadow-sm">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span style={{ fontSize: "15px" }}>{emoji}</span>
+                <span className="truncate">
+                  <span className="font-semibold">{count} {count === 1 ? "person" : "people"}</span>
+                  {" "}{label}
+                  <span className="text-slate-400"> · &ldquo;{short}&rdquo;</span>
+                </span>
+              </span>
+              <button onClick={() => setDismissed((s) => new Set(s).add(key))}
+                className="flex-shrink-0 text-slate-300 hover:text-slate-500 transition-colors ml-1">
+                <X size={11} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
