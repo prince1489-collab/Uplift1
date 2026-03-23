@@ -367,7 +367,7 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
         tx.set(rRef, { sparkBalance: rB + GIFT_AMOUNT }, { merge: true });
       });
       setSent(true);
-      if (onGift) onGift(); // 💛 trigger coin float animation
+      if (onGift) onGift("🎁"); // 🎁 trigger gift burst animation
     } catch { }
     finally { setSending(false); }
   };
@@ -375,11 +375,13 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
   if (!currentUser || senderUid === currentUser.uid) return null;
   return (
     <button type="button" onClick={sendGift} disabled={!canGift}
-      className={`mt-1 flex items-center gap-1 text-[10px] font-semibold transition-colors ${
-        sent ? "text-amber-600" : canGift ? "text-slate-400 hover:text-amber-500" : "text-slate-300 cursor-not-allowed"
+      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all ${
+        sent ? "border-amber-300 bg-amber-50 text-amber-600"
+          : canGift ? "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-500 hover:scale-105"
+          : "border-slate-100 text-slate-300 cursor-not-allowed"
       }`}>
       <Gift size={10} />
-      {sent ? `+${GIFT_AMOUNT} gifted!` : sending ? "…" : `Gift ${GIFT_AMOUNT}✨`}
+      {sent ? `+${GIFT_AMOUNT} sent! ✨` : sending ? "…" : `Gift ${GIFT_AMOUNT} ✨`}
     </button>
   );
 }
@@ -430,12 +432,12 @@ export function LiveGreeterCount({ db, currentUser }) {
   );
 }
 
-const REACTION_EMOJIS = ["❤️", "🌟", "🙏", "😊", "✨"];
+const REACTION_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
 
-// ── onHeart callback added ───────────────────────────────────────
-export function MessageReactions({ db, messageId, currentUser, onHeart }) {
+// ── Hover-reveal reactions, no + button, per-emoji animation callbacks ───────
+export function MessageReactions({ db, messageId, currentUser, onReact }) {
   const [reactions, setReactions] = useState({});
-  const [adding, setAdding] = useState(false);
+  const [popping, setPopping] = useState(null);
 
   useEffect(() => {
     if (!db || !messageId) return;
@@ -449,27 +451,36 @@ export function MessageReactions({ db, messageId, currentUser, onHeart }) {
   const react = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
     const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
+    let wasNew = false;
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
       const already = uids.includes(currentUser.uid);
+      wasNew = !already;
       tx.set(rRef, already
         ? { count: Math.max(0, (data.count ?? 0) - 1), uids: uids.filter((u) => u !== currentUser.uid) }
         : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
       );
-      // ❤️ trigger heart balloon animation on new heart react
-      if (emoji === "❤️" && !already && onHeart) onHeart();
     });
-    setAdding(false);
+    // Pop animation on the button
+    setPopping(emoji);
+    setTimeout(() => setPopping(null), 400);
+    // Fire full-screen burst for new reactions
+    if (wasNew && onReact) onReact(emoji);
   };
 
+  // Active counts row (always shown if any reactions exist)
+  const activeEmojis = REACTION_EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
+
   return (
-    <div className="flex flex-wrap items-center gap-1 mt-1">
-      {REACTION_EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0).map((e) => {
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {/* Active reaction counts */}
+      {activeEmojis.map((e) => {
         const mine = reactions[e]?.uids?.includes(currentUser?.uid);
         return (
           <button key={e} onClick={() => react(e)}
+            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1)" : "none" }}
             className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
               mine ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
             }`}>
@@ -477,20 +488,16 @@ export function MessageReactions({ db, messageId, currentUser, onHeart }) {
           </button>
         );
       })}
-      <button onClick={() => setAdding((v) => !v)}
-        className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-400 hover:border-slate-300 transition-colors">
-        {adding ? "×" : "+"}
-      </button>
-      {adding && (
-        <div className="flex gap-1 flex-wrap">
-          {REACTION_EMOJIS.map((e) => (
-            <button key={e} onClick={() => react(e)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-sm hover:bg-slate-50 transition-colors">
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Hover-reveal emoji tray — always present, shown on group hover via CSS */}
+      <div className="seen-reaction-tray flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {REACTION_EMOJIS.map((e) => (
+          <button key={e} onClick={() => react(e)}
+            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1)" : "none" }}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
+            {e}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
