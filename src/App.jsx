@@ -25,6 +25,7 @@ import {
   PremiumUpgradePrompt,                // Gap 4 — monetize
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
+  ReactionsInbox,
 } from "./UpliftRetentionFeatures";
 
 // Gap 3 — variety
@@ -770,7 +771,15 @@ export default function App() {
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <StreakBadgeWithPulse streak={streak} />
+                  <div className="relative group/streak">
+                    <StreakBadgeWithPulse streak={streak} />
+                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 w-56 rounded-xl bg-slate-800 px-3 py-2 text-[10px] leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/streak:opacity-100 z-50">
+                      <p className="font-semibold mb-0.5">🔥 Your Kindness Streak</p>
+                      <p>Send at least one greeting every day to keep your streak alive.</p>
+                      {streak >= 3 && <p className="mt-1 text-amber-300">+{streak >= 30 ? "100" : streak >= 14 ? "75" : streak >= 7 ? "50" : "25"}% spark bonus active!</p>}
+                      <span className="absolute right-4 top-full border-4 border-transparent border-t-slate-800" />
+                    </div>
+                  </div>
                   <MeatballMenu
                     onWorld={() => setShowMap(true)}
                     onShare={() => setShowProfileCard(true)}
@@ -822,6 +831,7 @@ export default function App() {
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+              <ReactionsInbox db={db} currentUser={currentUser} />
               <WaveNotifications db={db} currentUser={currentUser} />
               <div className="mb-3">
                 <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
