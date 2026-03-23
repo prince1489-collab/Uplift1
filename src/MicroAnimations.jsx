@@ -188,45 +188,53 @@ const KEYFRAMES = `
   }
 
   /* ── Full-screen reaction burst animations ── */
+  /* Heart: rises up from centre-bottom, fades out at top */
   @keyframes seenReactHeartRise {
-    0%   { opacity: 0; transform: translate(-50%, 20px) scale(0.4); }
-    20%  { opacity: 1; transform: translate(-50%, 0px) scale(1.3); }
-    60%  { opacity: 1; transform: translate(-50%, -120px) scale(1.1); }
-    100% { opacity: 0; transform: translate(-50%, -240px) scale(0.8); }
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(60px)  scale(0.3); }
+    15%  { opacity: 1;   transform: translateX(-50%) translateY(0px)   scale(1.4); }
+    55%  { opacity: 1;   transform: translateX(-50%) translateY(-80px) scale(1.15); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-200px) scale(0.8); }
   }
+  /* Generic burst: pops to big then shrinks and fades */
   @keyframes seenReactBurst {
-    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
-    30%  { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
-    65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.2); }
+    25%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.5); }
+    60%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.15); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.7); }
   }
+  /* Star: spins in, explodes, fades */
   @keyframes seenReactStarBurst {
-    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.1) rotate(-20deg); }
-    25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.5) rotate(10deg); }
-    60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(0deg); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.6) rotate(5deg); }
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.1) rotate(-30deg); }
+    20%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.6) rotate(15deg); }
+    55%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.2) rotate(0deg); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.6) rotate(8deg); }
   }
+  /* Wave: wobbles left-right as it grows */
   @keyframes seenReactWaveBig {
-    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-20deg); }
-    25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(15deg); }
-    55%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(-10deg); }
-    75%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1) rotate(8deg); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7) rotate(0deg); }
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.2) rotate(-25deg); }
+    20%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.5) rotate(20deg); }
+    45%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.3) rotate(-15deg); }
+    65%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.2) rotate(10deg); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.8) rotate(0deg); }
   }
+  /* Gift: bounces up from bottom, pops, floats away */
   @keyframes seenReactGift {
-    0%   { opacity: 0; transform: translate(-50%, 30px) scale(0.3); }
-    20%  { opacity: 1; transform: translate(-50%, -10px) scale(1.4); }
-    45%  { opacity: 1; transform: translate(-50%, -30px) scale(1.1); }
-    60%  { opacity: 1; transform: translate(-50%, -20px) scale(1.2); }
-    100% { opacity: 0; transform: translate(-50%, -80px) scale(0.5); }
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(80px)   scale(0.2); }
+    18%  { opacity: 1;   transform: translateX(-50%) translateY(-20px)  scale(1.5); }
+    40%  { opacity: 1;   transform: translateX(-50%) translateY(-10px)  scale(1.2); }
+    60%  { opacity: 1;   transform: translateX(-50%) translateY(-30px)  scale(1.3); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-120px) scale(0.6); }
   }
+  /* Glitter sparks radiating outward */
   @keyframes seenReactGlitter {
-    0%,100% { opacity: 0; transform: translate(var(--gx), var(--gy)) scale(0); }
-    50%      { opacity: 1; transform: translate(var(--gx), var(--gy)) scale(1); }
+    0%   { opacity: 0; transform: translate(0, 0)                        scale(0);   }
+    40%  { opacity: 1; transform: translate(var(--gx), var(--gy))        scale(1.2); }
+    100% { opacity: 0; transform: translate(var(--gx2), var(--gy2))      scale(0);   }
   }
+  /* Button pop on tap */
   @keyframes seenReactionPop {
     0%   { transform: scale(1); }
-    40%  { transform: scale(1.5); }
+    40%  { transform: scale(1.55); }
     100% { transform: scale(1); }
   }
 `;
@@ -746,43 +754,46 @@ export function useReactionBurst() {
 // The overlay layer — place once inside the app root div
 export function ReactionBurstLayer({ burst }) {
   if (!burst) return null;
+  const { emoji, id } = burst;
 
-  const { emoji } = burst;
+  // Heart rises from bottom-centre; others burst from screen centre
+  const isHeart = emoji === "❤️";
+  const isWave  = emoji === "👋";
+  const isStar  = emoji === "🌟";
+  const isGift  = emoji === "🎁";
 
-  // Choose animation per emoji
-  let anim = "seenReactBurst 1.1s cubic-bezier(0.34,1.2,0.64,1) forwards";
-  let size = "7rem";
-  let bottom = "38%";
+  const anim = isHeart ? "seenReactHeartRise 1.3s ease-out forwards"
+             : isWave  ? "seenReactWaveBig   1.3s ease-out forwards"
+             : isStar  ? "seenReactStarBurst 1.2s ease-out forwards"
+             : isGift  ? "seenReactGift      1.3s ease-out forwards"
+             :           "seenReactBurst     1.2s ease-out forwards";
 
-  if (emoji === "❤️") {
-    anim = "seenReactHeartRise 1.2s cubic-bezier(0.34,1.2,0.64,1) forwards";
-    size = "6rem";
-    bottom = "25%";
-  } else if (emoji === "🌟") {
-    anim = "seenReactStarBurst 1.1s cubic-bezier(0.34,1.2,0.64,1) forwards";
-    size = "8rem";
-    bottom = "38%";
-  } else if (emoji === "👋") {
-    anim = "seenReactWaveBig 1.2s cubic-bezier(0.34,1.2,0.64,1) forwards";
-    size = "8rem";
-    bottom = "38%";
-  } else if (emoji === "🎁") {
-    anim = "seenReactGift 1.2s cubic-bezier(0.34,1.56,0.64,1) forwards";
-    size = "7rem";
-    bottom = "20%";
-  }
+  // Heart anchors to bottom-centre; others anchor to screen centre
+  const pos = isHeart || isGift
+    ? { left: "50%", bottom: "20%" }
+    : { left: "50%", top: "50%" };
+
+  const sparks = (isStar || isGift) ? Array.from({ length: 10 }, (_, i) => {
+    const angle = (i / 10) * 360;
+    const d1 = 55 + (i % 3) * 20;
+    const d2 = 100 + (i % 3) * 30;
+    return {
+      i,
+      gx:  `${Math.cos((angle * Math.PI) / 180) * d1}px`,
+      gy:  `${Math.sin((angle * Math.PI) / 180) * d1}px`,
+      gx2: `${Math.cos((angle * Math.PI) / 180) * d2}px`,
+      gy2: `${Math.sin((angle * Math.PI) / 180) * d2}px`,
+      delay: `${i * 0.04}s`,
+    };
+  }) : [];
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      pointerEvents: "none", overflow: "hidden",
-    }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, pointerEvents: "none", overflow: "hidden" }}>
       {/* Main emoji */}
-      <span style={{
+      <span key={id} style={{
         position: "absolute",
-        left: "50%",
-        bottom: bottom,
-        fontSize: size,
+        ...pos,
+        fontSize: isWave || isStar ? "8rem" : "7rem",
         lineHeight: 1,
         animation: anim,
         willChange: "transform, opacity",
@@ -790,27 +801,23 @@ export function ReactionBurstLayer({ burst }) {
       }}>
         {emoji}
       </span>
-      {/* Glitter sparks for gift and star */}
-      {(emoji === "🎁" || emoji === "🌟") && (
-        Array.from({ length: 8 }).map((_, i) => {
-          const angle = (i / 8) * 360;
-          const dist = 60 + Math.random() * 40;
-          const gx = `${Math.cos((angle * Math.PI) / 180) * dist}px`;
-          const gy = `${Math.sin((angle * Math.PI) / 180) * dist}px`;
-          return (
-            <span key={i} style={{
-              position: "absolute",
-              left: "50%", top: "50%",
-              fontSize: "1.5rem",
-              "--gx": gx, "--gy": gy,
-              animation: `seenReactGlitter ${0.5 + Math.random() * 0.5}s ${0.1 + i * 0.06}s ease-out forwards`,
-              willChange: "transform, opacity",
-            }}>
-              {emoji === "🎁" ? "✨" : "⭐"}
-            </span>
-          );
-        })
-      )}
+
+      {/* Sparks for ⭐ and 🎁 — positioned at screen centre */}
+      {sparks.map(({ i, gx, gy, gx2, gy2, delay }) => (
+        <span key={i} style={{
+          position: "absolute",
+          left: "50%", top: "50%",
+          fontSize: "1.6rem",
+          lineHeight: 1,
+          "--gx": gx, "--gy": gy,
+          "--gx2": gx2, "--gy2": gy2,
+          animation: `seenReactGlitter 0.7s ${delay} ease-out forwards`,
+          willChange: "transform, opacity",
+          userSelect: "none",
+        }}>
+          {isGift ? "✨" : "⭐"}
+        </span>
+      ))}
     </div>
   );
 }
