@@ -148,7 +148,28 @@ export function useStreak(db, uid, profile) {
     }
   }, [db, uid]);
 
-  return { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze };
+  const sellFreeze = useCallback(async () => {
+    if (!db || !uid) return { error: "Not signed in." };
+    const userRef = doc(db, "users", uid);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(userRef);
+        const data = snap.exists() ? snap.data() : {};
+        const freezes = Number(data.streakFreezes ?? 0);
+        if (freezes < 1) throw new Error("no_freezes");
+        const balance = Number(data.sparkBalance ?? 0);
+        tx.set(userRef, {
+          streakFreezes: freezes - 1,
+          sparkBalance: balance + FREEZE_COST,
+        }, { merge: true });
+      });
+      return { ok: true };
+    } catch (e) {
+      return { error: "No freezes to refund." };
+    }
+  }, [db, uid]);
+
+  return { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze, sellFreeze };
 }
 
 export function StreakBadge({ streak }) {
@@ -164,30 +185,50 @@ export function StreakBadge({ streak }) {
   );
 }
 
-export function StreakFreezeButton({ freezes, sparkBalance, onBuy }) {
+export function StreakFreezeButton({ freezes, sparkBalance, onBuy, onSell }) {
   const canAfford = sparkBalance >= FREEZE_COST;
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
   return (
-    <div className="relative group/freeze flex-shrink-0">
-      <button type="button" onClick={onBuy} disabled={!canAfford}
+    <div className="relative flex-shrink-0" ref={ref}>
+      <button type="button" onClick={() => freezes > 0 ? setOpen(v => !v) : onBuy?.()}
+        disabled={!canAfford && freezes === 0}
+        title={freezes > 0 ? "Click to manage" : canAfford ? `Buy freeze for ${FREEZE_COST} sparks` : "Not enough sparks"}
         className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-          freezes > 0 ? "border-cyan-200 bg-cyan-50 text-cyan-700"
+          freezes > 0 ? "border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-300"
           : canAfford ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
           : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
         }`}>
         <Shield size={11} />
         {freezes > 0 ? `${freezes} ❄️ freeze${freezes > 1 ? "s" : ""}` : `Freeze (${FREEZE_COST}✨)`}
       </button>
-      {/* Tooltip */}
-      <div className="pointer-events-none absolute right-0 bottom-full mb-2 w-52 rounded-xl bg-slate-800 px-3 py-2 text-[10px] leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/freeze:opacity-100 z-50">
-        <p className="font-semibold mb-0.5">❄️ Streak Freeze</p>
-        {freezes > 0
-          ? <p>You have <span className="text-cyan-300">{freezes} freeze{freezes > 1 ? "s" : ""}</span>. Miss a day? A freeze saves your streak automatically.</p>
-          : canAfford
-            ? <p>Buy a freeze for <span className="text-amber-300">{FREEZE_COST} sparks</span> to protect your streak if you miss a day.</p>
-            : <p>Earn more sparks by sending greetings to unlock a streak freeze.</p>
-        }
-        <span className="absolute right-4 top-full border-4 border-transparent border-t-slate-800" />
-      </div>
+
+      {/* Dropdown for freeze management */}
+      {open && freezes > 0 && (
+        <div className="absolute right-0 bottom-full mb-2 z-50 w-56 rounded-2xl border border-slate-100 bg-white py-2 shadow-xl">
+          <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">❄️ Streak Freeze</p>
+          <p className="px-3 pb-2 text-[11px] text-slate-500 leading-relaxed">
+            You have <span className="font-semibold text-cyan-600">{freezes} freeze{freezes > 1 ? "s" : ""}</span>.
+            Miss a day and a freeze will automatically protect your streak.
+          </p>
+          <div className="border-t border-slate-100 pt-1">
+            <button onClick={() => { onBuy?.(); setOpen(false); }} disabled={!canAfford}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+              <span>➕</span> Buy another ({FREEZE_COST}✨)
+            </button>
+            <button onClick={() => { onSell?.(); setOpen(false); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-red-500 hover:bg-red-50">
+              <span>↩️</span> Undo — refund {FREEZE_COST}✨
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -273,7 +314,7 @@ export function KindnessPledge({ db, uid, todayMessageCount = 0 }) {
 
 const GIFT_AMOUNT = 5;
 
-export function BuddyPanel({ db, currentUser, profile }) {
+export function BuddyPanel({ db, currentUser, profile, compact = false }) {
   const [buddyProfiles, setBuddyProfiles] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
@@ -309,6 +350,53 @@ export function BuddyPanel({ db, currentUser, profile }) {
     if (!db || !currentUser) return;
     await updateDoc(doc(db, "users", currentUser.uid), { buddies: arrayRemove(targetUid) });
   };
+
+  // Compact mode: smaller, no outer card styling (used inside meatball dropdown)
+  if (compact) return (
+    <div className="py-0.5">
+      {buddyProfiles.length === 0 && !addOpen && (
+        <p className="text-[10px] text-slate-400 px-1 pb-1">No buddies yet.</p>
+      )}
+      <div className="space-y-1">
+        {buddyProfiles.map((b) => (
+          <div key={b.uid} className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              {b.profilePhotoUrl
+                ? <img src={b.profilePhotoUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+                : <div className="h-5 w-5 rounded-full bg-teal-100 flex items-center justify-center text-[9px] font-bold text-teal-700">{(b.fullName ?? "?")[0]}</div>}
+              <span className="text-[11px] text-slate-700">{b.fullName}</span>
+            </div>
+            <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
+          </div>
+        ))}
+      </div>
+      {buddyUids.length < 5 && !addOpen && (
+        <button onClick={() => setAddOpen(true)}
+          className="mt-1 w-full rounded-lg border border-dashed border-slate-200 py-1 text-[10px] text-slate-400 hover:border-teal-300 hover:text-teal-500 transition-colors">
+          + Add buddy
+        </button>
+      )}
+      {addOpen && (
+        <div className="mt-1 space-y-1">
+          <input value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
+            placeholder="Friend's email…"
+            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px]" />
+          <button onClick={searchForUser} disabled={searching}
+            className="w-full rounded-lg bg-teal-600 py-1 text-[11px] font-semibold text-white">
+            {searching ? "…" : "Search"}
+          </button>
+          {searchError && <p className="text-[10px] text-rose-500">{searchError}</p>}
+          {searchResult && searchResult.uid !== currentUser?.uid && (
+            <div className="flex items-center justify-between rounded-lg border border-teal-200 bg-white px-2 py-1">
+              <span className="text-[11px] text-slate-700">{searchResult.fullName}</span>
+              <button onClick={() => addBuddy(searchResult.uid)} className="text-[11px] font-semibold text-teal-600">Add</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 mt-2">
@@ -493,25 +581,9 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
     if (wasNew && onReact) onReact(emoji);
   };
 
-  const activeEmojis = REACTION_EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
-
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
-      {/* Active reaction count pills */}
-      {activeEmojis.map((e) => {
-        const mine = reactions[e]?.uids?.includes(currentUser?.uid);
-        return (
-          <button key={e} onClick={() => react(e)}
-            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
-            className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
-              mine ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-            }`}>
-            {e} <span>{reactions[e]?.count}</span>
-          </button>
-        );
-      })}
-
-      {/* + button to toggle emoji tray */}
+      {/* + button to toggle emoji tray — counts shown as side badges on bubble */}
       <button
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
@@ -541,6 +613,60 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ── Reaction counts float beside the bubble ──────────────────────────────────
+export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }) {
+  const [reactions, setReactions] = useState({});
+  const EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+
+  useEffect(() => {
+    if (!db || !messageId) return;
+    return onSnapshot(collection(db, "publicMessages", messageId, "reactions"), (snap) => {
+      const r = {};
+      snap.forEach((d) => { r[d.id] = d.data(); });
+      setReactions(r);
+    }, () => {});
+  }, [db, messageId]);
+
+  const active = EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
+  if (active.length === 0) return null;
+
+  const toggle = async (emoji) => {
+    if (!db || !currentUser || !messageId) return;
+    const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
+    let wasNew = false;
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(rRef);
+      const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
+      const uids = data.uids ?? [];
+      const already = uids.includes(currentUser.uid);
+      wasNew = !already;
+      tx.set(rRef, already
+        ? { count: Math.max(0, (data.count ?? 0) - 1), uids: uids.filter((u) => u !== currentUser.uid) }
+        : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
+      );
+    });
+    if (wasNew && onReact) onReact(emoji);
+  };
+
+  return (
+    <div className={`absolute -bottom-2 flex gap-0.5 ${mine ? "right-2" : "left-2"}`}
+      style={{ zIndex: 2 }}>
+      {active.map((e) => {
+        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid);
+        return (
+          <button key={e} onClick={() => toggle(e)}
+            className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 ${
+              mine2 ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
+            }`}>
+            {e}<span className="ml-0.5">{reactions[e]?.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
