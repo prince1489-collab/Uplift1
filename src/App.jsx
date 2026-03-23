@@ -368,7 +368,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
 }
 
 // ── Gap 3: Greeting picker with categories ────────────────────────
-function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false }) {
+function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday }) {
   const isPremium = Boolean(profile?.isPremium);
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
@@ -386,7 +386,18 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
+          {remainingToday !== undefined && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+              remainingToday <= 2
+                ? "bg-amber-100 text-amber-700"
+                : "bg-slate-100 text-slate-500"
+            }`}>
+              {remainingToday} left today
+            </span>
+          )}
+        </div>
         <button onClick={onClose} className="rounded-full bg-slate-100 p-1">
           <ChevronDown size={16} className="text-slate-500" />
         </button>
@@ -731,8 +742,11 @@ export default function App() {
     } finally { setIsSavingProfile(false); }
   };
 
+  const DAILY_GREETING_LIMIT = 10;
+
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
+    if (todayMessageCount >= DAILY_GREETING_LIMIT) return; // guard (UI should block first)
     setIsSending(true);
     try {
       await addDoc(publicMessagesRef, {
@@ -1019,11 +1033,25 @@ export default function App() {
 
             {/* FAB-style footer */}
             <footer className="border-t border-slate-100 bg-white px-4 py-2.5">
-              {!pickerOpen ? (
+              {todayMessageCount >= DAILY_GREETING_LIMIT ? (
+                /* Daily limit reached */
+                <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+                  <span className="text-lg">🌙</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-amber-800">You've spread 10 greetings today!</p>
+                    <p className="text-[11px] text-amber-600">Your daily kindness quota resets at midnight. See you tomorrow ✨</p>
+                  </div>
+                </div>
+              ) : !pickerOpen ? (
                 <div className="flex items-center gap-2.5">
                   <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
                     onClick={() => setPickerOpen(true)}>
-                    Send a kind greeting…
+                    <span>Send a kind greeting…</span>
+                    {todayMessageCount > 0 && (
+                      <span className="ml-2 text-[10px] font-semibold text-slate-400">
+                        {DAILY_GREETING_LIMIT - todayMessageCount} left today
+                      </span>
+                    )}
                   </div>
                   {/* FAB with sending state */}
                   <button onClick={() => setPickerOpen(true)} disabled={isSending}
@@ -1046,6 +1074,7 @@ export default function App() {
                     onClose={() => setPickerOpen(false)}
                     onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
                     isSending={isSending}
+                    remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
                   />
                 </GreetingSheetWrapper>
               )}
