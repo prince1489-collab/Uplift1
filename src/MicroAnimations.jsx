@@ -186,6 +186,49 @@ const KEYFRAMES = `
     60%  { opacity: 1; transform: scale(1.2) translateY(0); }
     100% { opacity: 1; transform: scale(1); }
   }
+
+  /* ── Full-screen reaction burst animations ── */
+  @keyframes seenReactHeartRise {
+    0%   { opacity: 0; transform: translate(-50%, 20px) scale(0.4); }
+    20%  { opacity: 1; transform: translate(-50%, 0px) scale(1.3); }
+    60%  { opacity: 1; transform: translate(-50%, -120px) scale(1.1); }
+    100% { opacity: 0; transform: translate(-50%, -240px) scale(0.8); }
+  }
+  @keyframes seenReactBurst {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+    30%  { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
+    65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  }
+  @keyframes seenReactStarBurst {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.1) rotate(-20deg); }
+    25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.5) rotate(10deg); }
+    60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(0deg); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.6) rotate(5deg); }
+  }
+  @keyframes seenReactWaveBig {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-20deg); }
+    25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(15deg); }
+    55%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(-10deg); }
+    75%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1) rotate(8deg); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7) rotate(0deg); }
+  }
+  @keyframes seenReactGift {
+    0%   { opacity: 0; transform: translate(-50%, 30px) scale(0.3); }
+    20%  { opacity: 1; transform: translate(-50%, -10px) scale(1.4); }
+    45%  { opacity: 1; transform: translate(-50%, -30px) scale(1.1); }
+    60%  { opacity: 1; transform: translate(-50%, -20px) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -80px) scale(0.5); }
+  }
+  @keyframes seenReactGlitter {
+    0%,100% { opacity: 0; transform: translate(var(--gx), var(--gy)) scale(0); }
+    50%      { opacity: 1; transform: translate(var(--gx), var(--gy)) scale(1); }
+  }
+  @keyframes seenReactionPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.5); }
+    100% { transform: scale(1); }
+  }
 `;
 
 let _keyframesInjected = false;
@@ -679,5 +722,95 @@ export function CountryReveal({ country, isNew }) {
     }}>
       {flag}
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// FULL-SCREEN REACTION BURST OVERLAY
+// A single portal-style div rendered at app root, triggered by emoji taps
+// ─────────────────────────────────────────────────────────────────
+
+// Hook — returns a trigger function. Place <ReactionBurstLayer /> once at app root.
+export function useReactionBurst() {
+  const [burst, setBurst] = useState(null);
+
+  const trigger = useCallback((emoji) => {
+    const id = Math.random();
+    setBurst({ emoji, id });
+    setTimeout(() => setBurst((b) => (b?.id === id ? null : b)), 1400);
+  }, []);
+
+  return { burst, trigger };
+}
+
+// The overlay layer — place once inside the app root div
+export function ReactionBurstLayer({ burst }) {
+  if (!burst) return null;
+
+  const { emoji } = burst;
+
+  // Choose animation per emoji
+  let anim = "seenReactBurst 1.1s cubic-bezier(0.34,1.2,0.64,1) forwards";
+  let size = "7rem";
+  let bottom = "38%";
+
+  if (emoji === "❤️") {
+    anim = "seenReactHeartRise 1.2s cubic-bezier(0.34,1.2,0.64,1) forwards";
+    size = "6rem";
+    bottom = "25%";
+  } else if (emoji === "🌟") {
+    anim = "seenReactStarBurst 1.1s cubic-bezier(0.34,1.2,0.64,1) forwards";
+    size = "8rem";
+    bottom = "38%";
+  } else if (emoji === "👋") {
+    anim = "seenReactWaveBig 1.2s cubic-bezier(0.34,1.2,0.64,1) forwards";
+    size = "8rem";
+    bottom = "38%";
+  } else if (emoji === "🎁") {
+    anim = "seenReactGift 1.2s cubic-bezier(0.34,1.56,0.64,1) forwards";
+    size = "7rem";
+    bottom = "20%";
+  }
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      pointerEvents: "none", overflow: "hidden",
+    }}>
+      {/* Main emoji */}
+      <span style={{
+        position: "absolute",
+        left: "50%",
+        bottom: bottom,
+        fontSize: size,
+        lineHeight: 1,
+        animation: anim,
+        willChange: "transform, opacity",
+        userSelect: "none",
+      }}>
+        {emoji}
+      </span>
+      {/* Glitter sparks for gift and star */}
+      {(emoji === "🎁" || emoji === "🌟") && (
+        Array.from({ length: 8 }).map((_, i) => {
+          const angle = (i / 8) * 360;
+          const dist = 60 + Math.random() * 40;
+          const gx = `${Math.cos((angle * Math.PI) / 180) * dist}px`;
+          const gy = `${Math.sin((angle * Math.PI) / 180) * dist}px`;
+          return (
+            <span key={i} style={{
+              position: "absolute",
+              left: "50%", top: "50%",
+              fontSize: "1.5rem",
+              "--gx": gx, "--gy": gy,
+              animation: `seenReactGlitter ${0.5 + Math.random() * 0.5}s ${0.1 + i * 0.06}s ease-out forwards`,
+              willChange: "transform, opacity",
+            }}>
+              {emoji === "🎁" ? "✨" : "⭐"}
+            </span>
+          );
+        })
+      )}
+    </div>
   );
 }
