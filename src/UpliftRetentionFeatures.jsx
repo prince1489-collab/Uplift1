@@ -434,9 +434,10 @@ export function LiveGreeterCount({ db, currentUser }) {
 
 const REACTION_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
 
-// ── Hover-reveal reactions, no + button, per-emoji animation callbacks ───────
+// ── + button to open tray, per-emoji full-screen animation callbacks ──────────
 export function MessageReactions({ db, messageId, currentUser, onReact }) {
   const [reactions, setReactions] = useState({});
+  const [open, setOpen] = useState(false);
   const [popping, setPopping] = useState(null);
 
   useEffect(() => {
@@ -463,24 +464,22 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
         : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
       );
     });
-    // Pop animation on the button
     setPopping(emoji);
     setTimeout(() => setPopping(null), 400);
-    // Fire full-screen burst for new reactions
+    setOpen(false);
     if (wasNew && onReact) onReact(emoji);
   };
 
-  // Active counts row (always shown if any reactions exist)
   const activeEmojis = REACTION_EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
-      {/* Active reaction counts */}
+      {/* Active reaction count pills */}
       {activeEmojis.map((e) => {
         const mine = reactions[e]?.uids?.includes(currentUser?.uid);
         return (
           <button key={e} onClick={() => react(e)}
-            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1)" : "none" }}
+            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
             className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
               mine ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
             }`}>
@@ -488,16 +487,28 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
           </button>
         );
       })}
-      {/* Hover-reveal emoji tray — always present, shown on group hover via CSS */}
-      <div className="seen-reaction-tray flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-        {REACTION_EMOJIS.map((e) => (
-          <button key={e} onClick={() => react(e)}
-            style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1)" : "none" }}
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
-            {e}
-          </button>
-        ))}
-      </div>
+
+      {/* + button to toggle emoji tray */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
+          open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:border-slate-300"
+        }`}>
+        {open ? "×" : "+"}
+      </button>
+
+      {/* Emoji tray */}
+      {open && (
+        <div className="flex gap-1">
+          {REACTION_EMOJIS.map((e) => (
+            <button key={e} onClick={() => react(e)}
+              style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
