@@ -562,23 +562,40 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
   const react = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-    let wasNew = false;
+    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+
+    // Find which emoji (if any) this user has already reacted with on this message
+    const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
+    const isSameEmoji = currentEmoji === emoji;
+
     await runTransaction(db, async (tx) => {
+      // Remove old emoji if switching to a different one
+      if (currentEmoji && !isSameEmoji) {
+        const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
+        const oldSnap = await tx.get(oldRef);
+        const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
+        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+      }
+      // Toggle the tapped emoji
+      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
-      const already = uids.includes(currentUser.uid);
-      wasNew = !already;
-      tx.set(rRef, already
-        ? { count: Math.max(0, (data.count ?? 0) - 1), uids: uids.filter((u) => u !== currentUser.uid) }
-        : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
-      );
+      if (isSameEmoji) {
+        // Tap same emoji = remove it
+        const newUids = uids.filter((u) => u !== currentUser.uid);
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+      } else {
+        // New emoji = add it
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+      }
     });
+
     setPopping(emoji);
     setTimeout(() => setPopping(null), 400);
     setOpen(false);
-    if (wasNew && onReact) onReact(emoji);
+    if (!isSameEmoji && onReact) onReact(emoji); // only burst on new/changed reaction
   };
 
   return (
@@ -597,15 +614,21 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
         <div className="flex gap-1">
           {REACTION_EMOJIS.map((e) => {
             const LABELS = { "❤️": "Love this", "🙏": "Thank you", "😊": "Made me smile", "🌟": "You're a star" };
+            const myCurrentEmoji = REACTION_EMOJIS.find((x) => reactions[x]?.uids?.includes(currentUser?.uid));
+            const isMyPick = myCurrentEmoji === e;
             return (
               <div key={e} className="relative group/emoji">
                 <button onClick={() => react(e)}
                   style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm hover:scale-110 hover:border-teal-200 active:scale-95 transition-all">
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-base shadow-sm hover:scale-110 active:scale-95 transition-all ${
+                    isMyPick
+                      ? "border-teal-400 bg-teal-50 ring-1 ring-teal-300"
+                      : "border-slate-200 bg-white hover:border-teal-200"
+                  }`}>
                   {e}
                 </button>
                 <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[9px] text-white opacity-0 shadow-lg transition-opacity group-hover/emoji:opacity-100 z-50">
-                  {LABELS[e]}
+                  {isMyPick ? "Tap to remove" : LABELS[e]}
                   <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
                 </div>
               </div>
@@ -637,20 +660,30 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }
 
   const toggle = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-    let wasNew = false;
+    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+    const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
+    const isSame = currentEmoji === emoji;
+
     await runTransaction(db, async (tx) => {
+      if (currentEmoji && !isSame) {
+        const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
+        const oldSnap = await tx.get(oldRef);
+        const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
+        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+      }
+      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
-      const already = uids.includes(currentUser.uid);
-      wasNew = !already;
-      tx.set(rRef, already
-        ? { count: Math.max(0, (data.count ?? 0) - 1), uids: uids.filter((u) => u !== currentUser.uid) }
-        : { count: (data.count ?? 0) + 1, uids: [...uids, currentUser.uid] }
-      );
+      if (isSame) {
+        const newUids = uids.filter((u) => u !== currentUser.uid);
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+      } else {
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+      }
     });
-    if (wasNew && onReact) onReact(emoji);
+    if (!isSame && onReact) onReact(emoji);
   };
 
   return (
