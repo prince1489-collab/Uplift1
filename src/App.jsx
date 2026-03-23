@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight, Calendar, ChevronDown, Globe,
-  Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2,
+  ArrowRight, Bell, Calendar, ChevronDown, Globe,
+  Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -20,7 +20,7 @@ import {
   KindnessPledge, BuddyPanel, SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
-  WaveBackButton, WaveNotifications,   // Gap 1 — seen
+  WaveBackButton, WaveNotifications, ReactionSideBadges,   // Gap 1 — seen
   MoodSelector, MoodPill,              // Gap 2 — identity
   PremiumUpgradePrompt,                // Gap 4 — monetize
   scheduleGreetingWindowNotification,
@@ -44,7 +44,7 @@ import {
 import {
   addDoc, collection, doc, getFirestore,
   limit, onSnapshot, orderBy, query,
-  runTransaction, serverTimestamp, setDoc,
+  runTransaction, serverTimestamp, setDoc, where,
 } from "firebase/firestore";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -118,9 +118,10 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-// ── Suggestion 1: Meatball menu for low-freq header actions ─────────────────
-function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse }) {
+// ── Meatball menu — World, Profile, Buddies, Sign out ───────────────────────
+function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, db, currentUser, profile }) {
   const [open, setOpen] = useState(false);
+  const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -136,7 +137,7 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse })
         <span className="text-lg leading-none tracking-widest">···</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-50 min-w-[160px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
+        <div className="absolute right-0 top-9 z-50 min-w-[175px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
           <button onClick={() => { onWorld(); setOpen(false); }}
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
             <span>{globePulse ? "🌍" : "🌐"}</span> World Map
@@ -145,11 +146,111 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse })
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
             <span>👤</span> My Profile
           </button>
+          <button onClick={() => setShowBuddies((v) => !v)}
+            className="flex w-full items-center justify-between gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <span className="flex items-center gap-2.5"><span>🤝</span> Uplift Buddies</span>
+            <span className="text-slate-400 text-xs">{showBuddies ? "▲" : "▼"}</span>
+          </button>
+          {showBuddies && (
+            <div className="mx-2 mb-1 rounded-xl border border-slate-100 bg-slate-50 px-2 py-1">
+              <BuddyPanel db={db} currentUser={currentUser} profile={profile} compact />
+            </div>
+          )}
           <div className="my-1 border-t border-slate-100" />
           <button onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
             <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Notification bell — shows unread waves + reactions, streak inside ─────────
+function NotificationBell({ streak, db, currentUser }) {
+  const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    // Watch unread waves
+    const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), where("read", "==", false), limit(10));
+    return onSnapshot(q, (snap) => {
+      const waves = snap.docs.map((d) => ({ id: d.id, type: "wave", ...d.data() }));
+      setItems(waves);
+      setUnread(waves.length);
+    }, () => {});
+  }, [db, currentUser]);
+
+  const dismiss = async (id) => {
+    if (!db) return;
+    await setDoc(doc(db, "waves", id), { read: true }, { merge: true }).catch(() => {});
+  };
+  const dismissAll = () => items.forEach((w) => dismiss(w.id));
+
+  const hot = streak >= 7;
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((v) => !v)}
+        className="relative flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all">
+        <Bell size={16} />
+        {unread > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-9 z-50 w-72 rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden">
+          {/* Streak summary at top */}
+          <div className={`flex items-center gap-2 px-4 py-3 ${hot ? "bg-orange-50" : "bg-slate-50"} border-b border-slate-100`}>
+            <span className="text-lg">{hot ? "🔥" : "✨"}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-slate-800">
+                {streak > 0 ? `${streak}-day kindness streak!` : "Start your kindness streak"}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {streak >= 3 ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% spark bonus active` : "Send a greeting today to begin"}
+              </p>
+            </div>
+          </div>
+
+          {/* Notifications list */}
+          <div className="max-h-60 overflow-y-auto">
+            {items.length === 0 ? (
+              <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
+            ) : (
+              <div className="py-1">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50">
+                    <span className="text-base flex-shrink-0">👋</span>
+                    <p className="flex-1 text-[11px] text-slate-700">Someone waved at you!</p>
+                    <button onClick={() => dismiss(item.id)} className="text-slate-300 hover:text-slate-500">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {items.length > 1 && (
+            <div className="border-t border-slate-100 px-4 py-2">
+              <button onClick={dismissAll} className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
+                Dismiss all
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -403,7 +504,7 @@ export default function App() {
   const publicMessagesRef = collection(db, "publicMessages");
 
   // Streak hook
-  const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze } =
+  const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze, sellFreeze } =
     useStreak(db, currentUser?.uid, profile);
 
   // Micro-animations controller
@@ -771,21 +872,17 @@ export default function App() {
                   <p className="text-xs text-slate-500">Spread kind greetings in real time</p>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="relative group/streak">
-                    <StreakBadgeWithPulse streak={streak} />
-                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 w-56 rounded-xl bg-slate-800 px-3 py-2 text-[10px] leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/streak:opacity-100 z-50">
-                      <p className="font-semibold mb-0.5">🔥 Your Kindness Streak</p>
-                      <p>Send at least one greeting every day to keep your streak alive.</p>
-                      {streak >= 3 && <p className="mt-1 text-amber-300">+{streak >= 30 ? "100" : streak >= 14 ? "75" : streak >= 7 ? "50" : "25"}% spark bonus active!</p>}
-                      <span className="absolute right-4 top-full border-4 border-transparent border-t-slate-800" />
-                    </div>
-                  </div>
+                  {/* Notification bell replaces streak badge — streak still visible inside tooltip */}
+                  <NotificationBell streak={streak} db={db} currentUser={currentUser} />
                   <MeatballMenu
                     onWorld={() => setShowMap(true)}
                     onShare={() => setShowProfileCard(true)}
                     onSignOut={handleSignOut}
                     isSigningOut={isSigningOut}
                     globePulse={anim.globePulse}
+                    db={db}
+                    currentUser={currentUser}
+                    profile={profile}
                   />
                 </div>
               </div>
@@ -804,7 +901,7 @@ export default function App() {
                       style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                   </div>
                 </div>
-                <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} />
+                <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
               </div>
 
               <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
@@ -827,7 +924,6 @@ export default function App() {
                 </p>
               )}
 
-              <BuddyPanel db={db} currentUser={currentUser} profile={profile} />
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
@@ -879,7 +975,8 @@ export default function App() {
                               const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
                               const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
                               return (
-                                <div key={m.id}>
+                                <div key={m.id} className="relative">
+                                  {/* Bubble */}
                                   <div
                                     className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
                                       mine
@@ -892,7 +989,9 @@ export default function App() {
                                     {isMystery && !mine && <span className="mr-1.5">🎁</span>}
                                     {m.text}
                                   </div>
-                                  {/* Reaction bar only on last message */}
+                                  {/* Reaction counts float on the side of the bubble */}
+                                  <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+                                  {/* Action bar (Wave / Gift / React +) only on last message */}
                                   {isLast && (
                                     <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
                                       {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); }} />}
