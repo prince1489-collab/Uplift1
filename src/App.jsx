@@ -6,7 +6,8 @@ import {
 import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
-  CountryReveal, LiveCountTick, StreakBadgeWithPulse } from "./MicroAnimations";
+  CountryReveal, LiveCountTick, StreakBadgeWithPulse,
+  ReactionBurstLayer, useReactionBurst } from "./MicroAnimations";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
@@ -406,6 +407,7 @@ export default function App() {
 
   // Micro-animations controller
   const anim = useAnimations();
+  const { burst: reactionBurst, trigger: triggerReactionBurst } = useReactionBurst();
   // Note: displayedSparks and animatedProgress are declared after sparkBalance/progressPercent below
 
   useEffect(() => {
@@ -699,6 +701,7 @@ export default function App() {
 
       {/* Micro-animation layer — renders floating particles over everything */}
       <AnimationLayer controller={anim} />
+      <ReactionBurstLayer burst={reactionBurst} />
 
       {/* World map — fixed to viewport with entrance/exit animation #16 */}
       {showMap && (
@@ -840,7 +843,7 @@ export default function App() {
                   return (
                     <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
                     <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div className="max-w-[82%]">
+                      <div className="max-w-[82%] group">
                         {/* Sender header with country flag reveal (animation #7) */}
                         <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
                           {!mine && <span>{group.sender}</span>}
@@ -882,9 +885,9 @@ export default function App() {
                                   {/* Reaction bar only on last message */}
                                   {isLast && (
                                     <div className={`flex items-center gap-1.5 mt-1.5 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { anim.triggerWaveRipple(15, 70); anim.triggerWaveTrail(15, 70); }} />}
-                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={() => anim.triggerCoinFloat(20, 65)} />}
-                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onHeart={() => anim.triggerHeartBalloon()} />
+                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); }} />}
+                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={(emoji) => triggerReactionBurst(emoji)} />}
+                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onReact={(emoji) => triggerReactionBurst(emoji)} />
                                     </div>
                                   )}
                                 </div>
