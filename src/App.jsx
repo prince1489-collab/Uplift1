@@ -487,6 +487,7 @@ export default function App() {
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
@@ -871,113 +872,120 @@ export default function App() {
         ) : (
           <>
             {/* ── COLLAPSIBLE HEADER ── */}
-            {/* Collapsed = single row (~52px). Expanded = full details panel. */}
-            {(() => {
-              const [headerOpen, setHeaderOpen] = React.useState(false);
-              const ME = { grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" };
-              const moodEmoji = profile?.moodTag ? ME[profile.moodTag] : null;
-
-              return (
-                <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0">
-
-                  {/* ── Always-visible top bar ── */}
-                  <div
-                    className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
-                    onClick={() => setHeaderOpen((v) => !v)}>
-
-                    {/* Left: name + mood + live count */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h1 className="text-sm font-bold text-slate-800 truncate">
-                            Hey {firstName}
-                          </h1>
-                          {moodEmoji && (
-                            <span className="text-base leading-none">{moodEmoji}</span>
-                          )}
-                          {/* Streak badge inline */}
-                          {streak > 0 && (
-                            <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${
-                              streak >= 7 ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
-                            }`}>
-                              {streak >= 7 ? "🔥" : "✨"}{streak}d
-                            </span>
-                          )}
-                        </div>
-                        {/* Live count — subtle, always visible */}
-                        <LiveGreeterCount db={db} currentUser={currentUser} compact />
-                      </div>
-                    </div>
-
-                    {/* Right: chevron + bell + menu — stop propagation on bell/menu */}
-                    <div className="flex items-center gap-0.5 flex-shrink-0">
-                      {/* Chevron indicates expandable */}
-                      <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>
-                        ▾
+            <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0">
+              {/* ── Always-visible top bar ── */}
+              <div
+                className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
+                onClick={() => setHeaderOpen((v) => !v)}>
+                {/* Left: name + mood emoji + streak badge + live count */}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
+                    {profile?.moodTag && (
+                      <span className="text-base leading-none">
+                        {{ grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" }[profile.moodTag]}
                       </span>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <NotificationBell streak={streak} db={db} currentUser={currentUser} />
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <MeatballMenu
-                          onWorld={() => setShowMap(true)}
-                          onShare={() => setShowProfileCard(true)}
-                          onSignOut={handleSignOut}
-                          isSigningOut={isSigningOut}
-                          globePulse={anim.globePulse}
-                          db={db}
-                          currentUser={currentUser}
-                          profile={profile}
-                        />
+                    )}
+                    {streak > 0 && (
+                      <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${
+                        streak >= 7 ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
+                      }`}>
+                        {streak >= 7 ? "🔥" : "✨"}{streak}d
+                      </span>
+                    )}
+                  </div>
+                  <LiveGreeterCount db={db} currentUser={currentUser} compact />
+                </div>
+                {/* Right: chevron + bell + menu */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <NotificationBell streak={streak} db={db} currentUser={currentUser} />
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <MeatballMenu
+                      onWorld={() => setShowMap(true)}
+                      onShare={() => setShowProfileCard(true)}
+                      onSignOut={handleSignOut}
+                      isSigningOut={isSigningOut}
+                      globePulse={anim.globePulse}
+                      db={db}
+                      currentUser={currentUser}
+                      profile={profile}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Expandable details panel ── */}
+              <div
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
+                <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
+                  {/* Spark ring + level + progress + freeze */}
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
+                      <p className="text-[11px] text-slate-500"
+                        style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
+                        {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
+                      </p>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
+                          style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                       </div>
                     </div>
+                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
                   </div>
+                  <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
+                  <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
+                  <div className="space-y-1">
+                    <NotificationPermissionBanner />
+                    {!isChatLive && chatError && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                        Chat offline ({chatError}).
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </header>
 
-                  {/* ── Expandable details panel ── */}
-                  <div
-                    className="overflow-hidden transition-all duration-300 ease-in-out"
-                    style={{ maxHeight: headerOpen ? "400px" : "0px", opacity: headerOpen ? 1 : 0 }}>
-                    <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-
-                      {/* Spark ring + level + progress + freeze */}
-                      <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                        <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
-                          <p className="text-[11px] text-slate-500"
-                            style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
-                            {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
-                          </p>
-                          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                            <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
-                              style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
-                          </div>
-                        </div>
-                        <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
+              {/* ── Expandable details panel ── */}
+              <div
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
+                <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
+                  {/* Spark ring + level + progress + freeze */}
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
+                      <p className="text-[11px] text-slate-500"
+                        style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
+                        {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
+                      </p>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
+                          style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                       </div>
-
-                      {/* Kindness pledge — moved from feed into header panel */}
-                      <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
-
-                      {/* Mood selector */}
-                      <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
-
-                      {/* Notifications + chat status */}
-                      <div className="space-y-1">
-                        <NotificationPermissionBanner />
-                        {!isChatLive && chatError && (
-                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                            Chat offline ({chatError}).
-                          </p>
-                        )}
-                      </div>
-
                     </div>
+                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
                   </div>
-
-                </header>
-              );
-            })()}
+                  <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
+                  <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
+                  <div className="space-y-1">
+                    <NotificationPermissionBanner />
+                    {!isChatLive && chatError && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                        Chat offline ({chatError}).
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
               <ReactionsInbox db={db} currentUser={currentUser} />
