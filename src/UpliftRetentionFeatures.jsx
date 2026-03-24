@@ -503,7 +503,7 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
 
 const PRESENCE_TTL_MS = 5 * 60 * 1000;
 
-export function LiveGreeterCount({ db, currentUser }) {
+export function LiveGreeterCount({ db, currentUser, compact = false }) {
   const [count, setCount] = useState(1);
   const [ticking, setTicking] = useState(false);
   const prevCountRef = useRef(1);
@@ -522,7 +522,6 @@ export function LiveGreeterCount({ db, currentUser }) {
     const q = query(collection(db, "presence"), where("lastSeen", ">=", Date.now() - PRESENCE_TTL_MS));
     return onSnapshot(q, (snap) => {
       const newCount = snap.size;
-      // Animation #15 — tick when count goes up
       if (newCount > prevCountRef.current) {
         setTicking(true);
         setTimeout(() => setTicking(false), 500);
@@ -531,6 +530,16 @@ export function LiveGreeterCount({ db, currentUser }) {
       setCount(newCount);
     }, () => {});
   }, [db]);
+
+  // Compact: tiny inline dot + count, no pill — for use in collapsed header
+  if (compact) return (
+    <span className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+      <span style={{ animation: ticking ? "seenLiveTick 450ms ease-out" : "none" }}>
+        {count} online
+      </span>
+    </span>
+  );
 
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
