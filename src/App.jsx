@@ -952,41 +952,6 @@ export default function App() {
               </div>
             </header>
 
-              {/* ── Expandable details panel ── */}
-              <div
-                className="overflow-hidden transition-all duration-300 ease-in-out"
-                style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
-                <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  {/* Spark ring + level + progress + freeze */}
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
-                      <p className="text-[11px] text-slate-500"
-                        style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
-                        {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
-                      </p>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
-                          style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
-                      </div>
-                    </div>
-                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
-                  </div>
-                  <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
-                  <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
-                  <div className="space-y-1">
-                    <NotificationPermissionBanner />
-                    {!isChatLive && chatError && (
-                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                        Chat offline ({chatError}).
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </header>
-
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
               <ReactionsInbox db={db} currentUser={currentUser} />
               <WaveNotifications db={db} currentUser={currentUser} />
