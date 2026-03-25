@@ -478,7 +478,8 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
   return (
     <div className="relative group/gift">
       <button type="button" onClick={sendGift} disabled={!canGift}
-        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all ${
+        style={{ minHeight: 36 }}
+        className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all ${
           sent ? "border-emerald-300 bg-emerald-50 text-emerald-600"
             : canGift ? "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-500 hover:scale-105 active:scale-95"
             : "border-slate-100 text-slate-300 cursor-not-allowed"
@@ -612,10 +613,11 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
       {/* + button to toggle emoji tray — counts shown as side badges on bubble */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+        style={{ minHeight: 36 }}
+        className={`flex items-center gap-0.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
           open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:border-teal-200 hover:text-teal-500"
         }`}>
-        {open ? "× close" : "💛 React"}
+        {open ? "✕" : "💛 React"}
       </button>
 
       {/* Emoji tray with per-emoji tooltips */}
@@ -629,7 +631,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
               <div key={e} className="relative group/emoji">
                 <button onClick={() => react(e)}
                   style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
-                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-base shadow-sm hover:scale-110 active:scale-95 transition-all ${
+                  className={`flex h-10 w-10 items-center justify-center rounded-full border text-lg shadow-sm hover:scale-110 active:scale-95 transition-all ${
                     isMyPick
                       ? "border-teal-400 bg-teal-50 ring-1 ring-teal-300"
                       : "border-slate-200 bg-white hover:border-teal-200"
