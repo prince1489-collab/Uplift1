@@ -398,7 +398,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
             </span>
           )}
         </div>
-        <button onClick={onClose} className="rounded-full bg-slate-100 p-1">
+        <button onClick={onClose} className="rounded-full bg-slate-100 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}>
           <ChevronDown size={16} className="text-slate-500" />
         </button>
       </div>
@@ -744,6 +744,8 @@ export default function App() {
   };
 
   const DAILY_GREETING_LIMIT = 10;
+  // Haptic feedback — safe no-op on desktop / unsupported browsers
+  const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
@@ -777,6 +779,7 @@ export default function App() {
 
       // 🎉 Animations
       anim.triggerSparkBurst(85, 92); // near the FAB button
+      haptic([10, 30, 10]); // send haptic
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
@@ -872,7 +875,7 @@ export default function App() {
         ) : (
           <>
             {/* ── COLLAPSIBLE HEADER ── */}
-            <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0">
+            <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
               {/* ── Always-visible top bar ── */}
               <div
                 className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
@@ -1019,9 +1022,9 @@ export default function App() {
                                   {/* Action bar (Wave / Gift / React +) only on last message */}
                                   {isLast && (
                                     <div className={`flex items-center gap-1.5 mt-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); }} />}
-                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={(emoji) => triggerReactionBurst(emoji)} />}
-                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onReact={(emoji) => triggerReactionBurst(emoji)} />
+                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }} />}
+                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }} />}
+                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }} />
                                     </div>
                                   )}
                                 </div>
@@ -1041,7 +1044,7 @@ export default function App() {
             </main>
 
             {/* FAB-style footer */}
-            <footer className="border-t border-slate-100 bg-white px-4 py-2.5">
+            <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
                 /* Daily limit reached */
                 <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
@@ -1064,7 +1067,7 @@ export default function App() {
                   </div>
                   {/* FAB with sending state */}
                   <button onClick={() => setPickerOpen(true)} disabled={isSending}
-                    className={`h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                    className={`h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
                       isSending
                         ? "bg-teal-400 shadow-none scale-90 cursor-not-allowed"
                         : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600 active:scale-90"
@@ -1074,8 +1077,24 @@ export default function App() {
                       : <Send size={15} className="text-white" />}
                   </button>
                 </div>
-              ) : (
-                <GreetingSheetWrapper visible={pickerOpen}>
+              ) : null}
+            </footer>
+
+            {/* ── Bottom sheet greeting picker — fixed overlay ── */}
+            {pickerOpen && (
+              <div className="absolute inset-0 z-40 flex flex-col justify-end" style={{ touchAction: "none" }}>
+                {/* Backdrop */}
+                <div
+                  className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
+                  style={{ animation: "seenBackdropIn 200ms ease-out both" }}
+                  onClick={() => setPickerOpen(false)}
+                />
+                {/* Sheet */}
+                <div
+                  className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
+                  style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.1,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+                  {/* Drag handle */}
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                   <GreetingPicker
                     profile={profile}
                     streak={streak}
@@ -1085,9 +1104,9 @@ export default function App() {
                     isSending={isSending}
                     remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
                   />
-                </GreetingSheetWrapper>
-              )}
-            </footer>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
