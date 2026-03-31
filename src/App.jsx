@@ -20,12 +20,11 @@ import {
   KindnessPledge, BuddyPanel, SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
-  WaveBackButton, WaveNotifications, ReactionSideBadges,   // Gap 1 — seen
+  WaveBackButton, ReactionSideBadges,   // Gap 1 — seen
   MoodSelector, MoodPill,              // Gap 2 — identity
   PremiumUpgradePrompt,                // Gap 4 — monetize
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
-  ReactionsInbox,
 } from "./UpliftRetentionFeatures";
 
 // Gap 3 — variety
@@ -168,10 +167,13 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, d
 }
 
 // ── Notification bell — shows unread waves + reactions, streak inside ─────────
+const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
+
 function NotificationBell({ streak, db, currentUser }) {
-  const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([]);
+  const [waves, setWaves] = useState([]);
+  const [reactions, setReactions] = useState([]); // { key, msgId, text, emoji, count }
+  const [dismissedReactions, setDismissedReactions] = useState(new Set());
   const ref = useRef(null);
 
   useEffect(() => {
@@ -180,39 +182,66 @@ function NotificationBell({ streak, db, currentUser }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // Watch unread waves
   useEffect(() => {
     if (!db || !currentUser) return;
-    // Watch unread waves
     const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), where("read", "==", false), limit(10));
     return onSnapshot(q, (snap) => {
-      const waves = snap.docs.map((d) => ({ id: d.id, type: "wave", ...d.data() }));
-      setItems(waves);
-      setUnread(waves.length);
+      setWaves(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, () => {});
   }, [db, currentUser]);
 
-  const dismiss = async (id) => {
+  // Watch reactions on user's own messages
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
+    let innerUnsubs = [];
+    const outer = onSnapshot(q, (snap) => {
+      innerUnsubs.forEach((u) => u());
+      innerUnsubs = [];
+      const acc = {};
+      snap.docs.forEach(({ id: msgId, data }) => {
+        const text = data().text;
+        const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          rSnap.forEach((rDoc) => {
+            const count = rDoc.data().count ?? 0;
+            if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
+            else delete acc[`${msgId}:${rDoc.id}`];
+          });
+          setReactions(Object.values(acc).slice(0, 8));
+        }, () => {});
+        innerUnsubs.push(unsub);
+      });
+    }, () => {});
+    return () => { outer(); innerUnsubs.forEach((u) => u()); };
+  }, [db, currentUser]);
+
+  const dismissWave = async (id) => {
     if (!db) return;
     await setDoc(doc(db, "waves", id), { read: true }, { merge: true }).catch(() => {});
   };
-  const dismissAll = () => items.forEach((w) => dismiss(w.id));
+  const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
+  const dismissReaction = (key) => setDismissedReactions((s) => new Set(s).add(key));
 
+  const visibleReactions = reactions.filter((r) => !dismissedReactions.has(r.key));
+  const totalUnread = waves.length + visibleReactions.length;
   const hot = streak >= 7;
+
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((v) => !v)}
-        className="relative flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all">
-        <Bell size={16} />
-        {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-            {unread > 9 ? "9+" : unread}
+        className="relative flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all">
+        <Bell size={18} />
+        {totalUnread > 0 && (
+          <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+            {totalUnread > 9 ? "9+" : totalUnread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-50 w-72 rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden">
-          {/* Streak summary at top */}
+        <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden">
+          {/* Streak strip */}
           <div className={`flex items-center gap-2 px-4 py-3 ${hot ? "bg-orange-50" : "bg-slate-50"} border-b border-slate-100`}>
             <span className="text-lg">{hot ? "🔥" : "✨"}</span>
             <div className="flex-1 min-w-0">
@@ -225,29 +254,57 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
 
-          {/* Notifications list */}
-          <div className="max-h-60 overflow-y-auto">
-            {items.length === 0 ? (
+          {/* Unified notifications list */}
+          <div className="max-h-72 overflow-y-auto">
+            {waves.length === 0 && visibleReactions.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
-                {items.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50">
+                {/* Wave notifications */}
+                {waves.map((w) => (
+                  <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
                     <p className="flex-1 text-[11px] text-slate-700">Someone waved at you!</p>
-                    <button onClick={() => dismiss(item.id)} className="text-slate-300 hover:text-slate-500">
+                    <button onClick={() => dismissWave(w.id)}
+                      className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
                       <X size={12} />
                     </button>
                   </div>
                 ))}
+                {/* Divider between waves and reactions */}
+                {waves.length > 0 && visibleReactions.length > 0 && (
+                  <div className="mx-4 my-1 border-t border-slate-100" />
+                )}
+                {/* Reaction notifications */}
+                {visibleReactions.map(({ key, text, emoji, count }) => {
+                  const label = REACTION_LABEL_BELL[emoji] ?? "reacted to your message";
+                  const short = text.length > 22 ? text.slice(0, 22) + "…" : text;
+                  return (
+                    <div key={key} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
+                      <span className="text-base flex-shrink-0">{emoji}</span>
+                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                        <span className="font-semibold">{count} {count === 1 ? "person" : "people"}</span>
+                        {" "}{label}
+                        <span className="text-slate-400 block truncate">&ldquo;{short}&rdquo;</span>
+                      </p>
+                      <button onClick={() => dismissReaction(key)}
+                        className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {items.length > 1 && (
+          {/* Dismiss all footer */}
+          {(waves.length > 1 || visibleReactions.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
-              <button onClick={dismissAll} className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
-                Dismiss all
+              <button
+                onClick={() => { dismissAllWaves(); visibleReactions.forEach((r) => dismissReaction(r.key)); }}
+                className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
+                Clear all
               </button>
             </div>
           )}
@@ -956,8 +1013,6 @@ export default function App() {
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-              <ReactionsInbox db={db} currentUser={currentUser} />
-              <WaveNotifications db={db} currentUser={currentUser} />
 
               {/* Grouped messages with thread lines */}
               {(() => {
