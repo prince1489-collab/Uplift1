@@ -13,23 +13,20 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 
-// ── Gap fixes imported ────────────────────────────────────────────
 import {
   useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
   KindnessPledge, BuddyPanel, SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
-  WaveBackButton, ReactionSideBadges,   // Gap 1 — seen
-  MoodSelector, MoodPill,              // Gap 2 — identity
-  PremiumUpgradePrompt,                // Gap 4 — monetize
+  WaveBackButton, ReactionSideBadges,
+  MoodSelector, MoodPill,
+  PremiumUpgradePrompt,
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
 } from "./UpliftRetentionFeatures";
 
-// Gap 3 — variety
 import { getGreetingsByCategory, getAccessibleGreetings } from "./greetings";
-// ─────────────────────────────────────────────────────────────────
 
 import { initializeApp } from "firebase/app";
 import {
@@ -117,7 +114,6 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-// ── Meatball menu — World, Profile, Buddies, Sign out ───────────────────────
 function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, db, currentUser, profile }) {
   const [open, setOpen] = useState(false);
   const [showBuddies, setShowBuddies] = useState(false);
@@ -166,13 +162,12 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, d
   );
 }
 
-// ── Notification bell — shows unread waves + reactions, streak inside ─────────
 const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
 
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
-  const [reactions, setReactions] = useState([]); // { key, msgId, text, emoji, count }
+  const [reactions, setReactions] = useState([]);
   const [dismissedReactions, setDismissedReactions] = useState(new Set());
   const ref = useRef(null);
 
@@ -182,7 +177,6 @@ function NotificationBell({ streak, db, currentUser }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Watch unread waves
   useEffect(() => {
     if (!db || !currentUser) return;
     const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), where("read", "==", false), limit(10));
@@ -191,7 +185,6 @@ function NotificationBell({ streak, db, currentUser }) {
     }, () => {});
   }, [db, currentUser]);
 
-  // Watch reactions on user's own messages
   useEffect(() => {
     if (!db || !currentUser) return;
     const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
@@ -238,10 +231,8 @@ function NotificationBell({ streak, db, currentUser }) {
           </span>
         )}
       </button>
-
       {open && (
         <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden">
-          {/* Streak strip */}
           <div className={`flex items-center gap-2 px-4 py-3 ${hot ? "bg-orange-50" : "bg-slate-50"} border-b border-slate-100`}>
             <span className="text-lg">{hot ? "🔥" : "✨"}</span>
             <div className="flex-1 min-w-0">
@@ -253,14 +244,11 @@ function NotificationBell({ streak, db, currentUser }) {
               </p>
             </div>
           </div>
-
-          {/* Unified notifications list */}
           <div className="max-h-72 overflow-y-auto">
             {waves.length === 0 && visibleReactions.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
-                {/* Wave notifications */}
                 {waves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
@@ -271,11 +259,9 @@ function NotificationBell({ streak, db, currentUser }) {
                     </button>
                   </div>
                 ))}
-                {/* Divider between waves and reactions */}
                 {waves.length > 0 && visibleReactions.length > 0 && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
-                {/* Reaction notifications */}
                 {visibleReactions.map(({ key, text, emoji, count }) => {
                   const label = REACTION_LABEL_BELL[emoji] ?? "reacted to your message";
                   const short = text.length > 22 ? text.slice(0, 22) + "…" : text;
@@ -297,8 +283,6 @@ function NotificationBell({ streak, db, currentUser }) {
               </div>
             )}
           </div>
-
-          {/* Dismiss all footer */}
           {(waves.length > 1 || visibleReactions.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
@@ -424,7 +408,6 @@ function MysteryGiftModal({ open, reward, onClose }) {
   );
 }
 
-// ── Gap 3: Greeting picker with categories ────────────────────────
 function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday }) {
   const isPremium = Boolean(profile?.isPremium);
   const categories = getGreetingsByCategory(isPremium);
@@ -447,9 +430,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
           {remainingToday !== undefined && (
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-              remainingToday <= 2
-                ? "bg-amber-100 text-amber-700"
-                : "bg-slate-100 text-slate-500"
+              remainingToday <= 2 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
             }`}>
               {remainingToday} left today
             </span>
@@ -459,8 +440,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           <ChevronDown size={16} className="text-slate-500" />
         </button>
       </div>
-
-      {/* Category tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         {allCategories.map((cat) => {
           const locked = cat.isPremium && !isPremium;
@@ -481,8 +460,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           );
         })}
       </div>
-
-      {/* Greeting options */}
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {activeGreetings.map((greeting) => (
           <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
@@ -502,7 +479,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-// ── Suggestion 1: Spark progress ring ───────────────────────────
 function SparkRing({ value, max, percent }) {
   const size = 44, stroke = 3.5, r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
@@ -545,6 +521,8 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
+  // ── Tap-to-reveal: which message group's action bar is open ──
+  const [activeMessageId, setActiveMessageId] = useState(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
@@ -558,13 +536,11 @@ export default function App() {
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
-
-  // Retention feature state
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [newMessageIds, setNewMessageIds] = useState(new Set()); // for slide-in
-  const [seenCountries, setSeenCountries] = useState(new Set()); // for flag reveal
+  const [newMessageIds, setNewMessageIds] = useState(new Set());
+  const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
 
   const endRef = useRef(null);
@@ -572,14 +548,11 @@ export default function App() {
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
-  // Streak hook
   const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze, sellFreeze } =
     useStreak(db, currentUser?.uid, profile);
 
-  // Micro-animations controller
   const anim = useAnimations();
   const { burst: reactionBurst, trigger: triggerReactionBurst } = useReactionBurst();
-  // Note: displayedSparks and animatedProgress are declared after sparkBalance/progressPercent below
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -608,7 +581,6 @@ export default function App() {
     return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
 
-  // Notification scheduling
   useEffect(() => {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
   }, [isRealSignedInUser, hasCompletedOnboarding]);
@@ -631,6 +603,13 @@ export default function App() {
       } finally { setIsAuthLoading(false); }
     };
     complete();
+  }, []);
+
+  // ── Click-away: dismiss action bar when tapping outside ──
+  useEffect(() => {
+    const h = () => setActiveMessageId(null);
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
   }, []);
 
   const sendEmailSignInLink = async (email) => {
@@ -710,27 +689,21 @@ export default function App() {
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const finalMessages = live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }];
-
-        // Track which messages are brand new (animation #8 slide-in)
         const prevIds = new Set(prevMessagesRef.current.map((m) => m.id));
         const brandNewIds = new Set(finalMessages.filter((m) => !prevIds.has(m.id)).map((m) => m.id));
         if (brandNewIds.size > 0) {
           setNewMessageIds((prev) => new Set([...prev, ...brandNewIds]));
-          // Clear new status after animation completes
           setTimeout(() => setNewMessageIds((prev) => {
             const next = new Set(prev);
             brandNewIds.forEach((id) => next.delete(id));
             return next;
           }), 800);
         }
-
-        // Track new countries for flag reveal (animation #7)
         finalMessages.forEach((m) => {
           if (m.country && !seenCountries.has(m.id)) {
             setSeenCountries((prev) => new Set([...prev, m.id]));
           }
         });
-
         prevMessagesRef.current = finalMessages;
         setMessages(finalMessages);
         setIsChatLive(true); setChatError(""); setLastLiveAt(new Date());
@@ -746,7 +719,6 @@ export default function App() {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
-
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
   const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
   const progressPercent = useMemo(() => {
@@ -755,9 +727,7 @@ export default function App() {
     return span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((sparkBalance - currentLevel.min) / span) * 100)));
   }, [currentLevel.min, nextLevel, sparkBalance]);
 
-  // Animation #10 — animated spark counter
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
-  // Animation #12 — progress bar fills on load
   const animatedProgress = useProgressBarFill(progressPercent);
 
   const todayMessageCount = useMemo(() =>
@@ -801,12 +771,11 @@ export default function App() {
   };
 
   const DAILY_GREETING_LIMIT = 10;
-  // Haptic feedback — safe no-op on desktop / unsupported browsers
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
-    if (todayMessageCount >= DAILY_GREETING_LIMIT) return; // guard (UI should block first)
+    if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
     setIsSending(true);
     try {
       await addDoc(publicMessagesRef, {
@@ -816,10 +785,8 @@ export default function App() {
         timestamp: nowMs(),
         moodTag: profile?.moodTag ?? null,
       });
-
       const reward = computeSparkReward(greeting.sparkReward, streak);
       const refDoc = userProfileRef(currentUser.uid);
-
       let newStreak = streak;
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(refDoc);
@@ -830,17 +797,13 @@ export default function App() {
           ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
         }, { merge: true });
       });
-
       await recordGreetingDay();
       newStreak = streak + 1;
-
-      // 🎉 Animations
-      anim.triggerSparkBurst(85, 92); // near the FAB button
-      haptic([10, 30, 10]); // send haptic
+      anim.triggerSparkBurst(85, 92);
+      haptic([10, 30, 10]);
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
-
       if (greeting.isMystery) {
         setMysteryReward(reward);
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -875,22 +838,22 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+      {/* Keyframe for action bar spring-in */}
+      <style>{`
+        @keyframes seenActionBarIn {
+          0%   { opacity: 0; transform: translateY(-6px) scale(0.95); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
 
-      {/* Micro-animation layer — renders floating particles over everything */}
       <AnimationLayer controller={anim} />
       <ReactionBurstLayer burst={reactionBurst} />
 
-      {/* World map — fixed to viewport with entrance/exit animation #16 */}
       {showMap && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <MapTransitionWrapper visible={showMap}>
             <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
-              <WorldMap
-                db={db}
-                currentUser={currentUser}
-                profile={profile}
-                onClose={() => setShowMap(false)}
-              />
+              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} />
             </div>
           </MapTransitionWrapper>
         </div>
@@ -904,7 +867,6 @@ export default function App() {
           <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
         )}
 
-        {/* Gap 4: Premium upgrade overlay */}
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
 
         {!hasCompletedOnboarding || !profile ? (
@@ -933,11 +895,9 @@ export default function App() {
           <>
             {/* ── COLLAPSIBLE HEADER ── */}
             <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-              {/* ── Always-visible top bar ── */}
               <div
                 className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
                 onClick={() => setHeaderOpen((v) => !v)}>
-                {/* Left: name + mood emoji + streak badge + live count */}
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
@@ -956,7 +916,6 @@ export default function App() {
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
-                {/* Right: chevron + bell + menu */}
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
                   <div onClick={(e) => e.stopPropagation()}>
@@ -977,12 +936,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ── Expandable details panel ── */}
               <div
                 className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  {/* Spark ring + level + progress + freeze */}
                   <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
                     <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
                     <div className="flex-1 min-w-0">
@@ -1013,8 +970,6 @@ export default function App() {
             </header>
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-
-              {/* Grouped messages with thread lines */}
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
@@ -1029,71 +984,88 @@ export default function App() {
                   const isNewGroup = newMessageIds.has(firstId);
                   return (
                     <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
-                    <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div className="max-w-[82%] group">
-                        {/* Sender header with country flag reveal (animation #7) */}
-                        <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
-                          {!mine && <span>{group.sender}</span>}
-                          {!mine && group.items[0].country && (
-                            <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
-                          )}
-                          {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
-                          {mine && <span>{group.sender}</span>}
-                        </div>
-
-                        {/* Thread container — visible left border line for multi-message groups */}
-                        <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
-                          {isMulti && (
-                            <div className={`absolute top-2 bottom-2 w-0.5 rounded-full ${mine ? "right-0 bg-teal-300" : "left-0 bg-slate-300"}`} />
-                          )}
-                          <div className="space-y-0.5">
-                            {group.items.map((m, idx) => {
-                              const isFirst = idx === 0;
-                              const isLast = idx === group.items.length - 1;
-                              const isMystery = Boolean(m.isMystery);
-                              // Tighten corners between consecutive bubbles in a group
-                              const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
-                              const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
-                              const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
-                              return (
-                                <div key={m.id} className="relative pb-1">
-                                  {/* Bubble — with reaction badge anchored to its bottom-right corner */}
-                                  <div className="relative">
+                      <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div className="max-w-[82%] group">
+                          <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
+                            {!mine && <span>{group.sender}</span>}
+                            {!mine && group.items[0].country && (
+                              <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
+                            )}
+                            {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
+                            {mine && <span>{group.sender}</span>}
+                          </div>
+                          <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
+                            {isMulti && (
+                              <div className={`absolute top-2 bottom-2 w-0.5 rounded-full ${mine ? "right-0 bg-teal-300" : "left-0 bg-slate-300"}`} />
+                            )}
+                            <div className="space-y-0.5">
+                              {group.items.map((m, idx) => {
+                                const isFirst = idx === 0;
+                                const isLast = idx === group.items.length - 1;
+                                const isMystery = Boolean(m.isMystery);
+                                const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
+                                const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
+                                const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
+                                const isActive = activeMessageId === m.id;
+                                return (
+                                  <div key={m.id} className="relative pb-3">
+                                    {/* Bubble — tap to toggle action bar */}
                                     <div
-                                      className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
-                                        mine
-                                          ? "bg-teal-600 text-white border-teal-600"
-                                          : isMystery
-                                          ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
-                                          : "bg-white border-slate-200 text-slate-800"
-                                      }`}
-                                      style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
-                                      {isMystery && !mine && <span className="mr-1.5">🎁</span>}
-                                      {m.text}
+                                      className="relative"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMessageId(isActive ? null : m.id);
+                                      }}>
+                                      <div
+                                        className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
+                                          mine
+                                            ? "bg-teal-600 text-white border-teal-600"
+                                            : isMystery
+                                            ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
+                                            : "bg-white border-slate-200 text-slate-800"
+                                        }`}
+                                        style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
+                                        {isMystery && !mine && <span className="mr-1.5">🎁</span>}
+                                        {m.text}
+                                      </div>
+                                      <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                     </div>
-                                    {/* Reaction counts — always bottom-right of the bubble */}
-                                    <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+
+                                    {/* ── Tap-to-reveal action bar ── */}
+                                    {isLast && isActive && (
+                                      <div
+                                        className={`flex items-center gap-1.5 mt-1 ${mine ? "justify-end" : "justify-start"}`}
+                                        style={{ animation: "seenActionBarIn 180ms cubic-bezier(0.34,1.3,0.64,1) both" }}
+                                        onClick={(e) => e.stopPropagation()}>
+                                        {!mine && (
+                                          <WaveBackButton
+                                            db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser}
+                                            onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
+                                          />
+                                        )}
+                                        {!mine && (
+                                          <SparkGiftButton
+                                            db={db} senderUid={m.uid} currentUser={currentUser} profile={profile}
+                                            onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
+                                          />
+                                        )}
+                                        <MessageReactions
+                                          db={db} messageId={m.id} currentUser={currentUser}
+                                          onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
+                                        />
+                                      </div>
+                                    )}
                                   </div>
-                                  {/* Action bar (Wave / Gift / React +) only on last message */}
-                                  {isLast && (
-                                    <div className={`flex items-center gap-1.5 mt-2 px-1 ${mine ? "justify-end" : "justify-start"}`}>
-                                      {!mine && <WaveBackButton db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }} />}
-                                      {!mine && <SparkGiftButton db={db} senderUid={m.uid} currentUser={currentUser} profile={profile} onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }} />}
-                                      <MessageReactions db={db} messageId={m.id} currentUser={currentUser} onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }} />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
                     </MessageSlideIn>
                   );
                 });
               })()}
-              {/* Animation #9 — typing indicator while send is in flight */}
               <SendingIndicator visible={isSending} />
               <div ref={endRef} />
             </main>
@@ -1101,7 +1073,6 @@ export default function App() {
             {/* FAB-style footer */}
             <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
-                /* Daily limit reached */
                 <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
                   <span className="text-lg">🌙</span>
                   <div className="flex-1 min-w-0">
@@ -1120,7 +1091,6 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  {/* FAB with sending state */}
                   <button onClick={() => setPickerOpen(true)} disabled={isSending}
                     className={`h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
                       isSending
@@ -1135,20 +1105,17 @@ export default function App() {
               ) : null}
             </footer>
 
-            {/* ── Bottom sheet greeting picker — fixed overlay ── */}
+            {/* ── Bottom sheet greeting picker ── */}
             {pickerOpen && (
               <div className="absolute inset-0 z-40 flex flex-col justify-end" style={{ touchAction: "none" }}>
-                {/* Backdrop */}
                 <div
                   className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
                   style={{ animation: "seenBackdropIn 200ms ease-out both" }}
                   onClick={() => setPickerOpen(false)}
                 />
-                {/* Sheet */}
                 <div
                   className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
                   style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.1,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
-                  {/* Drag handle */}
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                   <GreetingPicker
                     profile={profile}
