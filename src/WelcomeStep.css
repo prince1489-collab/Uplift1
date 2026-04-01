@@ -75,9 +75,10 @@
 .welcome-step__title {
   margin: 14px 0 0;
   color: #1e293b;
+  font-family: 'DM Serif Display', Georgia, serif;
   font-size: 64px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-weight: 400; /* DM Serif Display looks best at regular weight */
+  letter-spacing: -0.05em;
   line-height: 1;
 }
 

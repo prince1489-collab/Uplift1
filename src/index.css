@@ -21,7 +21,7 @@ body {
 
 /* ─── Dark Shell (Suggestion 3) ─────────────────────────────────────────── */
 [data-dark-shell] {
-  background: #0d1117;
+  background: #0e1219;
   border-color: rgba(255,255,255,0.07) !important;
   box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.4) !important;
   color: #e2e8f0;
@@ -34,9 +34,9 @@ body {
   backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
 }
-[data-dark-shell] main  { background: rgba(9,11,14,0.55) !important; }
+[data-dark-shell] main  { background: rgba(10,13,19,0.55) !important; }
 [data-dark-shell] footer {
-  background: #0d1117 !important;
+  background: #0e1219 !important;
   border-top-color: rgba(255,255,255,0.07) !important;
 }
 
@@ -91,6 +91,82 @@ body {
 
 /* Input placeholder bars */
 [data-dark-shell] .bg-slate-100.rounded-2xl { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Amber accent — hot streak badges in dark mode */
+[data-dark-shell] .bg-orange-50      { background-color: rgba(245,158,11,0.12) !important; }
+[data-dark-shell] .border-orange-200 { border-color: rgba(245,158,11,0.35) !important; }
+[data-dark-shell] .text-orange-700   { color: #fbbf24 !important; }
+[data-dark-shell] .text-orange-500   { color: #f59e0b !important; }
+
+/* ─── 44px minimum tap targets (Suggestion 4) ───────────────────────────── */
+/* Expand tap area without changing visual layout */
+[data-dark-shell] button,
+[data-dark-shell] a,
+[data-dark-shell] [role="button"] {
+  position: relative;
+}
+[data-dark-shell] button::before,
+[data-dark-shell] a::before,
+[data-dark-shell] [role="button"]::before {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ─── Shimmer animation for high-value badges (Suggestion 8) ─────────────── */
+@keyframes seenShimmerSlide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+.seen-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.seen-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.55) 50%,
+    transparent 100%
+  );
+  animation: seenShimmerSlide 2.2s ease-in-out infinite;
+  animation-delay: 1s;
+  pointer-events: none;
+}
+
+/* ─── Message timestamps (Suggestion 7) ─────────────────────────────────── */
+.seen-msg-ts {
+  font-size: 10px;
+  color: #94a3b8;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  padding: 0 4px;
+  margin-top: 2px;
+}
+[data-dark-shell] .seen-msg-ts { color: rgba(148,163,184,0.6); }
+.seen-msg-ts--show { opacity: 1; }
+.group:hover .seen-msg-ts { opacity: 1; }
+
+/* ─── Read receipt dot (Suggestion 7) ───────────────────────────────────── */
+.seen-receipt {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(45,212,191,0.55);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
 
 /* Send button bounce (Suggestion 5) */
 @keyframes seenSendBounce {

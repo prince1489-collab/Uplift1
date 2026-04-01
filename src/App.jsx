@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight, Bell, Calendar, ChevronDown, Globe,
-  Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2, Shield, X,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -99,6 +99,12 @@ const LEVEL_THRESHOLDS = [
 const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
+function fmtTime(ts) {
+  if (!ts) return "";
+  const ms = typeof ts === "number" ? ts : ts?.toMillis ? ts.toMillis() : Number(ts);
+  return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function startOfToday() {
   const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
 }
@@ -127,7 +133,7 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, d
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+        className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
         aria-label="More options">
         <span className="text-lg leading-none tracking-widest">···</span>
       </button>
@@ -332,8 +338,8 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             <Sparkles size={24} />
           </div>
         </div>
-        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800">Welcome to Seen</h1>
-        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
+        <h1 className="font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em] text-slate-800">Welcome to Seen</h1>
+        <p className="pb-4 text-center text-[20px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
 
         <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
           <select name="country" value={form.country} onChange={onChange}
@@ -396,7 +402,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
           <Gift className="animate-bounce" size={30} />
         </div>
         <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
-        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
+        <h2 className="mt-2 font-display text-[28px] font-normal tracking-[-0.04em] text-slate-800">You unlocked a bonus!</h2>
         <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
         <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
         <button type="button" onClick={onClose}
@@ -479,35 +485,51 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-function SparkRing({ value, max, percent }) {
-  const size = 44, stroke = 3.5, r = (size - stroke) / 2;
+function SparkRing({ value, max, percent, initial = "✨" }) {
+  const size = 52, stroke = 3, r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const filled = circ * (percent / 100);
+  const isLetter = initial.length === 1 && /[A-Za-z]/.test(initial);
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none"
           stroke="url(#sparkGrad)" strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circ}
           strokeDashoffset={circ - filled}
-          style={{ transition: "stroke-dashoffset 0.7s ease" }} />
+          style={{ transition: "stroke-dashoffset 0.85s cubic-bezier(0.34,1.2,0.64,1)" }} />
         <defs>
           <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#2dd4bf" />
-            <stop offset="100%" stopColor="#34d399" />
+            <stop offset="0%" stopColor="#f59e0b" />
+            <stop offset="100%" stopColor="#2dd4bf" />
           </linearGradient>
         </defs>
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span style={{ fontSize: "11px", fontWeight: 700, color: "#0f766e", lineHeight: 1 }}>✨</span>
+      <div className="absolute inset-0 flex items-center justify-center rounded-full"
+        style={{ background: "rgba(255,255,255,0.05)" }}>
+        <span style={{
+          fontSize: isLetter ? "17px" : "11px",
+          fontWeight: isLetter ? 700 : 700,
+          color: isLetter ? "#e2e8f0" : "#0f766e",
+          lineHeight: 1,
+          fontFamily: isLetter ? "Inter, sans-serif" : "inherit",
+        }}>{initial}</span>
       </div>
     </div>
   );
 }
 
 export default function App() {
+  const [darkMode, setDarkMode] = useState(() => {
+    try { const v = localStorage.getItem("seen-theme"); return v !== null ? v === "dark" : true; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("seen-theme", darkMode ? "dark" : "light"); } catch {}
+  }, [darkMode]);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -859,7 +881,7 @@ export default function App() {
         </div>
       )}
 
-      <div data-dark-shell className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]">
+      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
@@ -907,8 +929,8 @@ export default function App() {
                       </span>
                     )}
                     {streak > 0 && (
-                      <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${
-                        streak >= 7 ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
+                      <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border${
+                        streak >= 7 ? " seen-shimmer bg-amber-50 border-amber-300 text-amber-700" : " bg-slate-50 border-slate-200 text-slate-600"
                       }`}>
                         {streak >= 7 ? "🔥" : "✨"}{streak}d
                       </span>
@@ -918,6 +940,14 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setDarkMode(v => !v)}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+                      aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+                      {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+                    </button>
+                  </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell streak={streak} db={db} currentUser={currentUser} />
                   </div>
@@ -941,7 +971,7 @@ export default function App() {
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
                   <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
+                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} initial={firstName?.[0]?.toUpperCase() ?? "✨"} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
                       <p className="text-[11px] text-slate-500"
@@ -969,7 +999,7 @@ export default function App() {
               </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+            <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5">
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
@@ -984,7 +1014,7 @@ export default function App() {
                   const isNewGroup = newMessageIds.has(firstId);
                   return (
                     <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
-                      <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div className={`mb-5 flex ${mine ? "justify-end" : "justify-start"}`}>
                         <div className="max-w-[82%] group">
                           <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
                             {!mine && <span>{group.sender}</span>}
@@ -1008,8 +1038,8 @@ export default function App() {
                                 const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} className="relative pb-3">
-                                    {/* Bubble — tap to toggle action bar */}
+                                  <div key={m.id} className="relative pb-2">
+                                    {/* Bubble — tap to toggle action bar + timestamp */}
                                     <div
                                       className="relative"
                                       onClick={(e) => {
@@ -1030,6 +1060,14 @@ export default function App() {
                                       </div>
                                       <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                     </div>
+
+                                    {/* Timestamp — hidden until hover/tap */}
+                                    {isLast && (
+                                      <div className={`seen-msg-ts${isActive ? " seen-msg-ts--show" : ""} ${mine ? "text-right" : "text-left"}`}>
+                                        {fmtTime(m.timestamp)}
+                                        {mine && <span className="seen-receipt ml-1" />}
+                                      </div>
+                                    )}
 
                                     {/* ── Tap-to-reveal action bar ── */}
                                     {isLast && isActive && (

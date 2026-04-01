@@ -176,10 +176,10 @@ export function StreakBadge({ streak }) {
   if (!streak || streak < 1) return null;
   const hot = streak >= 7;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border ${
-      hot ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border${
+      hot ? " seen-shimmer bg-amber-50 border-amber-300 text-amber-700" : " bg-slate-50 border-slate-200 text-slate-600"
     }`}>
-      <Flame size={12} className={hot ? "text-orange-500" : "text-slate-400"} />
+      <Flame size={12} className={hot ? "text-amber-500" : "text-slate-400"} />
       {streak}d
     </span>
   );
