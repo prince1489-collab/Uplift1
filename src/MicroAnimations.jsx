@@ -237,10 +237,12 @@ const KEYFRAMES = `
     40%  { transform: scale(1.55); }
     100% { transform: scale(1); }
   }
-  /* Bottom sheet rise */
+  /* Bottom sheet rise — spring overshoot */
   @keyframes seenSheetRise {
-    0%   { transform: translateY(100%); opacity: 0.6; }
-    100% { transform: translateY(0);    opacity: 1; }
+    0%   { transform: translateY(100%);  opacity: 0.5; }
+    65%  { transform: translateY(-8px);  opacity: 1; }
+    82%  { transform: translateY(3px);   opacity: 1; }
+    100% { transform: translateY(0);     opacity: 1; }
   }
   /* Backdrop fade in */
   @keyframes seenBackdropIn {

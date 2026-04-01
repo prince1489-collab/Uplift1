@@ -22,13 +22,48 @@ function useLiveCount() {
   return count;
 }
 
-// Improvement 5: Drifting soft background blobs
-function BackgroundBlobs() {
+// Background: single slow radial gradient + grain texture
+function BackgroundAmbient() {
   return (
-    <div className="welcome-blobs" aria-hidden="true">
-      <div className="welcome-blob welcome-blob--1" />
-      <div className="welcome-blob welcome-blob--2" />
-      <div className="welcome-blob welcome-blob--3" />
+    <div className="welcome-ambient" aria-hidden="true">
+      <div className="welcome-ambient__radial" />
+      <div className="welcome-ambient__grain" />
+    </div>
+  );
+}
+
+// Live activity ticker — cycles through plausible activity items
+const TICKER_ITEMS = [
+  "Sofia just sent a greeting to someone in Brazil 🇧🇷",
+  "Liam brightened someone's day in Japan 🇯🇵",
+  "Amara sent kindness to a stranger in Germany 🇩🇪",
+  "Carlos spread joy to someone in India 🇮🇳",
+  "Mei lifted someone's spirits in Canada 🇨🇦",
+  "Yusuf sent warmth to someone in Nigeria 🇳🇬",
+  "Elena just connected with a stranger in France 🇫🇷",
+];
+
+function ActivityTicker() {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const rotate = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % TICKER_ITEMS.length);
+        setVisible(true);
+      }, 300);
+    }, 3800);
+    return () => clearInterval(rotate);
+  }, []);
+
+  return (
+    <div className="welcome-ticker">
+      <span className="welcome-ticker__label">Live</span>
+      <span className={`welcome-ticker__text${visible ? " welcome-ticker__text--in" : " welcome-ticker__text--out"}`}>
+        {TICKER_ITEMS[idx]}
+      </span>
     </div>
   );
 }
@@ -70,7 +105,7 @@ function WelcomeStep({ onStartJourney }) {
 
   return (
     <div className="welcome-step">
-      <BackgroundBlobs />
+      <BackgroundAmbient />
 
       <div className="welcome-step__content">
         {/* Logo icon */}
@@ -106,14 +141,12 @@ function WelcomeStep({ onStartJourney }) {
         </div>
       </div>
 
-      {/* Bottom: trust line + CTA */}
+      {/* Bottom: ticker + trust line + CTA */}
       <div className="welcome-step__footer">
-        {/* Improvement 4: trust statement */}
+        <ActivityTicker />
         <p className="welcome-trust">No posts · No followers · Just kindness</p>
-
-        {/* Improvement 3: warmer CTA */}
         <button className="welcome-step__cta" onClick={onStartJourney}>
-          I want to feel seen <ArrowRight size={18} />
+          I want to feel seen <ArrowRight size={20} />
         </button>
       </div>
     </div>

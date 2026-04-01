@@ -18,3 +18,88 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ─── Dark Shell (Suggestion 3) ─────────────────────────────────────────── */
+[data-dark-shell] {
+  background: #0d1117;
+  border-color: rgba(255,255,255,0.07) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.4) !important;
+  color: #e2e8f0;
+}
+
+/* Structural zones */
+[data-dark-shell] header {
+  background: rgba(13,17,23,0.92) !important;
+  border-bottom-color: rgba(255,255,255,0.07) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+[data-dark-shell] main  { background: rgba(9,11,14,0.55) !important; }
+[data-dark-shell] footer {
+  background: #0d1117 !important;
+  border-top-color: rgba(255,255,255,0.07) !important;
+}
+
+/* Text */
+[data-dark-shell] .text-slate-900 { color: #f1f5f9 !important; }
+[data-dark-shell] .text-slate-800 { color: #e2e8f0 !important; }
+[data-dark-shell] .text-slate-700 { color: #cbd5e1 !important; }
+[data-dark-shell] .text-slate-600 { color: #94a3b8 !important; }
+[data-dark-shell] .text-slate-500 { color: #64748b !important; }
+[data-dark-shell] .text-slate-400 { color: #4a5568 !important; }
+
+/* Backgrounds */
+[data-dark-shell] .bg-white           { background-color: #161b22 !important; }
+[data-dark-shell] .bg-white\/95       { background-color: rgba(22,27,34,0.95) !important; }
+[data-dark-shell] .bg-white\/90       { background-color: rgba(22,27,34,0.9) !important; }
+[data-dark-shell] .bg-slate-50        { background-color: #0d1117 !important; }
+[data-dark-shell] .bg-slate-100       { background-color: #161b22 !important; }
+[data-dark-shell] .bg-slate-50\/80    { background-color: rgba(13,17,23,0.8) !important; }
+[data-dark-shell] .bg-slate-50\/60    { background-color: rgba(13,17,23,0.6) !important; }
+[data-dark-shell] .bg-slate-100\/80   { background-color: rgba(22,27,34,0.8) !important; }
+
+/* Borders */
+[data-dark-shell] .border-slate-100  { border-color: rgba(255,255,255,0.07) !important; }
+[data-dark-shell] .border-slate-200  { border-color: rgba(255,255,255,0.09) !important; }
+[data-dark-shell] .border-slate-300  { border-color: rgba(255,255,255,0.12) !important; }
+
+/* Hover states */
+[data-dark-shell] .hover\:bg-slate-50:hover  { background-color: rgba(255,255,255,0.04) !important; }
+[data-dark-shell] .hover\:bg-slate-100:hover { background-color: rgba(255,255,255,0.06) !important; }
+[data-dark-shell] .hover\:bg-red-50:hover    { background-color: rgba(239,68,68,0.08) !important; }
+
+/* Floating panels — glassmorphism (dropdowns & bottom sheet) */
+[data-dark-shell] .z-50.rounded-2xl {
+  background: rgba(15,18,26,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.5) !important;
+}
+[data-dark-shell] .z-10.rounded-t-3xl {
+  background: rgba(13,17,23,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* Handle bar in greeting sheet */
+[data-dark-shell] .z-10.rounded-t-3xl .bg-slate-200 { background-color: rgba(255,255,255,0.12) !important; }
+
+/* Streak badge cold variant */
+[data-dark-shell] .bg-slate-50.border-slate-200 { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Input placeholder bars */
+[data-dark-shell] .bg-slate-100.rounded-2xl { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Send button bounce (Suggestion 5) */
+@keyframes seenSendBounce {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.82); }
+  55%  { transform: scale(1.18); }
+  75%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+.seen-send-btn:active {
+  animation: seenSendBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+}

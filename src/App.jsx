@@ -821,7 +821,7 @@ export default function App() {
 
   if (!isRealSignedInUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
           {unauthScreen === "welcome"
             ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
@@ -837,7 +837,7 @@ export default function App() {
   const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
       {/* Keyframe for action bar spring-in */}
       <style>{`
         @keyframes seenActionBarIn {
@@ -852,14 +852,14 @@ export default function App() {
       {showMap && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <MapTransitionWrapper visible={showMap}>
-            <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
+            <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/[0.07] shadow-2xl sm:h-[90vh]">
               <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} />
             </div>
           </MapTransitionWrapper>
         </div>
       )}
 
-      <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+      <div data-dark-shell className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]">
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
@@ -1092,10 +1092,10 @@ export default function App() {
                     )}
                   </div>
                   <button onClick={() => setPickerOpen(true)} disabled={isSending}
-                    className={`h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                    className={`seen-send-btn h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-colors ${
                       isSending
                         ? "bg-teal-400 shadow-none scale-90 cursor-not-allowed"
-                        : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600 active:scale-90"
+                        : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600"
                     }`}>
                     {isSending
                       ? <Loader2 size={15} className="text-white animate-spin" />
@@ -1115,7 +1115,7 @@ export default function App() {
                 />
                 <div
                   className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
-                  style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.1,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+                  style={{ animation: "seenSheetRise 400ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                   <GreetingPicker
                     profile={profile}
