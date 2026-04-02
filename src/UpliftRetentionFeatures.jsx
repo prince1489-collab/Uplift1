@@ -1161,3 +1161,119 @@ export function NotificationPermissionBanner() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────
+// WHATSAPP-STYLE UNIFIED QUICK-REACT BAR
+// ─────────────────────────────────────────────────────────────────
+
+const QUICK_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+const QUICK_GIFT_AMOUNT = 5;
+
+export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, mine, onClose, onWave, onGift, onReact }) {
+  const [waved, setWaved] = useState(false);
+  const [gifted, setGifted] = useState(false);
+  const [myEmoji, setMyEmoji] = useState(null);
+  const [popping, setPopping] = useState(null);
+
+  useEffect(() => {
+    if (!db || !messageId || !currentUser) return;
+    return onSnapshot(collection(db, "publicMessages", messageId, "reactions"), (snap) => {
+      const found = QUICK_EMOJIS.find((e) => snap.docs.find((d) => d.id === e && (d.data().uids ?? []).includes(currentUser.uid)));
+      setMyEmoji(found ?? null);
+    }, () => {});
+  }, [db, messageId, currentUser]);
+
+  const isOther = !mine && senderUid && senderUid !== currentUser?.uid;
+
+  const handleWave = async () => {
+    if (!isOther || !db || waved) return;
+    try {
+      await addDoc(collection(db, "waves"), {
+        fromUid: currentUser.uid, toUid: senderUid,
+        messageId, createdAt: Date.now(), read: false,
+      });
+      setWaved(true);
+      onWave?.();
+    } catch {}
+    setTimeout(() => onClose?.(), 320);
+  };
+
+  const handleGift = async () => {
+    if (!isOther || !db || gifted) return;
+    const balance = Number(profile?.sparkBalance ?? 0);
+    if (balance < QUICK_GIFT_AMOUNT) return;
+    setGifted(true);
+    try {
+      await runTransaction(db, async (tx) => {
+        const fromRef = doc(db, "users", currentUser.uid);
+        const toRef   = doc(db, "users", senderUid);
+        const [fSnap, tSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+        const fromBal = Number(fSnap.data()?.sparkBalance ?? 0);
+        const toBal   = Number(tSnap.data()?.sparkBalance ?? 0);
+        if (fromBal < QUICK_GIFT_AMOUNT) throw new Error("low");
+        tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
+        tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
+      });
+      onGift?.("🎁");
+    } catch { setGifted(false); }
+    setTimeout(() => onClose?.(), 320);
+  };
+
+  const handleEmoji = async (emoji) => {
+    if (!db || !currentUser || !messageId) return;
+    const isSame = myEmoji === emoji;
+    setPopping(emoji);
+    setTimeout(() => setPopping(null), 400);
+    try {
+      await runTransaction(db, async (tx) => {
+        if (myEmoji && !isSame) {
+          const oldRef = doc(db, "publicMessages", messageId, "reactions", myEmoji);
+          const oldSnap = await tx.get(oldRef);
+          const oldUids = ((oldSnap.exists() ? oldSnap.data().uids : null) ?? []).filter((u) => u !== currentUser.uid);
+          tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+        }
+        const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
+        const snap = await tx.get(rRef);
+        const uids = (snap.exists() ? snap.data().uids : null) ?? [];
+        if (isSame) {
+          const next = uids.filter((u) => u !== currentUser.uid);
+          tx.set(rRef, { count: Math.max(0, next.length), uids: next });
+        } else {
+          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+        }
+      });
+      if (!isSame) onReact?.(emoji);
+    } catch {}
+    setTimeout(() => onClose?.(), 280);
+  };
+
+  const canGift = isOther && !gifted && Number(profile?.sparkBalance ?? 0) >= QUICK_GIFT_AMOUNT;
+
+  return (
+    <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
+      {isOther && (
+        <button className={`seen-qrb-btn${waved ? " seen-qrb-btn--done" : ""}`}
+          onClick={handleWave} disabled={waved} title="Wave back">
+          {waved ? "✅" : "👋"}
+        </button>
+      )}
+      {isOther && (
+        <button
+          className={`seen-qrb-btn${gifted ? " seen-qrb-btn--done" : ""}${!canGift && !gifted ? " seen-qrb-btn--dim" : ""}`}
+          onClick={handleGift} disabled={!canGift && !gifted}
+          title={gifted ? "Gifted!" : canGift ? `Gift ${QUICK_GIFT_AMOUNT} sparks` : "Not enough sparks"}>
+          {gifted ? "✅" : "🎁"}
+        </button>
+      )}
+      {isOther && <div className="seen-qrb-sep" />}
+      {QUICK_EMOJIS.map((emoji) => (
+        <button key={emoji}
+          className={`seen-qrb-btn${myEmoji === emoji ? " seen-qrb-btn--picked" : ""}`}
+          onClick={() => handleEmoji(emoji)} title={emoji}
+          style={{ animation: popping === emoji ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}>
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}

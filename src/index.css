@@ -168,6 +168,80 @@ body {
   flex-shrink: 0;
 }
 
+/* ─── WhatsApp-style quick-react bar ─────────────────────────────────────── */
+@keyframes seenQrbIn {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.78); }
+  60%  { transform: translateY(-3px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.seen-qrb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 7px;
+  background: rgba(20, 24, 34, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  box-shadow: 0 4px 28px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  animation: seenQrbIn 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  white-space: nowrap;
+  /* Keep above bubbles but not above modals */
+  position: relative;
+  z-index: 30;
+}
+
+.seen-qrb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), background 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.seen-qrb-btn:hover  { transform: scale(1.22); background: rgba(255,255,255,0.07); }
+.seen-qrb-btn:active { transform: scale(0.88) !important; }
+
+/* Currently-picked emoji ring */
+.seen-qrb-btn--picked {
+  background: rgba(45,212,191,0.14) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(45,212,191,0.45);
+}
+
+/* Done (waved/gifted) */
+.seen-qrb-btn--done { opacity: 0.7; cursor: default; font-size: 20px; }
+
+/* Dimmed/disabled */
+.seen-qrb-btn--dim  { opacity: 0.35; cursor: not-allowed; }
+
+/* Separator between special actions and emoji reactions */
+.seen-qrb-sep {
+  width: 1px;
+  height: 26px;
+  background: rgba(255,255,255,0.12);
+  margin: 0 3px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+/* Overlay backdrop that closes the bar on outside tap */
+.seen-qrb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+}
+
 /* Send button bounce (Suggestion 5) */
 @keyframes seenSendBounce {
   0%   { transform: scale(1); }

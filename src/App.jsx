@@ -24,6 +24,7 @@ import {
   PremiumUpgradePrompt,
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
+  QuickReactBar,
 } from "./UpliftRetentionFeatures";
 
 import { getGreetingsByCategory, getAccessibleGreetings } from "./greetings";
@@ -543,8 +544,10 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
-  // ── Tap-to-reveal: which message group's action bar is open ──
+  // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
+  const [reactionBarId, setReactionBarId] = useState(null);
+  const longPressTimer = useRef(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [pendingProfileData, setPendingProfileData] = useState(null);
@@ -999,7 +1002,8 @@ export default function App() {
               </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5">
+            <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
+              onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
@@ -1039,11 +1043,49 @@ export default function App() {
                                 const isActive = activeMessageId === m.id;
                                 return (
                                   <div key={m.id} className="relative pb-2">
-                                    {/* Bubble — tap to toggle action bar + timestamp */}
+                                    {/* WhatsApp-style reaction bar — floats above bubble on long press */}
+                                    {reactionBarId === m.id && (
+                                      <>
+                                        <div className="seen-qrb-backdrop" onClick={(e) => { e.stopPropagation(); setReactionBarId(null); }} />
+                                        <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
+                                          style={{ bottom: "calc(100% + 8px)" }}>
+                                          <QuickReactBar
+                                            db={db} messageId={m.id} senderUid={m.uid}
+                                            currentUser={currentUser} profile={profile} mine={mine}
+                                            onClose={() => setReactionBarId(null)}
+                                            onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
+                                            onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
+                                            onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {/* Bubble — tap for timestamp, long-press for reaction bar */}
                                     <div
                                       className="relative"
+                                      onMouseDown={() => {
+                                        longPressTimer.current = setTimeout(() => {
+                                          setReactionBarId(m.id);
+                                          setActiveMessageId(null);
+                                          haptic([6, 30, 6]);
+                                        }, 450);
+                                      }}
+                                      onMouseUp={() => clearTimeout(longPressTimer.current)}
+                                      onMouseLeave={() => clearTimeout(longPressTimer.current)}
+                                      onTouchStart={(e) => {
+                                        const touch = e.touches[0];
+                                        longPressTimer.current = setTimeout(() => {
+                                          setReactionBarId(m.id);
+                                          setActiveMessageId(null);
+                                          haptic([6, 30, 6]);
+                                        }, 450);
+                                      }}
+                                      onTouchEnd={() => clearTimeout(longPressTimer.current)}
+                                      onTouchMove={() => clearTimeout(longPressTimer.current)}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (reactionBarId === m.id) { setReactionBarId(null); return; }
                                         setActiveMessageId(isActive ? null : m.id);
                                       }}>
                                       <div
@@ -1061,36 +1103,11 @@ export default function App() {
                                       <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                     </div>
 
-                                    {/* Timestamp — hidden until hover/tap */}
+                                    {/* Timestamp + read receipt — hidden until tap */}
                                     {isLast && (
                                       <div className={`seen-msg-ts${isActive ? " seen-msg-ts--show" : ""} ${mine ? "text-right" : "text-left"}`}>
                                         {fmtTime(m.timestamp)}
                                         {mine && <span className="seen-receipt ml-1" />}
-                                      </div>
-                                    )}
-
-                                    {/* ── Tap-to-reveal action bar ── */}
-                                    {isLast && isActive && (
-                                      <div
-                                        className={`flex items-center gap-1.5 mt-1 ${mine ? "justify-end" : "justify-start"}`}
-                                        style={{ animation: "seenActionBarIn 180ms cubic-bezier(0.34,1.3,0.64,1) both" }}
-                                        onClick={(e) => e.stopPropagation()}>
-                                        {!mine && (
-                                          <WaveBackButton
-                                            db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser}
-                                            onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
-                                          />
-                                        )}
-                                        {!mine && (
-                                          <SparkGiftButton
-                                            db={db} senderUid={m.uid} currentUser={currentUser} profile={profile}
-                                            onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
-                                          />
-                                        )}
-                                        <MessageReactions
-                                          db={db} messageId={m.id} currentUser={currentUser}
-                                          onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
-                                        />
                                       </div>
                                     )}
                                   </div>
