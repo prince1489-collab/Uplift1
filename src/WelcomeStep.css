@@ -17,6 +17,10 @@
   align-items: center;
   position: relative;
   z-index: 1;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .welcome-step__footer {
@@ -26,6 +30,8 @@
   gap: 10px;
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
+  padding-top: 4px;
 }
 
 /* ─── Ambient background: single radial gradient + grain ─────── */
