@@ -90,11 +90,11 @@ const COUNTRY_OPTIONS = [
 ];
 
 const LEVEL_THRESHOLDS = [
-  { min: 0,   title: "Novice Greeter" },
-  { min: 50,  title: "Kindness Scout" },
-  { min: 150, title: "Beacon of Hope" },
-  { min: 300, title: "Sunshine Bringer" },
-  { min: 600, title: "Guardian of Joy" },
+  { min: 0,   title: "Still Loading..." },
+  { min: 50,  title: "Certified Vibes Sender" },
+  { min: 150, title: "Chronically Kind" },
+  { min: 300, title: "Unhinged Optimist" },
+  { min: 600, title: "Main Character Energy" },
 ];
 
 const nowMs = () => Date.now();

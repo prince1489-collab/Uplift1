@@ -21,10 +21,10 @@ export const GREETING_CATEGORIES = [
 
 export const ALL_GREETINGS = [
   // ─── FREE: Core ───────────────────────────────────────────────
-  { id: "morning",   text: "Good Morning, have a nice day! ☀️",                    sparkReward: 10, isMystery: false, category: "core", isPremium: false },
-  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛",         sparkReward: 10, isMystery: false, category: "core", isPremium: false },
-  { id: "evening",   text: "Good Evening! Time to unwind and breathe 🌆",          sparkReward: 10, isMystery: false, category: "core", isPremium: false },
-  { id: "night",     text: "Good Night! Hope you had a great day. Rest well 🌙",   sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "morning",   text: "Morning! Hope something good finds you today ☀️",      sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "afternoon", text: "Afternoon check-in — you doing okay? 💛",              sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "evening",   text: "Evening. Time to breathe and let the day go 🌆",       sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "night",     text: "Good night. You showed up today and that counts 🌙",   sparkReward: 10, isMystery: false, category: "core", isPremium: false },
   { id: "mystery",   text: "🎁 Mystery Greeting",                                  sparkReward: 25, isMystery: true,  category: "core", isPremium: false },
 
   // ─── PREMIUM: Warmth ──────────────────────────────────────────
