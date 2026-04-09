@@ -16,7 +16,7 @@ import WelcomeStep from "./WelcomeStep";
 import {
   useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
-  KindnessPledge, BuddyPanel, SparkGiftButton,
+  BuddyPanel, SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
@@ -39,9 +39,9 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, collection, doc, getFirestore,
+  addDoc, arrayUnion, collection, doc, getFirestore,
   limit, onSnapshot, orderBy, query,
-  runTransaction, serverTimestamp, setDoc, where,
+  runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -176,6 +176,10 @@ function NotificationBell({ streak, db, currentUser }) {
   const [waves, setWaves] = useState([]);
   const [reactions, setReactions] = useState([]);
   const [dismissedReactions, setDismissedReactions] = useState(new Set());
+  const prevWaveIdsRef = useRef(new Set());
+  const notifyReadyRef = useRef(false);
+  // Don't fire notifications on initial load — only for waves that arrive after mount
+  useEffect(() => { const t = setTimeout(() => { notifyReadyRef.current = true; }, 2500); return () => clearTimeout(t); }, []);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -188,7 +192,16 @@ function NotificationBell({ streak, db, currentUser }) {
     if (!db || !currentUser) return;
     const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), where("read", "==", false), limit(10));
     return onSnapshot(q, (snap) => {
-      setWaves(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const newWaves = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        newWaves.forEach((w) => {
+          if (!prevWaveIdsRef.current.has(w.id)) {
+            new Notification("Someone waved at you 👋", { body: "Open Seen to wave back", icon: "/favicon.svg" });
+          }
+        });
+      }
+      prevWaveIdsRef.current = new Set(newWaves.map((w) => w.id));
+      setWaves(newWaves);
     }, () => {});
   }, [db, currentUser]);
 
@@ -542,6 +555,10 @@ export default function App() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Buddy invite: detect ?add=UID in URL
+  const [pendingBuddyUid] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
+  });
   const [isSending, setIsSending] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
@@ -611,6 +628,20 @@ export default function App() {
     });
     return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
+
+  // Auto-add buddy from invite link (?add=UID)
+  useEffect(() => {
+    if (!pendingBuddyUid || !isRealSignedInUser || !db || !currentUser) return;
+    // Remove param from URL without reload
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("add");
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+    // Don't add yourself
+    if (pendingBuddyUid === currentUser.uid) return;
+    updateDoc(doc(db, "users", currentUser.uid), { buddies: arrayUnion(pendingBuddyUid) }).catch(() => {});
+  }, [pendingBuddyUid, isRealSignedInUser, db, currentUser]);
 
   useEffect(() => {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
@@ -961,6 +992,9 @@ export default function App() {
                         {streak >= 7 ? "🔥" : "✨"}{streak}d
                       </span>
                     )}
+                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-teal-50 border border-teal-200 text-teal-700">
+                      ✨{displayedSparks}
+                    </span>
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -1011,7 +1045,6 @@ export default function App() {
                     </div>
                     <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
                   </div>
-                  <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
                   <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
                   <div className="space-y-1">
                     <NotificationPermissionBanner />

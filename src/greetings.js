@@ -12,10 +12,10 @@
 
 export const GREETING_CATEGORIES = [
   { id: "core",      label: "Greetings",     emoji: "☀️",  isPremium: false },
-  { id: "warmth",    label: "Warmth",        emoji: "💛",  isPremium: true  },
+  { id: "warmth",    label: "Warmth",        emoji: "💛",  isPremium: false },
   { id: "strength",  label: "Strength",      emoji: "💪",  isPremium: true  },
   { id: "celebrate", label: "Celebrate",     emoji: "🎉",  isPremium: true  },
-  { id: "calm",      label: "Calm",          emoji: "🌿",  isPremium: true  },
+  { id: "calm",      label: "Calm",          emoji: "🌿",  isPremium: false },
   { id: "cultural",  label: "World moments", emoji: "🌍",  isPremium: true  },
 ];
 
@@ -28,11 +28,11 @@ export const ALL_GREETINGS = [
   { id: "mystery",   text: "🎁 Mystery Greeting",                                  sparkReward: 25, isMystery: true,  category: "core", isPremium: false },
 
   // ─── PREMIUM: Warmth ──────────────────────────────────────────
-  { id: "w1", text: "Thinking of you today 💭",                           sparkReward: 12, isMystery: false, category: "warmth",    isPremium: true },
-  { id: "w2", text: "You are not alone 🤝",                               sparkReward: 12, isMystery: false, category: "warmth",    isPremium: true },
-  { id: "w3", text: "Someone in the world is rooting for you 🌟",         sparkReward: 15, isMystery: false, category: "warmth",    isPremium: true },
-  { id: "w4", text: "You matter more than you know 💙",                   sparkReward: 15, isMystery: false, category: "warmth",    isPremium: true },
-  { id: "w5", text: "Sending you a little warmth today 🕯️",              sparkReward: 12, isMystery: false, category: "warmth",    isPremium: true },
+  { id: "w1", text: "Thinking of you today 💭",                           sparkReward: 12, isMystery: false, category: "warmth",    isPremium: false },
+  { id: "w2", text: "You are not alone 🤝",                               sparkReward: 12, isMystery: false, category: "warmth",    isPremium: false },
+  { id: "w3", text: "Someone in the world is rooting for you 🌟",         sparkReward: 15, isMystery: false, category: "warmth",    isPremium: false },
+  { id: "w4", text: "You matter more than you know 💙",                   sparkReward: 15, isMystery: false, category: "warmth",    isPremium: false },
+  { id: "w5", text: "Sending you a little warmth today 🕯️",              sparkReward: 12, isMystery: false, category: "warmth",    isPremium: false },
 
   // ─── PREMIUM: Strength ────────────────────────────────────────
   { id: "s1", text: "You've got this 💪",                                 sparkReward: 12, isMystery: false, category: "strength",  isPremium: true },
@@ -48,11 +48,11 @@ export const ALL_GREETINGS = [
   { id: "c4", text: "Today could be the start of something wonderful ✨", sparkReward: 12, isMystery: false, category: "celebrate", isPremium: true },
 
   // ─── PREMIUM: Calm ────────────────────────────────────────────
-  { id: "calm1", text: "Take a breath. You are here 🌬️",                 sparkReward: 12, isMystery: false, category: "calm",      isPremium: true },
-  { id: "calm2", text: "It's okay to rest 🛌",                           sparkReward: 12, isMystery: false, category: "calm",      isPremium: true },
-  { id: "calm3", text: "Peace to you today 🕊️",                         sparkReward: 12, isMystery: false, category: "calm",      isPremium: true },
-  { id: "calm4", text: "Be gentle with yourself today 🌸",               sparkReward: 12, isMystery: false, category: "calm",      isPremium: true },
-  { id: "calm5", text: "You are enough, exactly as you are 🌱",          sparkReward: 15, isMystery: false, category: "calm",      isPremium: true },
+  { id: "calm1", text: "Take a breath. You are here 🌬️",                 sparkReward: 12, isMystery: false, category: "calm",      isPremium: false },
+  { id: "calm2", text: "It's okay to rest 🛌",                           sparkReward: 12, isMystery: false, category: "calm",      isPremium: false },
+  { id: "calm3", text: "Peace to you today 🕊️",                         sparkReward: 12, isMystery: false, category: "calm",      isPremium: false },
+  { id: "calm4", text: "Be gentle with yourself today 🌸",               sparkReward: 12, isMystery: false, category: "calm",      isPremium: false },
+  { id: "calm5", text: "You are enough, exactly as you are 🌱",          sparkReward: 15, isMystery: false, category: "calm",      isPremium: false },
 
   // ─── PREMIUM: World moments (rotating cultural) ───────────────
   { id: "wm1", text: "Wishing you and your family joy this season 🌙",    sparkReward: 20, isMystery: false, category: "cultural",  isPremium: true },

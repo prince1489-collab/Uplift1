@@ -317,11 +317,14 @@ const GIFT_AMOUNT = 5;
 export function BuddyPanel({ db, currentUser, profile, compact = false }) {
   const [buddyProfiles, setBuddyProfiles] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
-  const [searchEmail, setSearchEmail] = useState("");
+  const [inviteInput, setInviteInput] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
+  const [copied, setCopied] = useState(false);
   const buddyUids = profile?.buddies ?? [];
+
+  const inviteLink = currentUser ? window.location.origin + "?add=" + currentUser.uid : "";
 
   useEffect(() => {
     if (!db || buddyUids.length === 0) { setBuddyProfiles([]); return; }
@@ -329,21 +332,34 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
       .then((docs) => setBuddyProfiles(docs.filter((d) => d.exists()).map((d) => ({ uid: d.id, ...d.data() }))));
   }, [db, JSON.stringify(buddyUids)]);
 
-  const searchForUser = async () => {
-    if (!db || !searchEmail.trim()) return;
+  const handleShareInvite = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: "Join me on Seen", url: inviteLink }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(inviteLink).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const lookupByInput = async () => {
+    if (!db || !inviteInput.trim()) return;
     setSearching(true); setSearchError(""); setSearchResult(null);
     try {
-      const snap = await getDocs(query(collection(db, "users"), where("email", "==", searchEmail.trim().toLowerCase()), limit(1)));
-      if (snap.empty) setSearchError("No user found.");
-      else { const d = snap.docs[0]; setSearchResult({ uid: d.id, ...d.data() }); }
-    } catch { setSearchError("Search failed."); }
+      const extractedUid = inviteInput.includes("?add=")
+        ? inviteInput.split("?add=")[1].split("&")[0]
+        : inviteInput.trim();
+      const snap = await getDoc(doc(db, "users", extractedUid));
+      if (!snap.exists()) setSearchError("No user found.");
+      else setSearchResult({ uid: snap.id, ...snap.data() });
+    } catch { setSearchError("Lookup failed."); }
     finally { setSearching(false); }
   };
 
   const addBuddy = async (targetUid) => {
     if (!db || !currentUser) return;
     await updateDoc(doc(db, "users", currentUser.uid), { buddies: arrayUnion(targetUid) });
-    setAddOpen(false); setSearchResult(null); setSearchEmail("");
+    setAddOpen(false); setSearchResult(null); setInviteInput("");
   };
 
   const removeBuddy = async (targetUid) => {
@@ -378,11 +394,15 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
       )}
       {addOpen && (
         <div className="mt-1 space-y-1">
-          <input value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
-            placeholder="Friend's email…"
+          <button onClick={handleShareInvite}
+            className="w-full rounded-lg border border-teal-200 bg-teal-50 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors">
+            {copied ? "Copied!" : "Share invite"}
+          </button>
+          <input value={inviteInput} onChange={(e) => setInviteInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookupByInput()}
+            placeholder="Paste invite link or code…"
             className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px]" />
-          <button onClick={searchForUser} disabled={searching}
+          <button onClick={lookupByInput} disabled={searching}
             className="w-full rounded-lg bg-teal-600 py-1 text-[11px] font-semibold text-white">
             {searching ? "…" : "Search"}
           </button>
@@ -427,11 +447,15 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
       </div>
       {addOpen && (
         <div className="mt-2 space-y-1.5">
-          <input value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
-            placeholder="Friend's email…"
+          <button onClick={handleShareInvite}
+            className="w-full rounded-xl border border-teal-200 bg-teal-50 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-colors">
+            {copied ? "Copied!" : "Share invite"}
+          </button>
+          <input value={inviteInput} onChange={(e) => setInviteInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookupByInput()}
+            placeholder="Paste invite link or code…"
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400" />
-          <button onClick={searchForUser} disabled={searching}
+          <button onClick={lookupByInput} disabled={searching}
             className="w-full rounded-xl bg-teal-600 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 transition-colors">
             {searching ? "Searching…" : "Search"}
           </button>
@@ -1174,6 +1198,8 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
   const [popping, setPopping] = useState(null);
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
 
   useEffect(() => {
     if (!db || !messageId || !currentUser) return;
@@ -1247,7 +1273,36 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
     setTimeout(() => onClose?.(), 280);
   };
 
+  const handleReport = async (reason) => {
+    setReported(true);
+    try {
+      await addDoc(collection(db, "reports"), {
+        messageId,
+        reporterUid: currentUser?.uid,
+        reason,
+        timestamp: Date.now(),
+      });
+    } catch {}
+    setTimeout(() => onClose?.(), 1400);
+  };
+
   const canGift = isOther && !gifted && Number(profile?.sparkBalance ?? 0) >= QUICK_GIFT_AMOUNT;
+
+  if (reporting) return (
+    <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
+      <span style={{ fontSize: 11, color: "rgba(148,163,184,0.8)", padding: "0 4px", flexShrink: 0 }}>Report:</span>
+      {["Harmful","Spam","Inappropriate","Other"].map((r) => (
+        <button key={r}
+          className="seen-qrb-btn"
+          style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34 }}
+          onClick={() => handleReport(r)}>
+          {reported ? "✅" : r}
+        </button>
+      ))}
+      <div className="seen-qrb-sep" />
+      <button className="seen-qrb-btn" style={{ fontSize: 16 }} onClick={() => setReporting(false)}>✕</button>
+    </div>
+  );
 
   return (
     <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
@@ -1274,6 +1329,8 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
           {emoji}
         </button>
       ))}
+      <div className="seen-qrb-sep" />
+      <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
     </div>
   );
 }
