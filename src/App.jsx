@@ -437,9 +437,9 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   const allCategories = [
     { id: "core",      label: "Greetings", emoji: "☀️",  isPremium: false },
     { id: "warmth",    label: "Warmth",    emoji: "💛",  isPremium: false },
+    { id: "calm",      label: "Calm",      emoji: "🌿",  isPremium: false },
     { id: "strength",  label: "Strength",  emoji: "💪",  isPremium: true  },
     { id: "celebrate", label: "Celebrate", emoji: "🎉",  isPremium: true  },
-    { id: "calm",      label: "Calm",      emoji: "🌿",  isPremium: false },
     { id: "cultural",  label: "World",     emoji: "🌍",  isPremium: true  },
   ];
 
@@ -475,7 +475,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
               }`}>
               <span style={{ fontSize: "11px" }}>{cat.emoji}</span>
               {cat.label}
-              {locked && <span className="text-[9px]">✨</span>}
+              {locked && <span className="text-[10px]">🔒</span>}
             </button>
           );
         })}
