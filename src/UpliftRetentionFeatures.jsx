@@ -1233,26 +1233,21 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
       await runTransaction(db, async (tx) => {
         const fromRef = doc(db, "users", currentUser.uid);
         const toRef   = doc(db, "users", senderUid);
-        const msgRef  = doc(db, "publicMessages", messageId);
-        const [fSnap, tSnap, mSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef), tx.get(msgRef)]);
+        const [fSnap, tSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
         const fromBal = Number(fSnap.data()?.sparkBalance ?? 0);
         const toBal   = Number(tSnap.data()?.sparkBalance ?? 0);
         if (fromBal < QUICK_GIFT_AMOUNT) throw new Error("low");
-        // Prevent double-gifting same message
-        const giftedBy = mSnap.data()?.giftedBy ?? [];
-        if (giftedBy.includes(currentUser.uid)) throw new Error("already");
         tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
         tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
-        tx.set(msgRef,  {
-          giftedBy:  [...giftedBy, currentUser.uid],
-          giftCount: (mSnap.data()?.giftCount ?? 0) + 1,
-        }, { merge: true });
       });
+      // Record gift in subcollection (uid as doc ID = idempotent, one gift per user)
+      // Requires Firestore rule: match /gifts/{giftId} { allow create: if giftId == request.auth.uid }
+      setDoc(doc(db, "publicMessages", messageId, "gifts", currentUser.uid), {
+        amount: QUICK_GIFT_AMOUNT,
+        timestamp: Date.now(),
+      }).catch(() => {}); // best-effort badge write — don't fail the gift if rules aren't set yet
       onGift?.("🎁");
-    } catch (err) {
-      // "already" means they already gifted — keep done state, don't revert
-      if (err?.message !== "already") setGifted(false);
-    }
+    } catch { setGifted(false); }
     setTimeout(() => onClose?.(), 320);
   };
 
@@ -1357,11 +1352,11 @@ export function GiftOverlay({ db, messageId }) {
 
   useEffect(() => {
     if (!db || !messageId) return;
-    // Read giftCount from the parent message doc — no subcollection, no rules issues
+    // Requires Firestore rule: match /gifts/{giftId} { allow read: if request.auth != null }
     const unsub = onSnapshot(
-      doc(db, "publicMessages", messageId),
+      collection(db, "publicMessages", messageId, "gifts"),
       (snap) => {
-        const newCount = snap.data()?.giftCount ?? 0;
+        const newCount = snap.size;
         if (prevCountRef.current === null) {
           // First snapshot: baseline, no animation
           prevCountRef.current = newCount;
