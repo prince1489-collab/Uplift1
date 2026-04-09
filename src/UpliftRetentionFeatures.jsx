@@ -1240,6 +1240,11 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
         tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
         tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
       });
+      // Record the gift in the message's gifts subcollection (UID as doc ID = idempotent)
+      await setDoc(doc(db, "publicMessages", messageId, "gifts", currentUser.uid), {
+        amount: QUICK_GIFT_AMOUNT,
+        timestamp: Date.now(),
+      });
       onGift?.("🎁");
     } catch { setGifted(false); }
     setTimeout(() => onClose?.(), 320);
@@ -1332,5 +1337,56 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
       <div className="seen-qrb-sep" />
       <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GIFT OVERLAY — golden glow ring + count badge on gifted bubbles
+// ─────────────────────────────────────────────────────────────────
+
+export function GiftOverlay({ db, messageId }) {
+  const [count, setCount] = useState(0);
+  const [glowKey, setGlowKey] = useState(0); // bump to re-trigger animation
+  const initializedRef = useRef(false);
+  const prevCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!db || !messageId) return;
+    const unsub = onSnapshot(
+      collection(db, "publicMessages", messageId, "gifts"),
+      (snap) => {
+        const newCount = snap.size;
+        if (!initializedRef.current) {
+          // First snapshot — set baseline silently, no animation
+          initializedRef.current = true;
+          prevCountRef.current = newCount;
+          setCount(newCount);
+          return;
+        }
+        if (newCount > prevCountRef.current) {
+          // New gift arrived — trigger glow ring
+          setGlowKey((k) => k + 1);
+        }
+        prevCountRef.current = newCount;
+        setCount(newCount);
+      },
+      () => {}
+    );
+    return unsub;
+  }, [db, messageId]);
+
+  if (count === 0) return null;
+
+  return (
+    <>
+      {/* Golden ring pulse — re-mounts on each new gift via key */}
+      {glowKey > 0 && (
+        <div key={glowKey} className="gift-glow-ring" />
+      )}
+      {/* Persistent count badge */}
+      <div className={`gift-badge gift-badge--pop`}>
+        🎁 {count}
+      </div>
+    </>
   );
 }

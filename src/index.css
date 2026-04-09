@@ -242,6 +242,57 @@ body {
   z-index: 29;
 }
 
+/* ─── Gift glow + badge ──────────────────────────────────────────────── */
+
+/* Golden ring pulse radiating outward from a gifted bubble */
+@keyframes giftRingPulse {
+  0%   { opacity: 0;   box-shadow: 0 0 0 0   rgba(251,191,36,0.9), inset 0 0 0 0   rgba(251,191,36,0.5); }
+  20%  { opacity: 1;   box-shadow: 0 0 0 4px rgba(251,191,36,0.6), inset 0 0 0 1px rgba(251,191,36,0.7); }
+  65%  { opacity: 0.7; box-shadow: 0 0 0 12px rgba(251,191,36,0.15), inset 0 0 0 1px rgba(251,191,36,0.3); }
+  100% { opacity: 0;   box-shadow: 0 0 0 20px rgba(251,191,36,0),  inset 0 0 0 0   rgba(251,191,36,0); }
+}
+.gift-glow-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 4;
+  animation: giftRingPulse 2s ease-out forwards;
+}
+
+/* 🎁 N badge that appears below the bubble */
+@keyframes giftBadgePop {
+  0%   { transform: scale(0) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.2)  translateY(-2px); opacity: 1; }
+  100% { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+.gift-badge {
+  position: absolute;
+  bottom: -11px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 999px;
+  background: rgba(251,191,36,0.15);
+  border: 1px solid rgba(251,191,36,0.45);
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+.gift-badge--pop {
+  animation: giftBadgePop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+[data-dark-shell] .gift-badge {
+  background: rgba(251,191,36,0.12);
+  border-color: rgba(251,191,36,0.35);
+  color: #fbbf24;
+}
+
 /* ─── Mystery Greeting unwrap animations ────────────────────────────── */
 
 /* Pre-unwrap: pulse ring on the gift bubble to invite tapping */

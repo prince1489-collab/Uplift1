@@ -20,6 +20,7 @@ import {
   LiveGreeterCount, MessageReactions,
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
+  GiftOverlay,
   MoodSelector, MoodPill,
   PremiumUpgradePrompt,
   scheduleGreetingWindowNotification,
@@ -1183,6 +1184,7 @@ export default function App() {
                                       })()}
 
                                       <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+                                      <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 
                                     {/* Timestamp + read receipt — hidden until tap */}
