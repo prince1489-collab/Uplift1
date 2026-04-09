@@ -849,7 +849,7 @@ export default function App() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
           {unauthScreen === "welcome"
-            ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} />
+            ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
             : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
