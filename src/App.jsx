@@ -435,12 +435,12 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
 
   const activeGreetings = categories.find((c) => c.id === activeCategory)?.greetings ?? [];
   const allCategories = [
-    { id: "core", label: "Greetings", emoji: "☀️", isPremium: false },
-    { id: "warmth", label: "Warmth", emoji: "💛", isPremium: true },
-    { id: "strength", label: "Strength", emoji: "💪", isPremium: true },
-    { id: "celebrate", label: "Celebrate", emoji: "🎉", isPremium: true },
-    { id: "calm", label: "Calm", emoji: "🌿", isPremium: true },
-    { id: "cultural", label: "World", emoji: "🌍", isPremium: true },
+    { id: "core",      label: "Greetings", emoji: "☀️",  isPremium: false },
+    { id: "warmth",    label: "Warmth",    emoji: "💛",  isPremium: false },
+    { id: "strength",  label: "Strength",  emoji: "💪",  isPremium: true  },
+    { id: "celebrate", label: "Celebrate", emoji: "🎉",  isPremium: true  },
+    { id: "calm",      label: "Calm",      emoji: "🌿",  isPremium: false },
+    { id: "cultural",  label: "World",     emoji: "🌍",  isPremium: true  },
   ];
 
   return (

@@ -1026,10 +1026,10 @@ export function PremiumUpgradePrompt({ onClose }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
         </div>
         <p className="text-sm text-slate-600 mb-4">
-          Unlock 25+ curated greetings — Warmth, Strength, Calm, Celebrate, and World Moments packs.
+          Unlock exclusive packs — Strength, Celebrate, and World Moments greetings curated for every mood.
         </p>
         <div className="space-y-2 mb-4">
-          {["Warmth & strength messages", "Cultural & seasonal greetings", "Calm & reassurance pack", "New packs added monthly"].map((f) => (
+          {["Strength & motivation messages", "Celebrate pack — lift people up", "World Moments & cultural greetings", "New packs added monthly"].map((f) => (
             <div key={f} className="flex items-center gap-2 text-sm text-slate-700">
               <CheckCircle2 size={14} className="text-teal-500 shrink-0" />
               {f}
