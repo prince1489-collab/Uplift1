@@ -1233,20 +1233,26 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
       await runTransaction(db, async (tx) => {
         const fromRef = doc(db, "users", currentUser.uid);
         const toRef   = doc(db, "users", senderUid);
-        const [fSnap, tSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+        const msgRef  = doc(db, "publicMessages", messageId);
+        const [fSnap, tSnap, mSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef), tx.get(msgRef)]);
         const fromBal = Number(fSnap.data()?.sparkBalance ?? 0);
         const toBal   = Number(tSnap.data()?.sparkBalance ?? 0);
         if (fromBal < QUICK_GIFT_AMOUNT) throw new Error("low");
+        // Prevent double-gifting same message
+        const giftedBy = mSnap.data()?.giftedBy ?? [];
+        if (giftedBy.includes(currentUser.uid)) throw new Error("already");
         tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
         tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
-      });
-      // Record the gift in the message's gifts subcollection (UID as doc ID = idempotent)
-      await setDoc(doc(db, "publicMessages", messageId, "gifts", currentUser.uid), {
-        amount: QUICK_GIFT_AMOUNT,
-        timestamp: Date.now(),
+        tx.set(msgRef,  {
+          giftedBy:  [...giftedBy, currentUser.uid],
+          giftCount: (mSnap.data()?.giftCount ?? 0) + 1,
+        }, { merge: true });
       });
       onGift?.("🎁");
-    } catch { setGifted(false); }
+    } catch (err) {
+      // "already" means they already gifted — keep done state, don't revert
+      if (err?.message !== "already") setGifted(false);
+    }
     setTimeout(() => onClose?.(), 320);
   };
 
@@ -1346,25 +1352,23 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
 
 export function GiftOverlay({ db, messageId }) {
   const [count, setCount] = useState(0);
-  const [glowKey, setGlowKey] = useState(0); // bump to re-trigger animation
-  const initializedRef = useRef(false);
-  const prevCountRef = useRef(0);
+  const [glowKey, setGlowKey] = useState(0);
+  const prevCountRef = useRef(null); // null = not yet initialized
 
   useEffect(() => {
     if (!db || !messageId) return;
+    // Read giftCount from the parent message doc — no subcollection, no rules issues
     const unsub = onSnapshot(
-      collection(db, "publicMessages", messageId, "gifts"),
+      doc(db, "publicMessages", messageId),
       (snap) => {
-        const newCount = snap.size;
-        if (!initializedRef.current) {
-          // First snapshot — set baseline silently, no animation
-          initializedRef.current = true;
+        const newCount = snap.data()?.giftCount ?? 0;
+        if (prevCountRef.current === null) {
+          // First snapshot: baseline, no animation
           prevCountRef.current = newCount;
           setCount(newCount);
           return;
         }
         if (newCount > prevCountRef.current) {
-          // New gift arrived — trigger glow ring
           setGlowKey((k) => k + 1);
         }
         prevCountRef.current = newCount;
@@ -1379,14 +1383,8 @@ export function GiftOverlay({ db, messageId }) {
 
   return (
     <>
-      {/* Golden ring pulse — re-mounts on each new gift via key */}
-      {glowKey > 0 && (
-        <div key={glowKey} className="gift-glow-ring" />
-      )}
-      {/* Persistent count badge */}
-      <div className={`gift-badge gift-badge--pop`}>
-        🎁 {count}
-      </div>
+      {glowKey > 0 && <div key={glowKey} className="gift-glow-ring" />}
+      <div className="gift-badge gift-badge--pop">🎁 {count}</div>
     </>
   );
 }
