@@ -21,10 +21,11 @@ export const GREETING_CATEGORIES = [
 
 export const ALL_GREETINGS = [
   // ─── FREE: Core ───────────────────────────────────────────────
-  { id: "morning",   text: "Good Morning, have a nice day! ☀️",           sparkReward: 10, isMystery: false, category: "core",      isPremium: false },
-  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛", sparkReward: 10, isMystery: false, category: "core",      isPremium: false },
-  { id: "night",     text: "Good Night! Sleep well 🌙",                   sparkReward: 10, isMystery: false, category: "core",      isPremium: false },
-  { id: "mystery",   text: "🎁 Mystery Greeting",                         sparkReward: 25, isMystery: true,  category: "core",      isPremium: false },
+  { id: "morning",   text: "Good Morning, have a nice day! ☀️",                    sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "afternoon", text: "Good Afternoon, hope you are doing great! 💛",         sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "evening",   text: "Good Evening! Time to unwind and breathe 🌆",          sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "night",     text: "Good Night! Hope you had a great day. Rest well 🌙",   sparkReward: 10, isMystery: false, category: "core", isPremium: false },
+  { id: "mystery",   text: "🎁 Mystery Greeting",                                  sparkReward: 25, isMystery: true,  category: "core", isPremium: false },
 
   // ─── PREMIUM: Warmth ──────────────────────────────────────────
   { id: "w1", text: "Thinking of you today 💭",                           sparkReward: 12, isMystery: false, category: "warmth",    isPremium: true },
@@ -79,3 +80,17 @@ export function getGreetingsByCategory(isPremium = false) {
     greetings: accessible.filter((g) => g.category === cat.id),
   })).filter((cat) => cat.greetings.length > 0);
 }
+
+/**
+ * Warm messages revealed when a recipient unwraps a Mystery Greeting.
+ * Picked randomly client-side; persisted to localStorage per messageId.
+ */
+export const MYSTERY_MESSAGES = [
+  "You are someone's reason to smile today 🌟",
+  "The world is genuinely better with you in it 💛",
+  "Someone out there is rooting for you right now 🤝",
+  "You matter more than you'll ever know ✨",
+  "You bring something to this world no one else can 🌍",
+  "Today, someone thought of you and smiled 😊",
+  "You are seen. You are valued. You are enough 🙏",
+];

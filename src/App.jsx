@@ -27,7 +27,7 @@ import {
   QuickReactBar,
 } from "./UpliftRetentionFeatures";
 
-import { getGreetingsByCategory, getAccessibleGreetings } from "./greetings";
+import { getGreetingsByCategory, getAccessibleGreetings, MYSTERY_MESSAGES } from "./greetings";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -561,6 +561,12 @@ export default function App() {
   const [unauthScreen, setUnauthScreen] = useState("welcome");
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
+  // Mystery unwrap: { [messageId]: revealedText } persisted to localStorage
+  const [unwrappedMysteries, setUnwrappedMysteries] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}"); }
+    catch (_) { return {}; }
+  });
+  const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -798,6 +804,21 @@ export default function App() {
   const DAILY_GREETING_LIMIT = 10;
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
+  const handleUnwrapMystery = (messageId) => {
+    if (unwrappedMysteries[messageId]) return;
+    const msg = MYSTERY_MESSAGES[Math.floor(Math.random() * MYSTERY_MESSAGES.length)];
+    try {
+      const saved = JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}");
+      saved[messageId] = msg;
+      localStorage.setItem("seen-mystery-reveals", JSON.stringify(saved));
+    } catch (_) {}
+    setUnwrappedMysteries((prev) => ({ ...prev, [messageId]: msg }));
+    setBurstingMystery(messageId);
+    triggerReactionBurst("🎁");
+    haptic([10, 25, 10, 25, 10]);
+    setTimeout(() => setBurstingMystery(null), 600);
+  };
+
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
@@ -809,6 +830,8 @@ export default function App() {
         text: greeting.text,
         timestamp: nowMs(),
         moodTag: profile?.moodTag ?? null,
+        country: profile?.country ?? null,
+        isMystery: greeting.isMystery ?? false,
       });
       const reward = computeSparkReward(greeting.sparkReward, streak);
       const refDoc = userProfileRef(currentUser.uid);
@@ -1086,20 +1109,46 @@ export default function App() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (reactionBarId === m.id) { setReactionBarId(null); return; }
+                                        // Mystery tap: first tap unwraps, subsequent taps toggle timestamp
+                                        if (isMystery && !mine && !unwrappedMysteries[m.id]) {
+                                          handleUnwrapMystery(m.id); return;
+                                        }
                                         setActiveMessageId(isActive ? null : m.id);
                                       }}>
-                                      <div
-                                        className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
-                                          mine
-                                            ? "bg-teal-600 text-white border-teal-600"
-                                            : isMystery
-                                            ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
-                                            : "bg-white border-slate-200 text-slate-800"
-                                        }`}
-                                        style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
-                                        {isMystery && !mine && <span className="mr-1.5">🎁</span>}
-                                        {m.text}
-                                      </div>
+                                      {(() => {
+                                        const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
+                                        const isBursting = burstingMystery === m.id;
+                                        return (
+                                          <div
+                                            className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
+                                              mine
+                                                ? "bg-teal-600 text-white border-teal-600"
+                                                : isUnwrapped
+                                                ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
+                                                : isMystery
+                                                ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
+                                                : "bg-white border-slate-200 text-slate-800"
+                                            } ${isBursting ? "mystery-burst" : ""}`}
+                                            style={
+                                              isUnwrapped
+                                                ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
+                                                : isMystery && !mine
+                                                ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
+                                                : {}
+                                            }>
+                                            {isMystery && !mine ? (
+                                              isUnwrapped ? (
+                                                <span className="mystery-reveal">{unwrappedMysteries[m.id]}</span>
+                                              ) : (
+                                                <span>🎁 Tap to unwrap</span>
+                                              )
+                                            ) : (
+                                              <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+
                                       <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
                                     </div>
 
