@@ -25,6 +25,8 @@ import {
   addDoc,
 } from "firebase/firestore";
 
+import { ChatRequestButton, canSendChatRequest } from "./PrivateChat";
+
 import {
   Bell,
   CheckCircle2,
@@ -314,7 +316,7 @@ export function KindnessPledge({ db, uid, todayMessageCount = 0 }) {
 
 const GIFT_AMOUNT = 5;
 
-export function BuddyPanel({ db, currentUser, profile, compact = false }) {
+export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOpen }) {
   const [buddyProfiles, setBuddyProfiles] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
@@ -382,7 +384,12 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
                 : <div className="h-5 w-5 rounded-full bg-teal-100 flex items-center justify-center text-[9px] font-bold text-teal-700">{(b.fullName ?? "?")[0]}</div>}
               <span className="text-[11px] text-slate-700">{b.fullName}</span>
             </div>
-            <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
+            <div className="flex items-center gap-1">
+              {canSendChatRequest(profile) && (
+                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
+              )}
+              <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
+            </div>
           </div>
         ))}
       </div>
@@ -441,7 +448,12 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
               <span className="text-xs text-slate-700">{b.fullName}</span>
               {b.moodTag && <MoodPill mood={b.moodTag} tiny />}
             </div>
-            <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400 transition-colors"><X size={12} /></button>
+            <div className="flex items-center gap-1.5">
+              {canSendChatRequest(profile) && (
+                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
+              )}
+              <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400 transition-colors"><X size={12} /></button>
+            </div>
           </div>
         ))}
       </div>
