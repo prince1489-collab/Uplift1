@@ -9,7 +9,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   collection, doc, getDoc, limit,
-  onSnapshot, query, where,
+  onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { X } from "lucide-react";
 
@@ -69,7 +69,7 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
 const AUTO_ROTATE_SPEED = 0.12;
 
-export default function WorldMap({ db, currentUser, profile, onClose }) {
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -97,6 +97,15 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   const lastPinchRef = useRef(null);
   const worldDotsRef = useRef([]);
   const myConnectionCountriesRef = useRef([]);
+  // "Find me" fly-to animation
+  const flyToTargetRef = useRef(null);
+  const flyToStartRef = useRef(null);
+  const flyToStartTimeRef = useRef(null);
+  // Tap vs drag tracking
+  const mouseMovedRef = useRef(false);
+  // Country card
+  const [selectedCountry, setSelectedCountry] = useState(null);
+  const [countryMessages, setCountryMessages] = useState([]);
 
   const myCountry = profile?.country ?? null;
   const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
@@ -258,25 +267,42 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       ctx.fillStyle = specGrad;
       ctx.fill();
 
-      // ── Arcs ──
+      // ── Animated Arcs ──
       if (tabRef.current === "world") {
-        for (const { fromC, toC } of arcsRef.current) {
+        const now = Date.now();
+        const ARC_DURATION = 1800;
+        for (const { fromC, toC, startTime } of arcsRef.current) {
+          const progress = Math.min(1, (now - (startTime ?? now)) / ARC_DURATION);
           const interp = d3.geoInterpolate(fromC, toC);
+          const nSteps = Math.max(2, Math.floor(60 * progress));
           const pts = [];
-          for (let i = 0; i <= 60; i++) {
+          for (let i = 0; i <= nSteps; i++) {
             const p = proj(interp(i / 60));
             if (p) pts.push(p);
           }
           if (pts.length < 2) continue;
+          // Fade out in final 25% of animation
+          const alpha = progress < 0.75 ? 0.75 : 0.75 * (1 - (progress - 0.75) / 0.25);
           ctx.beginPath();
           ctx.moveTo(pts[0][0], pts[0][1]);
           for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.strokeStyle = "rgba(77,255,176,0.7)";
+          ctx.strokeStyle = `rgba(77,255,176,${alpha.toFixed(2)})`;
           ctx.lineWidth = 1.5;
           ctx.shadowColor = "#4DFFB0";
           ctx.shadowBlur = 6;
           ctx.stroke();
           ctx.shadowBlur = 0;
+          // Glowing tip dot travelling along the arc
+          if (progress < 0.88 && pts.length > 0) {
+            const tip = pts[pts.length - 1];
+            ctx.beginPath();
+            ctx.arc(tip[0], tip[1], 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.shadowColor = "#4DFFB0";
+            ctx.shadowBlur = 14;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
         }
       }
 
@@ -330,7 +356,19 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     };
 
     const tick = () => {
-      if (autoRotateRef.current && !isDraggingRef.current) {
+      if (flyToTargetRef.current) {
+        const elapsed = Date.now() - flyToStartTimeRef.current;
+        const t = Math.min(1, elapsed / 900);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease-in-out
+        const [sx, sy] = flyToStartRef.current;
+        const [tx, ty] = flyToTargetRef.current;
+        // Handle longitude wrap
+        let dx = tx - sx;
+        if (dx > 180) dx -= 360;
+        if (dx < -180) dx += 360;
+        rotationRef.current = [sx + dx * ease, sy + (ty - sy) * ease, 0];
+        if (t >= 1) { rotationRef.current = [tx, ty, 0]; flyToTargetRef.current = null; }
+      } else if (autoRotateRef.current && !isDraggingRef.current) {
         rotationRef.current = [rotationRef.current[0] + AUTO_ROTATE_SPEED, rotationRef.current[1], 0];
       }
       draw();
@@ -349,8 +387,27 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     if (!mapReady || !canvasRef.current) return;
     const canvas = canvasRef.current;
 
+    // Shared tap hit-test: finds nearest dot within threshold and selects it
+    const handleTap = (x, y) => {
+      if (!projRef.current) return;
+      const dots = tabRef.current === "world"
+        ? worldDotsRef.current
+        : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
+      let closest = null, minDist = 22;
+      for (const { country, count } of dots) {
+        const coords = COUNTRY_COORDS[country];
+        if (!coords) continue;
+        const pt = projRef.current(coords);
+        if (!pt) continue;
+        const dist = Math.sqrt((pt[0] - x) ** 2 + (pt[1] - y) ** 2);
+        if (dist < minDist) { minDist = dist; closest = { country, count }; }
+      }
+      if (closest) setSelectedCountry(closest);
+    };
+
     const onMouseDown = (e) => {
       e.preventDefault();
+      mouseMovedRef.current = false;
       isDraggingRef.current = true;
       autoRotateRef.current = false;
       setIsAutoRotating(false);
@@ -360,6 +417,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
     const onMouseMove = (e) => {
       if (isDraggingRef.current) {
+        mouseMovedRef.current = true;
         const scale = scaleRef.current || 150;
         const dx = e.clientX - dragStartRef.current[0];
         const dy = e.clientY - dragStartRef.current[1];
@@ -393,6 +451,13 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     const onMouseUp = () => { isDraggingRef.current = false; };
     const onMouseLeave = () => { isDraggingRef.current = false; setTooltip(null); };
 
+    // Click = mousedown + mouseup without drag
+    const onClick = (e) => {
+      if (mouseMovedRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      handleTap(e.clientX - rect.left, e.clientY - rect.top);
+    };
+
     const onTouchStart = (e) => {
       if (e.touches.length === 2) {
         isDraggingRef.current = false;
@@ -400,6 +465,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         lastPinchRef.current = { dist: Math.sqrt(dx * dx + dy * dy), scale: scaleRef.current };
       } else if (e.touches.length === 1) {
+        mouseMovedRef.current = false;
         isDraggingRef.current = true;
         autoRotateRef.current = false;
         setIsAutoRotating(false);
@@ -411,12 +477,14 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     const onTouchMove = (e) => {
       e.preventDefault();
       if (e.touches.length === 2 && lastPinchRef.current) {
+        mouseMovedRef.current = true;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const size = parseFloat(canvas.style.width) || 300;
         scaleRef.current = Math.max(size * 0.25, Math.min(size * 1.6, lastPinchRef.current.scale * dist / lastPinchRef.current.dist));
       } else if (e.touches.length === 1 && isDraggingRef.current) {
+        mouseMovedRef.current = true;
         const scale = scaleRef.current || 150;
         const dx = e.touches[0].clientX - dragStartRef.current[0];
         const dy = e.touches[0].clientY - dragStartRef.current[1];
@@ -428,7 +496,16 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       }
     };
 
-    const onTouchEnd = () => { isDraggingRef.current = false; lastPinchRef.current = null; };
+    const onTouchEnd = (e) => {
+      // Detect tap: single touch that didn't move
+      if (e.changedTouches.length === 1 && !mouseMovedRef.current && !lastPinchRef.current) {
+        const touch = e.changedTouches[0];
+        const rect = canvas.getBoundingClientRect();
+        handleTap(touch.clientX - rect.left, touch.clientY - rect.top);
+      }
+      isDraggingRef.current = false;
+      lastPinchRef.current = null;
+    };
 
     const onWheel = (e) => {
       e.preventDefault();
@@ -440,6 +517,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     canvas.addEventListener("mousedown", onMouseDown);
     canvas.addEventListener("mousemove", onMouseMove);
     canvas.addEventListener("mouseleave", onMouseLeave);
+    canvas.addEventListener("click", onClick);
     canvas.addEventListener("touchstart", onTouchStart, { passive: true });
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd);
@@ -450,6 +528,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       canvas.removeEventListener("mousedown", onMouseDown);
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseleave", onMouseLeave);
+      canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchmove", onTouchMove);
       canvas.removeEventListener("touchend", onTouchEnd);
@@ -497,6 +576,20 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     }, () => {});
   }, [db, currentUser]);
 
+  // ── Country card: load recent messages when a dot is tapped ──
+  useEffect(() => {
+    if (!db || !selectedCountry) { setCountryMessages([]); return; }
+    const q = query(
+      collection(db, "publicMessages"),
+      where("country", "==", selectedCountry.country),
+      orderBy("timestamp", "desc"),
+      limit(3)
+    );
+    return onSnapshot(q, (snap) => {
+      setCountryMessages(snap.docs.map(d => d.data().text).filter(Boolean));
+    }, () => {});
+  }, [db, selectedCountry?.country]);
+
   // ── Arc animation ────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || activeUsers.length < 2) return;
@@ -513,8 +606,8 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       const toC = COUNTRY_COORDS[to.country];
       if (!fromC || !toC) return;
       const id = ++arcIdRef.current;
-      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC }];
-      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3000);
+      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now() }];
+      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
     };
     addArc();
     arcTimerRef.current = setInterval(addArc, 2500);
@@ -558,6 +651,22 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", margin: "2px 0 0" }}>Kindness crossing borders</p>
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {/* Find me */}
+            {myCoords && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  flyToStartRef.current = [...rotationRef.current];
+                  flyToTargetRef.current = [-myCoords[0], -myCoords[1]];
+                  flyToStartTimeRef.current = Date.now();
+                  autoRotateRef.current = false;
+                  setIsAutoRotating(false);
+                }}
+                title="Fly to my country"
+                style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: "8px", padding: "5px 8px", background: "rgba(0,0,0,0.4)", cursor: "pointer", fontSize: "13px", color: "rgba(255,255,255,0.75)", backdropFilter: "blur(4px)" }}>
+                ◎ Find me
+              </button>
+            )}
             {/* Auto-rotate toggle */}
             <button onClick={(e) => { e.stopPropagation(); autoRotateRef.current = !autoRotateRef.current; setIsAutoRotating(r => !r); }}
               title={isAutoRotating ? "Pause rotation" : "Resume rotation"}
@@ -569,6 +678,68 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             </button>
           </div>
         </div>
+
+        {/* ── COUNTRY CARD ── */}
+        {selectedCountry && (
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            style={{
+              position: "absolute", bottom: 0, left: 0, right: 0,
+              background: "linear-gradient(to top, rgba(6,14,16,0.98) 0%, rgba(8,18,22,0.92) 100%)",
+              backdropFilter: "blur(16px)",
+              borderTop: "1px solid rgba(77,255,176,0.18)",
+              padding: "16px 18px 20px",
+              animation: "cardSlideUp 0.28s cubic-bezier(0.34,1.1,0.64,1) both",
+            }}>
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "15px", color: "white" }}>
+                  {selectedCountry.country}
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: "11px", color: "rgba(77,255,176,0.75)" }}>
+                  {selectedCountry.count} {selectedCountry.count === 1 ? "person" : "people"} spreading kindness here
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedCountry(null)}
+                style={{ border: "1px solid rgba(255,255,255,0.15)", borderRadius: "50%", padding: "5px", background: "rgba(0,0,0,0.4)", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                <X size={12} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+            {/* Recent messages */}
+            {countryMessages.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "13px" }}>
+                {countryMessages.map((text, i) => (
+                  <div key={i} style={{
+                    background: "rgba(77,255,176,0.07)", border: "1px solid rgba(77,255,176,0.12)",
+                    borderRadius: "10px", padding: "7px 11px",
+                    fontSize: "12px", color: "rgba(255,255,255,0.8)", lineHeight: 1.4,
+                  }}>
+                    "{text}"
+                  </div>
+                ))}
+              </div>
+            )}
+            {countryMessages.length === 0 && (
+              <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginBottom: "13px" }}>
+                No recent messages from here yet.
+              </p>
+            )}
+            {/* CTA */}
+            <button
+              onClick={() => { setSelectedCountry(null); onSendKindness?.(); }}
+              style={{
+                width: "100%", padding: "10px", borderRadius: "12px",
+                background: "rgba(77,255,176,0.15)", border: "1px solid rgba(77,255,176,0.35)",
+                color: "#4DFFB0", fontWeight: 700, fontSize: "13px", cursor: "pointer",
+                letterSpacing: "-0.01em",
+              }}>
+              Send kindness to someone today ✨
+            </button>
+          </div>
+        )}
 
         {/* ── FLOATING TABS ── */}
         <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
@@ -587,6 +758,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       <style>{`
         @keyframes seenLive { 0%,100%{opacity:.4} 50%{opacity:1} }
         @keyframes seenSpin { to{transform:rotate(360deg)} }
+        @keyframes cardSlideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         canvas { touch-action: none; user-select: none; }
       `}</style>
 
