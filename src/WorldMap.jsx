@@ -387,20 +387,29 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     if (!mapReady || !canvasRef.current) return;
     const canvas = canvasRef.current;
 
-    // Shared tap hit-test: finds nearest dot within threshold and selects it
+    // Tap hit-test: invert the tap point to lon/lat, then find nearest country centroid
     const handleTap = (x, y) => {
       if (!projRef.current) return;
-      const dots = tabRef.current === "world"
-        ? worldDotsRef.current
-        : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
-      let closest = null, minDist = 22;
-      for (const { country, count } of dots) {
-        const coords = COUNTRY_COORDS[country];
-        if (!coords) continue;
-        const pt = projRef.current(coords);
-        if (!pt) continue;
-        const dist = Math.sqrt((pt[0] - x) ** 2 + (pt[1] - y) ** 2);
-        if (dist < minDist) { minDist = dist; closest = { country, count }; }
+      // Check tap is within the globe circle
+      const size = parseFloat(canvasRef.current?.style.width) || 300;
+      const cx = size / 2, cy = size / 2;
+      const scale = scaleRef.current || cx * 0.9;
+      if ((x - cx) ** 2 + (y - cy) ** 2 > scale ** 2) return; // outside globe
+
+      // Invert to geographic coordinates
+      const geo = projRef.current.invert?.([x, y]);
+      if (!geo) return;
+      const [tapLon, tapLat] = geo;
+
+      // Find closest country centroid to the tapped lat/lon
+      let closest = null, minDist = Infinity;
+      const countMap = {};
+      for (const { country, count } of worldDotsRef.current) countMap[country] = count;
+
+      for (const [country, [lon, lat]] of Object.entries(COUNTRY_COORDS)) {
+        const dLon = tapLon - lon, dLat = tapLat - lat;
+        const dist = Math.sqrt(dLon * dLon + dLat * dLat);
+        if (dist < minDist) { minDist = dist; closest = { country, count: countMap[country] ?? 0 }; }
       }
       if (closest) setSelectedCountry(closest);
     };
@@ -742,7 +751,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         )}
 
         {/* ── FLOATING TABS ── */}
-        <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+        {!selectedCountry && <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
           style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 12px", background: "linear-gradient(to top, rgba(6,14,16,0.95) 0%, transparent 100%)" }}>
           <div style={{ display: "flex", gap: "8px" }}>
             {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
@@ -752,7 +761,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
             <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />Live
           </span>
-        </div>
+        </div>}
       </div>
 
       <style>{`
