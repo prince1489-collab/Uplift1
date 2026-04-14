@@ -26,6 +26,7 @@ import {
 } from "firebase/firestore";
 
 import { ChatRequestButton, canSendChatRequest } from "./PrivateChat";
+import { startCheckout } from "./payments";
 
 import {
   Bell,
@@ -1024,7 +1025,7 @@ export function MoodSelector({ db, uid, currentMood }) {
 // GAP 4 FIX — PREMIUM UPGRADE PROMPT
 // ─────────────────────────────────────────────────────────────────
 
-export function PremiumUpgradePrompt({ onClose }) {
+export function PremiumUpgradePrompt({ onClose, currentUser }) {
   return (
     <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/30 backdrop-blur-sm p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
@@ -1049,7 +1050,7 @@ export function PremiumUpgradePrompt({ onClose }) {
           ))}
         </div>
         <button
-          onClick={() => alert("Payment integration coming soon!")}
+          onClick={() => startCheckout(currentUser)}
           className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
           Upgrade — $3.99/mo
         </button>

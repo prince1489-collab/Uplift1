@@ -4,6 +4,7 @@ import {
   orderBy, query, setDoc, updateDoc, where, limit,
 } from "firebase/firestore";
 import { ArrowLeft, Lock, MessageCircle, Send } from "lucide-react";
+import { startCheckout } from "./payments";
 
 const MAX_LEVEL_SPARKS = 600; // "Main Character Energy"
 const MSG_LIMIT = 100;
@@ -230,12 +231,14 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 flex-shrink-0">
+                      <button
+                        onClick={() => startCheckout(currentUser)}
+                        className="flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 flex-shrink-0 hover:bg-amber-100 transition-colors cursor-pointer">
                         <Lock size={9} className="text-amber-600" />
                         <span className="text-[10px] font-semibold text-amber-700 whitespace-nowrap">
-                          Upgrade to reply
+                          Upgrade $3.99/mo
                         </span>
-                      </div>
+                      </button>
                     )}
                   </div>
                 );

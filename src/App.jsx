@@ -594,6 +594,16 @@ export default function App() {
   const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [premiumSuccess, setPremiumSuccess] = useState(false);
+  // Detect Stripe checkout return
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("premium") === "success") {
+      setPremiumSuccess(true);
+      window.history.replaceState({}, "", "/");
+      setTimeout(() => setPremiumSuccess(false), 5000);
+    }
+  }, []);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -958,7 +968,13 @@ export default function App() {
           <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
         )}
 
-        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
+        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
+
+        {premiumSuccess && (
+          <div className="fixed top-4 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2.5 shadow-xl text-white text-sm font-semibold animate-fade-in">
+            <span>🎉</span> Welcome to Seen Premium!
+          </div>
+        )}
 
         {showChatInbox && !activeChat && (
           <PrivateChatInbox
