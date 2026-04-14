@@ -13,10 +13,12 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 
+import { CirclesPanel } from "./Circles";
+
 import {
   useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
-  BuddyPanel, SparkGiftButton,
+  SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
@@ -157,13 +159,12 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, d
           </button>
           <button onClick={() => setShowBuddies((v) => !v)}
             className="flex w-full items-center justify-between gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span className="flex items-center gap-2.5"><span>🤝</span> Uplift Buddies</span>
+            <span className="flex items-center gap-2.5"><span>⭕</span> Circles</span>
             <span className="text-slate-400 text-xs">{showBuddies ? "▲" : "▼"}</span>
           </button>
           {showBuddies && (
-            <div className="mx-2 mb-1 rounded-xl border border-slate-100 bg-slate-50 px-2 py-1">
-              <BuddyPanel db={db} currentUser={currentUser} profile={profile} compact
-                onChatOpen={(chatId, otherUid, otherName) => setActiveChat({ chatId, otherUid, otherName })} />
+            <div className="mx-2 mb-1 rounded-xl border border-slate-100 bg-slate-50 px-2 py-2">
+              <CirclesPanel db={db} currentUser={currentUser} />
             </div>
           )}
           <div className="my-1 border-t border-slate-100" />
@@ -1168,7 +1169,7 @@ export default function App() {
                                         <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
                                           style={{ bottom: "calc(100% + 8px)" }}>
                                           <QuickReactBar
-                                            db={db} messageId={m.id} senderUid={m.uid}
+                                            db={db} messageId={m.id} senderUid={m.uid} senderName={group.sender}
                                             currentUser={currentUser} profile={profile} mine={mine}
                                             onClose={() => setReactionBarId(null)}
                                             onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}

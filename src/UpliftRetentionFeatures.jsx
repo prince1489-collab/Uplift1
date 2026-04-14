@@ -27,6 +27,7 @@ import {
 
 import { ChatRequestButton, canSendChatRequest } from "./PrivateChat";
 import { startCheckout } from "./payments";
+import { AddToCircleButton } from "./Circles";
 
 import {
   Bell,
@@ -1206,7 +1207,7 @@ export function NotificationPermissionBanner() {
 const QUICK_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
 const QUICK_GIFT_AMOUNT = 5;
 
-export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, mine, onClose, onWave, onGift, onReact }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, onClose, onWave, onGift, onReact }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -1348,6 +1349,12 @@ export function QuickReactBar({ db, messageId, senderUid, currentUser, profile, 
           {emoji}
         </button>
       ))}
+      {isOther && (
+        <>
+          <div className="seen-qrb-sep" />
+          <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} />
+        </>
+      )}
       <div className="seen-qrb-sep" />
       <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
     </div>
