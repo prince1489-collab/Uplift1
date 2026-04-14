@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   addDoc, arrayRemove, arrayUnion,
   collection, deleteDoc, doc, getDocs,
@@ -70,16 +71,20 @@ export function useCircleInviteCount(db, currentUser) {
 
 export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [circles, setCircles] = useState([]);
   const [sent, setSent] = useState({});
   const [sending, setSending] = useState(null);
-  const ref = useRef(null);
+  const btnRef = useRef(null);
 
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    if (!open) return;
+    const h = (e) => {
+      if (btnRef.current && !btnRef.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !db || !currentUser) return;
@@ -91,6 +96,23 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   }, [open, db, currentUser?.uid]);
 
   if (!currentUser || currentUser.uid === targetUid) return null;
+
+  const handleOpen = (e) => {
+    e.stopPropagation();
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const DROPDOWN_W = 210;
+      const DROPDOWN_H = 180; // approx
+      // Prefer opening below; fall back to above if not enough space
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top = spaceBelow >= DROPDOWN_H
+        ? rect.bottom + 6
+        : Math.max(8, rect.top - DROPDOWN_H - 6);
+      const left = Math.min(rect.left, window.innerWidth - DROPDOWN_W - 8);
+      setDropPos({ top, left });
+    }
+    setOpen(o => !o);
+  };
 
   const sendInvite = async (circle) => {
     if (sending || !db) return;
@@ -127,16 +149,21 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   };
 
   return (
-    <div className="relative" ref={ref}>
+    <>
+      {/* Icon-only trigger — fits inside the QuickReactBar */}
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-        className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-500 hover:border-teal-300 hover:text-teal-600 transition-colors shadow-sm">
-        <Users size={9} /> Add to Circle
+        ref={btnRef}
+        onClick={handleOpen}
+        title="Add to Circle"
+        className="seen-qrb-btn"
+        style={{ fontSize: 16 }}>
+        👥
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
-          className="absolute bottom-full mb-1.5 left-0 z-[80] min-w-[200px] rounded-2xl border border-slate-100 bg-white shadow-xl py-2"
+          style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 300, width: 210 }}
+          className="rounded-2xl border border-slate-100 bg-white shadow-2xl py-2"
           onClick={e => e.stopPropagation()}>
           <p className="px-3 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
             Add to which circle?
@@ -157,20 +184,21 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
                 className="flex items-center justify-between w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors text-left disabled:opacity-50">
                 <span className="flex items-center gap-1.5">
                   <span>{c.emoji ?? "⭐"}</span>
-                  <span className="text-slate-700 font-medium">{c.name}</span>
+                  <span className="text-slate-700 font-medium truncate max-w-[100px]">{c.name}</span>
                 </span>
-                <span className="text-[10px] text-slate-400 ml-2 flex-shrink-0">
+                <span className="text-[10px] text-slate-400 ml-1 flex-shrink-0">
                   {status === "sent" ? "✓ Invited"
-                    : status === "already" ? "✓ In circle"
+                    : status === "already" ? "✓ In"
                     : status === "full" || isFull ? "Full"
                     : `${memberCount}/${MAX_MEMBERS}`}
                 </span>
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -205,8 +233,8 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
     await updateDoc(doc(db, "circleInvites", inv.id), { status: "declined" }).catch(() => {});
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-white">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
           <ArrowLeft size={18} className="text-slate-600" />
@@ -243,7 +271,8 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
           </div>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -261,10 +290,10 @@ function CreateCircleModal({ onSave, onClose, existing = null }) {
     setSaving(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/30 backdrop-blur-sm p-4"
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 backdrop-blur-sm p-4"
       onClick={onClose}>
-      <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl"
+      <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl max-h-[90dvh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <p className="font-bold text-slate-800 text-sm">
@@ -304,7 +333,8 @@ function CreateCircleModal({ onSave, onClose, existing = null }) {
             : `Create ${emoji} ${name.trim() || "Circle"}`}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
