@@ -135,7 +135,11 @@ function MeatballMenu({ onWorld, onShare, onSignOut, isSigningOut, globePulse, d
   const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e) => {
+      // Don't close if the click landed inside a portal (e.g. CreateCircleModal)
+      if (e.target.closest?.("[data-portal]")) return;
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);

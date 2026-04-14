@@ -162,6 +162,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
 
       {open && createPortal(
         <div
+          data-portal
           style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 300, width: 210 }}
           className="rounded-2xl border border-slate-100 bg-white shadow-2xl py-2"
           onClick={e => e.stopPropagation()}>
@@ -234,7 +235,7 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex flex-col bg-white">
+    <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
           <ArrowLeft size={18} className="text-slate-600" />
@@ -291,7 +292,7 @@ function CreateCircleModal({ onSave, onClose, existing = null }) {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+    <div data-portal className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 backdrop-blur-sm p-4"
       onClick={onClose}>
       <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl max-h-[90dvh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
