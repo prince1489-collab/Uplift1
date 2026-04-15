@@ -17,8 +17,10 @@ import {
 } from "firebase/firestore";
 import { ArrowLeft, ChevronRight, Plus, Sparkles, Users, X } from "lucide-react";
 
-const MAX_CIRCLES = 3;
-const MAX_MEMBERS = 10;
+const MAX_CIRCLES_FREE = 3;
+const MAX_CIRCLES_PREMIUM = 6;
+const MAX_MEMBERS_FREE = 10;
+const MAX_MEMBERS_PREMIUM = 25;
 
 const EMOJI_OPTIONS = [
   "☀️","🌙","⭐","🌈","🔥","💫","🎯","🌸","🍀","💎",
@@ -69,7 +71,8 @@ export function useCircleInviteCount(db, currentUser) {
 
 // ── AddToCircleButton — shown in the QuickReactBar on each message ────────────
 
-export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
+export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPremium = false }) {
+  const maxMembers = isPremium ? MAX_MEMBERS_PREMIUM : MAX_MEMBERS_FREE;
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [circles, setCircles] = useState([]);
@@ -130,7 +133,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
       showToast(`${targetName ?? "They"} are already in this circle`, circle.emoji ?? "⭐");
       return;
     }
-    if (members.length >= MAX_MEMBERS) {
+    if (members.length >= maxMembers) {
       setSent(s => ({ ...s, [circle.id]: "full" }));
       return;
     }
@@ -220,7 +223,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
           {circles.map(c => {
             const status = sent[c.id];
             const memberCount = (c.members ?? []).length;
-            const isFull = memberCount >= MAX_MEMBERS;
+            const isFull = memberCount >= maxMembers;
             return (
               <button key={c.id}
                 onClick={() => sendInvite(c)}
@@ -234,7 +237,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
                   {status === "sent" ? "✓ Invited"
                     : status === "already" ? "✓ In"
                     : status === "full" || isFull ? "Full"
-                    : `${memberCount}/${MAX_MEMBERS}`}
+                    : `${memberCount}/${maxMembers}`}
                 </span>
               </button>
             );
@@ -384,7 +387,8 @@ function CreateCircleModal({ onSave, onClose, existing = null }) {
 
 // ── Circle Detail ─────────────────────────────────────────────────────────────
 
-function CircleDetail({ db, currentUser, circle, circleId, onBack }) {
+function CircleDetail({ db, currentUser, circle, circleId, onBack, isPremium = false }) {
+  const maxMembers = isPremium ? MAX_MEMBERS_PREMIUM : MAX_MEMBERS_FREE;
   const [memberProfiles, setMemberProfiles] = useState({});
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [broadcastText, setBroadcastText] = useState("");
@@ -460,7 +464,7 @@ function CircleDetail({ db, currentUser, circle, circleId, onBack }) {
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-slate-800 truncate">{circle.name}</p>
           <p className="text-[10px] text-slate-400">
-            {members.length}/{MAX_MEMBERS} members
+            {members.length}/{maxMembers} members
             {streak > 0 && <span className="ml-1.5 text-orange-500">🔥 {streak}d streak</span>}
           </p>
         </div>
@@ -535,7 +539,9 @@ function CircleDetail({ db, currentUser, circle, circleId, onBack }) {
 
 // ── CirclesPanel — replaces BuddyPanel in the ··· menu ───────────────────────
 
-export function CirclesPanel({ db, currentUser }) {
+export function CirclesPanel({ db, currentUser, isPremium = false }) {
+  const maxCircles = isPremium ? MAX_CIRCLES_PREMIUM : MAX_CIRCLES_FREE;
+  const maxMembers = isPremium ? MAX_MEMBERS_PREMIUM : MAX_MEMBERS_FREE;
   const circles = useCircles(db, currentUser);
   const inviteCount = useCircleInviteCount(db, currentUser);
   const [showCreate, setShowCreate] = useState(false);
@@ -543,7 +549,7 @@ export function CirclesPanel({ db, currentUser }) {
   const [activeCircle, setActiveCircle] = useState(null);
 
   const createCircle = async ({ name, emoji }) => {
-    if (!db || !currentUser || circles.length >= MAX_CIRCLES) return;
+    if (!db || !currentUser || circles.length >= maxCircles) return;
     await addDoc(collection(db, "users", currentUser.uid, "circles"), {
       name, emoji, members: [], streak: 0, lastSentDate: null, createdAt: Date.now(),
     });
@@ -566,6 +572,7 @@ export function CirclesPanel({ db, currentUser }) {
           db={db} currentUser={currentUser}
           circle={live} circleId={activeCircle.id}
           onBack={() => setActiveCircle(null)}
+          isPremium={isPremium}
         />
         {showCreate && <CreateCircleModal onSave={createCircle} onClose={() => setShowCreate(false)} />}
       </>
@@ -578,6 +585,11 @@ export function CirclesPanel({ db, currentUser }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Circles</p>
+          {isPremium && (
+            <span className="rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+              ✦ up to {maxCircles}
+            </span>
+          )}
           {inviteCount > 0 && (
             <button onClick={() => setShowInvites(true)}
               className="flex items-center gap-0.5 rounded-full bg-teal-500 px-1.5 py-0.5 text-[9px] font-bold text-white hover:bg-teal-600 transition-colors">
@@ -585,7 +597,7 @@ export function CirclesPanel({ db, currentUser }) {
             </button>
           )}
         </div>
-        {circles.length < MAX_CIRCLES && (
+        {circles.length < maxCircles && (
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-0.5 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500 hover:border-teal-300 hover:text-teal-600 transition-colors">
             <Plus size={9} /> New
@@ -619,7 +631,7 @@ export function CirclesPanel({ db, currentUser }) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-slate-700 truncate">{c.name}</p>
                 <p className="text-[10px] text-slate-400">
-                  {memberCount}/{MAX_MEMBERS}
+                  {memberCount}/{maxMembers}
                   {streak > 0 && <span className="ml-1 text-orange-500">🔥 {streak}d</span>}
                 </p>
               </div>
@@ -636,9 +648,9 @@ export function CirclesPanel({ db, currentUser }) {
         })}
       </div>
 
-      {circles.length > 0 && circles.length < MAX_CIRCLES && (
+      {circles.length > 0 && circles.length < maxCircles && (
         <p className="text-[10px] text-slate-300 text-center">
-          {MAX_CIRCLES - circles.length} slot{MAX_CIRCLES - circles.length > 1 ? "s" : ""} remaining
+          {maxCircles - circles.length} slot{maxCircles - circles.length > 1 ? "s" : ""} remaining
         </p>
       )}
 

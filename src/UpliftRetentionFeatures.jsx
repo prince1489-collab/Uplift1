@@ -1207,7 +1207,7 @@ export function NotificationPermissionBanner() {
 const QUICK_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
 const QUICK_GIFT_AMOUNT = 5;
 
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, onClose, onWave, onGift, onReact }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -1352,7 +1352,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       {isOther && (
         <>
           <div className="seen-qrb-sep" />
-          <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} />
+          <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} isPremium={isPremium} />
         </>
       )}
       <div className="seen-qrb-sep" />
