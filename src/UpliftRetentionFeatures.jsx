@@ -1027,35 +1027,58 @@ export function MoodSelector({ db, uid, currentMood }) {
 // ─────────────────────────────────────────────────────────────────
 
 export function PremiumUpgradePrompt({ onClose, currentUser }) {
+  const BENEFITS = [
+    { icon: "📅", title: "25 greetings per day",       sub: "Free plan: 10/day" },
+    { icon: "⭕", title: "6 Circles · 25 members each", sub: "Free plan: 3 circles · 10 members" },
+    { icon: "💪", title: "Exclusive greeting packs",    sub: "Strength, Celebrate, World Moments" },
+    { icon: "🗓️", title: "Monthly themed pack",        sub: "Rotates every month — Earth Month, Gratitude…" },
+    { icon: "📊", title: "Kindness analytics",          sub: "Stats, streaks & 30-day activity heatmap" },
+    { icon: "✦",  title: "Premium badge on your name", sub: "Visible to everyone in the chat" },
+    { icon: "💬", title: "Accept private chats",        sub: "Connect 1-on-1 with other members" },
+  ];
+
   return (
-    <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/30 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 p-2">
-              <Sparkles size={16} className="text-white" />
+    <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-teal-500 to-emerald-500 px-5 pt-5 pb-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl bg-white/20 p-1.5">
+                <Sparkles size={15} className="text-white" />
+              </div>
+              <p className="font-bold text-white text-sm">Seen Premium</p>
             </div>
-            <p className="font-bold text-slate-800">Seen Premium</p>
+            <button onClick={onClose} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+              <X size={14} className="text-white" />
+            </button>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+          <p className="text-white/80 text-xs">Everything you unlock for $3.99/month</p>
         </div>
-        <p className="text-sm text-slate-600 mb-4">
-          Unlock exclusive packs — Strength, Celebrate, and World Moments greetings curated for every mood.
-        </p>
-        <div className="space-y-2 mb-4">
-          {["Strength & motivation messages", "Celebrate pack — lift people up", "World Moments & cultural greetings", "New packs added monthly"].map((f) => (
-            <div key={f} className="flex items-center gap-2 text-sm text-slate-700">
-              <CheckCircle2 size={14} className="text-teal-500 shrink-0" />
-              {f}
+
+        {/* Benefits list */}
+        <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
+          {BENEFITS.map((b) => (
+            <div key={b.title} className="flex items-start gap-3">
+              <span className="text-base flex-shrink-0 mt-0.5">{b.icon}</span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-800">{b.title}</p>
+                <p className="text-[11px] text-slate-400">{b.sub}</p>
+              </div>
+              <CheckCircle2 size={14} className="text-teal-500 flex-shrink-0 mt-0.5 ml-auto" />
             </div>
           ))}
         </div>
-        <button
-          onClick={() => startCheckout(currentUser)}
-          className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
-          Upgrade — $3.99/mo
-        </button>
-        <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime. No ads, ever.</p>
+
+        {/* CTA */}
+        <div className="px-5 pb-5 pt-2 border-t border-slate-100">
+          <button
+            onClick={() => startCheckout(currentUser)}
+            className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
+            Upgrade — $3.99/mo
+          </button>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime · No ads, ever</p>
+        </div>
       </div>
     </div>
   );

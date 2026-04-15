@@ -130,7 +130,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onAnalytics, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
+function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
   const [open, setOpen] = useState(false);
   const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
@@ -153,6 +153,16 @@ function MeatballMenu({ onWorld, onShare, onAnalytics, onSignOut, isSigningOut, 
       </button>
       {open && (
         <div className="absolute right-0 top-9 z-50 min-w-[175px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
+          {!isPremium && (
+            <>
+              <button onClick={() => { onUpgrade(); setOpen(false); }}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+                <span>✦</span> Go Premium
+                <span className="ml-auto text-[10px] text-teal-400 font-normal">$3.99/mo</span>
+              </button>
+              <div className="my-0.5 border-t border-slate-100" />
+            </>
+          )}
           <button onClick={() => { onWorld(); setOpen(false); }}
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
             <span>{globePulse ? "🌍" : "🌐"}</span> World Map
@@ -1206,6 +1216,7 @@ export default function App() {
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
                       onAnalytics={() => setShowAnalytics(true)}
+                      onUpgrade={() => setShowUpgrade(true)}
                       onSignOut={handleSignOut}
                       isSigningOut={isSigningOut}
                       globePulse={anim.globePulse}
@@ -1417,13 +1428,32 @@ export default function App() {
             {/* FAB-style footer */}
             <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
-                  <span className="text-lg">🌙</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-amber-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
-                    <p className="text-[11px] text-amber-600">Your daily kindness quota resets at midnight. See you tomorrow ✨</p>
+                isPremium ? (
+                  /* Premium user — simple done banner */
+                  <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+                    <span className="text-lg">🌙</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-amber-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
+                      <p className="text-[11px] text-amber-600">Your daily kindness quota resets at midnight ✨</p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* Free user — upgrade nudge */
+                  <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3">
+                    <div className="flex items-start gap-3 mb-2.5">
+                      <span className="text-xl flex-shrink-0">🌙</span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800">You've sent 10 greetings today!</p>
+                        <p className="text-[11px] text-slate-500">Premium unlocks 25/day — plus 6 bigger circles, a monthly themed pack, kindness stats, and more.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowUpgrade(true)}
+                      className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 py-2 text-xs font-bold text-white hover:opacity-90 transition-opacity">
+                      See all Premium benefits ✦
+                    </button>
+                  </div>
+                ))
               ) : !pickerOpen ? (
                 <div className="flex items-center gap-2.5">
                   <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
