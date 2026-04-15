@@ -834,8 +834,10 @@ export default function App() {
       return { ok: true };
     } catch (error) {
       if (error?.code === "auth/invalid-email") return { error: "That email address is invalid." };
-      if (error?.code === "auth/operation-not-allowed") return { error: "Email link sign-in is not enabled." };
-      return { error: "Unable to send a sign-in link right now." };
+      if (error?.code === "auth/operation-not-allowed") return { error: "Email link sign-in is not enabled — contact support." };
+      if (error?.code === "auth/too-many-requests") return { error: "Too many attempts. Please try again later." };
+      if (error?.code === "auth/network-request-failed") return { error: "Network error — please check your connection." };
+      return { error: `Unable to send a sign-in link right now. (${error?.code ?? "unknown"})` };
     } finally { setIsEmailActionLoading(false); }
   };
 
