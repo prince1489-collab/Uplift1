@@ -1453,7 +1453,7 @@ export default function App() {
                       See all Premium benefits ✦
                     </button>
                   </div>
-                ))
+                )
               ) : !pickerOpen ? (
                 <div className="flex items-center gap-2.5">
                   <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
