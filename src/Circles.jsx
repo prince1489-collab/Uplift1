@@ -1,11 +1,11 @@
 /**
- * Circles.jsx — Group kindness rooms (max 3 circles × 10 members each)
+ * Circles.jsx — Group kindness rooms
  *
  * Exports:
- *   useCircles(db, currentUser)         — hook: live list of user's circles
- *   useCircleInviteCount(db, currentUser) — hook: count of pending invites (badge)
- *   AddToCircleButton                   — appears in QuickReactBar on each message
- *   CirclesPanel                        — replaces BuddyPanel in the ··· menu
+ *   useCircles(db, currentUser)           — hook: live list of user's circles
+ *   useCircleInviteCount(db, currentUser)  — hook: count of pending invites (badge)
+ *   AddToCircleButton                     — appears in QuickReactBar on each message
+ *   CirclesPanel                          — replaces BuddyPanel in the ··· menu
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -13,9 +13,10 @@ import { createPortal } from "react-dom";
 import {
   addDoc, arrayRemove, arrayUnion,
   collection, deleteDoc, doc, getDocs,
-  getDoc, onSnapshot, query, updateDoc, where,
+  getDoc, onSnapshot, orderBy, query, updateDoc, where,
 } from "firebase/firestore";
 import { ArrowLeft, ChevronRight, Plus, Sparkles, Users, X } from "lucide-react";
+import { getGreetingsByCategory } from "./greetings";
 
 const MAX_CIRCLES_FREE = 3;
 const MAX_CIRCLES_PREMIUM = 6;
@@ -69,19 +70,20 @@ export function useCircleInviteCount(db, currentUser) {
   return count;
 }
 
-// ── AddToCircleButton — shown in the QuickReactBar on each message ────────────
+// ── AddToCircleButton ─────────────────────────────────────────────────────────
 
 export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPremium = false }) {
   const maxMembers = isPremium ? MAX_MEMBERS_PREMIUM : MAX_MEMBERS_FREE;
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [circles, setCircles] = useState([]);
-  const [sent, setSent] = useState({});
+  const [sent, setSent] = useState({});   // circleId -> "sent" | "already" | "full"
   const [sending, setSending] = useState(null);
-  const [toast, setToast] = useState(null); // { text, emoji }
+  const [toast, setToast] = useState(null);
   const btnRef = useRef(null);
   const dropRef = useRef(null);
 
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const h = (e) => {
@@ -92,6 +94,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  // Load circles when dropdown opens
   useEffect(() => {
     if (!open || !db || !currentUser) return;
     return onSnapshot(
@@ -100,6 +103,21 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
       () => {}
     );
   }, [open, db, currentUser?.uid]);
+
+  // Pre-load invite state from Firestore every time dropdown opens
+  useEffect(() => {
+    if (!open || !db || !currentUser) return;
+    getDocs(query(
+      collection(db, "circleInvites"),
+      where("fromUid", "==", currentUser.uid),
+      where("toUid", "==", targetUid),
+      where("status", "==", "pending")
+    )).then(snap => {
+      const map = {};
+      snap.docs.forEach(d => { map[d.data().circleId] = "sent"; });
+      setSent(map);
+    }).catch(() => {});
+  }, [open, db, currentUser?.uid, targetUid]);
 
   if (!currentUser || currentUser.uid === targetUid) return null;
 
@@ -137,6 +155,9 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
       setSent(s => ({ ...s, [circle.id]: "full" }));
       return;
     }
+    // Already sent (from pre-loaded state)
+    if (sent[circle.id] === "sent") return;
+
     setSending(circle.id);
     try {
       const existing = await getDocs(query(
@@ -162,18 +183,16 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
         });
         setSent(s => ({ ...s, [circle.id]: "sent" }));
       }
-      // Close dropdown and show toast confirmation
       setOpen(false);
-      showToast(`Invite sent to ${targetName ?? "them"} · ${circle.name}`, circle.emoji ?? "⭐");
+      showToast(`Request sent to join ${circle.name}`, circle.emoji ?? "⭐");
     } catch {
-      showToast("Couldn't send invite — try again", "⚠️");
+      showToast("Couldn't send request — try again", "⚠️");
     }
     setSending(null);
   };
 
   return (
     <>
-      {/* Icon-only trigger — fits inside the QuickReactBar */}
       <button
         ref={btnRef}
         onClick={handleOpen}
@@ -183,18 +202,13 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
         👥
       </button>
 
-      {/* Toast confirmation */}
       {toast && createPortal(
         <div
           data-portal
           style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 400,
-            animation: "cardSlideUp .25s ease both",
-            whiteSpace: "nowrap",
+            position: "fixed", bottom: 90, left: "50%",
+            transform: "translateX(-50%)", zIndex: 400,
+            animation: "cardSlideUp .25s ease both", whiteSpace: "nowrap",
           }}
           className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-semibold text-white shadow-xl ${
             toast.emoji === "⚠️" ? "bg-amber-500" : "bg-teal-600"
@@ -224,18 +238,19 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
             const status = sent[c.id];
             const memberCount = (c.members ?? []).length;
             const isFull = memberCount >= maxMembers;
+            const alreadyIn = (c.members ?? []).includes(targetUid);
             return (
               <button key={c.id}
                 onClick={() => sendInvite(c)}
-                disabled={!!status || sending === c.id || isFull}
+                disabled={!!status || sending === c.id || isFull || alreadyIn}
                 className="flex items-center justify-between w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors text-left disabled:opacity-50">
                 <span className="flex items-center gap-1.5">
                   <span>{c.emoji ?? "⭐"}</span>
                   <span className="text-slate-700 font-medium truncate max-w-[100px]">{c.name}</span>
                 </span>
                 <span className="text-[10px] text-slate-400 ml-1 flex-shrink-0">
-                  {status === "sent" ? "✓ Invited"
-                    : status === "already" ? "✓ In"
+                  {alreadyIn ? "✓ In circle"
+                    : status === "sent" ? "✓ Request sent"
                     : status === "full" || isFull ? "Full"
                     : `${memberCount}/${maxMembers}`}
                 </span>
@@ -323,7 +338,7 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
   );
 }
 
-// ── Create / Edit Circle Modal ────────────────────────────────────────────────
+// ── Create Circle Modal ───────────────────────────────────────────────────────
 
 function CreateCircleModal({ onSave, onClose, existing = null }) {
   const [name, setName] = useState(existing?.name ?? "");
@@ -385,18 +400,66 @@ function CreateCircleModal({ onSave, onClose, existing = null }) {
   );
 }
 
-// ── Circle Detail ─────────────────────────────────────────────────────────────
+// ── CircleGreetingPicker ──────────────────────────────────────────────────────
 
-function CircleDetail({ db, currentUser, circle, circleId, onBack, isPremium = false }) {
+function CircleGreetingPicker({ isPremium, onSelect, onClose }) {
+  const categories = getGreetingsByCategory(isPremium);
+  const [activeTab, setActiveTab] = useState(categories[0]?.id ?? "morning");
+
+  const activeCategory = categories.find(c => c.id === activeTab) ?? categories[0];
+  const greetings = activeCategory?.greetings ?? [];
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[220] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
+          <X size={18} className="text-slate-600" />
+        </button>
+        <h2 className="text-sm font-bold text-slate-800">Choose a Greeting</h2>
+      </div>
+
+      {/* Category tabs */}
+      <div className="flex gap-1.5 px-4 py-2.5 overflow-x-auto flex-shrink-0 border-b border-slate-100 scrollbar-none">
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setActiveTab(cat.id)}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors flex-shrink-0 ${
+              activeTab === cat.id
+                ? "bg-teal-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}>
+            <span>{cat.emoji}</span>
+            <span>{cat.label}</span>
+            {cat.isPremium && !isPremium && <span className="text-[9px] opacity-70">✦</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Greeting list */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {greetings.map((g, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(g)}
+            className="w-full text-left rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700 hover:border-teal-200 hover:bg-teal-50 transition-colors leading-relaxed">
+            {g.text}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── CircleMembers — member list with 2-step remove ────────────────────────────
+
+function CircleMembers({ db, currentUser, circle, circleId, isPremium, onClose }) {
   const maxMembers = isPremium ? MAX_MEMBERS_PREMIUM : MAX_MEMBERS_FREE;
   const [memberProfiles, setMemberProfiles] = useState({});
-  const [showBroadcast, setShowBroadcast] = useState(false);
-  const [broadcastText, setBroadcastText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [justSent, setJustSent] = useState(false);
+  const [confirmRemoveUid, setConfirmRemoveUid] = useState(null);
 
   const members = circle.members ?? [];
-  const streak = calcStreak(circle);
 
   useEffect(() => {
     if (!db || members.length === 0) { setMemberProfiles({}); return; }
@@ -407,28 +470,145 @@ function CircleDetail({ db, currentUser, circle, circleId, onBack, isPremium = f
     });
   }, [db, members.join(",")]);
 
-  const handleBroadcast = async () => {
-    if (!broadcastText.trim() || sending || !db || members.length === 0) return;
+  const removeMember = async (uid) => {
+    await updateDoc(doc(db, "users", currentUser.uid, "circles", circleId), {
+      members: arrayRemove(uid),
+    }).catch(() => {});
+    setConfirmRemoveUid(null);
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[210] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
+          <ArrowLeft size={18} className="text-slate-600" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-bold text-slate-800 truncate">
+            {circle.emoji ?? "⭐"} {circle.name}
+          </h2>
+          <p className="text-xs text-slate-400">{members.length}/{maxMembers} members</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {members.length === 0 && (
+          <div className="flex flex-col items-center justify-center pt-20 gap-3 text-center">
+            <Users size={40} className="text-slate-200" />
+            <p className="text-sm text-slate-400">No members yet</p>
+            <p className="text-xs text-slate-300 mt-1">Tap "Add to Circle" on any message</p>
+          </div>
+        )}
+        {members.map(uid => {
+          const p = memberProfiles[uid];
+          const name = p?.fullName ?? "Member";
+          const isConfirming = confirmRemoveUid === uid;
+          return (
+            <div key={uid}
+              className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+              {p?.profilePhotoUrl
+                ? <img src={p.profilePhotoUrl} alt="" className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
+                : <div className="h-8 w-8 rounded-full bg-teal-100 flex items-center justify-center text-xs font-bold text-teal-700 flex-shrink-0">{name[0]}</div>
+              }
+              <span className="text-sm text-slate-700 flex-1 truncate">{name}</span>
+              {isConfirming ? (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => setConfirmRemoveUid(null)}
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-100 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => removeMember(uid)}
+                    className="rounded-full bg-red-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-red-600 transition-colors">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmRemoveUid(uid)}
+                  className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-400 hover:border-red-200 hover:text-red-400 transition-colors flex-shrink-0">
+                  Remove
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── CircleChat — full-screen greeting-only chat ───────────────────────────────
+
+function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
+  const [messages, setMessages] = useState([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [justSent, setJustSent] = useState(false);
+  const bottomRef = useRef(null);
+
+  const members = circle.members ?? [];
+  const streak = calcStreak(circle);
+
+  // Load message history from subcollection
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "users", currentUser.uid, "circles", circleId, "messages"),
+      orderBy("createdAt", "asc")
+    );
+    return onSnapshot(q, snap => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, () => {});
+  }, [db, currentUser?.uid, circleId]);
+
+  // Auto-scroll to newest message
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const sendGreeting = async (greeting) => {
+    if (sending || !db) return;
     setSending(true);
+    setShowPicker(false);
     try {
-      const text = broadcastText.trim();
+      const text = greeting.text;
       const today = todayStr();
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-      await Promise.all(members.map(uid =>
-        addDoc(collection(db, "waves"), {
+      // Log to circle message history
+      await addDoc(
+        collection(db, "users", currentUser.uid, "circles", circleId, "messages"),
+        {
           fromUid: currentUser.uid,
-          fromName: currentUser.displayName ?? "Someone",
-          toUid: uid,
-          message: text,
-          circleId,
-          circleName: circle.name,
-          circleEmoji: circle.emoji ?? "⭐",
+          fromName: currentUser.displayName ?? "You",
+          text,
+          category: greeting.category ?? "",
           createdAt: Date.now(),
-          read: false,
-        })
-      ));
+        }
+      );
 
+      // Send wave notifications to all members
+      if (members.length > 0) {
+        await Promise.all(members.map(uid =>
+          addDoc(collection(db, "waves"), {
+            fromUid: currentUser.uid,
+            fromName: currentUser.displayName ?? "Someone",
+            toUid: uid,
+            message: text,
+            circleId,
+            circleName: circle.name,
+            circleEmoji: circle.emoji ?? "⭐",
+            createdAt: Date.now(),
+            read: false,
+          })
+        ));
+      }
+
+      // Update streak
       if (circle.lastSentDate !== today) {
         const newStreak = circle.lastSentDate === yesterday
           ? (circle.streak ?? 0) + 1
@@ -439,105 +619,119 @@ function CircleDetail({ db, currentUser, circle, circleId, onBack, isPremium = f
         });
       }
 
-      setBroadcastText("");
-      setShowBroadcast(false);
       setJustSent(true);
       setTimeout(() => setJustSent(false), 3000);
     } catch {}
     setSending(false);
   };
 
-  const removeMember = async (uid) => {
-    await updateDoc(doc(db, "users", currentUser.uid, "circles", circleId), {
-      members: arrayRemove(uid),
-    }).catch(() => {});
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    if (isToday) return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " · " +
+      d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   };
 
-  return (
-    <div className="flex flex-col" style={{ maxHeight: "60vh" }}>
-      {/* Back header */}
-      <div className="flex items-center gap-2 pb-2 border-b border-slate-100 flex-shrink-0">
-        <button onClick={onBack} className="rounded-full p-1 hover:bg-slate-100 transition-colors">
-          <ArrowLeft size={13} className="text-slate-500" />
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onBack} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+          <ArrowLeft size={18} className="text-slate-600" />
         </button>
-        <span className="text-base">{circle.emoji ?? "⭐"}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-slate-800 truncate">{circle.name}</p>
-          <p className="text-[10px] text-slate-400">
-            {members.length}/{maxMembers} members
+          <h2 className="text-sm font-bold text-slate-800 truncate">
+            {circle.emoji ?? "⭐"} {circle.name}
+          </h2>
+          <p className="text-xs text-slate-400">
+            {members.length} member{members.length !== 1 ? "s" : ""}
             {streak > 0 && <span className="ml-1.5 text-orange-500">🔥 {streak}d streak</span>}
           </p>
         </div>
+        <button
+          onClick={() => setShowMembers(true)}
+          className="relative rounded-full p-2 hover:bg-slate-100 transition-colors"
+          title="Members">
+          <Users size={18} className="text-slate-500" />
+          {members.length > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-teal-500 text-[9px] font-bold text-white flex items-center justify-center">
+              {members.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Members */}
-      <div className="flex-1 overflow-y-auto py-2 space-y-1 min-h-0">
-        {members.length === 0 ? (
-          <p className="text-[11px] text-slate-400 text-center py-3 leading-relaxed">
-            No members yet<br />
-            <span className="text-slate-300">Tap "Add to Circle" on any message</span>
-          </p>
-        ) : members.map(uid => {
-          const p = memberProfiles[uid];
-          const name = p?.fullName ?? "Member";
-          return (
-            <div key={uid} className="flex items-center gap-2 rounded-xl px-1 py-1.5 hover:bg-slate-50 group">
-              {p?.profilePhotoUrl
-                ? <img src={p.profilePhotoUrl} alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
-                : <div className="h-6 w-6 rounded-full bg-teal-100 flex items-center justify-center text-[10px] font-bold text-teal-700 flex-shrink-0">{name[0]}</div>
-              }
-              <span className="text-[11px] text-slate-700 flex-1 truncate">{name}</span>
-              <button onClick={() => removeMember(uid)}
-                className="opacity-0 group-hover:opacity-100 rounded-full p-0.5 hover:bg-slate-200 transition-all">
-                <X size={9} className="text-slate-400" />
-              </button>
+      {/* Message history */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {messages.length === 0 && !sending && (
+          <div className="flex flex-col items-center justify-center pt-24 gap-3 text-center">
+            <Sparkles size={36} className="text-teal-200" />
+            <p className="text-sm font-semibold text-slate-400">No greetings sent yet</p>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Tap the button below to<br />send kindness to your circle
+            </p>
+          </div>
+        )}
+        {messages.map(msg => (
+          <div key={msg.id} className="flex flex-col items-end">
+            <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-4 py-3">
+              <p className="text-sm text-slate-700 leading-relaxed">{msg.text}</p>
             </div>
-          );
-        })}
+            <p className="mt-1 text-[10px] text-slate-300 pr-1">{formatTime(msg.createdAt)}</p>
+          </div>
+        ))}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Broadcast */}
-      {members.length > 0 && (
-        <div className="flex-shrink-0 pt-2 border-t border-slate-100">
-          {justSent ? (
-            <p className="text-center text-xs text-teal-600 font-semibold py-2">
+      {/* Footer */}
+      <div className="flex-shrink-0 border-t border-slate-100 px-4 py-3">
+        {members.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-center">
+            <p className="text-xs font-medium text-slate-500">Add members to start sending greetings</p>
+            <p className="text-[11px] text-slate-400 mt-1">Tap "Add to Circle" on any message in the main chat</p>
+          </div>
+        ) : justSent ? (
+          <div className="rounded-2xl bg-teal-50 border border-teal-100 px-4 py-3 text-center">
+            <p className="text-xs font-semibold text-teal-700">
               ✓ Sent to {members.length} {members.length === 1 ? "person" : "people"} ✨
             </p>
-          ) : showBroadcast ? (
-            <div className="space-y-1.5">
-              <textarea
-                value={broadcastText}
-                onChange={e => setBroadcastText(e.target.value)}
-                placeholder={`Send kindness to ${circle.name}…`}
-                rows={2}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-teal-400 resize-none"
-                autoFocus
-              />
-              <div className="flex gap-1.5">
-                <button onClick={() => setShowBroadcast(false)}
-                  className="flex-1 rounded-xl border border-slate-200 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">
-                  Cancel
-                </button>
-                <button onClick={handleBroadcast}
-                  disabled={!broadcastText.trim() || sending}
-                  className="flex-1 rounded-xl bg-teal-600 py-1.5 text-xs font-bold text-white hover:bg-teal-700 disabled:opacity-40 transition-colors">
-                  {sending ? "Sending…" : `Send to ${members.length}`}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={() => setShowBroadcast(true)}
-              className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-2 text-xs font-bold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5">
-              <Sparkles size={11} /> Send kindness to all ✨
-            </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowPicker(true)}
+            disabled={sending}
+            className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2">
+            <Sparkles size={15} />
+            {sending ? "Sending…" : `Send a greeting to ${members.length} ${members.length === 1 ? "person" : "people"}`}
+          </button>
+        )}
+      </div>
+
+      {showPicker && (
+        <CircleGreetingPicker
+          isPremium={isPremium}
+          onSelect={sendGreeting}
+          onClose={() => setShowPicker(false)}
+        />
       )}
-    </div>
+      {showMembers && (
+        <CircleMembers
+          db={db}
+          currentUser={currentUser}
+          circle={circle}
+          circleId={circleId}
+          isPremium={isPremium}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
+    </div>,
+    document.body
   );
 }
 
-// ── CirclesPanel — replaces BuddyPanel in the ··· menu ───────────────────────
+// ── CirclesPanel ──────────────────────────────────────────────────────────────
 
 export function CirclesPanel({ db, currentUser, isPremium = false }) {
   const maxCircles = isPremium ? MAX_CIRCLES_PREMIUM : MAX_CIRCLES_FREE;
@@ -547,6 +741,7 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showInvites, setShowInvites] = useState(false);
   const [activeCircle, setActiveCircle] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const createCircle = async ({ name, emoji }) => {
     if (!db || !currentUser || circles.length >= maxCircles) return;
@@ -556,32 +751,21 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
     setShowCreate(false);
   };
 
-  const deleteCircle = async (circleId, e) => {
-    e.stopPropagation();
+  const deleteCircle = async (circleId) => {
     if (!db || !currentUser) return;
-    if (!window.confirm(`Delete this circle?`)) return;
     await deleteDoc(doc(db, "users", currentUser.uid, "circles", circleId)).catch(() => {});
     if (activeCircle?.id === circleId) setActiveCircle(null);
+    setConfirmDeleteId(null);
   };
 
-  if (activeCircle) {
-    const live = circles.find(c => c.id === activeCircle.id) ?? activeCircle;
-    return (
-      <>
-        <CircleDetail
-          db={db} currentUser={currentUser}
-          circle={live} circleId={activeCircle.id}
-          onBack={() => setActiveCircle(null)}
-          isPremium={isPremium}
-        />
-        {showCreate && <CreateCircleModal onSave={createCircle} onClose={() => setShowCreate(false)} />}
-      </>
-    );
-  }
+  // Keep active circle data live
+  const liveActiveCircle = activeCircle
+    ? (circles.find(c => c.id === activeCircle.id) ?? activeCircle)
+    : null;
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Circles</p>
@@ -619,30 +803,52 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
       )}
 
       {/* Circle rows */}
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {circles.map(c => {
           const streak = calcStreak(c);
           const memberCount = (c.members ?? []).length;
+          const isConfirmingDelete = confirmDeleteId === c.id;
           return (
-            <div key={c.id}
-              className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2 cursor-pointer hover:border-teal-200 hover:bg-teal-50/50 transition-colors group"
-              onClick={() => setActiveCircle(c)}>
-              <span className="text-sm flex-shrink-0">{c.emoji ?? "⭐"}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-slate-700 truncate">{c.name}</p>
-                <p className="text-[10px] text-slate-400">
-                  {memberCount}/{maxMembers}
-                  {streak > 0 && <span className="ml-1 text-orange-500">🔥 {streak}d</span>}
-                </p>
+            <div key={c.id}>
+              <div
+                className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2 cursor-pointer hover:border-teal-200 hover:bg-teal-50/50 transition-colors group"
+                onClick={() => { if (!isConfirmingDelete) setActiveCircle(c); }}>
+                <span className="text-sm flex-shrink-0">{c.emoji ?? "⭐"}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-700 truncate">{c.name}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {memberCount}/{maxMembers}
+                    {streak > 0 && <span className="ml-1 text-orange-500">🔥 {streak}d</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  {!isConfirmingDelete && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.id); }}
+                      className="opacity-0 group-hover:opacity-100 rounded-full p-0.5 hover:bg-slate-200 transition-all">
+                      <X size={9} className="text-slate-400" />
+                    </button>
+                  )}
+                  <ChevronRight size={11} className="text-slate-300 flex-shrink-0" />
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => deleteCircle(c.id, e)}
-                  className="opacity-0 group-hover:opacity-100 rounded-full p-0.5 hover:bg-slate-200 transition-all">
-                  <X size={9} className="text-slate-400" />
-                </button>
-                <ChevronRight size={11} className="text-slate-300 flex-shrink-0" />
-              </div>
+
+              {/* 2-step delete confirmation */}
+              {isConfirmingDelete && (
+                <div className="flex items-center gap-2 px-2.5 py-2 mt-1 rounded-xl bg-red-50 border border-red-100">
+                  <p className="text-[11px] text-red-600 flex-1 truncate">Delete "{c.name}"?</p>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-500 hover:bg-slate-50 transition-colors flex-shrink-0">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => deleteCircle(c.id)}
+                    className="rounded-full bg-red-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-red-600 transition-colors flex-shrink-0">
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -656,6 +862,18 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
 
       {showCreate && <CreateCircleModal onSave={createCircle} onClose={() => setShowCreate(false)} />}
       {showInvites && <CircleInviteInbox db={db} currentUser={currentUser} onClose={() => setShowInvites(false)} />}
+
+      {/* Circle chat portal */}
+      {liveActiveCircle && (
+        <CircleChat
+          db={db}
+          currentUser={currentUser}
+          circle={liveActiveCircle}
+          circleId={liveActiveCircle.id}
+          isPremium={isPremium}
+          onBack={() => setActiveCircle(null)}
+        />
+      )}
     </div>
   );
 }
