@@ -75,6 +75,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   const [circles, setCircles] = useState([]);
   const [sent, setSent] = useState({});
   const [sending, setSending] = useState(null);
+  const [toast, setToast] = useState(null); // { text, emoji }
   const btnRef = useRef(null);
 
   useEffect(() => {
@@ -97,13 +98,17 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
 
   if (!currentUser || currentUser.uid === targetUid) return null;
 
+  const showToast = (text, emoji) => {
+    setToast({ text, emoji });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleOpen = (e) => {
     e.stopPropagation();
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
       const DROPDOWN_W = 210;
-      const DROPDOWN_H = 180; // approx
-      // Prefer opening below; fall back to above if not enough space
+      const DROPDOWN_H = 180;
       const spaceBelow = window.innerHeight - rect.bottom;
       const top = spaceBelow >= DROPDOWN_H
         ? rect.bottom + 6
@@ -117,8 +122,16 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   const sendInvite = async (circle) => {
     if (sending || !db) return;
     const members = circle.members ?? [];
-    if (members.includes(targetUid)) { setSent(s => ({ ...s, [circle.id]: "already" })); return; }
-    if (members.length >= MAX_MEMBERS) { setSent(s => ({ ...s, [circle.id]: "full" })); return; }
+    if (members.includes(targetUid)) {
+      setSent(s => ({ ...s, [circle.id]: "already" }));
+      setOpen(false);
+      showToast(`${targetName ?? "They"} are already in this circle`, circle.emoji ?? "⭐");
+      return;
+    }
+    if (members.length >= MAX_MEMBERS) {
+      setSent(s => ({ ...s, [circle.id]: "full" }));
+      return;
+    }
     setSending(circle.id);
     try {
       const existing = await getDocs(query(
@@ -144,7 +157,12 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
         });
         setSent(s => ({ ...s, [circle.id]: "sent" }));
       }
-    } catch {}
+      // Close dropdown and show toast confirmation
+      setOpen(false);
+      showToast(`Invite sent to ${targetName ?? "them"} · ${circle.name}`, circle.emoji ?? "⭐");
+    } catch {
+      showToast("Couldn't send invite — try again", "⚠️");
+    }
     setSending(null);
   };
 
@@ -159,6 +177,28 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
         style={{ fontSize: 16 }}>
         👥
       </button>
+
+      {/* Toast confirmation */}
+      {toast && createPortal(
+        <div
+          data-portal
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 400,
+            animation: "cardSlideUp .25s ease both",
+            whiteSpace: "nowrap",
+          }}
+          className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-semibold text-white shadow-xl ${
+            toast.emoji === "⚠️" ? "bg-amber-500" : "bg-teal-600"
+          }`}>
+          <span>{toast.emoji}</span>
+          <span>{toast.text}</span>
+        </div>,
+        document.body
+      )}
 
       {open && createPortal(
         <div
