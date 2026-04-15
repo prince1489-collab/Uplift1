@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 /**
  * WorldMap.jsx — Revolving 3D Globe
  *

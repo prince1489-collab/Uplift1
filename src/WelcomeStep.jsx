@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import {

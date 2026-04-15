@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 /**
  * startCheckout — redirects the user to a Stripe Checkout page for the $3.99/mo subscription.
  * Called from anywhere in the app that has a "Go Premium" button.

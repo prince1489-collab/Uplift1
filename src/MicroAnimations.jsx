@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 /**
  * MicroAnimations.jsx — Seen app delight layer
  *

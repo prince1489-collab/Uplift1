@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight, ArrowLeft, BarChart2, Bell, Calendar, ChevronDown, Globe,
@@ -1508,6 +1510,9 @@ export default function App() {
           </>
         )}
       </div>
+      <p className="py-2 text-center text-[10px] text-slate-300 select-none">
+        © 2025 Mahiman Singh Rathore · Seen App · All rights reserved
+      </p>
     </div>
   );
 }
