@@ -77,10 +77,12 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
   const [sending, setSending] = useState(null);
   const [toast, setToast] = useState(null); // { text, emoji }
   const btnRef = useRef(null);
+  const dropRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     const h = (e) => {
+      if (dropRef.current && dropRef.current.contains(e.target)) return;
       if (btnRef.current && !btnRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", h);
@@ -202,6 +204,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName }) {
 
       {open && createPortal(
         <div
+          ref={dropRef}
           data-portal
           style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 300, width: 210 }}
           className="rounded-2xl border border-slate-100 bg-white shadow-2xl py-2"
