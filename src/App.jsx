@@ -535,18 +535,9 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-function AnalyticsPanel({ db, currentUser, profile, circles, onClose }) {
-  const [myMessages, setMyMessages] = useState([]);
-
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const qry = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), limit(500));
-    return onSnapshot(qry, snap => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-      setMyMessages(msgs);
-    }, () => {});
-  }, [db, currentUser?.uid]);
+function AnalyticsPanel({ currentUser, profile, circles, messages, onClose }) {
+  // Filter already-loaded messages by the current user — no extra Firestore query needed
+  const myMessages = (messages ?? []).filter(m => m.uid === currentUser?.uid);
 
   const now = Date.now();
   const startOfMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })();
@@ -1111,7 +1102,7 @@ export default function App() {
 
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
         {showAnalytics && isPremium && (
-          <AnalyticsPanel db={db} currentUser={currentUser} profile={profile} circles={circles} onClose={() => setShowAnalytics(false)} />
+          <AnalyticsPanel currentUser={currentUser} profile={profile} circles={circles} messages={messages} onClose={() => setShowAnalytics(false)} />
         )}
 
         {premiumSuccess && (
