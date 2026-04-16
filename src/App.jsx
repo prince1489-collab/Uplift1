@@ -1372,6 +1372,7 @@ export default function App() {
                                             onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
                                             onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
                                             onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
+                                            onUpgrade={() => setShowUpgrade(true)}
                                           />
                                         </div>
                                       </>
