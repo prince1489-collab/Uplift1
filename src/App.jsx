@@ -132,7 +132,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
+function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onManageSubscription, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
   const [open, setOpen] = useState(false);
   const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
@@ -177,6 +177,12 @@ function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onSignOut, isS
             <button onClick={() => { onAnalytics(); setOpen(false); }}
               className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors">
               <span>📊</span> My Stats <span className="ml-auto text-[10px] text-amber-500">✦</span>
+            </button>
+          )}
+          {isPremium && (
+            <button onClick={() => { onManageSubscription(); setOpen(false); }}
+              className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+              <span>💳</span> Manage subscription
             </button>
           )}
           <button onClick={() => setShowBuddies((v) => !v)}
@@ -1238,6 +1244,22 @@ export default function App() {
                       onShare={() => setShowProfileCard(true)}
                       onAnalytics={() => setShowAnalytics(true)}
                       onUpgrade={() => setShowUpgrade(true)}
+                      onManageSubscription={async () => {
+                        const cid = profile?.stripeCustomerId;
+                        if (!cid) { alert("No subscription found."); return; }
+                        try {
+                          const res = await fetch("/api/create-portal-session", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ customerId: cid }),
+                          });
+                          const data = await res.json();
+                          if (data.url) window.location.href = data.url;
+                          else throw new Error(data.error || "Unknown error");
+                        } catch (err) {
+                          alert("Could not open subscription portal. Please try again.");
+                        }
+                      }}
                       onSignOut={handleSignOut}
                       isSigningOut={isSigningOut}
                       globePulse={anim.globePulse}
