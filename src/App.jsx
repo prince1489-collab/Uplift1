@@ -535,6 +535,28 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
+class AnalyticsErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return createPortal(
+        <div data-portal className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white gap-4">
+          <span className="text-4xl">📊</span>
+          <p className="text-sm font-semibold text-slate-700">Couldn't load stats</p>
+          <p className="text-xs text-slate-400 text-center px-8">Try closing and reopening the panel</p>
+          <button onClick={this.props.onClose}
+            className="rounded-full bg-teal-600 px-5 py-2 text-sm font-bold text-white">
+            Close
+          </button>
+        </div>,
+        document.body
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AnalyticsPanel({ currentUser, profile, circles, messages, onClose }) {
   // Filter already-loaded messages by the current user — no extra Firestore query needed
   const myMessages = (messages ?? []).filter(m => m.uid === currentUser?.uid);
@@ -1102,7 +1124,9 @@ export default function App() {
 
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
         {showAnalytics && isPremium && (
-          <AnalyticsPanel currentUser={currentUser} profile={profile} circles={circles} messages={messages} onClose={() => setShowAnalytics(false)} />
+          <AnalyticsErrorBoundary onClose={() => setShowAnalytics(false)}>
+            <AnalyticsPanel currentUser={currentUser} profile={profile} circles={circles} messages={messages} onClose={() => setShowAnalytics(false)} />
+          </AnalyticsErrorBoundary>
         )}
 
         {premiumSuccess && (
