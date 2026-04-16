@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight, ArrowLeft, BarChart2, Bell, Calendar, ChevronDown, Globe,
+  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, Globe,
   Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
@@ -132,7 +132,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onManageSubscription, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
   const [open, setOpen] = useState(false);
   const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
@@ -173,12 +173,6 @@ function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onManageSubscr
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
             <span>👤</span> My Profile
           </button>
-          {isPremium && (
-            <button onClick={() => { onAnalytics(); setOpen(false); }}
-              className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors">
-              <span>📊</span> My Stats <span className="ml-auto text-[10px] text-amber-500">✦</span>
-            </button>
-          )}
           {isPremium && (
             <button onClick={() => { onManageSubscription(); setOpen(false); }}
               className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
@@ -541,125 +535,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-class AnalyticsErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(e) { return { error: e }; }
-  render() {
-    if (this.state.error) {
-      return createPortal(
-        <div data-portal className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white gap-4">
-          <span className="text-4xl">📊</span>
-          <p className="text-sm font-semibold text-slate-700">Couldn't load stats</p>
-          <p className="text-xs text-slate-400 text-center px-8">Try closing and reopening the panel</p>
-          <button onClick={this.props.onClose}
-            className="rounded-full bg-teal-600 px-5 py-2 text-sm font-bold text-white">
-            Close
-          </button>
-        </div>,
-        document.body
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function AnalyticsPanel({ currentUser, profile, circles, messages, onClose }) {
-  // Filter already-loaded messages by the current user — no extra Firestore query needed
-  const myMessages = (messages ?? []).filter(m => m.uid === currentUser?.uid);
-
-  const now = Date.now();
-  const startOfMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })();
-  const thisMonth = myMessages.filter(m => m.timestamp >= startOfMonth).length;
-  const total = myMessages.length;
-  const streak = profile?.streak ?? 0;
-  const totalMembers = (circles ?? []).reduce((s, c) => s + (c.members?.length ?? 0), 0);
-  const totalCircles = (circles ?? []).length;
-
-  // Last 30 days heatmap
-  const heatmap = Array.from({ length: 30 }, (_, i) => {
-    const dayStart = new Date(now - (29 - i) * 86400000);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = dayStart.getTime() + 86399999;
-    const count = myMessages.filter(m => m.timestamp >= dayStart.getTime() && m.timestamp <= dayEnd).length;
-    return { count, dayStart };
-  });
-  const maxDay = Math.max(...heatmap.map(d => d.count), 1);
-
-  const stat = (label, value, emoji) => (
-    <div className="flex flex-col items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 p-3 gap-0.5">
-      <span className="text-xl">{emoji}</span>
-      <span className="text-lg font-bold text-slate-800">{value}</span>
-      <span className="text-[10px] text-slate-400 text-center leading-tight">{label}</span>
-    </div>
-  );
-
-  return createPortal(
-    <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
-        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
-          <ArrowLeft size={18} className="text-slate-600" />
-        </button>
-        <div className="flex items-center gap-2">
-          <BarChart2 size={16} className="text-teal-600" />
-          <h2 className="text-sm font-bold text-slate-800">My Kindness Stats</h2>
-        </div>
-        <span className="ml-auto rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">✦ Premium</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-2">
-          {stat("Greetings this month", thisMonth, "📅")}
-          {stat("All-time sent", total >= 500 ? "500+" : total, "💌")}
-          {stat("Day streak", streak > 0 ? `${streak}d` : "—", streak >= 7 ? "🔥" : "✨")}
-          {stat("Circle members", totalMembers, "👥")}
-        </div>
-
-        {totalCircles > 0 && (
-          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Your Circles</p>
-            <div className="space-y-1">
-              {(circles ?? []).map(c => (
-                <div key={c.id} className="flex items-center justify-between text-xs">
-                  <span>{c.emoji ?? "⭐"} <span className="text-slate-700 font-medium">{c.name}</span></span>
-                  <span className="text-slate-400">{(c.members ?? []).length} members</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 30-day heatmap */}
-        <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3">Last 30 Days</p>
-          <div className="flex gap-0.5 items-end justify-between">
-            {heatmap.map((day, i) => {
-              const intensity = day.count === 0 ? 0 : Math.ceil((day.count / maxDay) * 4);
-              const colors = ["bg-slate-100", "bg-teal-100", "bg-teal-200", "bg-teal-400", "bg-teal-600"];
-              const isToday = i === 29;
-              return (
-                <div key={i} title={`${day.count} greeting${day.count !== 1 ? "s" : ""}`}
-                  className={`flex-1 rounded-sm ${colors[intensity]} ${isToday ? "ring-1 ring-teal-400" : ""}`}
-                  style={{ height: Math.max(4, (day.count / maxDay) * 40) + "px", minWidth: 4 }} />
-              );
-            })}
-          </div>
-          <div className="flex justify-between mt-1.5 text-[9px] text-slate-300">
-            <span>30d ago</span><span>Today</span>
-          </div>
-        </div>
-
-        {total === 0 && (
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <span className="text-4xl">💌</span>
-            <p className="text-sm text-slate-400">Send your first greeting to start tracking your kindness journey</p>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 function SparkRing({ value, max, percent, initial = "✨" }) {
   const size = 52, stroke = 3, r = (size - stroke) / 2;
@@ -748,7 +623,6 @@ export default function App() {
   const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
   const [premiumSuccess, setPremiumSuccess] = useState(false);
   // Detect Stripe checkout return
   useEffect(() => {
@@ -1129,11 +1003,6 @@ export default function App() {
         )}
 
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
-        {showAnalytics && isPremium && (
-          <AnalyticsErrorBoundary onClose={() => setShowAnalytics(false)}>
-            <AnalyticsPanel currentUser={currentUser} profile={profile} circles={circles} messages={messages} onClose={() => setShowAnalytics(false)} />
-          </AnalyticsErrorBoundary>
-        )}
 
         {premiumSuccess && (
           <div className="fixed top-4 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2.5 shadow-xl text-white text-sm font-semibold animate-fade-in">
@@ -1242,7 +1111,6 @@ export default function App() {
                     <MeatballMenu
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
-                      onAnalytics={() => setShowAnalytics(true)}
                       onUpgrade={() => setShowUpgrade(true)}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
