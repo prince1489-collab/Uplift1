@@ -540,8 +540,12 @@ function AnalyticsPanel({ db, currentUser, profile, circles, onClose }) {
 
   useEffect(() => {
     if (!db || !currentUser) return;
-    const qry = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(500));
-    return onSnapshot(qry, snap => setMyMessages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
+    const qry = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), limit(500));
+    return onSnapshot(qry, snap => {
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      msgs.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+      setMyMessages(msgs);
+    }, () => {});
   }, [db, currentUser?.uid]);
 
   const now = Date.now();
@@ -1179,14 +1183,9 @@ export default function App() {
                         {streak >= 7 ? "🔥" : "✨"}{streak}d
                       </span>
                     )}
-                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-teal-50 border border-teal-200 text-teal-700">
-                      ✨{displayedSparks}
+                    <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${isPremium ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-teal-50 border-teal-200 text-teal-700"}`}>
+                      {isPremium ? "✦" : "✨"}{displayedSparks}
                     </span>
-                    {isPremium && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-amber-50 border border-amber-300 text-amber-700">
-                        ✦ Premium
-                      </span>
-                    )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
