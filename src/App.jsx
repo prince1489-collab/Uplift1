@@ -194,6 +194,9 @@ function MeatballMenu({ onWorld, onShare, onAnalytics, onUpgrade, onSignOut, isS
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
             <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
           </button>
+          <p className="px-4 pb-2 pt-1 text-[10px] text-slate-300 text-center select-none">
+            © 2025 Mahiman Singh Rathore · All rights reserved
+          </p>
         </div>
       )}
     </div>
@@ -1510,9 +1513,6 @@ export default function App() {
           </>
         )}
       </div>
-      <p className="py-2 text-center text-[10px] text-slate-300 select-none">
-        © 2025 Mahiman Singh Rathore · Seen App · All rights reserved
-      </p>
     </div>
   );
 }
