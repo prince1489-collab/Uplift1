@@ -191,7 +191,13 @@ body {
   /* Keep above bubbles but not above modals */
   position: relative;
   z-index: 30;
+  /* Scroll horizontally on narrow screens */
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.seen-qrb::-webkit-scrollbar { display: none; }
 
 .seen-qrb-btn {
   display: flex;
