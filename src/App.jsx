@@ -604,6 +604,7 @@ export default function App() {
   const longPressTimer = useRef(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
+  const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
@@ -878,7 +879,7 @@ export default function App() {
         profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
-      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done");
+      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
@@ -1003,6 +1004,22 @@ export default function App() {
         )}
 
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
+
+        {showWelcomeMoment && (
+          <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
+            onClick={() => setShowWelcomeMoment(false)}>
+            <div className="mb-6 text-6xl animate-bounce" style={{ animationDuration: "2s" }}>🌍</div>
+            <p className="text-white text-xl font-bold leading-snug tracking-tight max-w-xs">
+              You just joined a global community that believes one kind message can change someone's day.
+            </p>
+            <p className="mt-4 text-white/80 text-base font-medium">Start with a greeting.</p>
+            <button
+              onClick={() => setShowWelcomeMoment(false)}
+              className="mt-10 rounded-full bg-white px-8 py-3 text-sm font-bold text-teal-700 shadow-lg active:scale-95 transition-transform">
+              Let's go ✨
+            </button>
+          </div>
+        )}
 
         {premiumSuccess && (
           <div className="fixed top-4 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2.5 shadow-xl text-white text-sm font-semibold animate-fade-in">
