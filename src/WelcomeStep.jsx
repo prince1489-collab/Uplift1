@@ -8,24 +8,18 @@ import {
 import { signInAnonymously } from "firebase/auth";
 import "./WelcomeStep.css";
 
-const PRESENCE_TTL_MS = 5 * 60 * 1000;
+const PRESENCE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — matches "today" label
 
-// Sign in anonymously so Firestore reads work even pre-auth.
-// App.jsx treats isAnonymous users as unauthenticated (line 572), so
-// the welcome screen keeps showing normally.
 function useAnonymousAuth(auth) {
   useEffect(() => {
     if (!auth) return;
-    signInAnonymously(auth).catch(() => {}); // best-effort; ignore errors
+    signInAnonymously(auth).catch(() => {});
   }, [auth]);
 }
 
-// Real Firebase presence count.
-// Falls back to a plausible time-of-day number if Firebase returns 0 or errors.
+// Real Firebase presence count — no fake fallback.
 function useLiveCount(db) {
-  const hour = new Date().getHours();
-  const fallback = 80 + hour * 12 + Math.floor(Math.random() * 30);
-  const [count, setCount] = useState(fallback);
+  const [count, setCount] = useState(null); // null = still loading
 
   useEffect(() => {
     if (!db) return;
@@ -36,11 +30,8 @@ function useLiveCount(db) {
     );
     const unsub = onSnapshot(
       q,
-      (snap) => {
-        // Only replace the plausible fallback if Firebase has real data
-        if (snap.size > 0) setCount(snap.size);
-      },
-      () => {} // keep fallback on error
+      (snap) => setCount(snap.size),
+      () => setCount(0)
     );
     return unsub;
   }, [db]);
@@ -226,13 +217,12 @@ function WelcomeStep({ onStartJourney, db, auth }) {
 
         {/* Live social proof counter */}
         <div className="welcome-live">
-          <span
-            className={`welcome-live__dot${
-              dotPulse ? " welcome-live__dot--pulse" : ""
-            }`}
-          />
+          <span className={`welcome-live__dot${dotPulse ? " welcome-live__dot--pulse" : ""}`} />
           <span className="welcome-live__text">
-            <strong>{count.toLocaleString()}</strong> people connected today
+            {count === null
+              ? "Connecting…"
+              : <><strong>{count.toLocaleString()}</strong> {count === 1 ? "person" : "people"} connected today</>
+            }
           </span>
         </div>
 
