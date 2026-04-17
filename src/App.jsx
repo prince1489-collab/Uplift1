@@ -1248,7 +1248,8 @@ export default function App() {
 
                                     {/* Bubble — tap for timestamp, long-press for reaction bar */}
                                     <div
-                                      className="relative"
+                                      className="relative select-none"
+                                      onContextMenu={(e) => e.preventDefault()}
                                       onMouseDown={() => {
                                         longPressTimer.current = setTimeout(() => {
                                           setReactionBarId(m.id);
