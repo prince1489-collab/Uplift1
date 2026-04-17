@@ -1,6 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, Globe,
   Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Share2, Shield, X,
