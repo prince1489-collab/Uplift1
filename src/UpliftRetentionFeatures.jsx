@@ -1236,35 +1236,44 @@ const QUICK_GIFT_AMOUNT = 5;
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
 // The recipient can receive the request regardless of premium status but
 // can only accept/open the chat once they become premium.
-function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade }) {
+function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, onClose }) {
   const [status, setStatus] = useState(null); // null | "pending" | "chatting"
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!db || !currentUser?.uid || !senderUid) return;
     const chatId = getChatId(currentUser.uid, senderUid);
-    // One-time checks — we don't need a live listener here
     getDoc(doc(db, "privateChats", chatId)).then((snap) => {
       if (snap.exists()) setStatus("chatting");
     }).catch(() => {});
+    // Two where() clauses only — avoids composite index requirement
     getDocs(query(
       collection(db, "chatRequests"),
       where("fromUid", "==", currentUser.uid),
-      where("toUid", "==", senderUid),
-      where("status", "==", "pending")
+      where("toUid", "==", senderUid)
     )).then((snap) => {
-      if (!snap.empty) setStatus((s) => s === "chatting" ? s : "pending");
+      const hasPending = snap.docs.some((d) => d.data().status === "pending");
+      if (hasPending) setStatus((s) => s === "chatting" ? s : "pending");
     }).catch(() => {});
   }, [db, currentUser, senderUid]);
 
   const handleClick = async () => {
-    if (!isPremium) { onUpgrade?.(); return; }
+    if (!isPremium) {
+      onClose?.();
+      setTimeout(() => onUpgrade?.(), 50);
+      return;
+    }
     if (status || loading) return;
     setLoading(true);
     try {
       const chatId = getChatId(currentUser.uid, senderUid);
       const chatSnap = await getDoc(doc(db, "privateChats", chatId));
-      if (chatSnap.exists()) { setStatus("chatting"); setLoading(false); return; }
+      if (chatSnap.exists()) {
+        setStatus("chatting");
+        setTimeout(() => onClose?.(), 320);
+        setLoading(false);
+        return;
+      }
       await addDoc(collection(db, "chatRequests"), {
         fromUid: currentUser.uid,
         toUid: senderUid,
@@ -1273,11 +1282,14 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade }) 
         createdAt: Date.now(),
       });
       setStatus("pending");
-    } catch {}
+      setTimeout(() => onClose?.(), 500);
+    } catch (err) {
+      console.error("Chat invite error:", err);
+      alert("Could not send request. Please try again.");
+    }
     setLoading(false);
   };
 
-  // Already chatting
   if (status === "chatting") {
     return (
       <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Already chatting">
@@ -1286,7 +1298,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade }) 
     );
   }
 
-  // Request already sent
   if (status === "pending") {
     return (
       <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Request sent">
@@ -1295,7 +1306,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade }) 
     );
   }
 
-  // Non-premium: visible but locked
   if (!isPremium) {
     return (
       <button className="seen-qrb-btn seen-qrb-btn--dim" onClick={handleClick}
@@ -1307,7 +1317,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade }) 
     );
   }
 
-  // Premium: ready to send
   return (
     <button className="seen-qrb-btn" onClick={handleClick} disabled={loading}
       title="Invite to private chat">
@@ -1462,7 +1471,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         <>
           <div className="seen-qrb-sep" />
           <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} isPremium={isPremium} />
-          <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} />
+          <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} onClose={onClose} />
         </>
       )}
       <div className="seen-qrb-sep" />
