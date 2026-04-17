@@ -102,11 +102,24 @@ const COUNTRY_OPTIONS = [
 ];
 
 const LEVEL_THRESHOLDS = [
-  { min: 0,   title: "Still Loading..." },
-  { min: 50,  title: "Certified Vibes Sender" },
-  { min: 150, title: "Chronically Kind" },
-  { min: 300, title: "Unhinged Optimist" },
-  { min: 600, title: "Main Character Energy" },
+  { min: 0,         title: "Still Loading…" },
+  { min: 50,        title: "Vibe Check: Passed" },
+  { min: 150,       title: "It's Giving Kind" },
+  { min: 300,       title: "Chronically Wholesome" },
+  { min: 600,       title: "Main Character Energy" },
+  { min: 1_500,     title: "Understood the Assignment" },
+  { min: 4_000,     title: "Serotonin Dealer" },
+  { min: 10_000,    title: "Ate and Left No Crumbs" },
+  { min: 25_000,    title: "Lowkey Iconic" },
+  { min: 60_000,    title: "Living Rent Free in Hearts" },
+  { min: 150_000,   title: "Real One, No Debate" },
+  { min: 350_000,   title: "In Your Kindness Era" },
+  { min: 750_000,   title: "Highkey Goated" },
+  { min: 1_500_000, title: "It's Giving Legend" },
+  { min: 3_000_000, title: "The Algorithm Fears You" },
+  { min: 5_000_000, title: "No Cap, Just Impact" },
+  { min: 7_500_000, title: "Ate Every Assignment" },
+  { min: 10_000_000,title: "Chronically GOATED" },
 ];
 
 const nowMs = () => Date.now();

@@ -8,7 +8,7 @@ import {
 import { ArrowLeft, Lock, MessageCircle, Send } from "lucide-react";
 import { startCheckout } from "./payments";
 
-const MAX_LEVEL_SPARKS = 600; // "Main Character Energy"
+const MAX_LEVEL_SPARKS = 10_000_000; // "Chronically GOATED"
 const MSG_LIMIT = 100;
 
 // ── Deterministic chat ID: sorted UIDs joined with _ ─────────────────
