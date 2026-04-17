@@ -108,8 +108,10 @@ export function ChatRequestButton({ db, currentUser, buddyUid, buddyName, onChat
 // ── Private Chat Inbox (requests + active chats list) ────────────────
 export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose }) {
   const [requests, setRequests] = useState([]);
+  const [sentRequests, setSentRequests] = useState([]);
   const [chats, setChats] = useState([]);
   const [senderMeta, setSenderMeta] = useState({}); // uid → profile data
+  const [recipientMeta, setRecipientMeta] = useState({}); // uid → profile data
   const [partnerMeta, setPartnerMeta] = useState({});
   const isPremium = profile?.isPremium === true;
 
@@ -126,6 +128,21 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
     }, () => {});
   }, [db, currentUser]);
 
+  // Listen to sent (outgoing) requests — single where() avoids composite index
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "chatRequests"),
+      where("fromUid", "==", currentUser.uid)
+    );
+    return onSnapshot(q, (snap) => {
+      const pending = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((r) => r.status === "pending");
+      setSentRequests(pending);
+    }, () => {});
+  }, [db, currentUser]);
+
   // Listen to active chats
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -138,7 +155,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
     }, () => {});
   }, [db, currentUser]);
 
-  // Fetch sender profiles for requests
+  // Fetch sender profiles for incoming requests
   useEffect(() => {
     const uids = [...new Set(requests.map((r) => r.fromUid).filter(Boolean))];
     if (!db || uids.length === 0) return;
@@ -148,6 +165,17 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
       setSenderMeta((prev) => ({ ...prev, ...map }));
     });
   }, [db, JSON.stringify(requests.map((r) => r.fromUid))]);
+
+  // Fetch recipient profiles for sent requests
+  useEffect(() => {
+    const uids = [...new Set(sentRequests.map((r) => r.toUid).filter(Boolean))];
+    if (!db || uids.length === 0) return;
+    Promise.all(uids.map((uid) => getDoc(doc(db, "users", uid)))).then((docs) => {
+      const map = {};
+      docs.forEach((d) => { if (d.exists()) map[d.id] = d.data(); });
+      setRecipientMeta((prev) => ({ ...prev, ...map }));
+    });
+  }, [db, JSON.stringify(sentRequests.map((r) => r.toUid))]);
 
   // Fetch partner profiles for active chats
   useEffect(() => {
@@ -249,6 +277,37 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
           </section>
         )}
 
+        {/* Sent requests awaiting response */}
+        {sentRequests.length > 0 && (
+          <section>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">
+              Sent requests
+            </p>
+            <div className="space-y-2">
+              {sentRequests.map((req) => {
+                const recipient = recipientMeta[req.toUid];
+                const name = recipient?.fullName ?? "Someone";
+                return (
+                  <div key={req.id}
+                    className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    {recipient?.profilePhotoUrl
+                      ? <img src={recipient.profilePhotoUrl} alt=""
+                          className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
+                      : <div className="h-8 w-8 rounded-full bg-teal-100 flex items-center justify-center text-xs font-bold text-teal-700 flex-shrink-0">
+                          {name[0]}
+                        </div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-slate-700 truncate">{name}</p>
+                      <p className="text-[10px] text-slate-400">Waiting for them to accept</p>
+                    </div>
+                    <span className="text-[10px] text-slate-300 italic flex-shrink-0">Pending</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Active chats */}
         {chats.length > 0 && (
           <section>
@@ -283,7 +342,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
         )}
 
         {/* Empty state */}
-        {requests.length === 0 && chats.length === 0 && (
+        {requests.length === 0 && sentRequests.length === 0 && chats.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-20 gap-3 text-center">
             <MessageCircle size={44} className="text-slate-200" />
             <p className="text-sm font-semibold text-slate-400">No chats yet</p>
