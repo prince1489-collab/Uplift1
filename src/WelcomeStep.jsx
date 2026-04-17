@@ -17,24 +17,23 @@ function useAnonymousAuth(auth) {
   }, [auth]);
 }
 
-// Real Firebase presence count — no fake fallback.
+// Real Firebase presence count — rolling 24h window, refreshes every minute.
 function useLiveCount(db) {
-  const [count, setCount] = useState(null); // null = still loading
+  const [count, setCount] = useState(null);
+  const [cutoff, setCutoff] = useState(() => Date.now() - PRESENCE_TTL_MS);
+
+  // Slide the window forward every minute so old entries fall off naturally
+  useEffect(() => {
+    const id = setInterval(() => setCutoff(Date.now() - PRESENCE_TTL_MS), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!db) return;
-    const cutoff = Date.now() - PRESENCE_TTL_MS;
-    const q = query(
-      collection(db, "presence"),
-      where("lastSeen", ">=", cutoff)
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => setCount(snap.size),
-      () => setCount(0)
-    );
+    const q = query(collection(db, "presence"), where("lastSeen", ">=", cutoff));
+    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => setCount(0));
     return unsub;
-  }, [db]);
+  }, [db, cutoff]);
 
   return count;
 }
@@ -221,7 +220,7 @@ function WelcomeStep({ onStartJourney, db, auth }) {
           <span className="welcome-live__text">
             {count === null
               ? "Connecting…"
-              : <><strong>{count.toLocaleString()}</strong> {count === 1 ? "person" : "people"} connected today</>
+              : <><strong>{count.toLocaleString()}</strong> {count === 1 ? "person" : "people"} connected in the last 24h</>
             }
           </span>
         </div>
