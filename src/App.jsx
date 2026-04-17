@@ -1283,7 +1283,7 @@ export default function App() {
                                         const isBursting = burstingMystery === m.id;
                                         return (
                                           <div
-                                            className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
+                                            className={`border px-3 py-2.5 text-sm font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
                                               mine
                                                 ? "bg-teal-600 text-white border-teal-600"
                                                 : isUnwrapped

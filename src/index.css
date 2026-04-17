@@ -242,6 +242,13 @@ body {
 }
 
 /* Overlay backdrop that closes the bar on outside tap */
+/* Prevent native text-selection menu on message bubbles */
+.select-none {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
 .seen-qrb-backdrop {
   position: fixed;
   inset: 0;
