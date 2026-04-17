@@ -132,7 +132,7 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
   const [open, setOpen] = useState(false);
   const [showBuddies, setShowBuddies] = useState(false);
   const ref = useRef(null);
@@ -190,6 +190,11 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSig
             </div>
           )}
           <div className="my-1 border-t border-slate-100" />
+          <button onClick={() => { onSupport(); setOpen(false); }}
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+            <span>🤍</span> If you're struggling
+          </button>
+          <div className="my-1 border-t border-slate-100" />
           <button onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
             <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
@@ -200,6 +205,85 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSig
         </div>
       )}
     </div>
+  );
+}
+
+const SUPPORT_RESOURCES = [
+  {
+    name: "Samaritans",
+    desc: "Free, 24/7 listening support",
+    contact: "Call 116 123",
+    href: "https://www.samaritans.org",
+    color: "bg-green-50 border-green-200",
+    text: "text-green-800",
+  },
+  {
+    name: "Mind",
+    desc: "Mental health information & support",
+    contact: "mind.org.uk",
+    href: "https://www.mind.org.uk",
+    color: "bg-blue-50 border-blue-200",
+    text: "text-blue-800",
+  },
+  {
+    name: "Shout",
+    desc: "Free crisis text line, 24/7",
+    contact: "Text SHOUT to 85258",
+    href: "https://www.giveusashout.org",
+    color: "bg-violet-50 border-violet-200",
+    text: "text-violet-800",
+  },
+  {
+    name: "Papyrus",
+    desc: "Support for under-35s",
+    contact: "Call 0800 068 4141",
+    href: "https://www.papyrus-uk.org",
+    color: "bg-amber-50 border-amber-200",
+    text: "text-amber-800",
+  },
+  {
+    name: "International",
+    desc: "Crisis centres worldwide",
+    contact: "findahelpline.com",
+    href: "https://findahelpline.com",
+    color: "bg-teal-50 border-teal-200",
+    text: "text-teal-800",
+  },
+];
+
+function SupportPanel({ onClose }) {
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+          <ArrowLeft size={18} className="text-slate-600" />
+        </button>
+        <h2 className="text-sm font-bold text-slate-800">If you're struggling</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
+        <p className="text-[13px] text-slate-500 leading-relaxed pb-1">
+          It's okay to not be okay. These services are free, confidential, and here whenever you need them.
+        </p>
+
+        {SUPPORT_RESOURCES.map((r) => (
+          <a key={r.name} href={r.href} target="_blank" rel="noopener noreferrer"
+            className={`flex items-start gap-3 rounded-2xl border ${r.color} px-4 py-3.5 transition-opacity active:opacity-70`}>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-bold ${r.text}`}>{r.name}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
+              <p className={`text-[11px] font-semibold mt-1.5 ${r.text}`}>{r.contact}</p>
+            </div>
+            <ArrowRight size={14} className="text-slate-300 flex-shrink-0 mt-1" />
+          </a>
+        ))}
+
+        <p className="text-center text-xs text-slate-300 pt-3 pb-1">
+          You don't have to face it alone.
+        </p>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -605,6 +689,7 @@ export default function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
@@ -1005,6 +1090,8 @@ export default function App() {
 
         {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
 
+        {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
+
         {showWelcomeMoment && (
           <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
             onClick={() => setShowWelcomeMoment(false)}>
@@ -1129,6 +1216,7 @@ export default function App() {
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
+                      onSupport={() => setShowSupport(true)}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
                         if (!cid) { alert("No subscription found."); return; }
