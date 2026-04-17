@@ -1266,14 +1266,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, on
     if (status || loading) return;
     setLoading(true);
     try {
-      const chatId = getChatId(currentUser.uid, senderUid);
-      const chatSnap = await getDoc(doc(db, "privateChats", chatId));
-      if (chatSnap.exists()) {
-        setStatus("chatting");
-        setTimeout(() => onClose?.(), 320);
-        setLoading(false);
-        return;
-      }
       await addDoc(collection(db, "chatRequests"), {
         fromUid: currentUser.uid,
         toUid: senderUid,
