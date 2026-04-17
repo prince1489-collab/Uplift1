@@ -186,19 +186,7 @@ const HIGHLIGHTS = [
 ];
 
 function WelcomeStep({ onStartJourney, db, auth }) {
-  // Anonymous auth unlocks Firestore reads (rules require request.auth != null)
   useAnonymousAuth(auth);
-
-  const count = useLiveCount(db);
-  const [dotPulse, setDotPulse] = useState(true);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setDotPulse(false);
-      setTimeout(() => setDotPulse(true), 80);
-    }, 4000);
-    return () => clearInterval(id);
-  }, []);
 
   return (
     <div className="welcome-step">
@@ -213,17 +201,6 @@ function WelcomeStep({ onStartJourney, db, auth }) {
         {/* Brand */}
         <h1 className="welcome-step__title">Seen</h1>
         <p className="welcome-step__tagline">You matter</p>
-
-        {/* Live social proof counter */}
-        <div className="welcome-live">
-          <span className={`welcome-live__dot${dotPulse ? " welcome-live__dot--pulse" : ""}`} />
-          <span className="welcome-live__text">
-            {count === null
-              ? "Connecting…"
-              : <><strong>{count.toLocaleString()}</strong> {count === 1 ? "person" : "people"} connected in the last 24h</>
-            }
-          </span>
-        </div>
 
         {/* Emotional cards */}
         <div className="welcome-step__list">
