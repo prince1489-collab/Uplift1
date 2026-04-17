@@ -81,17 +81,40 @@ function buildTickerText(msg) {
   return `${name} just sent kindness to someone in ${country}`;
 }
 
-// Shown while real data loads or if Firestore is unavailable
-const FALLBACK_TICKER = [
-  "Sofia just sent kindness to someone in Brazil 🇧🇷",
-  "Liam brightened someone's day in Japan 🇯🇵",
-  "Amara sent kindness to someone in Germany 🇩🇪",
-  "Carlos spread joy to someone in India 🇮🇳",
-  "Yusuf sent warmth to someone in Nigeria 🇳🇬",
-  "Elena just connected with a stranger in France 🇫🇷",
+const AFFIRMATIONS = [
+  "You are not invisible.",
+  "Someone out there is rooting for you.",
+  "It's okay to not be okay.",
+  "You showed up today. That's enough.",
+  "One message can change someone's whole day.",
+  "You matter more than you know.",
+  "Kindness finds its way back to you.",
 ];
 
-// Background: single slow radial gradient + grain texture
+function AffirmationRotator() {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const rotate = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % AFFIRMATIONS.length);
+        setVisible(true);
+      }, 400);
+    }, 4500);
+    return () => clearInterval(rotate);
+  }, []);
+
+  return (
+    <div className="welcome-affirmation">
+      <span className="welcome-affirmation__icon">🤍</span>
+      <span className={`welcome-affirmation__text${visible ? " welcome-affirmation__text--in" : " welcome-affirmation__text--out"}`}>
+        {AFFIRMATIONS[idx]}
+      </span>
+    </div>
+  );
+}
 function BackgroundAmbient() {
   return (
     <div className="welcome-ambient" aria-hidden="true">
@@ -232,7 +255,7 @@ function WelcomeStep({ onStartJourney, db, auth }) {
 
       {/* Bottom: ticker + trust line + CTA — always visible */}
       <div className="welcome-step__footer">
-        <ActivityTicker db={db} />
+        <AffirmationRotator />
         <p className="welcome-trust">No posts · No followers · Just kindness</p>
         <button className="welcome-step__cta" onClick={onStartJourney}>
           I want to feel seen <ArrowRight size={20} />
