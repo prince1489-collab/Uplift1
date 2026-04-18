@@ -8,6 +8,14 @@
  *   useCircleInviteCount(db, currentUser)  — hook: count of pending invites (badge)
  *   AddToCircleButton                     — appears in QuickReactBar on each message
  *   CirclesPanel                          — replaces BuddyPanel in the ··· menu
+ *
+ * FIX (v2): Circles and their messages now live at top-level Firestore paths:
+ *   circles/{circleId}                    — circle doc (owner + members can read)
+ *   circles/{circleId}/messages/{msgId}   — message history (all members can read)
+ *
+ * Previously these lived under users/{ownerUid}/circles/… which meant only
+ * the owner could query them — causing the silent send failure and empty chat
+ * for invited members.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -45,15 +53,45 @@ function calcStreak(circle) {
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Returns live list of circles where the current user is the owner OR a member.
+ * Uses the top-level `circles` collection so all members can query.
+ */
 export function useCircles(db, currentUser) {
   const [circles, setCircles] = useState([]);
   useEffect(() => {
     if (!db || !currentUser) return;
-    return onSnapshot(
-      collection(db, "users", currentUser.uid, "circles"),
-      (snap) => setCircles(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      () => {}
+
+    // Two queries: circles I own, and circles I'm a member of
+    const ownedQ = query(
+      collection(db, "circles"),
+      where("ownerUid", "==", currentUser.uid)
     );
+    const memberQ = query(
+      collection(db, "circles"),
+      where("members", "array-contains", currentUser.uid)
+    );
+
+    const merge = (owned, member) => {
+      const map = {};
+      [...owned, ...member].forEach(c => { map[c.id] = c; });
+      setCircles(Object.values(map).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)));
+    };
+
+    let ownedDocs = [];
+    let memberDocs = [];
+
+    const unsubOwned = onSnapshot(ownedQ, snap => {
+      ownedDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      merge(ownedDocs, memberDocs);
+    }, () => {});
+
+    const unsubMember = onSnapshot(memberQ, snap => {
+      memberDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      merge(ownedDocs, memberDocs);
+    }, () => {});
+
+    return () => { unsubOwned(); unsubMember(); };
   }, [db, currentUser?.uid]);
   return circles;
 }
@@ -79,13 +117,12 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [circles, setCircles] = useState([]);
-  const [sent, setSent] = useState({});   // circleId -> "sent" | "already" | "full"
+  const [sent, setSent] = useState({});
   const [sending, setSending] = useState(null);
   const [toast, setToast] = useState(null);
   const btnRef = useRef(null);
   const dropRef = useRef(null);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const h = (e) => {
@@ -96,17 +133,16 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
-  // Load circles when dropdown opens
+  // Load circles from top-level collection
   useEffect(() => {
     if (!open || !db || !currentUser) return;
-    return onSnapshot(
-      collection(db, "users", currentUser.uid, "circles"),
-      (snap) => setCircles(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    const ownedQ = query(collection(db, "circles"), where("ownerUid", "==", currentUser.uid));
+    return onSnapshot(ownedQ, (snap) =>
+      setCircles(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       () => {}
     );
   }, [open, db, currentUser?.uid]);
 
-  // Pre-load invite state from Firestore every time dropdown opens
   useEffect(() => {
     if (!open || !db || !currentUser) return;
     getDocs(query(
@@ -157,7 +193,6 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
       setSent(s => ({ ...s, [circle.id]: "full" }));
       return;
     }
-    // Already sent (from pre-loaded state)
     if (sent[circle.id] === "sent") return;
 
     setSending(circle.id);
@@ -286,11 +321,14 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
   const handleAccept = async (inv) => {
     if (!db) return;
     try {
-      await updateDoc(doc(db, "users", inv.fromUid, "circles", inv.circleId), {
+      // FIX: write to top-level circles collection, not the owner's subcollection
+      await updateDoc(doc(db, "circles", inv.circleId), {
         members: arrayUnion(currentUser.uid),
       });
       await updateDoc(doc(db, "circleInvites", inv.id), { status: "accepted" });
-    } catch {}
+    } catch (err) {
+      console.error("Failed to accept circle invite:", err);
+    }
   };
 
   const handleDecline = async (inv) => {
@@ -420,7 +458,6 @@ function CircleGreetingPicker({ isPremium, onSelect, onClose }) {
         <h2 className="text-sm font-bold text-slate-800">Choose a Greeting</h2>
       </div>
 
-      {/* Category tabs */}
       <div className="flex gap-1.5 px-4 py-2.5 overflow-x-auto flex-shrink-0 border-b border-slate-100 scrollbar-none">
         {categories.map(cat => (
           <button
@@ -438,7 +475,6 @@ function CircleGreetingPicker({ isPremium, onSelect, onClose }) {
         ))}
       </div>
 
-      {/* Greeting list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {greetings.map((g, i) => (
           <button
@@ -473,7 +509,8 @@ function CircleMembers({ db, currentUser, circle, circleId, isPremium, onClose }
   }, [db, members.join(",")]);
 
   const removeMember = async (uid) => {
-    await updateDoc(doc(db, "users", currentUser.uid, "circles", circleId), {
+    // FIX: write to top-level circles collection
+    await updateDoc(doc(db, "circles", circleId), {
       members: arrayRemove(uid),
     }).catch(() => {});
     setConfirmRemoveUid(null);
@@ -555,19 +592,20 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
   const members = circle.members ?? [];
   const streak = calcStreak(circle);
 
-  // Load message history from subcollection
+  // FIX: Load messages from top-level circles/{circleId}/messages
   useEffect(() => {
     if (!db || !currentUser) return;
     const q = query(
-      collection(db, "users", currentUser.uid, "circles", circleId, "messages"),
+      collection(db, "circles", circleId, "messages"),
       orderBy("createdAt", "asc")
     );
     return onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, () => {});
+    }, (err) => {
+      console.error("CircleChat messages listener error:", err);
+    });
   }, [db, currentUser?.uid, circleId]);
 
-  // Auto-scroll to newest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
@@ -581,9 +619,9 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
       const today = todayStr();
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-      // Log to circle message history
+      // FIX: Write message to top-level circles/{circleId}/messages
       await addDoc(
-        collection(db, "users", currentUser.uid, "circles", circleId, "messages"),
+        collection(db, "circles", circleId, "messages"),
         {
           fromUid: currentUser.uid,
           fromName: currentUser.displayName ?? "You",
@@ -610,12 +648,12 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
         ));
       }
 
-      // Update streak
+      // FIX: Update streak on top-level circle doc
       if (circle.lastSentDate !== today) {
         const newStreak = circle.lastSentDate === yesterday
           ? (circle.streak ?? 0) + 1
           : 1;
-        await updateDoc(doc(db, "users", currentUser.uid, "circles", circleId), {
+        await updateDoc(doc(db, "circles", circleId), {
           lastSentDate: today,
           streak: newStreak,
         });
@@ -623,7 +661,9 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
 
       setJustSent(true);
       setTimeout(() => setJustSent(false), 3000);
-    } catch {}
+    } catch (err) {
+      console.error("sendGreeting failed:", err);
+    }
     setSending(false);
   };
 
@@ -635,6 +675,8 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
     return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " · " +
       d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   };
+
+  const isOwner = circle.ownerUid === currentUser?.uid;
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
@@ -676,20 +718,30 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
             </p>
           </div>
         )}
-        {messages.map(msg => (
-          <div key={msg.id} className="flex flex-col items-end">
-            <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-4 py-3">
-              <p className="text-sm text-slate-700 leading-relaxed">{msg.text}</p>
+        {messages.map(msg => {
+          const isMine = msg.fromUid === currentUser?.uid;
+          return (
+            <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+              {!isMine && (
+                <p className="text-[10px] text-slate-400 mb-1 pl-1">{msg.fromName}</p>
+              )}
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 border ${
+                isMine
+                  ? "rounded-tr-sm bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-100"
+                  : "rounded-tl-sm bg-slate-50 border-slate-100"
+              }`}>
+                <p className="text-sm text-slate-700 leading-relaxed">{msg.text}</p>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-300 px-1">{formatTime(msg.createdAt)}</p>
             </div>
-            <p className="mt-1 text-[10px] text-slate-300 pr-1">{formatTime(msg.createdAt)}</p>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
       {/* Footer */}
       <div className="flex-shrink-0 border-t border-slate-100 px-4 py-3">
-        {members.length === 0 ? (
+        {members.length === 0 && isOwner ? (
           <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-center">
             <p className="text-xs font-medium text-slate-500">Add members to start sending greetings</p>
             <p className="text-[11px] text-slate-400 mt-1">Tap "Add to Circle" on any message in the main chat</p>
@@ -706,7 +758,9 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
             disabled={sending}
             className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2">
             <Sparkles size={15} />
-            {sending ? "Sending…" : `Send a greeting to ${members.length} ${members.length === 1 ? "person" : "people"}`}
+            {sending ? "Sending…" : members.length > 0
+              ? `Send a greeting to ${members.length} ${members.length === 1 ? "person" : "people"}`
+              : "Send a greeting"}
           </button>
         )}
       </div>
@@ -745,22 +799,32 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
   const [activeCircle, setActiveCircle] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  // Only count circles the user owns toward their creation limit
+  const ownedCircles = circles.filter(c => c.ownerUid === currentUser?.uid);
+
+  // FIX: Create circle in top-level `circles` collection with ownerUid field
   const createCircle = async ({ name, emoji }) => {
-    if (!db || !currentUser || circles.length >= maxCircles) return;
-    await addDoc(collection(db, "users", currentUser.uid, "circles"), {
-      name, emoji, members: [], streak: 0, lastSentDate: null, createdAt: Date.now(),
+    if (!db || !currentUser || ownedCircles.length >= maxCircles) return;
+    await addDoc(collection(db, "circles"), {
+      name,
+      emoji,
+      ownerUid: currentUser.uid,
+      members: [],
+      streak: 0,
+      lastSentDate: null,
+      createdAt: Date.now(),
     });
     setShowCreate(false);
   };
 
+  // FIX: Delete from top-level circles collection
   const deleteCircle = async (circleId) => {
     if (!db || !currentUser) return;
-    await deleteDoc(doc(db, "users", currentUser.uid, "circles", circleId)).catch(() => {});
+    await deleteDoc(doc(db, "circles", circleId)).catch(() => {});
     if (activeCircle?.id === circleId) setActiveCircle(null);
     setConfirmDeleteId(null);
   };
 
-  // Keep active circle data live
   const liveActiveCircle = activeCircle
     ? (circles.find(c => c.id === activeCircle.id) ?? activeCircle)
     : null;
@@ -783,7 +847,7 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
             </button>
           )}
         </div>
-        {circles.length < maxCircles && (
+        {ownedCircles.length < maxCircles && (
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-0.5 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500 hover:border-teal-300 hover:text-teal-600 transition-colors">
             <Plus size={9} /> New
@@ -810,6 +874,7 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
           const streak = calcStreak(c);
           const memberCount = (c.members ?? []).length;
           const isConfirmingDelete = confirmDeleteId === c.id;
+          const isOwner = c.ownerUid === currentUser?.uid;
           return (
             <div key={c.id}>
               <div
@@ -819,12 +884,13 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 truncate">{c.name}</p>
                   <p className="text-[10px] text-slate-400">
-                    {memberCount}/{maxMembers}
+                    {isOwner ? "You" : "Member"} · {memberCount}/{maxMembers}
                     {streak > 0 && <span className="ml-1 text-orange-500">🔥 {streak}d</span>}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  {!isConfirmingDelete && (
+                  {/* Only owner can delete */}
+                  {isOwner && !isConfirmingDelete && (
                     <button
                       onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.id); }}
                       className="opacity-0 group-hover:opacity-100 rounded-full p-0.5 hover:bg-slate-200 transition-all">
@@ -835,8 +901,7 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
                 </div>
               </div>
 
-              {/* 2-step delete confirmation */}
-              {isConfirmingDelete && (
+              {isConfirmingDelete && isOwner && (
                 <div className="flex items-center gap-2 px-2.5 py-2 mt-1 rounded-xl bg-red-50 border border-red-100">
                   <p className="text-[11px] text-red-600 flex-1 truncate">Delete "{c.name}"?</p>
                   <button
@@ -856,16 +921,15 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
         })}
       </div>
 
-      {circles.length > 0 && circles.length < maxCircles && (
+      {ownedCircles.length > 0 && ownedCircles.length < maxCircles && (
         <p className="text-[10px] text-slate-300 text-center">
-          {maxCircles - circles.length} slot{maxCircles - circles.length > 1 ? "s" : ""} remaining
+          {maxCircles - ownedCircles.length} slot{maxCircles - ownedCircles.length > 1 ? "s" : ""} remaining
         </p>
       )}
 
       {showCreate && <CreateCircleModal onSave={createCircle} onClose={() => setShowCreate(false)} />}
       {showInvites && <CircleInviteInbox db={db} currentUser={currentUser} onClose={() => setShowInvites(false)} />}
 
-      {/* Circle chat portal */}
       {liveActiveCircle && (
         <CircleChat
           db={db}
