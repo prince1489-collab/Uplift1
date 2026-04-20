@@ -817,10 +817,18 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
     setShowCreate(false);
   };
 
-  // FIX: Delete from top-level circles collection
   const deleteCircle = async (circleId) => {
     if (!db || !currentUser) return;
     await deleteDoc(doc(db, "circles", circleId)).catch(() => {});
+    if (activeCircle?.id === circleId) setActiveCircle(null);
+    setConfirmDeleteId(null);
+  };
+
+  const leaveCircle = async (circleId) => {
+    if (!db || !currentUser) return;
+    await updateDoc(doc(db, "circles", circleId), {
+      members: arrayRemove(currentUser.uid),
+    }).catch(() => {});
     if (activeCircle?.id === circleId) setActiveCircle(null);
     setConfirmDeleteId(null);
   };
@@ -889,8 +897,7 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  {/* Only owner can delete */}
-                  {isOwner && !isConfirmingDelete && (
+                  {!isConfirmingDelete && (
                     <button
                       onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.id); }}
                       className="opacity-0 group-hover:opacity-100 rounded-full p-0.5 hover:bg-slate-200 transition-all">
@@ -901,18 +908,20 @@ export function CirclesPanel({ db, currentUser, isPremium = false }) {
                 </div>
               </div>
 
-              {isConfirmingDelete && isOwner && (
+              {isConfirmingDelete && (
                 <div className="flex items-center gap-2 px-2.5 py-2 mt-1 rounded-xl bg-red-50 border border-red-100">
-                  <p className="text-[11px] text-red-600 flex-1 truncate">Delete "{c.name}"?</p>
+                  <p className="text-[11px] text-red-600 flex-1 truncate">
+                    {isOwner ? `Delete "${c.name}"?` : `Leave "${c.name}"?`}
+                  </p>
                   <button
                     onClick={() => setConfirmDeleteId(null)}
                     className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-500 hover:bg-slate-50 transition-colors flex-shrink-0">
                     Cancel
                   </button>
                   <button
-                    onClick={() => deleteCircle(c.id)}
+                    onClick={() => isOwner ? deleteCircle(c.id) : leaveCircle(c.id)}
                     className="rounded-full bg-red-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-red-600 transition-colors flex-shrink-0">
-                    Delete
+                    {isOwner ? "Delete" : "Leave"}
                   </button>
                 </div>
               )}
