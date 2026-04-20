@@ -307,7 +307,9 @@ function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
   const [reactions, setReactions] = useState([]);
+  const [circleInvites, setCircleInvites] = useState([]);
   const [dismissedReactions, setDismissedReactions] = useState(new Set());
+  const [dismissedInvites, setDismissedInvites] = useState(new Set());
   const prevWaveIdsRef = useRef(new Set());
   const notifyReadyRef = useRef(false);
   // Don't fire notifications on initial load — only for waves that arrive after mount
@@ -334,6 +336,19 @@ function NotificationBell({ streak, db, currentUser }) {
       }
       prevWaveIdsRef.current = new Set(newWaves.map((w) => w.id));
       setWaves(newWaves);
+    }, () => {});
+  }, [db, currentUser]);
+
+  // Circle invite notifications
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "circleInvites"),
+      where("toUid", "==", currentUser.uid),
+      where("status", "==", "pending")
+    );
+    return onSnapshot(q, (snap) => {
+      setCircleInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, () => {});
   }, [db, currentUser]);
 
@@ -367,9 +382,11 @@ function NotificationBell({ streak, db, currentUser }) {
   };
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
   const dismissReaction = (key) => setDismissedReactions((s) => new Set(s).add(key));
+  const dismissInvite = (id) => setDismissedInvites((s) => new Set(s).add(id));
 
   const visibleReactions = reactions.filter((r) => !dismissedReactions.has(r.key));
-  const totalUnread = waves.length + visibleReactions.length;
+  const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
+  const totalUnread = waves.length + visibleReactions.length + visibleInvites.length;
   const hot = streak >= 7;
 
   return (
@@ -397,10 +414,27 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleReactions.length === 0 ? (
+            {waves.length === 0 && visibleReactions.length === 0 && visibleInvites.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
+                {visibleInvites.map((inv) => (
+                  <div key={inv.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-teal-50">
+                    <span className="text-base flex-shrink-0">{inv.circleEmoji ?? "⭐"}</span>
+                    <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                      <span className="font-semibold">{inv.fromName ?? "Someone"}</span> invited you to join{" "}
+                      <span className="font-semibold text-teal-700">{inv.circleName}</span>
+                      <span className="text-slate-400 block">Open ··· → Circles to accept</span>
+                    </p>
+                    <button onClick={() => dismissInvite(inv.id)}
+                      className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {visibleInvites.length > 0 && (waves.length > 0 || visibleReactions.length > 0) && (
+                  <div className="mx-4 my-1 border-t border-slate-100" />
+                )}
                 {waves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
@@ -435,10 +469,14 @@ function NotificationBell({ streak, db, currentUser }) {
               </div>
             )}
           </div>
-          {(waves.length > 1 || visibleReactions.length > 0) && (
+          {(waves.length > 1 || visibleReactions.length > 0 || visibleInvites.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
-                onClick={() => { dismissAllWaves(); visibleReactions.forEach((r) => dismissReaction(r.key)); }}
+                onClick={() => {
+                  dismissAllWaves();
+                  visibleReactions.forEach((r) => dismissReaction(r.key));
+                  visibleInvites.forEach((inv) => dismissInvite(inv.id));
+                }}
                 className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
                 Clear all
               </button>
