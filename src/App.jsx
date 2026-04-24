@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, Globe,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Share2, Shield, X,
+  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Users, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -146,79 +146,193 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
   const [open, setOpen] = useState(false);
-  const [showBuddies, setShowBuddies] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    const handler = (e) => {
-      // Don't close if the click landed inside a portal (e.g. CreateCircleModal)
-      if (e.target.closest?.("[data-portal]")) return;
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const [showCircles, setShowCircles] = useState(false);
+
+  const currentLevel = LEVEL_THRESHOLDS.reduce(
+    (l, t) => sparkBalance >= t.min ? t : l,
+    LEVEL_THRESHOLDS[0]
+  );
+  const firstName = profile?.fullName?.trim()?.split(" ")?.[0]
+    || currentUser?.displayName?.split(" ")?.[0]
+    || "You";
+
+  const close = () => setOpen(false);
+
+  const IconBox = ({ children, className = "bg-slate-100" }) => (
+    <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${className}`}>
+      {children}
+    </div>
+  );
+
+  const Row = ({ onClick, icon, label, sub, danger = false }) => (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors ${danger ? "hover:bg-red-50" : "hover:bg-slate-50"}`}>
+      {icon}
+      <div className="flex-1 text-left min-w-0">
+        <p className={`text-sm font-medium truncate ${danger ? "text-red-500" : "text-slate-700"}`}>{label}</p>
+        {sub && <p className="text-[11px] text-slate-400 truncate">{sub}</p>}
+      </div>
+    </button>
+  );
+
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(true)}
         className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
         aria-label="More options">
         <span className="text-lg leading-none tracking-widest">···</span>
       </button>
-      {open && (
-        <div className="absolute right-0 top-9 z-50 min-w-[175px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
-          {!isPremium && (
-            <>
-              <button onClick={() => { onUpgrade(); setOpen(false); }}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
-                <span>✦</span> Go Premium
-                <span className="ml-auto text-[10px] text-teal-400 font-normal">$3.99/mo</span>
-              </button>
-              <div className="my-0.5 border-t border-slate-100" />
-            </>
-          )}
-          <button onClick={() => { onWorld(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span>{globePulse ? "🌍" : "🌐"}</span> World Map
-          </button>
-          <button onClick={() => { onShare(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span>👤</span> My Profile
-          </button>
-          {isPremium && (
-            <button onClick={() => { onManageSubscription(); setOpen(false); }}
-              className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-              <span>💳</span> Manage subscription
-            </button>
-          )}
-          <button onClick={() => setShowBuddies((v) => !v)}
-            className="flex w-full items-center justify-between gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span className="flex items-center gap-2.5"><span>⭕</span> Circles</span>
-            <span className="text-slate-400 text-xs">{showBuddies ? "▲" : "▼"}</span>
-          </button>
-          {showBuddies && (
-            <div className="mx-2 mb-1 rounded-xl border border-slate-100 bg-slate-50 px-2 py-2">
-              <CirclesPanel db={db} currentUser={currentUser} isPremium={isPremium} />
+
+      {open && createPortal(
+        <div data-portal className="fixed inset-0 z-[150] flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={(e) => {
+              if (!e.target.closest?.("[data-portal] > div:last-child")) close();
+            }}
+          />
+
+          {/* Sheet */}
+          <div
+            className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[90dvh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full bg-slate-200" />
             </div>
-          )}
-          <div className="my-1 border-t border-slate-100" />
-          <button onClick={() => { onSupport(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
-            <span>🤍</span> If you're struggling
-          </button>
-          <div className="my-1 border-t border-slate-100" />
-          <button onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
-            <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
-          </button>
-          <p className="px-4 pb-2 pt-1 text-[10px] text-slate-300 text-center select-none">
-            © 2025 Mahiman Singh Rathore · All rights reserved
-          </p>
-        </div>
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto overscroll-contain">
+
+              {/* User header */}
+              <div className="px-4 pt-1 pb-4 flex items-center gap-3">
+                {profile?.profilePhotoUrl
+                  ? <img src={profile.profilePhotoUrl} alt="" className="h-12 w-12 rounded-full object-cover flex-shrink-0 ring-2 ring-slate-100" />
+                  : <div className="h-12 w-12 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-lg font-bold text-white flex-shrink-0">
+                      {firstName[0]?.toUpperCase()}
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-slate-800 truncate">{profile?.fullName ?? firstName}</p>
+                    {isPremium && (
+                      <span className="flex-shrink-0 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                        ✦ Premium
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 truncate">{currentLevel.title}</p>
+                </div>
+                {streak > 0 && (
+                  <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
+                    <span className="text-xl leading-none">{streak >= 7 ? "🔥" : "✨"}</span>
+                    <span className="text-[10px] font-bold text-slate-500">{streak}d</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Main actions */}
+              <div className="px-3 py-2 space-y-0.5">
+                {!isPremium && (
+                  <button onClick={() => { onUpgrade(); close(); }}
+                    className="flex w-full items-center gap-3 px-3 py-3 mb-1 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-100 hover:border-teal-300 transition-colors">
+                    <IconBox className="bg-gradient-to-br from-teal-500 to-emerald-500">
+                      <Sparkles size={15} className="text-white" />
+                    </IconBox>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-semibold text-teal-700">Go Premium</p>
+                      <p className="text-[11px] text-teal-500">Unlock all features · $3.99/mo</p>
+                    </div>
+                    <ArrowRight size={14} className="text-teal-400 flex-shrink-0" />
+                  </button>
+                )}
+
+                <Row
+                  onClick={() => { onWorld(); close(); }}
+                  icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
+                  label="World Map"
+                  sub="See who's spreading kindness"
+                />
+                <Row
+                  onClick={() => { onShare(); close(); }}
+                  icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
+                  label="My Profile"
+                  sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
+                />
+
+                {/* Circles row — expands inline */}
+                <button
+                  onClick={() => setShowCircles(v => !v)}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
+                  <IconBox><Users size={16} className="text-slate-500" /></IconBox>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Circles</p>
+                    <p className="text-[11px] text-slate-400">Your private kindness groups</p>
+                  </div>
+                  <ChevronDown
+                    size={15}
+                    className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showCircles ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {showCircles && (
+                  <div className="mx-1 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <CirclesPanel db={db} currentUser={currentUser} isPremium={isPremium} />
+                  </div>
+                )}
+
+                {isPremium && (
+                  <Row
+                    onClick={() => { onManageSubscription(); close(); }}
+                    icon={<IconBox><CreditCard size={16} className="text-slate-500" /></IconBox>}
+                    label="Manage Subscription"
+                    sub="Billing & plan details"
+                  />
+                )}
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Support */}
+              <div className="px-3 py-2 space-y-0.5">
+                <Row
+                  onClick={() => { onSupport(); close(); }}
+                  icon={<IconBox className="bg-rose-50"><Heart size={16} className="text-rose-400" /></IconBox>}
+                  label="If you're struggling"
+                  sub="Mental health resources"
+                />
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Sign out */}
+              <div className="px-3 py-2 pb-8">
+                <button
+                  onClick={onSignOut}
+                  disabled={isSigningOut}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-red-50 transition-colors disabled:opacity-50">
+                  <IconBox className="bg-red-50">
+                    <LogOut size={16} className="text-red-400" />
+                  </IconBox>
+                  <p className="text-sm font-medium text-red-500">
+                    {isSigningOut ? "Signing out…" : "Sign out"}
+                  </p>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -1292,6 +1406,8 @@ export default function App() {
                       currentUser={currentUser}
                       profile={profile}
                       isPremium={isPremium}
+                      streak={streak}
+                      sparkBalance={sparkBalance}
                     />
                   </div>
                 </div>
