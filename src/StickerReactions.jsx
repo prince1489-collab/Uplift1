@@ -29,11 +29,15 @@ export function useStickerReactions(db, messageId) {
   const [reactions, setReactions] = useState({});
   useEffect(() => {
     if (!db || !messageId) return;
+    // Reuse the existing reactions subcollection — sticker IDs (sticker_*)
+    // don't collide with emoji keys (❤️ 🙏 😊 🌟), so no rule changes needed.
     return onSnapshot(
-      collection(db, "publicMessages", messageId, "stickerReactions"),
+      collection(db, "publicMessages", messageId, "reactions"),
       snap => {
         const r = {};
-        snap.forEach(d => { r[d.id] = d.data(); });
+        snap.forEach(d => {
+          if (d.id.startsWith("sticker_")) r[d.id] = d.data();
+        });
         setReactions(r);
       },
       () => {}
@@ -51,7 +55,7 @@ export function StickerPicker({ db, currentUser, messageId, onClose, onPick }) {
     if (sending || !db || !currentUser || !messageId) return;
     setSending(true);
     try {
-      const rRef = doc(db, "publicMessages", messageId, "stickerReactions", sticker.id);
+      const rRef = doc(db, "publicMessages", messageId, "reactions", sticker.id);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(rRef);
         const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
