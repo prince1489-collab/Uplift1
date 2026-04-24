@@ -360,3 +360,40 @@ body {
 .sheet-slide-up {
   animation: sheetSlideUp 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
+
+/* ─── Sticker / GIF reaction animations ─────────────────────────────────── */
+@keyframes stickerBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%       { transform: translateY(-10px) scale(1.12); }
+  65%       { transform: translateY(-4px) scale(1.04); }
+}
+@keyframes stickerSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes stickerFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+@keyframes stickerPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.28); }
+}
+@keyframes stickerWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20%      { transform: rotate(-14deg) scale(1.1); }
+  40%      { transform: rotate(14deg) scale(1.1); }
+  60%      { transform: rotate(-8deg); }
+  80%      { transform: rotate(8deg); }
+}
+@keyframes stickerClap {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  30%      { transform: scale(1.2) rotate(-12deg); }
+  70%      { transform: scale(1.2) rotate(12deg); }
+}
+.sticker-bounce  { animation: stickerBounce 1.4s ease-in-out infinite; }
+.sticker-spin    { animation: stickerSpin   2.2s linear infinite; }
+.sticker-float   { animation: stickerFloat  2.4s ease-in-out infinite; }
+.sticker-pulse   { animation: stickerPulse  1.6s ease-in-out infinite; }
+.sticker-wiggle  { animation: stickerWiggle 0.9s ease-in-out infinite; }
+.sticker-clap    { animation: stickerClap   0.65s ease-in-out infinite; }

@@ -17,6 +17,7 @@ import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 
 import { CirclesPanel, useCircles } from "./Circles";
+import { StickerDisplay } from "./StickerReactions";
 
 import {
   useStreak, computeSparkReward,
@@ -1586,6 +1587,7 @@ export default function App() {
                                       })()}
 
                                       <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+                                      <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 

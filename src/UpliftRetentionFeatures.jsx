@@ -30,6 +30,7 @@ import {
 import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat";
 import { startCheckout } from "./payments";
 import { AddToCircleButton } from "./Circles";
+import { StickerPicker } from "./StickerReactions";
 
 import {
   Bell,
@@ -1324,6 +1325,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
   const [popping, setPopping] = useState(null);
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
 
   useEffect(() => {
     if (!db || !messageId || !currentUser) return;
@@ -1467,7 +1469,25 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         </>
       )}
       <div className="seen-qrb-sep" />
+      <button
+        className="seen-qrb-btn"
+        onClick={() => setShowStickers(true)}
+        title="React with GIF"
+        style={{ fontSize: 13, fontWeight: 700, color: "rgba(20,184,166,0.9)", width: "auto", padding: "0 8px", height: 34, letterSpacing: "-0.5px" }}>
+        GIF
+      </button>
+      <div className="seen-qrb-sep" />
       <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
+
+      {showStickers && (
+        <StickerPicker
+          db={db}
+          currentUser={currentUser}
+          messageId={messageId}
+          onClose={() => setShowStickers(false)}
+          onPick={(sticker) => { onReact?.(sticker.emoji); }}
+        />
+      )}
     </div>
   );
 }
