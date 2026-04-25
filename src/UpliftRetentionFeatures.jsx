@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import {
   collection,
@@ -27,6 +28,8 @@ import {
   addDoc,
 } from "firebase/firestore";
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat";
 import { startCheckout } from "./payments";
 import { AddToCircleButton } from "./Circles";
@@ -34,10 +37,13 @@ import { StickerPicker } from "./StickerReactions";
 
 import {
   Bell,
+  Camera,
   CheckCircle2,
   Flame,
   Gift,
   Heart,
+  MapPin,
+  Pencil,
   Plus,
   Share2,
   Shield,
@@ -1103,11 +1109,159 @@ function getLevelForBalance(balance) {
   return LEVEL_THRESHOLDS.reduce((l, t) => (balance >= t.min ? t : l), LEVEL_THRESHOLDS[0]);
 }
 
-export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
+// ─────────────────────────────────────────────────────────────────
+// EDIT PROFILE SHEET
+// ─────────────────────────────────────────────────────────────────
+
+function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
+  const [name, setName] = useState(profile?.fullName ?? "");
+  const [country, setCountry] = useState(profile?.country ?? "");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(profile?.profilePhotoUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !country || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      let profilePhotoUrl = profile?.profilePhotoUrl ?? "";
+      if (photoFile) {
+        const storage = getStorage();
+        const ext = photoFile.name.split(".").pop()?.toLowerCase() || "jpg";
+        const photoRef = ref(storage, `profilePhotos/${currentUser.uid}/avatar.${ext}`);
+        await uploadBytes(photoRef, photoFile, { contentType: photoFile.type });
+        profilePhotoUrl = await getDownloadURL(photoRef);
+      }
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        fullName: name.trim(),
+        country,
+        profilePhotoUrl,
+      });
+      onSaved?.({ fullName: name.trim(), country, profilePhotoUrl });
+      onClose();
+    } catch (err) {
+      console.error("Profile update error:", err);
+      setError("Couldn't save — please try again.");
+    }
+    setSaving(false);
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[220] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[92dvh] flex flex-col">
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 flex-shrink-0">
+          <h2 className="text-sm font-bold text-slate-800">Edit Profile</h2>
+          <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-100 transition-colors">
+            <X size={16} className="text-slate-400" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 pb-12 space-y-6">
+          {/* Photo picker */}
+          <div className="flex flex-col items-center gap-3 pt-2">
+            <div className="relative">
+              {photoPreview
+                ? <img src={photoPreview} alt="" className="h-24 w-24 rounded-full object-cover ring-4 ring-slate-100" />
+                : <div className="h-24 w-24 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-3xl font-bold text-white ring-4 ring-slate-100">
+                    {(name || profile?.fullName || "?")[0]?.toUpperCase()}
+                  </div>
+              }
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-teal-600 flex items-center justify-center shadow-lg hover:bg-teal-700 transition-colors">
+                <Camera size={14} className="text-white" />
+              </button>
+            </div>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
+              Change photo
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+          </div>
+
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
+              Display name
+            </label>
+            <div className="relative">
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                maxLength={40}
+                placeholder="Your full name"
+                className="w-full rounded-2xl border border-slate-200 pl-4 pr-10 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
+              />
+              <Pencil size={13} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Country */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
+              Location
+            </label>
+            <div className="relative">
+              <MapPin size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={country}
+                onChange={e => setCountry(e.target.value)}
+                className="w-full rounded-2xl border border-slate-200 pl-9 pr-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 bg-white appearance-none transition-colors">
+                <option value="">Select your country</option>
+                {COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+
+          {/* Save */}
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || !country || saving}
+            className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-40">
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PROFILE CARD
+// ─────────────────────────────────────────────────────────────────
+
+export function ProfileCard({ profile, streak, sparkBalance, onClose, db, currentUser }) {
   const cardRef = useRef(null);
   const [copying, setCopying] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [localProfile, setLocalProfile] = useState(profile);
+
+  useEffect(() => { setLocalProfile(profile); }, [profile]);
+
   const level = getLevelForBalance(sparkBalance);
-  const mood = MOOD_OPTIONS.find((m) => m.id === profile?.moodTag);
+  const mood = MOOD_OPTIONS.find((m) => m.id === localProfile?.moodTag);
 
   const handleShare = async () => {
     setCopying(true);
@@ -1135,54 +1289,84 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm">
-        <div ref={cardRef} className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl">
-          <div className="flex items-center gap-3 mb-4">
-            {profile?.profilePhotoUrl
-              ? <img src={profile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" crossOrigin="anonymous" />
-              : <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">{(profile?.fullName ?? "?")[0]}</div>}
-            <div>
-              <p className="text-lg font-extrabold">{profile?.fullName}</p>
-              <p className="text-sm text-white/80">{profile?.country}</p>
-              {mood && <p className="text-xs text-white/70 mt-0.5">{mood.emoji} {mood.label}</p>}
+    <>
+      <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-sm">
+          {/* Card (shareable) */}
+          <div ref={cardRef} className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              {localProfile?.profilePhotoUrl
+                ? <img src={localProfile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" crossOrigin="anonymous" />
+                : <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">{(localProfile?.fullName ?? "?")[0]}</div>}
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-extrabold truncate">{localProfile?.fullName}</p>
+                <p className="text-sm text-white/80 truncate">{localProfile?.country}</p>
+                {mood && <p className="text-xs text-white/70 mt-0.5">{mood.emoji} {mood.label}</p>}
+              </div>
+              {db && currentUser && (
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="flex-shrink-0 h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  title="Edit profile">
+                  <Pencil size={13} className="text-white" />
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Flame size={16} className="mx-auto mb-1 text-orange-200" />
+                <p className="text-xl font-extrabold">{streak ?? 0}</p>
+                <p className="text-[10px] text-white/70">day streak</p>
+              </div>
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
+                <p className="text-xl font-extrabold">{sparkBalance}</p>
+                <p className="text-[10px] text-white/70">sparks</p>
+              </div>
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Star size={16} className="mx-auto mb-1 text-white/80" />
+                <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
+                <p className="text-[10px] text-white/70">level</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
+              <Heart size={12} className="text-pink-200" />
+              <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Flame size={16} className="mx-auto mb-1 text-orange-200" />
-              <p className="text-xl font-extrabold">{streak ?? 0}</p>
-              <p className="text-[10px] text-white/70">day streak</p>
-            </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
-              <p className="text-xl font-extrabold">{sparkBalance}</p>
-              <p className="text-[10px] text-white/70">sparks</p>
-            </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Star size={16} className="mx-auto mb-1 text-white/80" />
-              <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
-              <p className="text-[10px] text-white/70">level</p>
-            </div>
+
+          {/* Actions */}
+          <div className="mt-3 flex gap-2">
+            <button onClick={handleShare} disabled={copying}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+              <Share2 size={14} />
+              {copying ? "Preparing…" : "Share / Save"}
+            </button>
+            {db && currentUser && (
+              <button onClick={() => setShowEdit(true)}
+                className="flex items-center justify-center gap-1.5 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
+            <button onClick={onClose}
+              className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
+              Close
+            </button>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
-            <Heart size={12} className="text-pink-200" />
-            <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button onClick={handleShare} disabled={copying}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
-            <Share2 size={14} />
-            {copying ? "Preparing…" : "Share / Save"}
-          </button>
-          <button onClick={onClose}
-            className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
-            Close
-          </button>
         </div>
       </div>
-    </div>
+
+      {showEdit && (
+        <EditProfileSheet
+          db={db}
+          currentUser={currentUser}
+          profile={localProfile}
+          onClose={() => setShowEdit(false)}
+          onSaved={(updates) => setLocalProfile(p => ({ ...p, ...updates }))}
+        />
+      )}
+    </>
   );
 }
 
