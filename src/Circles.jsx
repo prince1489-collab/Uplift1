@@ -787,6 +787,109 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
   );
 }
 
+// ── CircleInviteBanner — inline banner shown below the header ─────────────────
+
+export function CircleInviteBanner({ db, currentUser }) {
+  const [invites, setInvites] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [acting, setActing] = useState(false);
+
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "circleInvites"),
+      where("toUid", "==", currentUser.uid),
+      where("status", "==", "pending")
+    );
+    return onSnapshot(q, snap => {
+      setInvites(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setIdx(0);
+    }, () => {});
+  }, [db, currentUser?.uid]);
+
+  const inv = invites[idx];
+
+  const handleAccept = async () => {
+    if (!inv || acting) return;
+    setActing(true);
+    try {
+      await updateDoc(doc(db, "circles", inv.circleId), { members: arrayUnion(currentUser.uid) });
+      await updateDoc(doc(db, "circleInvites", inv.id), { status: "accepted" });
+    } catch (err) {
+      console.error("Accept invite error:", err);
+    }
+    setActing(false);
+  };
+
+  const handleDecline = async () => {
+    if (!inv || acting) return;
+    setActing(true);
+    await updateDoc(doc(db, "circleInvites", inv.id), { status: "declined" }).catch(() => {});
+    setActing(false);
+  };
+
+  return (
+    <div
+      className="overflow-hidden transition-all duration-500 ease-in-out flex-shrink-0"
+      style={{ maxHeight: invites.length > 0 ? "120px" : "0px" }}>
+      {inv && (
+        <div className="mx-3 mt-2 mb-1 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            {/* Circle icon + text */}
+            <span className="text-2xl flex-shrink-0 leading-none">{inv.circleEmoji ?? "⭕"}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white leading-tight truncate">
+                {inv.fromName} invited you
+              </p>
+              <p className="text-[11px] text-white/80 truncate">
+                Join <span className="font-semibold">{inv.circleName}</span>
+              </p>
+            </div>
+
+            {/* Invite counter if multiple */}
+            {invites.length > 1 && (
+              <span className="text-[10px] font-semibold text-white/70 flex-shrink-0">
+                {idx + 1}/{invites.length}
+              </span>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={handleDecline}
+                disabled={acting}
+                className="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/20 active:scale-95 transition-all disabled:opacity-50">
+                Decline
+              </button>
+              <button
+                onClick={handleAccept}
+                disabled={acting}
+                className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-bold text-teal-700 hover:bg-teal-50 active:scale-95 transition-all disabled:opacity-50 shadow-sm">
+                {acting ? "…" : "Join ✓"}
+              </button>
+            </div>
+          </div>
+
+          {/* Dot indicators when multiple invites */}
+          {invites.length > 1 && (
+            <div className="flex gap-1.5 mt-2 justify-center">
+              {invites.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIdx(i)}
+                  className={`h-1 rounded-full transition-all duration-200 ${
+                    i === idx ? "w-5 bg-white" : "w-1.5 bg-white/40"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── CirclesPanel ──────────────────────────────────────────────────────────────
 
 export function CirclesPanel({ db, currentUser, isPremium = false }) {

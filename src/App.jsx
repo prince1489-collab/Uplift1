@@ -16,7 +16,7 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 
-import { CirclesPanel, useCircles } from "./Circles";
+import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
 
 import {
@@ -1445,6 +1445,8 @@ export default function App() {
                 </div>
               </div>
             </header>
+
+            <CircleInviteBanner db={db} currentUser={currentUser} />
 
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
