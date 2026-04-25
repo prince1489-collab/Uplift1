@@ -15,6 +15,7 @@ import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
+import IntroStep from "./IntroStep";
 
 import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
@@ -865,7 +866,9 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [unauthScreen, setUnauthScreen] = useState("welcome");
+  const [unauthScreen, setUnauthScreen] = useState(
+    localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
+  );
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
   // Mystery unwrap: { [messageId]: revealedText } persisted to localStorage
@@ -1208,6 +1211,9 @@ export default function App() {
   }
 
   if (!isRealSignedInUser) {
+    if (unauthScreen === "intro") {
+      return <IntroStep onDone={() => setUnauthScreen("welcome")} />;
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
