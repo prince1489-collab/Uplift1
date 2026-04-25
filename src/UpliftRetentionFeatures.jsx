@@ -1320,7 +1320,7 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
           <div ref={cardRef} className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               {localProfile?.profilePhotoUrl
-                ? <img src={localProfile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" crossOrigin="anonymous" />
+                ? <img src={localProfile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" />
                 : <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">{(localProfile?.fullName ?? "?")[0]}</div>}
               <div className="flex-1 min-w-0">
                 <p className="text-lg font-extrabold truncate">{localProfile?.fullName}</p>
