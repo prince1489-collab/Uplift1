@@ -19,6 +19,7 @@ import IntroStep from "./IntroStep";
 
 import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
+import GoodNews from "./GoodNews";
 
 import {
   useStreak, computeSparkReward,
@@ -866,6 +867,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [activeTab, setActiveTab] = useState("feed");
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1454,6 +1456,31 @@ export default function App() {
 
             <CircleInviteBanner db={db} currentUser={currentUser} />
 
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-100 bg-white flex-shrink-0">
+              <button
+                onClick={() => setActiveTab("feed")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "feed"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💬 Feed
+              </button>
+              <button
+                onClick={() => setActiveTab("news")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "news"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                🌟 Good News
+              </button>
+            </div>
+
+            {activeTab === "news" ? (
+              <GoodNews />
+            ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
               {(() => {
@@ -1620,8 +1647,10 @@ export default function App() {
               <SendingIndicator visible={isSending} />
               <div ref={endRef} />
             </main>
+            )} {/* end activeTab === "feed" */}
 
-            {/* FAB-style footer */}
+            {/* FAB-style footer — only on feed tab */}
+            {activeTab === "feed" && (
             <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
                 isPremium ? (
@@ -1674,6 +1703,7 @@ export default function App() {
                 </div>
               ) : null}
             </footer>
+            )} {/* end activeTab === "feed" footer */}
 
             {/* ── Bottom sheet greeting picker ── */}
             {pickerOpen && (
