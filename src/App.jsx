@@ -1474,7 +1474,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🌟 Good News
+                🌟 Wonderful News
               </button>
             </div>
 

@@ -1,10 +1,10 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// GoodNews.jsx — Daily curated good-news feed
+// GoodNews.jsx — Daily Wonderful News feed
 
 import React, { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Share2, ExternalLink } from "lucide-react";
 
-const CATEGORIES = ["All", "🧬 Science", "🌿 Environment", "🐾 Animals", "🤝 Kindness", "🎓 Education", "🚀 Space", "✨ Inspiring"];
+const CATEGORIES = ["All", "✨ Inspiring", "🔬 Breakthrough", "🤪 Weird & Wonderful", "🤝 Kind", "😂 Funny"];
 
 function formatDate(dateStr) {
   try {
@@ -169,7 +169,7 @@ export default function GoodNews() {
       <div className="px-4 pt-4 pb-2 bg-white border-b border-slate-100">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-base font-bold text-slate-800">Good News</p>
+            <p className="text-base font-bold text-slate-800">Wonderful News</p>
             <p className="text-[11px] text-slate-400">{todayLabel()}</p>
           </div>
           <button
@@ -227,7 +227,7 @@ export default function GoodNews() {
         {/* Footer note */}
         {!loading && !error && filtered.length > 0 && (
           <p className="text-center text-[10px] text-slate-300 pb-2 pt-1">
-            Stories refreshed daily · Source: Good News Network
+            Stories refreshed daily · Inspiring · Breakthrough · Weird & Wonderful
           </p>
         )}
       </div>

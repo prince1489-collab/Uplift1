@@ -5,45 +5,61 @@ const RSS_URL = "https://www.goodnewsnetwork.org/feed/";
 
 const FALLBACK = [
   {
-    title: "Scientists Discover New Treatment That Eliminates Chronic Pain in Trials",
-    description: "A groundbreaking non-opioid treatment showed 90% pain reduction in early trials, giving hope to millions living with chronic conditions.",
+    title: "Scientists Discover Non-Opioid Treatment That Eliminates Chronic Pain in Trials",
+    description: "A groundbreaking treatment showed 90% pain reduction in early trials, giving hope to millions living with chronic conditions worldwide.",
     link: "https://www.goodnewsnetwork.org",
     pubDate: new Date().toUTCString(),
     image: null,
-    category: { emoji: "🧬", label: "Science" },
+    category: { emoji: "🔬", label: "Breakthrough" },
   },
   {
-    title: "Teen Builds Free Library of 3,000 Books for Underserved Communities",
-    description: "A 16-year-old spent two summers collecting and distributing books to neighborhoods with no public library access.",
+    title: "Retired Postman Walks 1,000 Miles to Deliver Hand-Written Letters to Strangers",
+    description: "He wrote kind notes to 1,000 random addresses and spent three months personally delivering replies he received — sparking friendships across the country.",
     link: "https://www.goodnewsnetwork.org",
     pubDate: new Date().toUTCString(),
     image: null,
-    category: { emoji: "🎓", label: "Education" },
+    category: { emoji: "🤝", label: "Kind" },
   },
   {
-    title: "Ocean Plastic Down 30% in Monitored Zones After Cleanup Initiative",
-    description: "A coalition of volunteers removed over 1 million pounds of plastic from coastal waters in a record-breaking annual effort.",
+    title: "Town Elects a Golden Retriever as Honorary Mayor for the Third Year Running",
+    description: "Max the dog won the popular vote again in Rabbit Hash, Kentucky, after campaigning on a platform of belly rubs and afternoon naps.",
     link: "https://www.goodnewsnetwork.org",
     pubDate: new Date().toUTCString(),
     image: null,
-    category: { emoji: "🌿", label: "Environment" },
+    category: { emoji: "🤪", label: "Weird & Wonderful" },
+  },
+  {
+    title: "Stand-Up Comedian Performs Sold-Out Show in Sign Language — Audience in Tears of Laughter",
+    description: "Deaf comedian Kathy Buckley's show sold out in under an hour, proving laughter truly is universal.",
+    link: "https://www.goodnewsnetwork.org",
+    pubDate: new Date().toUTCString(),
+    image: null,
+    category: { emoji: "😂", label: "Funny" },
+  },
+  {
+    title: "94-Year-Old Graduates With a Bachelor's Degree After 70-Year Dream",
+    description: "'It's never too late,' said Doris Goldstein, who enrolled at 92 and walked the stage to a standing ovation.",
+    link: "https://www.goodnewsnetwork.org",
+    pubDate: new Date().toUTCString(),
+    image: null,
+    category: { emoji: "✨", label: "Inspiring" },
   },
 ];
 
 function categorize(title, desc) {
   const text = (title + " " + desc).toLowerCase();
-  if (/animal|dog|cat|wildlife|bird|whale|elephant|bear|rescue|sanctuary|koala|turtle/.test(text))
-    return { emoji: "🐾", label: "Animals" };
-  if (/climate|renewable|solar|wind|tree|forest|ocean|recycle|environment|green|planet|nature|emission/.test(text))
-    return { emoji: "🌿", label: "Environment" };
-  if (/cancer|cure|vaccine|medical|health|hospital|doctor|patient|research|breakthrough|disease|treatment/.test(text))
-    return { emoji: "🧬", label: "Science" };
-  if (/school|student|graduate|education|teacher|learning|scholarship|literacy|book/.test(text))
-    return { emoji: "🎓", label: "Education" };
-  if (/donate|charity|volunteer|community|kindness|help|raise|fund|neighbor|stranger|give/.test(text))
-    return { emoji: "🤝", label: "Kindness" };
-  if (/space|nasa|mars|planet|star|asteroid|telescope|galaxy|orbit|mission/.test(text))
-    return { emoji: "🚀", label: "Space" };
+  // Funny first — lighthearted, humorous, absurd
+  if (/funny|hilarious|laughing|laugh|comedy|comedian|joke|prank|viral|adorable|cute|puppy|kitten|cat video|goat|squirrel|duck|penguin|mayor|elected.*dog|dog.*elected/.test(text))
+    return { emoji: "😂", label: "Funny" };
+  // Weird & Wonderful — quirky, unusual, record-breaking, unexpected
+  if (/world record|guinness|bizarre|unusual|oddly|unexpected|strange|mysterious|first ever|never before|incredible|unbelievable|rare|ancient|fossil|discovery/.test(text))
+    return { emoji: "🤪", label: "Weird & Wonderful" };
+  // Breakthrough — science, medical, tech
+  if (/cancer|cure|vaccine|treatment|clinical trial|breakthrough|research|scientist|invention|technology|ai |robot|gene|dna|drug|therapy|disease|hospital|nasa|space|planet|orbit/.test(text))
+    return { emoji: "🔬", label: "Breakthrough" };
+  // Kind — acts of kindness, community, charity
+  if (/donate|charity|volunteer|community|kindness|kind|help|raise|fund|neighbor|stranger|give|rescued|saved|veteran|homeless|reunited|reunite|foster|adopted|scholarship/.test(text))
+    return { emoji: "🤝", label: "Kind" };
   return { emoji: "✨", label: "Inspiring" };
 }
 
