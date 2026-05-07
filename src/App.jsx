@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, Users, Share2, Shield, X,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -152,6 +152,27 @@ function InputRow({ icon, children, rightIcon = null }) {
 function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
   const [open, setOpen] = useState(false);
   const [showCircles, setShowCircles] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const inviteLink = `https://seenapp.app/?ref=${currentUser?.uid || ""}`;
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleCopyInvite = async () => {
+    try { await navigator.clipboard.writeText(inviteLink); } catch (_) {}
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2500);
+  };
+
+  const handleShareInvite = async () => {
+    try {
+      await navigator.share({
+        title: "Join me on Seen",
+        text: "Someone out there needs to hear from you 💌 — join Seen, the kindness app. We both get +50 Sparks when you sign up!",
+        url: inviteLink,
+      });
+    } catch (_) {}
+  };
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -301,6 +322,52 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                 )}
               </div>
 
+              {/* Invite a Friend */}
+              <div className="mx-4 border-t border-slate-100 mt-1" />
+              <div className="px-3 py-2 space-y-0.5">
+                <button
+                  onClick={() => setShowInvite(v => !v)}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
+                  <IconBox className="bg-emerald-50">
+                    <UserPlus size={16} className="text-emerald-500" />
+                  </IconBox>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Invite a Friend</p>
+                    <p className="text-[11px] text-slate-400">You both earn +50 Sparks ✨</p>
+                  </div>
+                  <ChevronDown size={15} className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showInvite ? "rotate-180" : ""}`} />
+                </button>
+                {showInvite && (
+                  <div className="mx-1 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 space-y-2">
+                    <p className="text-[11px] font-semibold text-emerald-800">Your invite link:</p>
+                    <div className="flex items-center rounded-xl border border-emerald-200 bg-white px-3 py-2">
+                      <p className="flex-1 text-[10px] text-slate-500 truncate font-mono">{inviteLink}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCopyInvite}
+                        className={`flex-1 rounded-xl py-2 text-[11px] font-bold transition-all border ${
+                          inviteCopied
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                        }`}>
+                        {inviteCopied ? "Copied ✓" : "Copy link"}
+                      </button>
+                      {canShare && (
+                        <button
+                          onClick={handleShareInvite}
+                          className="flex-1 rounded-xl py-2 text-[11px] font-bold bg-emerald-500 text-white border border-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1">
+                          <Share2 size={11} /> Share
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-emerald-600 text-center">
+                      Friend signs up → you both get +50 Sparks automatically
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="mx-4 border-t border-slate-100" />
 
               {/* Support */}
@@ -428,9 +495,26 @@ function NotificationBell({ streak, db, currentUser }) {
   const [dismissedReactions, setDismissedReactions] = useState(new Set());
   const [dismissedInvites, setDismissedInvites] = useState(new Set());
   const prevWaveIdsRef = useRef(new Set());
+  const prevReactionKeysRef = useRef(new Set());
   const notifyReadyRef = useRef(false);
-  // Don't fire notifications on initial load — only for waves that arrive after mount
+  // Don't fire notifications on initial load — only for events that arrive after mount
   useEffect(() => { const t = setTimeout(() => { notifyReadyRef.current = true; }, 2500); return () => clearTimeout(t); }, []);
+
+  // Browser notification for new reactions
+  useEffect(() => {
+    if (!notifyReadyRef.current) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    reactions.forEach((r) => {
+      if (!prevReactionKeysRef.current.has(r.key)) {
+        const label = r.emoji.startsWith("sticker_") ? "a sticker" : r.emoji;
+        new Notification(`New reaction on your message ${label}`, {
+          body: `"${(r.text || "").slice(0, 70)}"`,
+          icon: "/favicon.svg",
+        });
+      }
+    });
+    prevReactionKeysRef.current = new Set(reactions.map((r) => r.key));
+  }, [reactions]);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -849,6 +933,10 @@ export default function App() {
   const [pendingBuddyUid] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
   });
+  // Referral: detect ?ref=UID in URL and persist to localStorage
+  const [pendingReferralUid] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("ref") || null; } catch { return null; }
+  });
   const [isSending, setIsSending] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
@@ -938,6 +1026,17 @@ export default function App() {
     return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
 
+  // Persist referral code and clean URL
+  useEffect(() => {
+    if (!pendingReferralUid) return;
+    try {
+      localStorage.setItem("seen_ref", pendingReferralUid);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ref");
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-add buddy from invite link (?add=UID)
   useEffect(() => {
     if (!pendingBuddyUid || !isRealSignedInUser || !db || !currentUser) return;
@@ -954,6 +1053,33 @@ export default function App() {
 
   useEffect(() => {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
+  }, [isRealSignedInUser, hasCompletedOnboarding]);
+
+  // Re-engagement: when user leaves the app, schedule a "come back" push for 9 AM tomorrow
+  useEffect(() => {
+    if (!isRealSignedInUser || !hasCompletedOnboarding) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    let retryTimer = null;
+    const MESSAGES = [
+      { title: "Seen misses you 💌", body: "Someone out there is waiting to hear something kind from you." },
+      { title: "Your streak is waiting 🔥", body: "Keep the kindness going — open Seen and spread some warmth." },
+      { title: "Today's Wonderful News is in 🌟", body: "Start your day with something uplifting." },
+    ];
+    const scheduleReEngagement = () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() + 1);
+      target.setHours(9, 0, 0, 0);
+      const msg = MESSAGES[new Date().getDay() % MESSAGES.length];
+      retryTimer = setTimeout(() => new Notification(msg.title, { body: msg.body, icon: "/favicon.svg" }), target.getTime() - now.getTime());
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) scheduleReEngagement();
+      else { if (retryTimer) clearTimeout(retryTimer); }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => { document.removeEventListener("visibilitychange", onVisibilityChange); if (retryTimer) clearTimeout(retryTimer); };
   }, [isRealSignedInUser, hasCompletedOnboarding]);
 
   useEffect(() => {
@@ -1136,6 +1262,30 @@ export default function App() {
         profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
+
+      // Referral reward — award +50 Sparks to both users
+      const pendingRef = localStorage.getItem("seen_ref");
+      if (pendingRef && pendingRef !== user.uid) {
+        try {
+          const referralDocRef = doc(db, "referrals", user.uid);
+          const newUserRef = userProfileRef(user.uid);
+          const referrerRef = doc(db, "users", pendingRef);
+          await runTransaction(db, async (tx) => {
+            const [existing, referrerSnap, newUserSnap] = await Promise.all([
+              tx.get(referralDocRef), tx.get(referrerRef), tx.get(newUserRef),
+            ]);
+            if (existing.exists()) return; // already rewarded
+            if (!referrerSnap.exists()) return; // invalid referrer
+            const referrerSparks = referrerSnap.data().sparkBalance ?? 0;
+            const newUserSparks = newUserSnap.exists() ? (newUserSnap.data().sparkBalance ?? 0) : 0;
+            tx.set(referralDocRef, { referrerUid: pendingRef, newUserUid: user.uid, awardedAt: serverTimestamp() });
+            tx.update(referrerRef, { sparkBalance: referrerSparks + 50 });
+            tx.set(newUserRef, { sparkBalance: newUserSparks + 50 }, { merge: true });
+          });
+          localStorage.removeItem("seen_ref");
+        } catch (err) { console.error("Referral award error:", err); }
+      }
+
       setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
