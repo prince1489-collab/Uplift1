@@ -1,67 +1,83 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// /api/goodnews.js — Proxy + parse GoodNewsNetwork RSS feed
+// /api/goodnews.js — Multi-source Wonderful News feed, 10+ stories per category
 
-const RSS_URL = "https://www.goodnewsnetwork.org/feed/";
+const CATEGORY_SOURCES = {
+  inspiring: {
+    emoji: "✨",
+    label: "Inspiring",
+    feeds: [
+      "https://www.goodnewsnetwork.org/category/inspire/feed/",
+      "https://www.goodnewsnetwork.org/category/heroes/feed/",
+      "https://www.positive.news/feed/",
+    ],
+  },
+  breakthrough: {
+    emoji: "🔬",
+    label: "Breakthrough",
+    feeds: [
+      "https://www.sciencedaily.com/rss/top/science.xml",
+      "https://newatlas.com/feed/",
+      "https://futurism.com/feed",
+    ],
+  },
+  weirdWonderful: {
+    emoji: "🤪",
+    label: "Weird & Wonderful",
+    feeds: [
+      "https://www.odditycentral.com/feed",
+      "https://twistedsifter.com/feed/",
+      "https://www.atlasobscura.com/feeds/latest",
+    ],
+  },
+  kind: {
+    emoji: "🤝",
+    label: "Kind",
+    feeds: [
+      "https://www.goodnewsnetwork.org/category/kindness/feed/",
+      "https://www.goodnewsnetwork.org/category/animals/feed/",
+      "https://www.sunnyskyz.com/rss.php",
+    ],
+  },
+  funny: {
+    emoji: "😂",
+    label: "Funny",
+    feeds: [
+      "https://laughingsquid.com/feed/",
+      "https://www.boredpanda.com/feed/",
+      "https://www.goodnewsnetwork.org/category/humor/feed/",
+    ],
+  },
+};
 
-const FALLBACK = [
-  {
-    title: "Scientists Discover Non-Opioid Treatment That Eliminates Chronic Pain in Trials",
-    description: "A groundbreaking treatment showed 90% pain reduction in early trials, giving hope to millions living with chronic conditions worldwide.",
-    link: "https://www.goodnewsnetwork.org",
-    pubDate: new Date().toUTCString(),
-    image: null,
-    category: { emoji: "🔬", label: "Breakthrough" },
-  },
-  {
-    title: "Retired Postman Walks 1,000 Miles to Deliver Hand-Written Letters to Strangers",
-    description: "He wrote kind notes to 1,000 random addresses and spent three months personally delivering replies he received — sparking friendships across the country.",
-    link: "https://www.goodnewsnetwork.org",
-    pubDate: new Date().toUTCString(),
-    image: null,
-    category: { emoji: "🤝", label: "Kind" },
-  },
-  {
-    title: "Town Elects a Golden Retriever as Honorary Mayor for the Third Year Running",
-    description: "Max the dog won the popular vote again in Rabbit Hash, Kentucky, after campaigning on a platform of belly rubs and afternoon naps.",
-    link: "https://www.goodnewsnetwork.org",
-    pubDate: new Date().toUTCString(),
-    image: null,
-    category: { emoji: "🤪", label: "Weird & Wonderful" },
-  },
-  {
-    title: "Stand-Up Comedian Performs Sold-Out Show in Sign Language — Audience in Tears of Laughter",
-    description: "Deaf comedian Kathy Buckley's show sold out in under an hour, proving laughter truly is universal.",
-    link: "https://www.goodnewsnetwork.org",
-    pubDate: new Date().toUTCString(),
-    image: null,
-    category: { emoji: "😂", label: "Funny" },
-  },
-  {
-    title: "94-Year-Old Graduates With a Bachelor's Degree After 70-Year Dream",
-    description: "'It's never too late,' said Doris Goldstein, who enrolled at 92 and walked the stage to a standing ovation.",
-    link: "https://www.goodnewsnetwork.org",
-    pubDate: new Date().toUTCString(),
-    image: null,
-    category: { emoji: "✨", label: "Inspiring" },
-  },
-];
+const FALLBACK_PER_CATEGORY = {
+  inspiring: [
+    { title: "94-Year-Old Graduates With a Bachelor's Degree After a 70-Year Dream", description: "'It's never too late,' said Doris, who walked the stage to a standing ovation.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Blind Climber Reaches Summit of Mount Everest for the Third Time", description: "Erik Weihenmayer says the mountain 'speaks to you in a different language when you can't see it.'", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Small Town Raises $500,000 to Save Its Beloved Local Library", description: "A community rallied in 30 days to keep their library open after funding cuts threatened closure.", link: "#", pubDate: new Date().toUTCString(), image: null },
+  ],
+  breakthrough: [
+    { title: "Scientists Grow Human Kidney in Pig for First Time — Landmark for Transplants", description: "Researchers at a leading university successfully grew a functional human kidney inside a pig embryo.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "New Battery Technology Charges an EV in 5 Minutes Flat", description: "A solid-state battery developed by a university spin-out promises to eliminate range anxiety entirely.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "AI System Detects Cancer 4 Years Before Symptoms Appear", description: "Early results from a 10,000-patient trial show 90% accuracy in detecting tumours before they're visible.", link: "#", pubDate: new Date().toUTCString(), image: null },
+  ],
+  weirdWonderful: [
+    { title: "Town Elects a Golden Retriever as Honorary Mayor for the Third Year Running", description: "Max the dog won the popular vote again, campaigning on belly rubs and afternoon naps.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Man Discovers 1,000-Year-Old Viking Sword While Walking His Dog", description: "A metal-detector hobbyist unearthed the perfectly preserved blade in a Norwegian field.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Octopus Found to Dream in Vivid Colour Changes — Scientists Stunned", description: "Footage shows the octopus cycling through dramatic colour patterns during REM-like sleep.", link: "#", pubDate: new Date().toUTCString(), image: null },
+  ],
+  kind: [
+    { title: "Retired Postman Walks 1,000 Miles Delivering Hand-Written Letters to Strangers", description: "He wrote kind notes to 1,000 random addresses and personally delivered replies he received.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Teen Donates All His Birthday Money to Build a Water Well in Kenya", description: "The 13-year-old raised £4,000 from friends and family, enough to provide clean water for a village.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Restaurant Feeds Hundreds of Homeless Every Sunday for Free — 10 Years Running", description: "Chef Maria Santos has never missed a Sunday since 2014, serving a three-course meal to anyone who comes.", link: "#", pubDate: new Date().toUTCString(), image: null },
+  ],
+  funny: [
+    { title: "Duck Follows Bus Route Every Day — Locals Start Calling It the Commuter", description: "The duck has taken the same route 47 times. Transit officials say they have no plans to charge it.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Man Accidentally Live-Streams Cat Walking on Keyboard to 50,000 People", description: "The cat managed to start a stream, adjust camera filters, and type 'mewwwww' in the chat.", link: "#", pubDate: new Date().toUTCString(), image: null },
+    { title: "Grandma Thinks Google Home Is a New Family Member, Greets It Every Morning", description: "'I just don't want it to feel left out,' she told her bewildered grandchildren.", link: "#", pubDate: new Date().toUTCString(), image: null },
+  ],
+};
 
-function categorize(title, desc) {
-  const text = (title + " " + desc).toLowerCase();
-  // Funny first — lighthearted, humorous, absurd
-  if (/funny|hilarious|laughing|laugh|comedy|comedian|joke|prank|viral|adorable|cute|puppy|kitten|cat video|goat|squirrel|duck|penguin|mayor|elected.*dog|dog.*elected/.test(text))
-    return { emoji: "😂", label: "Funny" };
-  // Weird & Wonderful — quirky, unusual, record-breaking, unexpected
-  if (/world record|guinness|bizarre|unusual|oddly|unexpected|strange|mysterious|first ever|never before|incredible|unbelievable|rare|ancient|fossil|discovery/.test(text))
-    return { emoji: "🤪", label: "Weird & Wonderful" };
-  // Breakthrough — science, medical, tech
-  if (/cancer|cure|vaccine|treatment|clinical trial|breakthrough|research|scientist|invention|technology|ai |robot|gene|dna|drug|therapy|disease|hospital|nasa|space|planet|orbit/.test(text))
-    return { emoji: "🔬", label: "Breakthrough" };
-  // Kind — acts of kindness, community, charity
-  if (/donate|charity|volunteer|community|kindness|kind|help|raise|fund|neighbor|stranger|give|rescued|saved|veteran|homeless|reunited|reunite|foster|adopted|scholarship/.test(text))
-    return { emoji: "🤝", label: "Kind" };
-  return { emoji: "✨", label: "Inspiring" };
-}
+// ── XML parsing helpers ───────────────────────────────────────────────────────
 
 function extractCDATA(tag, xml) {
   const re = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, "i");
@@ -75,9 +91,10 @@ function extractCDATA(tag, xml) {
 function extractImage(itemXml) {
   let m = itemXml.match(/<media:content[^>]+url="([^"]+)"/i);
   if (m) return m[1];
-  m = itemXml.match(/<enclosure[^>]+url="([^"]+)"/i);
+  m = itemXml.match(/<media:thumbnail[^>]+url="([^"]+)"/i);
   if (m) return m[1];
-  // image inside description HTML
+  m = itemXml.match(/<enclosure[^>]+url="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*?)"/i);
+  if (m) return m[1];
   m = itemXml.match(/<img[^>]+src="([^"]+)"/i);
   if (m) return m[1];
   return null;
@@ -86,59 +103,94 @@ function extractImage(itemXml) {
 function cleanHtml(str) {
   return str
     .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#8230;/g, "…")
-    .replace(/&#8216;|&#8217;/g, "'")
-    .replace(/&#8220;|&#8221;/g, '"')
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#8230;/g, "…").replace(/&#8216;|&#8217;/g, "'")
+    .replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, " ").replace(/\s+/g, " ")
     .trim();
 }
+
+async function fetchFeed(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 SeenApp/1.0 (https://seenapp.app)", Accept: "application/rss+xml, application/xml, text/xml" },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.text();
+}
+
+function parseFeed(xml, limit = 12) {
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null && items.length < limit) {
+    const ix = match[1];
+    const title = cleanHtml(extractCDATA("title", ix));
+    const link = cleanHtml(extractCDATA("link", ix));
+    const description = cleanHtml(extractCDATA("description", ix)).slice(0, 200);
+    const pubDate = cleanHtml(extractCDATA("pubDate", ix));
+    const image = extractImage(ix);
+    if (title && link && !link.startsWith("#")) items.push({ title, link, description, pubDate, image });
+  }
+  return items;
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    const response = await fetch(RSS_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 SeenApp/1.0 (https://seenapp.app)",
-        Accept: "application/rss+xml, application/xml, text/xml",
-      },
-      signal: AbortSignal.timeout(8000),
-    });
+    // Fetch all feeds for all categories in parallel
+    const allFeedUrls = Object.entries(CATEGORY_SOURCES).flatMap(([key, cat]) =>
+      cat.feeds.map((url) => ({ key, url }))
+    );
 
-    if (!response.ok) throw new Error(`RSS fetch failed: ${response.status}`);
+    const results = await Promise.allSettled(
+      allFeedUrls.map(async ({ key, url }) => {
+        const xml = await fetchFeed(url);
+        const stories = parseFeed(xml, 12);
+        return { key, stories };
+      })
+    );
 
-    const xml = await response.text();
-    const items = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-    let match;
+    // Group stories by category, deduplicate by link
+    const byCategory = {};
+    for (const [key, cat] of Object.entries(CATEGORY_SOURCES)) {
+      byCategory[key] = { emoji: cat.emoji, label: cat.label, stories: [] };
+    }
 
-    while ((match = itemRegex.exec(xml)) !== null && items.length < 8) {
-      const itemXml = match[1];
-      const title = cleanHtml(extractCDATA("title", itemXml));
-      const link = cleanHtml(extractCDATA("link", itemXml));
-      const rawDesc = extractCDATA("description", itemXml);
-      const description = cleanHtml(rawDesc).slice(0, 180);
-      const pubDate = cleanHtml(extractCDATA("pubDate", itemXml));
-      const image = extractImage(itemXml);
-
-      if (title && link) {
-        items.push({ title, link, description, pubDate, image, category: categorize(title, description) });
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const { key, stories } = result.value;
+      const seen = new Set(byCategory[key].stories.map((s) => s.link));
+      for (const story of stories) {
+        if (!seen.has(story.link) && byCategory[key].stories.length < 10) {
+          seen.add(story.link);
+          byCategory[key].stories.push(story);
+        }
       }
     }
 
-    if (items.length === 0) throw new Error("No items parsed");
+    // Pad any category that came up short with fallbacks
+    for (const [key, cat] of Object.entries(byCategory)) {
+      if (cat.stories.length < 3) {
+        const fallbacks = FALLBACK_PER_CATEGORY[key] || [];
+        const seen = new Set(cat.stories.map((s) => s.link));
+        for (const fb of fallbacks) {
+          if (!seen.has(fb.link)) cat.stories.push(fb);
+        }
+      }
+    }
 
-    res.setHeader("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
-    return res.status(200).json({ items, fetched: new Date().toISOString() });
+    res.setHeader("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=86400");
+    return res.status(200).json({ categories: byCategory, fetched: new Date().toISOString() });
   } catch (err) {
     console.error("GoodNews API error:", err.message);
-    // Return fallback stories so the feature always shows content
+    const fallbackCategories = {};
+    for (const [key, cat] of Object.entries(CATEGORY_SOURCES)) {
+      fallbackCategories[key] = { emoji: cat.emoji, label: cat.label, stories: FALLBACK_PER_CATEGORY[key] || [] };
+    }
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ items: FALLBACK, fetched: new Date().toISOString(), fallback: true });
+    return res.status(200).json({ categories: fallbackCategories, fetched: new Date().toISOString(), fallback: true });
   }
 }
