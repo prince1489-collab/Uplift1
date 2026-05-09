@@ -1,11 +1,41 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// GoodNews.jsx — Daily Wonderful News feed, 10 stories per category
+// GoodNews.jsx — Daily Wonderful News feed, 10 stories per category + local news
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, Share2, ExternalLink } from "lucide-react";
 
 const CATEGORY_KEYS = ["inspiring", "breakthrough", "weirdWonderful", "kind", "funny"];
 const ALL_TAB = "all";
+
+// Country name (as stored in profile) → ISO 3166-1 alpha-2
+const COUNTRY_CODES = {
+  "Afghanistan":"AF","Albania":"AL","Algeria":"DZ","Andorra":"AD","Angola":"AO",
+  "Argentina":"AR","Armenia":"AM","Australia":"AU","Austria":"AT","Azerbaijan":"AZ",
+  "Bahrain":"BH","Bangladesh":"BD","Belarus":"BY","Belgium":"BE","Bolivia":"BO",
+  "Bosnia and Herzegovina":"BA","Brazil":"BR","Bulgaria":"BG","Cambodia":"KH",
+  "Cameroon":"CM","Canada":"CA","Chile":"CL","China":"CN","Colombia":"CO",
+  "Costa Rica":"CR","Croatia":"HR","Cuba":"CU","Cyprus":"CY","Czech Republic":"CZ",
+  "Denmark":"DK","Dominican Republic":"DO","Ecuador":"EC","Egypt":"EG",
+  "El Salvador":"SV","Estonia":"EE","Ethiopia":"ET","Finland":"FI","France":"FR",
+  "Georgia":"GE","Germany":"DE","Ghana":"GH","Greece":"GR","Guatemala":"GT",
+  "Honduras":"HN","Hungary":"HU","Iceland":"IS","India":"IN","Indonesia":"ID",
+  "Iran":"IR","Iraq":"IQ","Ireland":"IE","Israel":"IL","Italy":"IT","Jamaica":"JM",
+  "Japan":"JP","Jordan":"JO","Kazakhstan":"KZ","Kenya":"KE","Kuwait":"KW",
+  "Latvia":"LV","Lebanon":"LB","Libya":"LY","Lithuania":"LT","Luxembourg":"LU",
+  "Malaysia":"MY","Malta":"MT","Mexico":"MX","Moldova":"MD","Mongolia":"MN",
+  "Morocco":"MA","Mozambique":"MZ","Myanmar":"MM","Nepal":"NP","Netherlands":"NL",
+  "New Zealand":"NZ","Nicaragua":"NI","Nigeria":"NG","Norway":"NO","Oman":"OM",
+  "Pakistan":"PK","Panama":"PA","Paraguay":"PY","Peru":"PE","Philippines":"PH",
+  "Poland":"PL","Portugal":"PT","Qatar":"QA","Romania":"RO","Russia":"RU",
+  "Rwanda":"RW","Saudi Arabia":"SA","Senegal":"SN","Serbia":"RS","Singapore":"SG",
+  "Slovakia":"SK","Slovenia":"SI","Somalia":"SO","South Africa":"ZA",
+  "South Korea":"KR","Spain":"ES","Sri Lanka":"LK","Sudan":"SD","Sweden":"SE",
+  "Switzerland":"CH","Syria":"SY","Taiwan":"TW","Tanzania":"TZ","Thailand":"TH",
+  "Tunisia":"TN","Turkey":"TR","Uganda":"UG","Ukraine":"UA",
+  "United Arab Emirates":"AE","United Kingdom":"GB","United States":"US",
+  "Uruguay":"UY","Uzbekistan":"UZ","Venezuela":"VE","Vietnam":"VN",
+  "Yemen":"YE","Zambia":"ZM","Zimbabwe":"ZW",
+};
 
 function todayLabel() {
   return new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -73,11 +103,18 @@ function StoryCard({ story, emoji, label }) {
       )}
 
       <div className="p-3 flex flex-col flex-1">
-        {/* Category + date */}
+        {/* Category + local badge + date */}
         <div className="flex items-center justify-between mb-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700">
-            {emoji} {label}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+              {emoji} {label}
+            </span>
+            {story.isLocal && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                📍 Local
+              </span>
+            )}
+          </div>
           {story.pubDate && <span className="text-[10px] text-slate-400">{formatDate(story.pubDate)}</span>}
         </div>
 
@@ -176,29 +213,34 @@ function AllStoriesGrid({ categories }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function GoodNews() {
+export default function GoodNews({ profile }) {
   const [categories, setCategories] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState(ALL_TAB);
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
+  const [localCountry, setLocalCountry] = useState(null);
   const tabBarRef = useRef(null);
+
+  const countryCode = COUNTRY_CODES[profile?.country] || null;
 
   const fetchNews = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/goodnews");
+      const url = countryCode ? `/api/goodnews?country=${countryCode}` : "/api/goodnews";
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Could not load Wonderful News");
       const data = await res.json();
       setCategories(data.categories || {});
+      setLocalCountry(data.countryCode || null);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [countryCode]);
 
   useEffect(() => { fetchNews(); }, [fetchNews, refreshKey]);
 
@@ -225,7 +267,14 @@ export default function GoodNews() {
         <div className="flex items-center justify-between mb-2">
           <div>
             <p className="text-base font-bold text-slate-800">Wonderful News</p>
-            <p className="text-[11px] text-slate-400">{todayLabel()}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <p className="text-[11px] text-slate-400">{todayLabel()}</p>
+              {localCountry && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                  📍 {profile?.country} + Global
+                </span>
+              )}
+            </div>
           </div>
           <button onClick={handleRefresh} className="flex items-center justify-center h-8 w-8 rounded-full text-slate-400 hover:bg-slate-100 active:scale-90 transition-all">
             <RefreshCw size={14} className={spinning ? "animate-spin" : ""} />
@@ -293,9 +342,16 @@ export default function GoodNews() {
                 )}
                 <div className="p-3.5">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700">
-                      {activeCategory.emoji} {activeCategory.label}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+                        {activeCategory.emoji} {activeCategory.label}
+                      </span>
+                      {story.isLocal && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                          📍 Local
+                        </span>
+                      )}
+                    </div>
                     {story.pubDate && <span className="text-[10px] text-slate-400">{formatDate(story.pubDate)}</span>}
                   </div>
                   <p className="text-sm font-bold text-slate-800 leading-snug mb-1.5 line-clamp-2">{story.title}</p>

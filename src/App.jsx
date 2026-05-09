@@ -1629,7 +1629,7 @@ export default function App() {
             </div>
 
             {activeTab === "news" ? (
-              <GoodNews />
+              <GoodNews profile={profile} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>

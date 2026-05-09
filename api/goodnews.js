@@ -1,5 +1,5 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// /api/goodnews.js — Multi-source Wonderful News feed, 10+ stories per category
+// /api/goodnews.js — Multi-source Wonderful News feed, 10+ stories per category + local news
 
 const CATEGORY_SOURCES = {
   inspiring: {
@@ -10,6 +10,7 @@ const CATEGORY_SOURCES = {
       "https://www.goodnewsnetwork.org/category/heroes/feed/",
       "https://www.positive.news/feed/",
     ],
+    gnewsQuery: "inspiring OR heartwarming OR uplifting story",
   },
   breakthrough: {
     emoji: "🔬",
@@ -19,6 +20,7 @@ const CATEGORY_SOURCES = {
       "https://newatlas.com/feed/",
       "https://futurism.com/feed",
     ],
+    gnewsQuery: "science breakthrough OR medical discovery OR invention",
   },
   weirdWonderful: {
     emoji: "🤪",
@@ -28,6 +30,7 @@ const CATEGORY_SOURCES = {
       "https://twistedsifter.com/feed/",
       "https://www.atlasobscura.com/feeds/latest",
     ],
+    gnewsQuery: "weird wonderful unusual quirky amazing record",
   },
   kind: {
     emoji: "🤝",
@@ -37,6 +40,7 @@ const CATEGORY_SOURCES = {
       "https://www.goodnewsnetwork.org/category/animals/feed/",
       "https://www.sunnyskyz.com/rss.php",
     ],
+    gnewsQuery: "kindness volunteer community charity helping strangers",
   },
   funny: {
     emoji: "😂",
@@ -46,6 +50,7 @@ const CATEGORY_SOURCES = {
       "https://www.boredpanda.com/feed/",
       "https://www.goodnewsnetwork.org/category/humor/feed/",
     ],
+    gnewsQuery: "funny amusing humorous lighthearted viral",
   },
 };
 
@@ -118,6 +123,12 @@ async function fetchFeed(url) {
   return res.text();
 }
 
+function buildGoogleNewsUrl(query, countryCode) {
+  const cc = countryCode.toUpperCase();
+  const q = encodeURIComponent(query);
+  return `https://news.google.com/rss/search?q=${q}&gl=${cc}&hl=en&ceid=${cc}:en`;
+}
+
 function parseFeed(xml, limit = 12) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -139,28 +150,48 @@ function parseFeed(xml, limit = 12) {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
+  const countryCode = (req.query?.country || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+
   try {
-    // Fetch all feeds for all categories in parallel
-    const allFeedUrls = Object.entries(CATEGORY_SOURCES).flatMap(([key, cat]) =>
-      cat.feeds.map((url) => ({ key, url }))
-    );
+    // Build feed list: global feeds + optional local Google News feeds per category
+    const allFeedTasks = Object.entries(CATEGORY_SOURCES).flatMap(([key, cat]) => {
+      const global = cat.feeds.map((url) => ({ key, url, isLocal: false }));
+      const local = countryCode
+        ? [{ key, url: buildGoogleNewsUrl(cat.gnewsQuery, countryCode), isLocal: true }]
+        : [];
+      return [...global, ...local];
+    });
 
     const results = await Promise.allSettled(
-      allFeedUrls.map(async ({ key, url }) => {
+      allFeedTasks.map(async ({ key, url, isLocal }) => {
         const xml = await fetchFeed(url);
-        const stories = parseFeed(xml, 12);
-        return { key, stories };
+        const stories = parseFeed(xml, 12).map((s) => ({ ...s, isLocal }));
+        return { key, stories, isLocal };
       })
     );
 
-    // Group stories by category, deduplicate by link
+    // Group by category — local stories go first, then global
     const byCategory = {};
     for (const [key, cat] of Object.entries(CATEGORY_SOURCES)) {
       byCategory[key] = { emoji: cat.emoji, label: cat.label, stories: [] };
     }
 
+    // First pass: local stories
     for (const result of results) {
-      if (result.status !== "fulfilled") continue;
+      if (result.status !== "fulfilled" || !result.value.isLocal) continue;
+      const { key, stories } = result.value;
+      const seen = new Set(byCategory[key].stories.map((s) => s.link));
+      for (const story of stories) {
+        if (!seen.has(story.link) && byCategory[key].stories.length < 5) {
+          seen.add(story.link);
+          byCategory[key].stories.push(story);
+        }
+      }
+    }
+
+    // Second pass: global stories fill the rest
+    for (const result of results) {
+      if (result.status !== "fulfilled" || result.value.isLocal) continue;
       const { key, stories } = result.value;
       const seen = new Set(byCategory[key].stories.map((s) => s.link));
       for (const story of stories) {
@@ -171,19 +202,23 @@ export default async function handler(req, res) {
       }
     }
 
-    // Pad any category that came up short with fallbacks
+    // Pad with fallbacks if a category came up short
     for (const [key, cat] of Object.entries(byCategory)) {
       if (cat.stories.length < 3) {
-        const fallbacks = FALLBACK_PER_CATEGORY[key] || [];
         const seen = new Set(cat.stories.map((s) => s.link));
-        for (const fb of fallbacks) {
+        for (const fb of FALLBACK_PER_CATEGORY[key] || []) {
           if (!seen.has(fb.link)) cat.stories.push(fb);
         }
       }
     }
 
-    res.setHeader("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=86400");
-    return res.status(200).json({ categories: byCategory, fetched: new Date().toISOString() });
+    // Don't cache per-country responses at the edge (vary by country)
+    const cacheHeader = countryCode
+      ? "public, s-maxage=10800, stale-while-revalidate=86400"
+      : "public, s-maxage=21600, stale-while-revalidate=86400";
+    res.setHeader("Cache-Control", cacheHeader);
+    res.setHeader("Vary", "");
+    return res.status(200).json({ categories: byCategory, countryCode: countryCode || null, fetched: new Date().toISOString() });
   } catch (err) {
     console.error("GoodNews API error:", err.message);
     const fallbackCategories = {};
