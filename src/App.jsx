@@ -312,14 +312,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   </div>
                 )}
 
-                {isPremium && (
-                  <Row
-                    onClick={() => { onManageSubscription(); close(); }}
-                    icon={<IconBox><CreditCard size={16} className="text-slate-500" /></IconBox>}
-                    label="Manage Subscription"
-                    sub="Billing & plan details"
-                  />
-                )}
               </div>
 
               {/* Invite a Friend */}
@@ -800,7 +792,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
 }
 
 function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday }) {
-  const isPremium = Boolean(profile?.isPremium);
+  const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
 
@@ -1217,7 +1209,7 @@ export default function App() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const isPremium = Boolean(profile?.isPremium);
+  const isPremium = true; // all features free — grow the user base
   const circles = useCircles(db, currentUser);
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
@@ -1295,7 +1287,7 @@ export default function App() {
     } finally { setIsSavingProfile(false); }
   };
 
-  const DAILY_GREETING_LIMIT = isPremium ? 25 : 10;
+  const DAILY_GREETING_LIMIT = 50;
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
   const handleUnwrapMystery = (messageId) => {
@@ -1413,7 +1405,6 @@ export default function App() {
           <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser} />
         )}
 
-        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} currentUser={currentUser} />}
 
         {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
 
@@ -1502,8 +1493,8 @@ export default function App() {
                         {streak >= 7 ? "🔥" : "✨"}{streak}d
                       </span>
                     )}
-                    <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${isPremium ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-teal-50 border-teal-200 text-teal-700"}`}>
-                      {isPremium ? "✦" : "✨"}{displayedSparks}
+                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border bg-teal-50 border-teal-200 text-teal-700">
+                      ✨{displayedSparks}
                     </span>
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
@@ -1803,32 +1794,13 @@ export default function App() {
             {activeTab === "feed" && (
             <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
-                isPremium ? (
-                  /* Premium user — simple done banner */
-                  <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
-                    <span className="text-lg">🌙</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-amber-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
-                      <p className="text-[11px] text-amber-600">Your daily kindness quota resets at midnight ✨</p>
-                    </div>
+                <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
+                  <span className="text-lg">🌙</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-teal-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
+                    <p className="text-[11px] text-teal-600">Come back tomorrow to keep the kindness going ✨</p>
                   </div>
-                ) : (
-                  /* Free user — upgrade nudge */
-                  <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3">
-                    <div className="flex items-start gap-3 mb-2.5">
-                      <span className="text-xl flex-shrink-0">🌙</span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-800">You've sent 10 greetings today!</p>
-                        <p className="text-[11px] text-slate-500">Premium unlocks 25/day — plus 6 bigger circles, a monthly themed pack, kindness stats, and more.</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowUpgrade(true)}
-                      className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 py-2 text-xs font-bold text-white hover:opacity-90 transition-opacity">
-                      See all Premium benefits ✦
-                    </button>
-                  </div>
-                )
+                </div>
               ) : !pickerOpen ? (
                 <div className="flex items-center gap-2.5">
                   <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
