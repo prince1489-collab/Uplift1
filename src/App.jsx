@@ -1358,36 +1358,41 @@ export default function App() {
         isMystery: greeting.isMystery ?? false,
         isPremium: isPremium,
       });
-      const reward = computeSparkReward(greeting.sparkReward, streak);
-      const refDoc = userProfileRef(currentUser.uid);
-      let newStreak = streak;
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(refDoc);
-        const profileData = snap.exists() ? snap.data() : {};
-        transaction.set(refDoc, {
-          sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
-          lastGreetingAt: nowMs(),
-          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
-        }, { merge: true });
-      });
-      await recordGreetingDay();
-      newStreak = streak + 1;
+
+      // Message is written — close picker and play animations immediately
+      setPickerOpen(false);
+      setIsSending(false);
+      const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
       if (greeting.isMystery) {
-        setMysteryReward(reward);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        setShowGiftModal(true);
+        setMysteryReward(computeSparkReward(greeting.sparkReward, streak));
+        setTimeout(() => setShowGiftModal(true), 1000);
       }
-      setPickerOpen(false);
+
+      // Bookkeeping runs in the background — doesn't block the UI
+      const reward = computeSparkReward(greeting.sparkReward, streak);
+      const refDoc = userProfileRef(currentUser.uid);
+      Promise.all([
+        runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(refDoc);
+          const profileData = snap.exists() ? snap.data() : {};
+          transaction.set(refDoc, {
+            sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
+            lastGreetingAt: nowMs(),
+            ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+          }, { merge: true });
+        }),
+        recordGreetingDay(),
+      ]).catch((err) => console.error("Reward update failed:", err));
+
     } catch (err) {
       console.error("Send failed:", err);
       setSendError("Couldn't send — please try again.");
       setTimeout(() => setSendError(""), 4000);
-    } finally {
       setIsSending(false);
     }
   };
