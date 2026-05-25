@@ -149,6 +149,42 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
+const MOOD_TAGLINES = {
+  grateful:   "feeling grateful",
+  hopeful:    "feeling hopeful",
+  tired:      "a little tired",
+  happy:      "feeling happy",
+  struggling: "going through it",
+  peaceful:   "at peace",
+  energised:  "full of energy",
+  lonely:     "feeling a bit lonely",
+};
+
+function getMoodBubbleStyle(moodTag, isMine) {
+  if (!moodTag) return null;
+  const MINE = {
+    grateful:   { background: "linear-gradient(135deg,#f59e0b,#d97706)", borderColor: "#d97706", boxShadow: "0 4px 14px rgba(245,158,11,0.35)" },
+    hopeful:    { background: "linear-gradient(135deg,#10b981,#059669)", borderColor: "#059669", boxShadow: "0 4px 14px rgba(16,185,129,0.35)" },
+    tired:      { background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", borderColor: "#7c3aed", boxShadow: "0 4px 14px rgba(139,92,246,0.35)" },
+    happy:      { background: "linear-gradient(135deg,#fbbf24,#f59e0b)", borderColor: "#f59e0b", boxShadow: "0 4px 14px rgba(251,191,36,0.35)" },
+    struggling: { background: "linear-gradient(135deg,#0ea5e9,#0284c7)", borderColor: "#0284c7", boxShadow: "0 4px 14px rgba(14,165,233,0.35)" },
+    peaceful:   { background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", borderColor: "#0ea5e9", boxShadow: "0 4px 14px rgba(56,189,248,0.35)" },
+    energised:  { background: "linear-gradient(135deg,#f97316,#ea580c)", borderColor: "#ea580c", boxShadow: "0 4px 14px rgba(249,115,22,0.35)" },
+    lonely:     { background: "linear-gradient(135deg,#6366f1,#4f46e5)", borderColor: "#4f46e5", boxShadow: "0 4px 14px rgba(99,102,241,0.35)" },
+  };
+  const THEIRS = {
+    grateful:   { backgroundColor: "#fffbeb", borderColor: "#fde68a", color: "#92400e" },
+    hopeful:    { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" },
+    tired:      { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#5b21b6" },
+    happy:      { backgroundColor: "#fefce8", borderColor: "#fef08a", color: "#854d0e" },
+    struggling: { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#075985" },
+    peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#e0f2fe", color: "#0c4a6e" },
+    energised:  { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
+    lonely:     { backgroundColor: "#eef2ff", borderColor: "#e0e7ff", color: "#3730a3" },
+  };
+  return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
+}
+
 function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
   const [open, setOpen] = useState(false);
   const [showCircles, setShowCircles] = useState(false);
@@ -1642,10 +1678,10 @@ export default function App() {
                         <div className="max-w-[82%] group">
                           <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
                             {!mine && (
-                              <span className="flex items-center gap-0.5">
+                              <span className="flex items-center gap-1">
                                 {group.sender}
-                                {group.items[0].isPremium && (
-                                  <span className="text-amber-500 text-[9px]" title="Premium member">✦</span>
+                                {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
+                                  <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
                                 )}
                               </span>
                             )}
@@ -1654,11 +1690,11 @@ export default function App() {
                             )}
                             {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
                             {mine && (
-                              <span className="flex items-center gap-0.5">
-                                {group.sender}
-                                {isPremium && (
-                                  <span className="text-amber-500 text-[9px]" title="Premium member">✦</span>
+                              <span className="flex items-center gap-1">
+                                {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
+                                  <span className="font-light italic text-[9px] text-slate-400">{MOOD_TAGLINES[group.moodTag]} ·</span>
                                 )}
+                                {group.sender}
                               </span>
                             )}
                           </div>
@@ -1731,19 +1767,23 @@ export default function App() {
                                       {(() => {
                                         const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
                                         const isBursting = burstingMystery === m.id;
+                                        const moodStyle = getMoodBubbleStyle(group.moodTag, mine);
+                                        const hasMood = Boolean(moodStyle);
                                         return (
                                           <div
                                             className={`border px-3 py-2.5 text-sm font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
                                               mine
-                                                ? "bg-teal-600 text-white border-teal-600"
+                                                ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
                                                 : isUnwrapped
                                                 ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
                                                 : isMystery
                                                 ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
-                                                : "bg-white border-slate-200 text-slate-800"
-                                            } ${isBursting ? "mystery-burst" : ""}`}
+                                                : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
+                                            } ${isBursting ? "mystery-burst" : ""} ${hasMood ? "seen-heartbeat" : ""}`}
                                             style={
-                                              isUnwrapped
+                                              hasMood && !isUnwrapped && !(isMystery && !mine)
+                                                ? moodStyle
+                                                : isUnwrapped
                                                 ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
                                                 : isMystery && !mine
                                                 ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }

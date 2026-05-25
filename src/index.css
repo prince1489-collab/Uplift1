@@ -11,6 +11,19 @@ body {
   font-family: "Inter", system-ui, sans-serif;
 }
 
+/* Mood heartbeat — two subtle pulses (lub-dub) every 4s */
+@keyframes seenHeartbeat {
+  0%, 100% { transform: scale(1); }
+  7%  { transform: scale(1.022); }
+  14% { transform: scale(1.005); }
+  20% { transform: scale(1.018); }
+  28% { transform: scale(1); }
+}
+.seen-heartbeat {
+  animation: seenHeartbeat 4s ease-in-out infinite;
+  will-change: transform;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
