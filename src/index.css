@@ -24,6 +24,36 @@ body {
   will-change: transform;
 }
 
+/* Dynamic mood bubbles (own messages) — gradient drift (A) + shimmer sweep (B) */
+@keyframes seenGradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes seenShimmerSweep {
+  0%   { transform: translateX(-150%); opacity: 0; }
+  5%   { opacity: 1; }
+  30%  { transform: translateX(350%); opacity: 1; }
+  31%  { opacity: 0; }
+  100% { transform: translateX(-150%); opacity: 0; }
+}
+.seen-mood-dynamic {
+  background-size: 200% 200% !important;
+  animation: seenHeartbeat 4s ease-in-out infinite, seenGradientShift 8s ease-in-out infinite;
+  will-change: background-position, transform;
+}
+.seen-mood-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+  animation: seenShimmerSweep 5s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }

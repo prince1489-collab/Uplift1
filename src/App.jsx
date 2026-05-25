@@ -1215,7 +1215,7 @@ export default function App() {
     const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limitToLast(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
-        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.deleted);
         const finalMessages = live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }];
         const prevIds = new Set(prevMessagesRef.current.map((m) => m.id));
         const brandNewIds = new Set(finalMessages.filter((m) => !prevIds.has(m.id)).map((m) => m.id));
@@ -1401,7 +1401,10 @@ export default function App() {
   const handleDeleteMessage = async (messageId, sparkReward) => {
     if (!currentUser) return;
     try {
-      await deleteDoc(doc(db, "publicMessages", messageId));
+      await updateDoc(doc(db, "publicMessages", messageId), {
+        deleted: true,
+        deletedAt: nowMs(),
+      });
       if (sparkReward > 0) {
         const refDoc = userProfileRef(currentUser.uid);
         runTransaction(db, async (tx) => {
@@ -1798,7 +1801,9 @@ export default function App() {
                                                 : isMystery
                                                 ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
                                                 : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
-                                            } ${isBursting ? "mystery-burst" : ""} ${hasMood ? "seen-heartbeat" : ""}`}
+                                            } ${isBursting ? "mystery-burst" : ""} ${
+                                              hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""
+                                            }`}
                                             style={
                                               hasMood && !isUnwrapped && !(isMystery && !mine)
                                                 ? moodStyle
@@ -1817,6 +1822,7 @@ export default function App() {
                                             ) : (
                                               <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
                                             )}
+                                            {hasMood && mine && <span className="seen-mood-shimmer" aria-hidden="true" />}
                                           </div>
                                         );
                                       })()}
