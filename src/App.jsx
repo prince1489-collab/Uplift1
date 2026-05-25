@@ -1674,34 +1674,21 @@ export default function App() {
                   const isNewGroup = newMessageIds.has(firstId);
                   return (
                     <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
-                      <div className={`mb-5 flex ${mine ? "justify-end" : "justify-start"}`}>
-                        <div className="max-w-[82%] group">
-                          <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
-                            {!mine && (
-                              <span className="flex items-center gap-1">
-                                {group.sender}
-                                {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
-                                  <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
-                                )}
-                              </span>
-                            )}
+                      <div className="mb-3">
+                        <div className="w-full group">
+                          <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-semibold text-slate-400">
+                            <span className="flex items-center gap-1">
+                              {mine ? "You" : group.sender}
+                              {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
+                                <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
+                              )}
+                            </span>
                             {!mine && group.items[0].country && (
                               <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
                             )}
                             {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
-                            {mine && (
-                              <span className="flex items-center gap-1">
-                                {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
-                                  <span className="font-light italic text-[9px] text-slate-400">{MOOD_TAGLINES[group.moodTag]} ·</span>
-                                )}
-                                {group.sender}
-                              </span>
-                            )}
                           </div>
-                          <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
-                            {isMulti && (
-                              <div className={`absolute top-2 bottom-2 w-0.5 rounded-full ${mine ? "right-0 bg-teal-300" : "left-0 bg-slate-300"}`} />
-                            )}
+                          <div className="relative">
                             <div className="space-y-0.5">
                               {group.items.map((m, idx) => {
                                 const isFirst = idx === 0;
@@ -1709,7 +1696,7 @@ export default function App() {
                                 const isMystery = Boolean(m.isMystery);
                                 const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
                                 const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
-                                const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
+                                const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
                                   <div key={m.id} className="relative pb-2">
@@ -1771,7 +1758,7 @@ export default function App() {
                                         const hasMood = Boolean(moodStyle);
                                         return (
                                           <div
-                                            className={`border px-3 py-2.5 text-sm font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                            className={`border px-4 py-3.5 text-base font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
                                               mine
                                                 ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
                                                 : isUnwrapped
@@ -1842,27 +1829,20 @@ export default function App() {
                   </div>
                 </div>
               ) : !pickerOpen ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
-                    onClick={() => setPickerOpen(true)}>
-                    <span>Send a kind greeting…</span>
-                    {todayMessageCount > 0 && (
-                      <span className="ml-2 text-[10px] font-semibold text-slate-400">
-                        {DAILY_GREETING_LIMIT - todayMessageCount} left today
-                      </span>
-                    )}
-                  </div>
-                  <button onClick={() => setPickerOpen(true)} disabled={isSending}
-                    className={`seen-send-btn h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-colors ${
-                      isSending
-                        ? "bg-teal-400 shadow-none scale-90 cursor-not-allowed"
-                        : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600"
-                    }`}>
-                    {isSending
-                      ? <Loader2 size={15} className="text-white animate-spin" />
-                      : <Send size={15} className="text-white" />}
-                  </button>
-                </div>
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  disabled={isSending}
+                  className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+                  style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 4px 20px rgba(20,184,166,0.4)" }}>
+                  {isSending
+                    ? <Loader2 size={18} className="text-white animate-spin" />
+                    : <>
+                        ✨ Send kindness
+                        {todayMessageCount > 0 && (
+                          <span className="text-sm opacity-70 font-normal">· {DAILY_GREETING_LIMIT - todayMessageCount} left</span>
+                        )}
+                      </>}
+                </button>
               ) : null}
             </footer>
             )} {/* end activeTab === "feed" footer */}
