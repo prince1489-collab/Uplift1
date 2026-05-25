@@ -1398,6 +1398,20 @@ export default function App() {
     }
   };
 
+  const handleShareStory = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const refDoc = userProfileRef(currentUser.uid);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(refDoc);
+        const data = snap.exists() ? snap.data() : {};
+        tx.set(refDoc, { sparkBalance: Number(data.sparkBalance ?? 0) + 5 }, { merge: true });
+      });
+    } catch (err) {
+      console.error("Share spark award failed:", err);
+    }
+  }, [currentUser]);
+
   const handleDeleteMessage = async (messageId, sparkReward) => {
     if (!currentUser) return;
     try {
@@ -1687,7 +1701,7 @@ export default function App() {
             </div>
 
             {activeTab === "news" ? (
-              <GoodNews profile={profile} />
+              <GoodNews profile={profile} onShareStory={handleShareStory} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
