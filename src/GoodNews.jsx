@@ -520,13 +520,15 @@ export default function GoodNews({ profile, onShareStory }) {
           <AllView categories={categories} onShareStory={onShareStory} />
         ) : activeCategory ? (
           <div>
-            <HeroCard
-              story={activeCategory.stories[0]}
-              catKey={activeTab}
-              emoji={activeCategory.emoji}
-              label={activeCategory.label}
-              onShareStory={onShareStory}
-            />
+            {activeCategory.stories.length > 0 && (
+              <HeroCard
+                story={activeCategory.stories[0]}
+                catKey={activeTab}
+                emoji={activeCategory.emoji}
+                label={activeCategory.label}
+                onShareStory={onShareStory}
+              />
+            )}
             {activeCategory.stories.length > 1 && (
               <div className="px-4 space-y-3">
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
