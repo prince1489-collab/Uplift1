@@ -1215,7 +1215,7 @@ export default function App() {
     const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limitToLast(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
-        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.deleted);
+        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const finalMessages = live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }];
         const prevIds = new Set(prevMessagesRef.current.map((m) => m.id));
         const brandNewIds = new Set(finalMessages.filter((m) => !prevIds.has(m.id)).map((m) => m.id));
@@ -1260,9 +1260,14 @@ export default function App() {
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
   const animatedProgress = useProgressBarFill(progressPercent);
 
+  const deletedMessageIds = useMemo(
+    () => new Set(profile?.deletedMessages ?? []),
+    [profile]
+  );
+
   const todayMessageCount = useMemo(() =>
-    messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
-    [messages, currentUser]
+    messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday() && !deletedMessageIds.has(m.id)).length,
+    [messages, currentUser, deletedMessageIds]
   );
 
   const handleSignOut = async () => {
@@ -1401,20 +1406,17 @@ export default function App() {
   const handleDeleteMessage = async (messageId, sparkReward) => {
     if (!currentUser) return;
     try {
-      await updateDoc(doc(db, "publicMessages", messageId), {
-        deleted: true,
-        deletedAt: nowMs(),
+      const refDoc = userProfileRef(currentUser.uid);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(refDoc);
+        const data = snap.exists() ? snap.data() : {};
+        const existing = Array.isArray(data.deletedMessages) ? data.deletedMessages : [];
+        const newDeleted = existing.includes(messageId) ? existing : [...existing, messageId];
+        const newBalance = sparkReward > 0
+          ? Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward)
+          : Number(data.sparkBalance ?? 0);
+        tx.set(refDoc, { deletedMessages: newDeleted, sparkBalance: newBalance }, { merge: true });
       });
-      if (sparkReward > 0) {
-        const refDoc = userProfileRef(currentUser.uid);
-        runTransaction(db, async (tx) => {
-          const snap = await tx.get(refDoc);
-          const data = snap.exists() ? snap.data() : {};
-          tx.set(refDoc, {
-            sparkBalance: Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward),
-          }, { merge: true });
-        }).catch((err) => console.error("Spark deduct failed:", err));
-      }
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -1696,7 +1698,9 @@ export default function App() {
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
               {(() => {
                 const grouped = [];
-                messages.forEach((m) => {
+                messages
+                  .filter((m) => !deletedMessageIds.has(m.id))
+                  .forEach((m) => {
                   const last = grouped[grouped.length - 1];
                   if (last && last.uid === m.uid) { last.items.push(m); }
                   else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m] }); }
