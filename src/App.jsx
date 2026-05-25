@@ -55,7 +55,7 @@ import {
 
 import {
   addDoc, arrayUnion, collection, doc, getFirestore,
-  limit, onSnapshot, orderBy, query,
+  limit, limitToLast, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
@@ -957,6 +957,7 @@ export default function App() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sendError, setSendError] = useState("");
   // Buddy invite: detect ?add=UID in URL
   const [pendingBuddyUid] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
@@ -1211,7 +1212,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
-    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limit(100));
+    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limitToLast(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -1345,6 +1346,7 @@ export default function App() {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
     setIsSending(true);
+    setSendError("");
     try {
       await addDoc(publicMessagesRef, {
         uid: currentUser.uid,
@@ -1381,6 +1383,10 @@ export default function App() {
         setShowGiftModal(true);
       }
       setPickerOpen(false);
+    } catch (err) {
+      console.error("Send failed:", err);
+      setSendError("Couldn't send — please try again.");
+      setTimeout(() => setSendError(""), 4000);
     } finally {
       setIsSending(false);
     }
@@ -1829,20 +1835,25 @@ export default function App() {
                   </div>
                 </div>
               ) : !pickerOpen ? (
-                <button
-                  onClick={() => setPickerOpen(true)}
-                  disabled={isSending}
-                  className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
-                  style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 4px 20px rgba(20,184,166,0.4)" }}>
-                  {isSending
-                    ? <Loader2 size={18} className="text-white animate-spin" />
-                    : <>
-                        ✨ Send kindness
-                        {todayMessageCount > 0 && (
-                          <span className="text-sm opacity-70 font-normal">· {DAILY_GREETING_LIMIT - todayMessageCount} left</span>
-                        )}
-                      </>}
-                </button>
+                <>
+                  {sendError && (
+                    <p className="mb-2 text-center text-xs font-semibold text-red-500">{sendError}</p>
+                  )}
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    disabled={isSending}
+                    className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+                    style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 4px 20px rgba(20,184,166,0.4)" }}>
+                    {isSending
+                      ? <Loader2 size={18} className="text-white animate-spin" />
+                      : <>
+                          ✨ Send kindness
+                          {todayMessageCount > 0 && (
+                            <span className="text-sm opacity-70 font-normal">· {DAILY_GREETING_LIMIT - todayMessageCount} left</span>
+                          )}
+                        </>}
+                  </button>
+                </>
               ) : null}
             </footer>
             )} {/* end activeTab === "feed" footer */}
