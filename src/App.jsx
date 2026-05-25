@@ -54,7 +54,7 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, arrayUnion, collection, doc, getFirestore,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getFirestore,
   limit, limitToLast, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -1348,6 +1348,7 @@ export default function App() {
     setIsSending(true);
     setSendError("");
     try {
+      const earnedSparks = computeSparkReward(greeting.sparkReward, streak);
       await addDoc(publicMessagesRef, {
         uid: currentUser.uid,
         sender: profile.fullName,
@@ -1357,6 +1358,7 @@ export default function App() {
         country: profile?.country ?? null,
         isMystery: greeting.isMystery ?? false,
         isPremium: isPremium,
+        sparkReward: earnedSparks,
       });
 
       // Message is written — close picker and play animations immediately
@@ -1374,14 +1376,13 @@ export default function App() {
       }
 
       // Bookkeeping runs in the background — doesn't block the UI
-      const reward = computeSparkReward(greeting.sparkReward, streak);
       const refDoc = userProfileRef(currentUser.uid);
       Promise.all([
         runTransaction(db, async (transaction) => {
           const snap = await transaction.get(refDoc);
           const profileData = snap.exists() ? snap.data() : {};
           transaction.set(refDoc, {
-            sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
+            sparkBalance: Number(profileData?.sparkBalance ?? 0) + earnedSparks,
             lastGreetingAt: nowMs(),
             ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
           }, { merge: true });
@@ -1394,6 +1395,25 @@ export default function App() {
       setSendError("Couldn't send — please try again.");
       setTimeout(() => setSendError(""), 4000);
       setIsSending(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId, sparkReward) => {
+    if (!currentUser) return;
+    try {
+      await deleteDoc(doc(db, "publicMessages", messageId));
+      if (sparkReward > 0) {
+        const refDoc = userProfileRef(currentUser.uid);
+        runTransaction(db, async (tx) => {
+          const snap = await tx.get(refDoc);
+          const data = snap.exists() ? snap.data() : {};
+          tx.set(refDoc, {
+            sparkBalance: Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward),
+          }, { merge: true });
+        }).catch((err) => console.error("Spark deduct failed:", err));
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
     }
   };
 
@@ -1725,6 +1745,7 @@ export default function App() {
                                             onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
                                             onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
                                             onUpgrade={() => setShowUpgrade(true)}
+                                            onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />
                                         </div>
                                       </>

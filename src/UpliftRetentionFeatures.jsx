@@ -1535,7 +1535,7 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, on
   );
 }
 
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -1543,6 +1543,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!db || !messageId || !currentUser) return;
@@ -1693,6 +1694,24 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         style={{ fontSize: 13, fontWeight: 700, color: "rgba(20,184,166,0.9)", width: "auto", padding: "0 8px", height: 34, letterSpacing: "-0.5px" }}>
         GIF
       </button>
+      {mine && onDelete && (
+        <>
+          <div className="seen-qrb-sep" />
+          <button
+            className="seen-qrb-btn"
+            title={confirmDelete ? "Tap again to confirm" : "Delete your message"}
+            style={{ fontSize: 13, fontWeight: 700, width: "auto", padding: "0 8px", height: 34, color: confirmDelete ? "#ef4444" : "rgba(148,163,184,0.7)" }}
+            onClick={() => {
+              if (confirmDelete) { onDelete(); }
+              else {
+                setConfirmDelete(true);
+                setTimeout(() => setConfirmDelete(false), 3000);
+              }
+            }}>
+            {confirmDelete ? "Delete?" : "🗑️"}
+          </button>
+        </>
+      )}
       <div className="seen-qrb-sep" />
       <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
 
