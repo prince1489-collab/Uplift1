@@ -1260,14 +1260,9 @@ export default function App() {
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
   const animatedProgress = useProgressBarFill(progressPercent);
 
-  const deletedMessageIds = useMemo(
-    () => new Set(profile?.deletedMessages ?? []),
-    [profile]
-  );
-
   const todayMessageCount = useMemo(() =>
-    messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday() && !deletedMessageIds.has(m.id)).length,
-    [messages, currentUser, deletedMessageIds]
+    messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
+    [messages, currentUser]
   );
 
   const handleSignOut = async () => {
@@ -1406,17 +1401,17 @@ export default function App() {
   const handleDeleteMessage = async (messageId, sparkReward) => {
     if (!currentUser) return;
     try {
-      const refDoc = userProfileRef(currentUser.uid);
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(refDoc);
-        const data = snap.exists() ? snap.data() : {};
-        const existing = Array.isArray(data.deletedMessages) ? data.deletedMessages : [];
-        const newDeleted = existing.includes(messageId) ? existing : [...existing, messageId];
-        const newBalance = sparkReward > 0
-          ? Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward)
-          : Number(data.sparkBalance ?? 0);
-        tx.set(refDoc, { deletedMessages: newDeleted, sparkBalance: newBalance }, { merge: true });
-      });
+      await deleteDoc(doc(db, "publicMessages", messageId));
+      if (sparkReward > 0) {
+        const refDoc = userProfileRef(currentUser.uid);
+        runTransaction(db, async (tx) => {
+          const snap = await tx.get(refDoc);
+          const data = snap.exists() ? snap.data() : {};
+          tx.set(refDoc, {
+            sparkBalance: Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward),
+          }, { merge: true });
+        }).catch((err) => console.error("Spark deduct failed:", err));
+      }
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -1698,9 +1693,7 @@ export default function App() {
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
               {(() => {
                 const grouped = [];
-                messages
-                  .filter((m) => !deletedMessageIds.has(m.id))
-                  .forEach((m) => {
+                messages.forEach((m) => {
                   const last = grouped[grouped.length - 1];
                   if (last && last.uid === m.uid) { last.items.push(m); }
                   else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m] }); }
