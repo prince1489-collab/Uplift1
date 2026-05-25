@@ -1665,7 +1665,7 @@ export default function App() {
                 messages.forEach((m) => {
                   const last = grouped[grouped.length - 1];
                   if (last && last.uid === m.uid) { last.items.push(m); }
-                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.moodTag, items: [m] }); }
+                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m] }); }
                 });
                 return grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
