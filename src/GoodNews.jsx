@@ -178,9 +178,10 @@ function HeroCard({ story, catKey, emoji, label, onShareStory }) {
         {/* Title over image */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-4">
           <p className="text-[15px] font-extrabold text-white leading-snug line-clamp-2">{story.title}</p>
-          {story.pubDate && (
-            <p className="text-[10px] text-white/55 mt-0.5">{formatDate(story.pubDate)}</p>
-          )}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {story.pubDate && <p className="text-[10px] text-white/55">{formatDate(story.pubDate)}</p>}
+            {story.source && <p className="text-[10px] text-white/40">· {story.source}</p>}
+          </div>
         </div>
       </div>
 
@@ -275,6 +276,9 @@ function StoryCard({ story, emoji, label, onShareStory }) {
 
         <EmojiReactions story={story} />
 
+        {story.source && (
+          <p className="text-[9px] text-slate-400 mb-1.5">via {story.source}</p>
+        )}
         <div className="flex items-center gap-1.5 mt-auto">
           <button onClick={handleOpen} className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-slate-200 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all">
             <ExternalLink size={10} /> Read
@@ -328,6 +332,9 @@ function FullCard({ story, emoji, label, onShareStory }) {
               <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
                 📍 Local
               </span>
+            )}
+            {story.source && (
+              <span className="text-[9px] text-slate-400">via {story.source}</span>
             )}
           </div>
           {story.pubDate && <span className="text-[10px] text-slate-400">{formatDate(story.pubDate)}</span>}
