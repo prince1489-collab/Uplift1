@@ -1,7 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 // GoodNews.jsx — Daily Wonderful News feed, 10 stories per category + local news
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Share2, ExternalLink } from "lucide-react";
 
 const CATEGORY_KEYS = ["inspiring", "breakthrough", "weirdWonderful", "kind", "funny"];
@@ -168,11 +168,11 @@ function HeroCard({ story, catKey, emoji, label, onShareStory }) {
           <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-md border border-white/25 px-2.5 py-1 text-[11px] font-bold text-white">
             {emoji} {label}
           </span>
-          {story.isLocal && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/90 px-2 py-1 text-[10px] font-bold text-white">
-              📍 Local
-            </span>
-          )}
+          <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-bold text-white ${
+            story.isLocal ? "bg-amber-500/90" : "bg-sky-500/80"
+          }`}>
+            {story.isLocal ? "📍 Local" : "🌍 Global"}
+          </span>
         </div>
 
         {/* Title over image */}
@@ -265,11 +265,13 @@ function StoryCard({ story, emoji, label, onShareStory }) {
           <span className="inline-flex items-center gap-0.5 rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700">
             {emoji} {label}
           </span>
-          {story.isLocal && (
-            <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-              📍
-            </span>
-          )}
+          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+            story.isLocal
+              ? "bg-amber-50 border border-amber-200 text-amber-700"
+              : "bg-sky-50 border border-sky-200 text-sky-700"
+          }`}>
+            {story.isLocal ? "📍" : "🌍"}
+          </span>
         </div>
 
         <p className="text-[12px] font-bold text-slate-800 leading-snug mb-2 line-clamp-2 flex-1">{story.title}</p>
@@ -328,11 +330,13 @@ function FullCard({ story, emoji, label, onShareStory }) {
       <div className="p-3.5">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1">
-            {story.isLocal && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-                📍 Local
-              </span>
-            )}
+            <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+              story.isLocal
+                ? "bg-amber-50 border border-amber-200 text-amber-700"
+                : "bg-sky-50 border border-sky-200 text-sky-700"
+            }`}>
+              {story.isLocal ? "📍 Local" : "🌍 Global"}
+            </span>
             {story.source && (
               <span className="text-[9px] text-slate-400">via {story.source}</span>
             )}
@@ -382,10 +386,35 @@ function CategoryRow({ catKey, cat, onShareStory }) {
 }
 
 // ── All view: hero + category rows ────────────────────────────────────────────
-function AllView({ categories, onShareStory }) {
+function AllView({ categories, onShareStory, scope, onScopeChange }) {
   const heroKey = CATEGORY_KEYS.find((k) => categories?.[k]?.stories?.length > 0) || null;
   const heroCat = heroKey ? categories[heroKey] : null;
   const heroStory = heroCat?.stories?.[0] || null;
+
+  const hasAnyStory = CATEGORY_KEYS.some((k) => categories?.[k]?.stories?.length > 0);
+
+  if (!hasAnyStory) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+        <span className="text-4xl mb-3">{scope === "local" ? "📍" : "🌍"}</span>
+        <p className="text-sm font-semibold text-slate-600 mb-1">
+          {scope === "local" ? "No local stories yet" : "No global stories available"}
+        </p>
+        <p className="text-xs text-slate-400 mb-4">
+          {scope === "local"
+            ? "Local news is fetched for your profile country. Try switching to Global."
+            : "Try switching to Local stories."}
+        </p>
+        {onScopeChange && (
+          <button
+            onClick={() => onScopeChange(scope === "local" ? "global" : "local")}
+            className="rounded-full px-5 py-2 bg-teal-500 text-white text-xs font-bold">
+            Switch to {scope === "local" ? "🌍 Global" : "📍 Local"}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -420,6 +449,7 @@ export default function GoodNews({ profile, onShareStory }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [localCountry, setLocalCountry] = useState(null);
+  const [scope, setScope] = useState("global");
   const tabBarRef = useRef(null);
 
   const countryCode = COUNTRY_CODES[profile?.country] || null;
@@ -449,14 +479,30 @@ export default function GoodNews({ profile, onShareStory }) {
     setTimeout(() => setSpinning(false), 800);
   };
 
+  // Filter all category stories by the selected scope
+  const scopedCategories = useMemo(() => {
+    if (!categories) return null;
+    const result = {};
+    for (const [key, cat] of Object.entries(categories)) {
+      result[key] = {
+        ...cat,
+        stories: scope === "local"
+          ? cat.stories.filter((s) => s.isLocal)
+          : cat.stories.filter((s) => !s.isLocal),
+      };
+    }
+    return result;
+  }, [categories, scope]);
+
   const tabs = [
     { key: ALL_TAB, label: "All" },
-    ...(categories
-      ? CATEGORY_KEYS.map((k) => ({ key: k, label: `${categories[k]?.emoji} ${categories[k]?.label}` }))
+    ...(scopedCategories
+      ? CATEGORY_KEYS.map((k) => ({ key: k, label: `${scopedCategories[k]?.emoji} ${scopedCategories[k]?.label}` }))
       : []),
   ];
 
-  const activeCategory = categories?.[activeTab];
+  const activeCategory = scopedCategories?.[activeTab];
+  const hasLocalStories = Boolean(localCountry);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -465,18 +511,33 @@ export default function GoodNews({ profile, onShareStory }) {
         <div className="flex items-center justify-between mb-2">
           <div>
             <p className="text-base font-bold text-slate-800">Wonderful News</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <p className="text-[11px] text-slate-400">{todayLabel()}</p>
-              {localCountry && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-                  📍 {profile?.country} + Global
-                </span>
-              )}
-            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">{todayLabel()}</p>
           </div>
-          <button onClick={handleRefresh} className="flex items-center justify-center h-8 w-8 rounded-full text-slate-400 hover:bg-slate-100 active:scale-90 transition-all">
-            <RefreshCw size={14} className={spinning ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Local / Global scope toggle — only when local stories exist */}
+            {hasLocalStories && (
+              <div className="flex items-center bg-slate-100 rounded-full p-0.5">
+                {[
+                  { value: "global", icon: "🌍", label: "Global" },
+                  { value: "local",  icon: "📍", label: profile?.country || "Local" },
+                ].map(({ value, icon, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setScope(value)}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition-all whitespace-nowrap ${
+                      scope === value
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}>
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={handleRefresh} className="flex items-center justify-center h-8 w-8 rounded-full text-slate-400 hover:bg-slate-100 active:scale-90 transition-all">
+              <RefreshCw size={14} className={spinning ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
 
         {/* Category tab pills */}
@@ -524,27 +585,44 @@ export default function GoodNews({ profile, onShareStory }) {
             <button onClick={handleRefresh} className="rounded-full px-5 py-2 bg-teal-500 text-white text-xs font-bold">Try again</button>
           </div>
         ) : activeTab === ALL_TAB ? (
-          <AllView categories={categories} onShareStory={onShareStory} />
+          <AllView categories={scopedCategories} onShareStory={onShareStory} scope={scope} onScopeChange={setScope} />
         ) : activeCategory ? (
           <div>
-            {activeCategory.stories.length > 0 && (
-              <HeroCard
-                story={activeCategory.stories[0]}
-                catKey={activeTab}
-                emoji={activeCategory.emoji}
-                label={activeCategory.label}
-                onShareStory={onShareStory}
-              />
-            )}
-            {activeCategory.stories.length > 1 && (
-              <div className="px-4 space-y-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                  More {activeCategory.label}
+            {activeCategory.stories.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                <span className="text-4xl mb-3">{scope === "local" ? "📍" : "🌍"}</span>
+                <p className="text-sm font-semibold text-slate-600 mb-1">
+                  No {scope} stories in this category
                 </p>
-                {activeCategory.stories.slice(1).map((story, i) => (
-                  <FullCard key={i} story={story} emoji={activeCategory.emoji} label={activeCategory.label} onShareStory={onShareStory} />
-                ))}
+                <p className="text-xs text-slate-400 mb-4">
+                  Try switching to {scope === "local" ? "Global" : "Local"} stories.
+                </p>
+                <button
+                  onClick={() => setScope(scope === "local" ? "global" : "local")}
+                  className="rounded-full px-5 py-2 bg-teal-500 text-white text-xs font-bold">
+                  Switch to {scope === "local" ? "🌍 Global" : "📍 Local"}
+                </button>
               </div>
+            ) : (
+              <>
+                <HeroCard
+                  story={activeCategory.stories[0]}
+                  catKey={activeTab}
+                  emoji={activeCategory.emoji}
+                  label={activeCategory.label}
+                  onShareStory={onShareStory}
+                />
+                {activeCategory.stories.length > 1 && (
+                  <div className="px-4 space-y-3">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                      More {activeCategory.label}
+                    </p>
+                    {activeCategory.stories.slice(1).map((story, i) => (
+                      <FullCard key={i} story={story} emoji={activeCategory.emoji} label={activeCategory.label} onShareStory={onShareStory} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : null}
