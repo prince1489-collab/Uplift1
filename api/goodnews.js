@@ -190,6 +190,8 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const countryCode = (req.query?.country || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+  // Country name (e.g. "India") passed from the frontend for richer query coverage
+  const countryName = (req.query?.name || "").replace(/[^a-zA-Z\s]/g, "").trim().slice(0, 60);
 
   try {
     const allFeedTasks = [];
@@ -200,11 +202,15 @@ export default async function handler(req, res) {
         allFeedTasks.push({ type: "rss", key, url, isLocal: false });
       }
 
-      // Local stories: GNews (with real images + descriptions) when API key is set,
-      // otherwise fall back to Google News RSS
+      // Local stories: two parallel GNews strategies for maximum coverage
       if (countryCode) {
         if (GNEWS_API_KEY) {
-          allFeedTasks.push({ type: "gnews", key, query: cat.gnewsQuery, countryCode });
+          // Strategy A: keyword query filtered to country's own news sources
+          allFeedTasks.push({ type: "gnews", key, query: cat.gnewsQuery, countryCode, isLocal: true });
+          // Strategy B: keyword + country name in query, any source (catches BBC/Reuters covering local stories)
+          if (countryName) {
+            allFeedTasks.push({ type: "gnews", key, query: `${cat.gnewsQuery} "${countryName}"`, countryCode: null, isLocal: true });
+          }
         } else {
           allFeedTasks.push({ type: "rss", key, url: buildGoogleNewsUrl(cat.gnewsQuery, countryCode), isLocal: true });
         }
@@ -215,7 +221,7 @@ export default async function handler(req, res) {
       allFeedTasks.map(async (task) => {
         if (task.type === "gnews") {
           const stories = await fetchGNewsStories(task.query, task.countryCode, 10);
-          return { key: task.key, stories, isLocal: true };
+          return { key: task.key, stories, isLocal: task.isLocal };
         }
         const xml = await fetchFeed(task.url);
         const stories = parseFeed(xml, 12).map((s) => ({ ...s, isLocal: task.isLocal }));
@@ -223,34 +229,40 @@ export default async function handler(req, res) {
       })
     );
 
-    // Group by category — local stories first, then global
+    // Track local and global counts independently so each scope fills up to 10
     const byCategory = {};
+    const localCounts = {};
+    const globalCounts = {};
     for (const [key, cat] of Object.entries(CATEGORY_SOURCES)) {
       byCategory[key] = { emoji: cat.emoji, label: cat.label, stories: [] };
+      localCounts[key] = 0;
+      globalCounts[key] = 0;
     }
 
-    // First pass: local stories (up to 5 per category)
+    // First pass: local stories (up to 10 per category)
     for (const result of results) {
       if (result.status !== "fulfilled" || !result.value.isLocal) continue;
       const { key, stories } = result.value;
       const seen = new Set(byCategory[key].stories.map((s) => s.link));
       for (const story of stories) {
-        if (!seen.has(story.link) && byCategory[key].stories.length < 5) {
+        if (!seen.has(story.link) && localCounts[key] < 10) {
           seen.add(story.link);
           byCategory[key].stories.push(story);
+          localCounts[key]++;
         }
       }
     }
 
-    // Second pass: global stories fill to 10 per category
+    // Second pass: global stories (up to 10 per category, independent of local count)
     for (const result of results) {
       if (result.status !== "fulfilled" || result.value.isLocal) continue;
       const { key, stories } = result.value;
       const seen = new Set(byCategory[key].stories.map((s) => s.link));
       for (const story of stories) {
-        if (!seen.has(story.link) && byCategory[key].stories.length < 10) {
+        if (!seen.has(story.link) && globalCounts[key] < 10) {
           seen.add(story.link);
           byCategory[key].stories.push(story);
+          globalCounts[key]++;
         }
       }
     }

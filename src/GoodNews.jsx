@@ -458,7 +458,12 @@ export default function GoodNews({ profile, onShareStory }) {
     setLoading(true);
     setError(null);
     try {
-      const url = countryCode ? `/api/goodnews?country=${countryCode}` : "/api/goodnews";
+      const params = new URLSearchParams();
+      if (countryCode) {
+        params.set("country", countryCode);
+        if (profile?.country) params.set("name", profile.country);
+      }
+      const url = params.size ? `/api/goodnews?${params}` : "/api/goodnews";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Could not load Wonderful News");
       const data = await res.json();
