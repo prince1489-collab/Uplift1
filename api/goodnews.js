@@ -41,6 +41,16 @@ const GLOBAL_FEEDS = [
   // Animals / community
   "https://www.goodnewsnetwork.org/category/animals/feed/",
   "https://www.sunnyskyz.com/rss.php",
+  // Major global outlets — Claude filters for uplifting stories only
+  "https://feeds.apnews.com/rss/apf-topnews",           // Associated Press
+  "https://feeds.reuters.com/reuters/topNews",            // Reuters
+  "http://feeds.bbci.co.uk/news/rss.xml",                // BBC News
+  "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", // New York Times
+  "https://www.aljazeera.com/xml/rss/all.xml",           // Al Jazeera
+  "https://www.theguardian.com/international/rss",       // The Guardian
+  "https://www.ft.com/rss/home",                         // Financial Times
+  "https://feeds.a.dj.com/rss/RSSWorldNews.xml",         // Wall Street Journal
+  "https://rss.dw.com/rdf/rss-en-all",                   // Deutsche Welle (DW)
 ];
 
 // ── GNews broad queries (one call each, not per category) ─────────────────────
@@ -293,11 +303,11 @@ export default async function handler(req, res) {
     let claudeAssignments = null;
     if (ANTHROPIC_KEY && allStories.length > 0) {
       try {
-        // Cap at 80 stories to keep token usage lean; local stories go first
+        // Cap at 120 stories; local stories go first so they aren't crowded out
         const localFirst = [
           ...allStories.filter((s) => s.isLocal),
           ...allStories.filter((s) => !s.isLocal),
-        ].slice(0, 80);
+        ].slice(0, 120);
 
         claudeAssignments = await categoriseWithClaude(localFirst);
 
