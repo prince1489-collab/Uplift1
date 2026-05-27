@@ -1,7 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// LifeHacks.jsx — Daily flip-card life hacks across 5 life areas.
+// LifeHacks.jsx — Daily life hack cards with expand + sparkle flip reveal.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 // ── Area styles ───────────────────────────────────────────────────────────────
 
@@ -12,6 +12,7 @@ const AREA_STYLES = {
     badge:    "bg-violet-100 text-violet-700 border-violet-200",
     well:     "bg-violet-50 border-violet-100",
     title:    "text-violet-700",
+    sparks:   ["#c4b5fd", "#fff", "#ffd700", "#a78bfa", "#f0abfc", "#fff"],
   },
   Body: {
     gradient: "linear-gradient(135deg, #14b8a6, #10b981)",
@@ -19,6 +20,7 @@ const AREA_STYLES = {
     badge:    "bg-teal-100 text-teal-700 border-teal-200",
     well:     "bg-teal-50 border-teal-100",
     title:    "text-teal-700",
+    sparks:   ["#99f6e4", "#fff", "#ffd700", "#5eead4", "#6ee7b7", "#fff"],
   },
   Relationships: {
     gradient: "linear-gradient(135deg, #f43f5e, #ec4899)",
@@ -26,6 +28,7 @@ const AREA_STYLES = {
     badge:    "bg-rose-100 text-rose-700 border-rose-200",
     well:     "bg-rose-50 border-rose-100",
     title:    "text-rose-700",
+    sparks:   ["#fda4af", "#fff", "#ffd700", "#f9a8d4", "#fb7185", "#fff"],
   },
   Work: {
     gradient: "linear-gradient(135deg, #3b82f6, #6366f1)",
@@ -33,6 +36,7 @@ const AREA_STYLES = {
     badge:    "bg-blue-100 text-blue-700 border-blue-200",
     well:     "bg-blue-50 border-blue-100",
     title:    "text-blue-700",
+    sparks:   ["#93c5fd", "#fff", "#ffd700", "#a5b4fc", "#7dd3fc", "#fff"],
   },
   Finance: {
     gradient: "linear-gradient(135deg, #f59e0b, #f97316)",
@@ -40,6 +44,7 @@ const AREA_STYLES = {
     badge:    "bg-amber-100 text-amber-700 border-amber-200",
     well:     "bg-amber-50 border-amber-100",
     title:    "text-amber-700",
+    sparks:   ["#fcd34d", "#fff", "#ffd700", "#fdba74", "#fbbf24", "#fff"],
   },
 };
 
@@ -61,6 +66,49 @@ function todayLabel() {
   return new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
 
+// ── Sparkle burst ─────────────────────────────────────────────────────────────
+
+const SPARK_ANGLES = [0, 22, 45, 68, 90, 113, 135, 158, 180, 203, 225, 248, 270, 293, 315, 338];
+
+function Sparkles({ sparks }) {
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{ overflow: "visible", zIndex: 20 }}
+    >
+      {SPARK_ANGLES.map((angle, i) => {
+        const rad   = (angle * Math.PI) / 180;
+        const dist  = 72 + (i % 5) * 18;
+        const size  = 5 + (i % 3) * 3;
+        const color = sparks[i % sparks.length];
+        const dur   = (0.7 + (i % 3) * 0.1).toFixed(1);
+        const delay = (i * 0.028).toFixed(3);
+        return (
+          <div
+            key={i}
+            style={{
+              position:     "absolute",
+              top:          "50%",
+              left:         "50%",
+              width:        size,
+              height:       size,
+              marginTop:    -(size / 2),
+              marginLeft:   -(size / 2),
+              background:   color,
+              borderRadius: i % 3 === 1 ? "2px" : "50%",
+              transform:    i % 3 === 1 ? "rotate(45deg)" : "none",
+              boxShadow:    `0 0 ${size + 2}px ${color}, 0 0 ${size * 3}px ${color}55`,
+              "--tx":       `${Math.round(Math.cos(rad) * dist)}px`,
+              "--ty":       `${Math.round(Math.sin(rad) * dist)}px`,
+              animation:    `hackSparkleOut ${dur}s ease-out ${delay}s forwards`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 
 function SkeletonCard({ tall }) {
@@ -71,116 +119,136 @@ function SkeletonCard({ tall }) {
   );
 }
 
-// ── Flip card ─────────────────────────────────────────────────────────────────
+// ── Preview card (shown in the 2-col grid) ────────────────────────────────────
 
-function FlipCard({ hack, isFlipped, onFlip }) {
+function PreviewCard({ hack, onTap }) {
   const s = AREA_STYLES[hack.area] || DEFAULT_STYLE;
-  const backRef = useRef(null);
+  return (
+    <button
+      className="h-44 w-full rounded-3xl relative overflow-hidden flex flex-col items-center justify-center gap-2 select-none active:scale-95 transition-transform duration-150"
+      style={{ background: s.gradient, boxShadow: s.shadow }}
+      onClick={onTap}
+      aria-label={`Open ${hack.area} life hack`}
+    >
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{ backgroundImage: "radial-gradient(circle at 70% 20%, rgba(255,255,255,0.6) 0%, transparent 60%)" }}
+      />
+      <span className="text-5xl leading-none drop-shadow-sm">{hack.areaEmoji}</span>
+      <p className="text-base font-extrabold text-white tracking-wide">{hack.area}</p>
+      <p className="text-[10px] text-white/50 mt-0.5">tap to reveal</p>
+    </button>
+  );
+}
 
-  // Prevent accidental flip-back when user is scrolling the back content
-  const touchStartY = useRef(0);
-  const didScroll = useRef(false);
+// ── Expanded overlay card ─────────────────────────────────────────────────────
 
-  const handleBackTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-    didScroll.current = false;
-  };
-  const handleBackTouchMove = (e) => {
-    if (Math.abs(e.touches[0].clientY - touchStartY.current) > 8) {
-      didScroll.current = true;
-    }
-  };
-  const handleBackClick = (e) => {
-    e.stopPropagation();
-    if (!didScroll.current) onFlip();
-  };
+function ExpandedCard({ hack, onClose }) {
+  const s = AREA_STYLES[hack.area] || DEFAULT_STYLE;
+  const [flipped, setFlipped]         = useState(false);
+  const [showSparkles, setShowSparkles] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => { setFlipped(true); setShowSparkles(true); }, 280);
+    const t2 = setTimeout(() => setShowSparkles(false), 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
 
   return (
     <div
-      className="h-44 cursor-pointer select-none"
-      style={{ perspective: "1200px" }}
-      onClick={onFlip}>
-
+      className="fixed inset-0 flex items-center justify-center z-50 px-5"
+      style={{
+        background:           "rgba(0,0,0,0.68)",
+        backdropFilter:       "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation:            "hackOverlayIn 0.2s ease both",
+      }}
+      onClick={onClose}
+    >
+      {/* Card wrapper — perspective context + entrance animation */}
       <div
-        className="relative w-full h-full"
+        className="relative w-full max-w-sm"
         style={{
-          transformStyle: "preserve-3d",
-          transition: "transform 0.55s cubic-bezier(0.4, 0, 0.2, 1)",
-          transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-        }}>
+          height:      "min(490px, 80vh)",
+          perspective: "1200px",
+          animation:   "hackCardIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {showSparkles && <Sparkles sparks={s.sparks} />}
 
-        {/* ── Front ── */}
+        {/* 3-D flip container */}
         <div
-          className="absolute inset-0 rounded-3xl flex flex-col items-center justify-center gap-2 overflow-hidden"
+          className="absolute inset-0"
           style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            background: s.gradient,
-            boxShadow: s.shadow,
-          }}>
-
-          {/* Subtle pattern overlay */}
-          <div className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: "radial-gradient(circle at 70% 20%, rgba(255,255,255,0.6) 0%, transparent 60%)" }} />
-
-          <span className="text-5xl leading-none drop-shadow-sm">{hack.areaEmoji}</span>
-          <p className="text-base font-extrabold text-white tracking-wide">{hack.area}</p>
-          <p className="text-[10px] text-white/50 mt-0.5">tap to reveal</p>
-        </div>
-
-        {/* ── Back ── */}
-        <div
-          ref={backRef}
-          className="absolute inset-0 rounded-3xl bg-white overflow-hidden"
-          style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            transform: "rotateY(180deg)",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+            transformStyle: "preserve-3d",
+            transition:     "transform 0.62s cubic-bezier(0.4, 0, 0.2, 1)",
+            transform:      flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           }}
-          onClick={handleBackClick}
-          onTouchStart={handleBackTouchStart}
-          onTouchMove={handleBackTouchMove}>
-
-          {/* Coloured top strip */}
-          <div className="h-1 w-full flex-shrink-0" style={{ background: s.gradient }} />
-
-          {/* Scrollable content */}
+        >
+          {/* ── Front face ── */}
           <div
-            className="h-full overflow-y-auto p-3"
-            onClick={(e) => e.stopPropagation()}
-            style={{ paddingBottom: "28px" }}>
-
-            {/* Sub-area chip */}
-            <span className={`inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[9px] font-bold mb-2 ${s.badge}`}>
-              {hack.subAreaEmoji} {hack.subArea}
-            </span>
-
-            {/* Hack title */}
-            <p className={`text-[12px] font-extrabold leading-snug mb-1.5 ${s.title}`}>
-              {hack.title}
-            </p>
-
-            {/* Hack body */}
-            <p className="text-[11px] text-slate-600 leading-relaxed mb-2">
-              {hack.hack}
-            </p>
-
-            {/* Why it works */}
-            <div className={`rounded-xl border p-2 ${s.well}`}>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">
-                💡 Why it works
-              </p>
-              <p className="text-[10px] text-slate-500 leading-relaxed">{hack.why}</p>
+            className="absolute inset-0 rounded-3xl flex flex-col items-center justify-center gap-3 overflow-hidden"
+            style={{
+              backfaceVisibility:       "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              background:               s.gradient,
+              boxShadow:                s.shadow,
+            }}
+          >
+            <div
+              className="absolute inset-0 opacity-10"
+              style={{ backgroundImage: "radial-gradient(circle at 65% 18%, rgba(255,255,255,0.7) 0%, transparent 55%)" }}
+            />
+            <span className="text-7xl leading-none drop-shadow-md">{hack.areaEmoji}</span>
+            <p className="text-2xl font-extrabold text-white tracking-wide">{hack.area}</p>
+            <div className="flex items-center gap-2 mt-1">
+              {[0, 0.18, 0.36].map((d, i) => (
+                <div key={i} className="w-2 h-2 rounded-full bg-white/70 animate-bounce" style={{ animationDelay: `${d}s` }} />
+              ))}
             </div>
           </div>
 
-          {/* Flip-back hint — fixed at bottom */}
-          <div className="absolute bottom-0 inset-x-0 flex justify-center pb-1.5 pointer-events-none">
-            <span className="text-[9px] text-slate-300 font-medium">tap to flip back</span>
+          {/* ── Back face ── */}
+          <div
+            className="absolute inset-0 rounded-3xl bg-white flex flex-col overflow-hidden"
+            style={{
+              backfaceVisibility:       "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              transform:                "rotateY(180deg)",
+              boxShadow:                "0 20px 60px rgba(0,0,0,0.22)",
+            }}
+          >
+            {/* Colour strip */}
+            <div className="h-2 w-full flex-shrink-0" style={{ background: s.gradient }} />
+
+            {/* Content area — flex-1 to fill remaining space, no scroll */}
+            <div className="flex-1 px-5 pt-4 pb-2 flex flex-col gap-3 min-h-0">
+              <span className={`self-start inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-bold ${s.badge}`}>
+                {hack.subAreaEmoji} {hack.subArea}
+              </span>
+
+              <p className={`text-[15px] font-extrabold leading-snug ${s.title}`}>
+                {hack.title}
+              </p>
+
+              <p className="text-sm text-slate-600 leading-relaxed flex-1">
+                {hack.hack}
+              </p>
+
+              <div className={`rounded-2xl border p-3 flex-shrink-0 ${s.well}`}>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  💡 Why it works
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed">{hack.why}</p>
+              </div>
+            </div>
+
+            <p className="text-center text-[10px] text-slate-300 py-2.5 flex-shrink-0">
+              tap outside to close
+            </p>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -189,10 +257,10 @@ function FlipCard({ hack, isFlipped, onFlip }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LifeHacks() {
-  const [hacks, setHacks] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [flipped, setFlipped] = useState(new Set());
+  const [hacks, setHacks]         = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [activeHack, setActive]   = useState(null);
   const [countdown, setCountdown] = useState(timeUntilMidnight());
 
   useEffect(() => {
@@ -206,14 +274,6 @@ export default function LifeHacks() {
       .then((data) => { setHacks(data.hacks); setLoading(false); })
       .catch((err) => { setError(err.message); setLoading(false); });
   }, []);
-
-  const toggle = (area) => {
-    setFlipped((prev) => {
-      const next = new Set(prev);
-      next.has(area) ? next.delete(area) : next.add(area);
-      return next;
-    });
-  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -249,23 +309,13 @@ export default function LifeHacks() {
           <div className="grid grid-cols-2 gap-3">
             {hacks?.map((hack, idx) =>
               idx === 4 ? (
-                // 5th card centred across both columns
                 <div key={hack.area} className="col-span-2 flex justify-center">
                   <div className="w-[calc(50%-6px)]">
-                    <FlipCard
-                      hack={hack}
-                      isFlipped={flipped.has(hack.area)}
-                      onFlip={() => toggle(hack.area)}
-                    />
+                    <PreviewCard hack={hack} onTap={() => setActive(hack)} />
                   </div>
                 </div>
               ) : (
-                <FlipCard
-                  key={hack.area}
-                  hack={hack}
-                  isFlipped={flipped.has(hack.area)}
-                  onFlip={() => toggle(hack.area)}
-                />
+                <PreviewCard key={hack.area} hack={hack} onTap={() => setActive(hack)} />
               )
             )}
           </div>
@@ -277,6 +327,11 @@ export default function LifeHacks() {
           </p>
         )}
       </div>
+
+      {/* Expanded card overlay */}
+      {activeHack && (
+        <ExpandedCard hack={activeHack} onClose={() => setActive(null)} />
+      )}
     </div>
   );
 }
