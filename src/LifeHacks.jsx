@@ -269,7 +269,7 @@ export default function LifeHacks() {
   }, []);
 
   useEffect(() => {
-    const todayKey = `lifehacks_${new Date().toISOString().split("T")[0]}`;
+    const todayKey = `lhacks2_${new Date().toISOString().split("T")[0]}`;
 
     // Serve from localStorage if we already fetched today's hacks
     try {
@@ -287,11 +287,11 @@ export default function LifeHacks() {
         setHacks(data.hacks);
         setLoading(false);
         // Only cache if the API confirmed today's date (guards against stale CDN responses)
-        if (data.date === todayKey.replace("lifehacks_", "")) {
+        if (data.date === todayKey.replace("lhacks2_", "")) {
           try {
             // Remove previous days' entries
             Object.keys(localStorage)
-              .filter((k) => k.startsWith("lifehacks_") && k !== todayKey)
+              .filter((k) => k.startsWith("lhacks2_") && k !== todayKey)
               .forEach((k) => localStorage.removeItem(k));
             localStorage.setItem(todayKey, JSON.stringify(data.hacks));
           } catch (_) {}
