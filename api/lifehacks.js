@@ -48,6 +48,18 @@ const FALLBACK_SETS = [
       hack: "When you pick something up, put it where it belongs — not somewhere temporary. The rule: every object gets touched only once before it reaches its home. No surfaces allowed to be transit zones.",
       why: "Clutter accumulates almost entirely from 'temporary' placements that become permanent. The one-touch rule eliminates the second step by making 'put it away' the default, not the exception.",
     },
+    {
+      area: "Digital", areaEmoji: "📱", subArea: "Notifications", subAreaEmoji: "🔔",
+      title: "The Morning Phone Delay",
+      hack: "For the first 30 minutes after you wake up, don't touch your phone. Leave it in another room or face down. Start your morning in your own head, not inside someone else's agenda.",
+      why: "Checking your phone first thing floods your brain with cortisol before you've set any intention for the day. The first 30 minutes establish the cognitive tone for everything that follows — protect them.",
+    },
+    {
+      area: "Weird & Wonderful", areaEmoji: "🪄", subArea: "Kitchen", subAreaEmoji: "🫙",
+      title: "The Rubber Band Lid Grip",
+      hack: "When you can't open a stubborn jar, wrap a wide rubber band once around the lid. One rotation. The jar will open first try, every time — no muscle, no towel, no swearing required.",
+      why: "The lid isn't stuck because of force — it's stuck because your hand slips on smooth metal. The rubber band increases friction by a factor of 3–4, eliminating slip entirely. It's the grip, not the strength.",
+    },
   ],
 
   // ── Set 1: Sleep / Energy / Listening / Deep Work / Budgeting ───────────────
@@ -87,6 +99,18 @@ const FALLBACK_SETS = [
       title: "The Colour Temperature Switch",
       hack: "From around 7pm, switch off overhead lights and use only lamps or warm bulbs (2700K or lower). Avoid bright white or blue-tinted lighting entirely. Even 1 hour of this dramatically improves your sleep.",
       why: "Blue-wavelength light suppresses melatonin production by up to 85%. Overhead lighting mimics the midday sun — exactly what your circadian rhythm reads as 'stay awake.' Warm floor lamps bypass this response entirely.",
+    },
+    {
+      area: "Digital", areaEmoji: "📱", subArea: "Screen Time", subAreaEmoji: "📊",
+      title: "The Greyscale Trick",
+      hack: "Switch your phone to greyscale mode (Settings → Accessibility → Display). Browse everything the same but in black and white. Most people naturally reduce screen time by 30% within 24 hours without trying.",
+      why: "Colour is one of the primary dopamine triggers in app design — every red badge, vivid thumbnail, and neon button is engineered to grab attention. Remove the colour and apps become far less compelling.",
+    },
+    {
+      area: "Weird & Wonderful", areaEmoji: "🪄", subArea: "Cables", subAreaEmoji: "🔌",
+      title: "The Bread Clip Cable Label",
+      hack: "Those small plastic bread clips? Write the name of each cable on one with a biro and clip it around the wire at the plug end. Free, permanent, and instantly readable — no cable will ever be a mystery again.",
+      why: "The tabs are exactly the right size for a standard cable, have a flat surface that takes ink, and grip snugly without slipping. They've been the perfect cable label for decades — nobody told you.",
     },
   ],
 
@@ -128,6 +152,18 @@ const FALLBACK_SETS = [
       hack: "Put a cardboard box near your front door. For the next 30 days, whenever you encounter something you don't use, love, or need, put it in the box. At 30 days, seal it and donate without opening it.",
       why: "Decluttering decisions are mentally expensive in the moment. The box defers each decision to a single donation event while giving a 30-day cooling-off period. If you haven't retrieved it, you didn't need it.",
     },
+    {
+      area: "Digital", areaEmoji: "📱", subArea: "Social Media", subAreaEmoji: "👆",
+      title: "The Doom-Scroll Interrupt",
+      hack: "Move your social apps into a folder on the last page of your home screen, and give the folder a long name like 'Check This Later'. The two extra taps plus reading the folder name is enough friction to break the autopilot scroll reflex.",
+      why: "70% of phone pickups happen without a conscious decision to check anything specific. Adding a tiny friction point converts an unconscious habit into a deliberate choice — and most of the time, you won't bother.",
+    },
+    {
+      area: "Weird & Wonderful", areaEmoji: "🪄", subArea: "Cleaning", subAreaEmoji: "🧹",
+      title: "The Walnut Wood Fix",
+      hack: "Rub a raw walnut directly on any scratch in wooden furniture. Let the natural oils sit for 5 minutes, then buff with a cloth. The scratch visibly disappears or reduces by 90% — no product, no cost.",
+      why: "Walnuts contain natural oils that absorb into the exposed dry wood fibres in the scratch, re-staining them close to the surrounding colour. The effect is identical to expensive commercial wood repair products.",
+    },
   ],
 
   // ── Set 3: Creativity / Digestion / Kindness / Email / Subscriptions ─────────
@@ -168,6 +204,18 @@ const FALLBACK_SETS = [
       hack: "Make your bed within 5 minutes of getting up, every single day. Not neatly — just pulled straight with the pillow placed. Don't negotiate with yourself about it. It takes 90 seconds.",
       why: "A made bed signals 'the day has started' to your brain and creates a small completion win before 8am. Research consistently links this single habit to higher task completion rates throughout the rest of the day.",
     },
+    {
+      area: "Digital", areaEmoji: "📱", subArea: "Focus Mode", subAreaEmoji: "⏱️",
+      title: "The App Timeout Rule",
+      hack: "Set a daily screen-time limit of 20 minutes for your top two distraction apps. When the limit hits, don't override it — let the lockout run. The discomfort of hitting the wall is entirely the point.",
+      why: "App limits work through loss aversion: once you're tracking usage, you become protective of the remaining minutes. The lockout forces a moment of reflection: 'was that time worth what I gave up?'",
+    },
+    {
+      area: "Weird & Wonderful", areaEmoji: "🪄", subArea: "Travel", subAreaEmoji: "✈️",
+      title: "The Ice Cube Melt Test",
+      hack: "Before a trip, leave a cup of ice cubes in your freezer. When you return, if they've melted and refrozen into a single blob, there was a power cut while you were away — and anything perishable should be treated as unsafe.",
+      why: "Ice that melts and re-solidifies has passed through liquid phase, meaning freezer temperature exceeded 0°C. A tray of intact separate cubes confirms the cold chain was never broken — a simple, free food safety check.",
+    },
   ],
 
   // ── Set 4: Stress / Hydration / Gratitude / Meetings / Investing ─────────────
@@ -207,6 +255,18 @@ const FALLBACK_SETS = [
       title: "The Morning Window",
       hack: "Open at least one window for 10 minutes every morning — even in winter. While the kettle boils, the shower heats, whatever. Just 10 minutes of fresh air exchange makes a measurable difference to how alert you feel.",
       why: "Indoor CO₂ levels rise overnight as you breathe in a closed space. Even sub-dangerous CO₂ elevation measurably impairs decision-making, alertness, and mood. A brief air exchange resets this quickly at no cost.",
+    },
+    {
+      area: "Digital", areaEmoji: "📱", subArea: "Sleep Hygiene", subAreaEmoji: "🌙",
+      title: "The Bedroom Charging Ban",
+      hack: "Charge your phone in the kitchen or hallway — never your bedroom. Buy a cheap bedside alarm clock for a few pounds. The average person checks their phone 3 times during the night if it's within arm's reach.",
+      why: "Every night-time phone check triggers a burst of light and mental activation that fragments deep sleep. 'Just checking the time' always becomes something else. Physical distance is the only intervention that fully works.",
+    },
+    {
+      area: "Weird & Wonderful", areaEmoji: "🪄", subArea: "Laundry", subAreaEmoji: "👕",
+      title: "The Dry Towel Trick",
+      hack: "When you need laundry dried quickly, add one completely dry bath towel into the dryer with the damp clothes. It reduces drying time by roughly 25% — no settings change, no extra energy cycle needed.",
+      why: "Drying slows once the air inside the drum becomes saturated with moisture. The dry towel acts as a humidity sponge, absorbing that moisture and keeping the drying environment efficient for longer.",
     },
   ],
 ];
@@ -252,7 +312,7 @@ export default async function handler(req, res) {
       max_tokens: 2048,
       messages: [{
         role: "user",
-        content: `Today is ${today}. Generate exactly 6 daily life hacks for the "Seen" wellbeing app — one per life area.
+        content: `Today is ${today}. Generate exactly 8 daily life hacks for the "Seen" wellbeing app — one per life area.
 
 Rules for each hack:
 - Give it a memorable, specific name (e.g. "The Wooden Spoon Trick", "The 48-Hour Rule")
@@ -268,6 +328,8 @@ Life areas and sub-areas to choose from (pick one sub-area per area):
 4. Work 💼 → Productivity, Meetings, Email, Planning, Deep Work, Breaks, Procrastination, Organisation
 5. Finance 💰 → Saving, Budgeting, Spending, Habits, Investing, Debt, Shopping, Subscriptions
 6. Home 🏡 → Organisation, Cleaning, Lighting, Clutter, Morning Routine, Air Quality, Sleep Space, Storage
+7. Digital 📱 → Screen Time, Notifications, Social Media, Focus Mode, Sleep Hygiene, Privacy, App Habits, Digital Detox
+8. Weird & Wonderful 🪄 → Kitchen, Cleaning, Cables, Travel, Laundry, DIY, Shopping, Shortcuts
 
 Return ONLY valid JSON with no markdown fences:
 {
@@ -292,7 +354,7 @@ Return ONLY valid JSON with no markdown fences:
     if (!raw) throw new Error("Claude returned no JSON object");
 
     const data = JSON.parse(raw);
-    if (!Array.isArray(data.hacks) || data.hacks.length < 6) throw new Error("Incomplete hacks array");
+    if (!Array.isArray(data.hacks) || data.hacks.length < 8) throw new Error("Incomplete hacks array");
 
     res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
     return res.status(200).json({ date: today, hacks: data.hacks, source: "claude" });

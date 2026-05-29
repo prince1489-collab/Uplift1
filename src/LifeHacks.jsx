@@ -54,6 +54,22 @@ const AREA_STYLES = {
     title:    "text-lime-700",
     sparks:   ["#bef264", "#fff", "#ffd700", "#a3e635", "#d9f99d", "#fff"],
   },
+  Digital: {
+    gradient: "linear-gradient(135deg, #06b6d4, #0891b2)",
+    shadow:   "0 8px 24px rgba(6,182,212,0.4)",
+    badge:    "bg-cyan-100 text-cyan-700 border-cyan-200",
+    well:     "bg-cyan-50 border-cyan-100",
+    title:    "text-cyan-700",
+    sparks:   ["#a5f3fc", "#fff", "#ffd700", "#67e8f9", "#22d3ee", "#fff"],
+  },
+  "Weird & Wonderful": {
+    gradient: "linear-gradient(135deg, #e879f9, #c026d3)",
+    shadow:   "0 8px 24px rgba(192,38,211,0.4)",
+    badge:    "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
+    well:     "bg-fuchsia-50 border-fuchsia-100",
+    title:    "text-fuchsia-700",
+    sparks:   ["#f0abfc", "#fff", "#ffd700", "#e879f9", "#d946ef", "#fff"],
+  },
 };
 
 const DEFAULT_STYLE = AREA_STYLES.Mind;
@@ -277,7 +293,7 @@ export default function LifeHacks() {
   }, []);
 
   useEffect(() => {
-    const todayKey = `lhacks3_${new Date().toISOString().split("T")[0]}`;
+    const todayKey = `lhacks4_${new Date().toISOString().split("T")[0]}`;
 
     // Serve from localStorage if we already fetched today's hacks
     try {
@@ -295,11 +311,11 @@ export default function LifeHacks() {
         setHacks(data.hacks);
         setLoading(false);
         // Only cache if the API confirmed today's date (guards against stale CDN responses)
-        if (data.date === todayKey.replace("lhacks3_", "")) {
+        if (data.date === todayKey.replace("lhacks4_", "")) {
           try {
             // Remove previous days' entries
             Object.keys(localStorage)
-              .filter((k) => k.startsWith("lhacks3_") && k !== todayKey)
+              .filter((k) => k.startsWith("lhacks4_") && k !== todayKey)
               .forEach((k) => localStorage.removeItem(k));
             localStorage.setItem(todayKey, JSON.stringify(data.hacks));
           } catch (_) {}
