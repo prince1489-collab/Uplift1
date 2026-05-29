@@ -1568,16 +1568,6 @@ export default function App() {
                         {{ grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" }[profile.moodTag]}
                       </span>
                     )}
-                    {streak > 0 && (
-                      <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border${
-                        streak >= 7 ? " seen-shimmer bg-amber-50 border-amber-300 text-amber-700" : " bg-slate-50 border-slate-200 text-slate-600"
-                      }`}>
-                        {streak >= 7 ? "🔥" : "✨"}{streak}d
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border bg-teal-50 border-teal-200 text-teal-700">
-                      ✨{displayedSparks}
-                    </span>
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -1662,7 +1652,6 @@ export default function App() {
                           style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                       </div>
                     </div>
-                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
                   </div>
                   <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
                   <div className="space-y-1">
