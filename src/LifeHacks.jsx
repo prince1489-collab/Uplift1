@@ -46,6 +46,14 @@ const AREA_STYLES = {
     title:    "text-amber-700",
     sparks:   ["#fcd34d", "#fff", "#ffd700", "#fdba74", "#fbbf24", "#fff"],
   },
+  Home: {
+    gradient: "linear-gradient(135deg, #84cc16, #65a30d)",
+    shadow:   "0 8px 24px rgba(132,204,22,0.4)",
+    badge:    "bg-lime-100 text-lime-700 border-lime-200",
+    well:     "bg-lime-50 border-lime-100",
+    title:    "text-lime-700",
+    sparks:   ["#bef264", "#fff", "#ffd700", "#a3e635", "#d9f99d", "#fff"],
+  },
 };
 
 const DEFAULT_STYLE = AREA_STYLES.Mind;
@@ -269,7 +277,7 @@ export default function LifeHacks() {
   }, []);
 
   useEffect(() => {
-    const todayKey = `lhacks2_${new Date().toISOString().split("T")[0]}`;
+    const todayKey = `lhacks3_${new Date().toISOString().split("T")[0]}`;
 
     // Serve from localStorage if we already fetched today's hacks
     try {
@@ -287,11 +295,11 @@ export default function LifeHacks() {
         setHacks(data.hacks);
         setLoading(false);
         // Only cache if the API confirmed today's date (guards against stale CDN responses)
-        if (data.date === todayKey.replace("lhacks2_", "")) {
+        if (data.date === todayKey.replace("lhacks3_", "")) {
           try {
             // Remove previous days' entries
             Object.keys(localStorage)
-              .filter((k) => k.startsWith("lhacks2_") && k !== todayKey)
+              .filter((k) => k.startsWith("lhacks3_") && k !== todayKey)
               .forEach((k) => localStorage.removeItem(k));
             localStorage.setItem(todayKey, JSON.stringify(data.hacks));
           } catch (_) {}
@@ -321,8 +329,7 @@ export default function LifeHacks() {
       <div className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4">
         {loading ? (
           <div className="grid grid-cols-2 gap-3">
-            {Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)}
-            <SkeletonCard tall />
+            {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
@@ -332,17 +339,9 @@ export default function LifeHacks() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {hacks?.map((hack, idx) =>
-              idx === 4 ? (
-                <div key={hack.area} className="col-span-2 flex justify-center">
-                  <div className="w-[calc(50%-6px)]">
-                    <PreviewCard hack={hack} onTap={() => setActive(hack)} />
-                  </div>
-                </div>
-              ) : (
-                <PreviewCard key={hack.area} hack={hack} onTap={() => setActive(hack)} />
-              )
-            )}
+            {hacks?.map((hack) => (
+              <PreviewCard key={hack.area} hack={hack} onTap={() => setActive(hack)} />
+            ))}
           </div>
         )}
 

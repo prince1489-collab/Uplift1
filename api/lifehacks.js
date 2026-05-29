@@ -42,6 +42,12 @@ const FALLBACK_SETS = [
       hack: "Add any non-essential purchase over £20 to a notes app wishlist instead of buying it. Wait exactly 48 hours. If you still want it, buy it guilt-free. Most of the time, you won't.",
       why: "Impulse purchases are driven by a dopamine spike that fades within hours — not genuine need. The delay separates real desire from momentary want.",
     },
+    {
+      area: "Home", areaEmoji: "🏡", subArea: "Organisation", subAreaEmoji: "📦",
+      title: "The One-Touch Rule",
+      hack: "When you pick something up, put it where it belongs — not somewhere temporary. The rule: every object gets touched only once before it reaches its home. No surfaces allowed to be transit zones.",
+      why: "Clutter accumulates almost entirely from 'temporary' placements that become permanent. The one-touch rule eliminates the second step by making 'put it away' the default, not the exception.",
+    },
   ],
 
   // ── Set 1: Sleep / Energy / Listening / Deep Work / Budgeting ───────────────
@@ -75,6 +81,12 @@ const FALLBACK_SETS = [
       title: "The 50/50 Windfall Split",
       hack: "Every time money arrives unexpectedly — a bonus, a refund, a cash gift — split it exactly 50/50 immediately. Half to savings or debt, half to spend guilt-free on whatever you want.",
       why: "Willpower battles over windfalls are always lost eventually. Pre-committing to a rule before the money arrives bypasses the debate entirely. You still enjoy it — just half, not all.",
+    },
+    {
+      area: "Home", areaEmoji: "🏡", subArea: "Lighting", subAreaEmoji: "💡",
+      title: "The Colour Temperature Switch",
+      hack: "From around 7pm, switch off overhead lights and use only lamps or warm bulbs (2700K or lower). Avoid bright white or blue-tinted lighting entirely. Even 1 hour of this dramatically improves your sleep.",
+      why: "Blue-wavelength light suppresses melatonin production by up to 85%. Overhead lighting mimics the midday sun — exactly what your circadian rhythm reads as 'stay awake.' Warm floor lamps bypass this response entirely.",
     },
   ],
 
@@ -110,6 +122,12 @@ const FALLBACK_SETS = [
       hack: "After any purchase over £10, take a photo of the receipt and your face showing how you feel about buying it. Review all the photos at the end of the month.",
       why: "Purchases feel abstract once they're made. The photo creates a concrete record with emotional context. Seeing it forces you to confront spending patterns in a visceral way that bank statements never do.",
     },
+    {
+      area: "Home", areaEmoji: "🏡", subArea: "Clutter", subAreaEmoji: "🗃️",
+      title: "The 30-Day Box Method",
+      hack: "Put a cardboard box near your front door. For the next 30 days, whenever you encounter something you don't use, love, or need, put it in the box. At 30 days, seal it and donate without opening it.",
+      why: "Decluttering decisions are mentally expensive in the moment. The box defers each decision to a single donation event while giving a 30-day cooling-off period. If you haven't retrieved it, you didn't need it.",
+    },
   ],
 
   // ── Set 3: Creativity / Digestion / Kindness / Email / Subscriptions ─────────
@@ -144,6 +162,12 @@ const FALLBACK_SETS = [
       hack: "Once a year, open your bank statement and go through every recurring charge line by line. For each one: 'Did I use this more than twice last month?' If not, cancel it today — right then, not later.",
       why: "Subscription services are designed to be invisible once purchased. The average person underestimates their subscription spend by 2.5× because small charges accumulate below conscious awareness.",
     },
+    {
+      area: "Home", areaEmoji: "🏡", subArea: "Morning Routine", subAreaEmoji: "☀️",
+      title: "The Bed-First Rule",
+      hack: "Make your bed within 5 minutes of getting up, every single day. Not neatly — just pulled straight with the pillow placed. Don't negotiate with yourself about it. It takes 90 seconds.",
+      why: "A made bed signals 'the day has started' to your brain and creates a small completion win before 8am. Research consistently links this single habit to higher task completion rates throughout the rest of the day.",
+    },
   ],
 
   // ── Set 4: Stress / Hydration / Gratitude / Meetings / Investing ─────────────
@@ -177,6 +201,12 @@ const FALLBACK_SETS = [
       title: "The Round-Up Rule",
       hack: "Set up automatic round-ups on your bank account or use an app that rounds every purchase to the nearest £1 and transfers the difference to a savings pot. Set it once and forget it.",
       why: "Micro-saving works because it operates below the psychological loss-aversion threshold. A £0.73 round-up to £1 is imperceptible spending-wise but compounds to hundreds a year — without a single conscious decision.",
+    },
+    {
+      area: "Home", areaEmoji: "🏡", subArea: "Air Quality", subAreaEmoji: "🌬️",
+      title: "The Morning Window",
+      hack: "Open at least one window for 10 minutes every morning — even in winter. While the kettle boils, the shower heats, whatever. Just 10 minutes of fresh air exchange makes a measurable difference to how alert you feel.",
+      why: "Indoor CO₂ levels rise overnight as you breathe in a closed space. Even sub-dangerous CO₂ elevation measurably impairs decision-making, alertness, and mood. A brief air exchange resets this quickly at no cost.",
     },
   ],
 ];
@@ -222,7 +252,7 @@ export default async function handler(req, res) {
       max_tokens: 2048,
       messages: [{
         role: "user",
-        content: `Today is ${today}. Generate exactly 5 daily life hacks for the "Seen" wellbeing app — one per life area.
+        content: `Today is ${today}. Generate exactly 6 daily life hacks for the "Seen" wellbeing app — one per life area.
 
 Rules for each hack:
 - Give it a memorable, specific name (e.g. "The Wooden Spoon Trick", "The 48-Hour Rule")
@@ -237,6 +267,7 @@ Life areas and sub-areas to choose from (pick one sub-area per area):
 3. Relationships ❤️ → Communication, Conflict, Friendship, Family, Kindness, Listening, Boundaries, Gratitude
 4. Work 💼 → Productivity, Meetings, Email, Planning, Deep Work, Breaks, Procrastination, Organisation
 5. Finance 💰 → Saving, Budgeting, Spending, Habits, Investing, Debt, Shopping, Subscriptions
+6. Home 🏡 → Organisation, Cleaning, Lighting, Clutter, Morning Routine, Air Quality, Sleep Space, Storage
 
 Return ONLY valid JSON with no markdown fences:
 {
@@ -261,7 +292,7 @@ Return ONLY valid JSON with no markdown fences:
     if (!raw) throw new Error("Claude returned no JSON object");
 
     const data = JSON.parse(raw);
-    if (!Array.isArray(data.hacks) || data.hacks.length < 5) throw new Error("Incomplete hacks array");
+    if (!Array.isArray(data.hacks) || data.hacks.length < 6) throw new Error("Incomplete hacks array");
 
     res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
     return res.status(200).json({ date: today, hacks: data.hacks, source: "claude" });
