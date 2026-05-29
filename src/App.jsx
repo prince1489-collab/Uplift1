@@ -164,24 +164,24 @@ const MOOD_TAGLINES = {
 function getMoodBubbleStyle(moodTag, isMine) {
   if (!moodTag) return null;
   const MINE = {
-    grateful:   { background: "linear-gradient(135deg,#f59e0b,#d97706)", borderColor: "#d97706", boxShadow: "0 4px 14px rgba(245,158,11,0.35)" },
-    hopeful:    { background: "linear-gradient(135deg,#10b981,#059669)", borderColor: "#059669", boxShadow: "0 4px 14px rgba(16,185,129,0.35)" },
-    tired:      { background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", borderColor: "#7c3aed", boxShadow: "0 4px 14px rgba(139,92,246,0.35)" },
-    happy:      { background: "linear-gradient(135deg,#fbbf24,#f59e0b)", borderColor: "#f59e0b", boxShadow: "0 4px 14px rgba(251,191,36,0.35)" },
-    struggling: { background: "linear-gradient(135deg,#0ea5e9,#0284c7)", borderColor: "#0284c7", boxShadow: "0 4px 14px rgba(14,165,233,0.35)" },
-    peaceful:   { background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", borderColor: "#0ea5e9", boxShadow: "0 4px 14px rgba(56,189,248,0.35)" },
-    energised:  { background: "linear-gradient(135deg,#f97316,#ea580c)", borderColor: "#ea580c", boxShadow: "0 4px 14px rgba(249,115,22,0.35)" },
-    lonely:     { background: "linear-gradient(135deg,#6366f1,#4f46e5)", borderColor: "#4f46e5", boxShadow: "0 4px 14px rgba(99,102,241,0.35)" },
+    grateful:   { background: "linear-gradient(135deg,#87a87a,#6b8f6b)", borderColor: "#6b8f6b", boxShadow: "0 4px 14px rgba(107,143,107,0.35)" },
+    hopeful:    { background: "linear-gradient(135deg,#fcd34d,#eab308)", borderColor: "#eab308", boxShadow: "0 4px 14px rgba(234,179,8,0.35)"    },
+    tired:      { background: "linear-gradient(135deg,#94a3b8,#64748b)", borderColor: "#64748b", boxShadow: "0 4px 14px rgba(100,116,139,0.35)"  },
+    happy:      { background: "linear-gradient(135deg,#fb923c,#f97316)", borderColor: "#f97316", boxShadow: "0 4px 14px rgba(249,115,22,0.35)"   },
+    struggling: { background: "linear-gradient(135deg,#c9899a,#a86778)", borderColor: "#a86778", boxShadow: "0 4px 14px rgba(168,103,120,0.35)"  },
+    peaceful:   { background: "linear-gradient(135deg,#7dd3fc,#38bdf8)", borderColor: "#38bdf8", boxShadow: "0 4px 14px rgba(56,189,248,0.28)"   },
+    energised:  { background: "linear-gradient(135deg,#f87171,#ef4444)", borderColor: "#ef4444", boxShadow: "0 4px 14px rgba(239,68,68,0.35)"    },
+    lonely:     { background: "linear-gradient(135deg,#7c3aed,#4c1d95)", borderColor: "#4c1d95", boxShadow: "0 4px 14px rgba(76,29,149,0.35)"    },
   };
   const THEIRS = {
-    grateful:   { backgroundColor: "#fffbeb", borderColor: "#fde68a", color: "#92400e" },
-    hopeful:    { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" },
-    tired:      { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#5b21b6" },
-    happy:      { backgroundColor: "#fefce8", borderColor: "#fef08a", color: "#854d0e" },
-    struggling: { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#075985" },
-    peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#e0f2fe", color: "#0c4a6e" },
-    energised:  { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
-    lonely:     { backgroundColor: "#eef2ff", borderColor: "#e0e7ff", color: "#3730a3" },
+    grateful:   { backgroundColor: "#f0f4ef", borderColor: "#b5cdb5", color: "#3d6e3d" },
+    hopeful:    { backgroundColor: "#fefce8", borderColor: "#fde047", color: "#713f12" },
+    tired:      { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1", color: "#334155" },
+    happy:      { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
+    struggling: { backgroundColor: "#fdf2f5", borderColor: "#f0c4cf", color: "#8b3547" },
+    peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" },
+    energised:  { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" },
+    lonely:     { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" },
   };
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }

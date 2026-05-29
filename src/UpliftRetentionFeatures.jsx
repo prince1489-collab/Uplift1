@@ -998,13 +998,26 @@ export const MOOD_OPTIONS = [
   { id: "lonely",     label: "Lonely",      emoji: "🌙" },
 ];
 
+const MOOD_PILL_STYLES = {
+  grateful:   { backgroundColor: "#f0f4ef", borderColor: "#b5cdb5", color: "#3d6e3d" },
+  hopeful:    { backgroundColor: "#fefce8", borderColor: "#fde047", color: "#713f12" },
+  tired:      { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1", color: "#334155" },
+  happy:      { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
+  struggling: { backgroundColor: "#fdf2f5", borderColor: "#f0c4cf", color: "#8b3547" },
+  peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" },
+  energised:  { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" },
+  lonely:     { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" },
+};
+
 export function MoodPill({ mood, tiny = false }) {
   const found = MOOD_OPTIONS.find((m) => m.id === mood);
   if (!found) return null;
+  const s = MOOD_PILL_STYLES[mood] || { backgroundColor: "#f8fafc", borderColor: "#e2e8f0", color: "#475569" };
   return (
-    <span className={`inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white text-slate-500 ${
-      tiny ? "px-1.5 py-0 text-[9px]" : "px-2 py-0.5 text-[11px]"
-    }`}>
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full border ${tiny ? "px-1.5 py-0 text-[9px]" : "px-2 py-0.5 text-[11px]"}`}
+      style={{ backgroundColor: s.backgroundColor, borderColor: s.borderColor, color: s.color }}
+    >
       <span style={{ fontSize: tiny ? "9px" : "11px" }}>{found.emoji}</span>
       {!tiny && <span>{found.label}</span>}
     </span>
