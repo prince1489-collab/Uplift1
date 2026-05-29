@@ -269,9 +269,34 @@ export default function LifeHacks() {
   }, []);
 
   useEffect(() => {
+    const todayKey = `lifehacks_${new Date().toISOString().split("T")[0]}`;
+
+    // Serve from localStorage if we already fetched today's hacks
+    try {
+      const cached = localStorage.getItem(todayKey);
+      if (cached) {
+        setHacks(JSON.parse(cached));
+        setLoading(false);
+        return;
+      }
+    } catch (_) {}
+
     fetch("/api/lifehacks")
       .then((r) => { if (!r.ok) throw new Error("Could not load Life Hacks"); return r.json(); })
-      .then((data) => { setHacks(data.hacks); setLoading(false); })
+      .then((data) => {
+        setHacks(data.hacks);
+        setLoading(false);
+        // Only cache if the API confirmed today's date (guards against stale CDN responses)
+        if (data.date === todayKey.replace("lifehacks_", "")) {
+          try {
+            // Remove previous days' entries
+            Object.keys(localStorage)
+              .filter((k) => k.startsWith("lifehacks_") && k !== todayKey)
+              .forEach((k) => localStorage.removeItem(k));
+            localStorage.setItem(todayKey, JSON.stringify(data.hacks));
+          } catch (_) {}
+        }
+      })
       .catch((err) => { setError(err.message); setLoading(false); });
   }, []);
 

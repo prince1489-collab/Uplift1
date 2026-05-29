@@ -80,7 +80,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
-    res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=3600`);
+    res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
     return res.status(200).json({ date: today, hacks: FALLBACK_HACKS, source: "fallback" });
   }
 
@@ -133,7 +133,7 @@ Return ONLY valid JSON with no markdown fences:
     const data = JSON.parse(raw);
     if (!Array.isArray(data.hacks) || data.hacks.length < 5) throw new Error("Incomplete hacks array");
 
-    res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=3600`);
+    res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
     return res.status(200).json({ date: today, hacks: data.hacks, source: "claude" });
 
   } catch (err) {
