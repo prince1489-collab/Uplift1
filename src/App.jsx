@@ -21,6 +21,7 @@ import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
 import GoodNews from "./GoodNews";
 import LifeHacks from "./LifeHacks";
+import Support from "./Support";
 
 import {
   useStreak, computeSparkReward,
@@ -1688,13 +1689,55 @@ export default function App() {
                 }`}>
                 💡 Life Hacks
               </button>
+              <button
+                onClick={() => setActiveTab("support")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "support"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💚 Support
+              </button>
             </div>
 
             {activeTab === "hacks" ? (
               <LifeHacks />
+            ) : activeTab === "support" ? (
+              <Support country={profile?.country} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
+              {/* Mood-triggered support banner */}
+              {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
+                  className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
+                  style={{
+                    background: profile?.moodTag === "struggling"
+                      ? "linear-gradient(135deg, #fce7f3, #fbcfe8)"
+                      : profile?.moodTag === "lonely"
+                      ? "linear-gradient(135deg, #ede9fe, #ddd6fe)"
+                      : "linear-gradient(135deg, #dbeafe, #bfdbfe)",
+                    border: "1px solid",
+                    borderColor: profile?.moodTag === "struggling" ? "#f9a8d4"
+                      : profile?.moodTag === "lonely" ? "#c4b5fd" : "#93c5fd",
+                  }}
+                >
+                  <span className="text-2xl">
+                    {profile?.moodTag === "struggling" ? "🌧️" : profile?.moodTag === "lonely" ? "🫂" : "😴"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm">
+                      {profile?.moodTag === "struggling"
+                        ? "You said you're struggling — you're not alone"
+                        : profile?.moodTag === "lonely"
+                        ? "Feeling lonely? We have support for you"
+                        : "Feeling tired? Check out our wellbeing tools"}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Tap for a free check-in &amp; resources →</p>
+                  </div>
+                </button>
+              )}
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
