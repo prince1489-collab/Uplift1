@@ -81,7 +81,7 @@ const AUTO_ROTATE_SPEED = 0.12;
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
-export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false }) {
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false, hometownPingTime = 0 }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -121,6 +121,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   const activeUsersRef = useRef([]);
   const lastSendTimeRef = useRef(0);
   const sendBurstIntervalRef = useRef(null);
+  const hometownPingRef = useRef(0);     // timestamp of last same-country reaction for ripple animation
   // "Seen" countries persisted 5h, sender-only
   const [seenCountries, setSeenCountries] = useState(() => {
     try {
@@ -158,6 +159,12 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   );
 
   useEffect(() => { myConnectionCountriesRef.current = myConnectionCountries; }, [myConnectionCountries]);
+
+  // Count of active users from the same country as me (excluding myself) — for "local presence" badge
+  const localUserCount = useMemo(() => {
+    if (!myCountry || !hasSent) return 0;
+    return activeUsers.filter(u => u.uid !== currentUser?.uid && u.country === myCountry).length;
+  }, [activeUsers, myCountry, currentUser, hasSent]);
 
   // Keep a ref of active users for the send-burst loop (so it isn't restarted
   // every time activeUsers changes)
@@ -211,6 +218,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     const reacted = reactedRef.current;
     seenRef.current = new Set(Object.keys(seenCountries).filter(c => !reacted.has(c) && COUNTRY_COORDS[c]));
   }, [seenCountries, reactedCountries]);
+
+  // Keep hometown ping timestamp accessible in the draw loop without re-running draw effect
+  useEffect(() => { hometownPingRef.current = hometownPingTime; }, [hometownPingTime]);
 
   // Send burst: when the user sends a greeting, fire arcs radiating out from
   // their country CONTINUOUSLY for 30 seconds. Targets active users' countries
@@ -502,6 +512,26 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : `rgba(255,194,77,${(0.6 * pulse).toFixed(2)})`;
           ctx.lineWidth = reacted && !isMe ? 1.8 : 1.5;
           ctx.stroke();
+        }
+
+        // Hometown ripple — three staggered expanding rings on the YOU dot when a local reacts
+        if (isMe && hometownPingRef.current > 0) {
+          const hometownAge = now2 - hometownPingRef.current;
+          if (hometownAge < 3000) {
+            const phases = [0, 700, 1400];
+            for (const delay of phases) {
+              const age = hometownAge - delay;
+              if (age < 0 || age > 2200) continue;
+              const p = age / 2200;
+              const rr = r + 6 + p * 24;
+              const alpha = (1 - p) * 0.65;
+              ctx.beginPath();
+              ctx.arc(pt[0], pt[1], rr, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(77,255,176,${alpha.toFixed(2)})`;
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+            }
+          }
         }
 
         // Labels
@@ -968,6 +998,11 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />{tab === "world" ? "Active user" : "Waved at you"}</span>
           {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>Greeting arc</span>}
+          {localUserCount > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: "5px", color: "#90e8a8" }}>
+              🏠 {localUserCount} neighbour{localUserCount !== 1 ? "s" : ""} active
+            </span>
+          )}
         </div>
       </div>
     </div>

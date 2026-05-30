@@ -1003,8 +1003,11 @@ export default function App() {
     } catch (_) { return {}; }
   });
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
+  const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
+  const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const reactObservedRef = useRef(new Set());
   const reactReadyRef = useRef(false);
+  const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1028,6 +1031,9 @@ export default function App() {
       setTimeout(() => setPremiumSuccess(false), 5000);
     }
   }, []);
+  // Sync myCountry into a ref so the reactions listener closure always reads the latest value
+  useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
+
   // Auto-dismiss map prompt after 7s
   useEffect(() => {
     if (!showMapPrompt) return;
@@ -1065,7 +1071,15 @@ export default function App() {
                 try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
                 return next;
               });
-              if (reactReadyRef.current) newToasts.push({ emoji, country });
+              if (reactReadyRef.current) {
+                if (country === myCountryRef.current && myCountryRef.current) {
+                  // Same-country reaction — hometown toast + globe ripple
+                  setHometownToast({ id: Date.now(), emoji });
+                  setHometownPingTime(Date.now());
+                } else {
+                  newToasts.push({ emoji, country });
+                }
+              }
             });
           });
           if (newToasts.length) {
@@ -1102,6 +1116,13 @@ export default function App() {
     const t = setTimeout(() => setReactionToast(null), 6000);
     return () => clearTimeout(t);
   }, [reactionToast]);
+
+  // Auto-dismiss hometown toast after 7s
+  useEffect(() => {
+    if (!hometownToast) return;
+    const t = setTimeout(() => setHometownToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [hometownToast]);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -1569,7 +1590,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <MapTransitionWrapper visible={showMap}>
             <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/[0.07] shadow-2xl sm:h-[90vh]">
-              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} />
+              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} />
             </div>
           </MapTransitionWrapper>
         </div>
@@ -1846,6 +1867,31 @@ export default function App() {
                       onClick={(e) => { e.stopPropagation(); setReactionToast(null); }}
                       className="p-1 flex-shrink-0"
                       style={{ color: "rgba(255,206,128,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Hometown reaction toast — same-country validation (warm green) */}
+              {hometownToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setHometownToast(null); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #0a2e1a, #133d24)", border: "1px solid rgba(80,200,120,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🏠</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#80e8a0" }}>
+                        A neighbour just {REACTION_WORD[hometownToast.emoji] ? `sent you a ${REACTION_WORD[hometownToast.emoji]}` : "reacted"}!
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(128,232,160,0.7)" }}>
+                        Someone from your own country felt your kindness {hometownToast.emoji}
+                      </p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setHometownToast(null); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(128,232,160,0.5)" }}
                     >✕</span>
                   </button>
                 </div>
