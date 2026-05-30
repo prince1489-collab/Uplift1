@@ -516,6 +516,8 @@ function SupportPanel({ onClose }) {
 }
 
 const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
+const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
@@ -594,17 +596,12 @@ function NotificationBell({ streak, db, currentUser }) {
       snap.docs.forEach(({ id: msgId, data }) => {
         const text = data().text;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
-          const allUids = [];
           rSnap.forEach((rDoc) => {
-            const data = rDoc.data();
-            const count = data.count ?? 0;
-            if (count > 0) {
-              acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
-              (data.uids ?? []).forEach(uid => allUids.push(uid));
-            } else delete acc[`${msgId}:${rDoc.id}`];
+            const count = rDoc.data().count ?? 0;
+            if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
+            else delete acc[`${msgId}:${rDoc.id}`];
           });
           setReactions(Object.values(acc).slice(0, 8));
-          if (allUids.length) setReactorUids(prev => [...new Set([...prev, ...allUids])]);
         }, () => {});
         innerUnsubs.push(unsub);
       });
@@ -994,7 +991,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("feed");
   const [showMapPrompt, setShowMapPrompt] = useState(false);
   const [lastSendTime, setLastSendTime] = useState(0);
-  const [reactorUids, setReactorUids] = useState([]);
+  const [hasSent, setHasSent] = useState(() => !!localStorage.getItem("seen_has_sent"));
+  // Countries that reacted to MY messages → { [country]: { emoji, at } }, persisted 5h
+  const [reactedCountries, setReactedCountries] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seen_reacted_v1") || "{}");
+      const now = Date.now();
+      const pruned = {};
+      for (const [c, v] of Object.entries(raw)) if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      return pruned;
+    } catch (_) { return {}; }
+  });
+  const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
+  const reactObservedRef = useRef(new Set());
+  const reactReadyRef = useRef(false);
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1024,6 +1034,74 @@ export default function App() {
     const t = setTimeout(() => setShowMapPrompt(false), 7000);
     return () => clearTimeout(t);
   }, [showMapPrompt]);
+
+  // Listen for reactions on MY messages → light reactor countries (5h) + fire named toast
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    reactReadyRef.current = false;
+    const readyTimer = setTimeout(() => { reactReadyRef.current = true; }, 4000);
+    const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
+    let innerUnsubs = [];
+    const outer = onSnapshot(q, (snap) => {
+      innerUnsubs.forEach((u) => u());
+      innerUnsubs = [];
+      snap.docs.forEach((d) => {
+        const msgId = d.id;
+        const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          const newToasts = [];
+          rSnap.forEach((rDoc) => {
+            const emoji = rDoc.id;
+            const data = rDoc.data();
+            const countries = data.countries || {};
+            (data.uids || []).forEach((uid) => {
+              if (uid === currentUser.uid) return;
+              const country = countries[uid];
+              if (!country) return;
+              const key = `${country}|${emoji}`;
+              if (reactObservedRef.current.has(key)) return;
+              reactObservedRef.current.add(key);
+              setReactedCountries((prev) => {
+                const next = { ...prev, [country]: { emoji, at: Date.now() } };
+                try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
+                return next;
+              });
+              if (reactReadyRef.current) newToasts.push({ emoji, country });
+            });
+          });
+          if (newToasts.length) {
+            const t0 = newToasts[newToasts.length - 1];
+            setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
+          }
+        }, () => {});
+        innerUnsubs.push(unsub);
+      });
+    }, () => {});
+    return () => { clearTimeout(readyTimer); outer(); innerUnsubs.forEach((u) => u()); };
+  }, [db, currentUser]);
+
+  // Prune reactor lighting older than 5h once a minute
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setReactedCountries((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        for (const [c, v] of Object.entries(prev)) {
+          if (now - v.at < FIVE_HOURS_MS) next[c] = v; else changed = true;
+        }
+        if (changed) { try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {} return next; }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Auto-dismiss reaction toast after 6s
+  useEffect(() => {
+    if (!reactionToast) return;
+    const t = setTimeout(() => setReactionToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [reactionToast]);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -1385,6 +1463,7 @@ export default function App() {
       haptic([10, 30, 10]);
       setLastSendTime(Date.now());
       setShowMapPrompt(true);
+      if (!hasSent) { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {} }
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
@@ -1490,7 +1569,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <MapTransitionWrapper visible={showMap}>
             <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/[0.07] shadow-2xl sm:h-[90vh]">
-              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactorUids={reactorUids} />
+              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} />
             </div>
           </MapTransitionWrapper>
         </div>
@@ -1748,6 +1827,29 @@ export default function App() {
                   </button>
                 </div>
               )}
+              {/* Reaction-from-country toast */}
+              {reactionToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setReactionToast(null); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #3a2a05, #5a3d0a)", border: "1px solid rgba(255,179,71,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">{reactionToast.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#ffce80" }}>
+                        You got a {REACTION_WORD[reactionToast.emoji] || "reaction"} from {reactionToast.country}!
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(255,206,128,0.7)" }}>Your kindness was felt — see it light up the map →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setReactionToast(null); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(255,206,128,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
               {/* Mood-triggered support banner */}
               {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
                 <button
@@ -1912,7 +2014,7 @@ export default function App() {
                                         );
                                       })()}
 
-                                      <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+                                      <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} />
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>

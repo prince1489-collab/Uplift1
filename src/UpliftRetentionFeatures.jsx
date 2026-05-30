@@ -724,7 +724,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }) {
+export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️", "🙏", "😊", "🌟"];
 
@@ -746,23 +746,29 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
     const isSame = currentEmoji === emoji;
 
+    const myCountry = reactorCountry ?? null;
     await runTransaction(db, async (tx) => {
       if (currentEmoji && !isSame) {
         const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
         const oldSnap = await tx.get(oldRef);
         const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+        const oldCountries = { ...(oldData.countries ?? {}) };
+        delete oldCountries[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
       }
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
+      const countries = { ...(data.countries ?? {}) };
       if (isSame) {
         const newUids = uids.filter((u) => u !== currentUser.uid);
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+        delete countries[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries });
       } else {
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+        countries[currentUser.uid] = myCountry;
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
       }
     });
     if (!isSame && onReact) onReact(emoji);
@@ -1614,21 +1620,29 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     setPopping(emoji);
     setTimeout(() => setPopping(null), 400);
     try {
+      const myCountry = profile?.country ?? null;
       await runTransaction(db, async (tx) => {
         if (myEmoji && !isSame) {
           const oldRef = doc(db, "publicMessages", messageId, "reactions", myEmoji);
           const oldSnap = await tx.get(oldRef);
-          const oldUids = ((oldSnap.exists() ? oldSnap.data().uids : null) ?? []).filter((u) => u !== currentUser.uid);
-          tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+          const oldData = oldSnap.exists() ? oldSnap.data() : {};
+          const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
+          const oldCountries = { ...(oldData.countries ?? {}) };
+          delete oldCountries[currentUser.uid];
+          tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
         }
         const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
         const snap = await tx.get(rRef);
-        const uids = (snap.exists() ? snap.data().uids : null) ?? [];
+        const data = snap.exists() ? snap.data() : {};
+        const uids = data.uids ?? [];
+        const countries = { ...(data.countries ?? {}) };
         if (isSame) {
           const next = uids.filter((u) => u !== currentUser.uid);
-          tx.set(rRef, { count: Math.max(0, next.length), uids: next });
+          delete countries[currentUser.uid];
+          tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries });
         } else {
-          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+          countries[currentUser.uid] = myCountry;
+          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
         }
       });
       if (!isSame) onReact?.(emoji);

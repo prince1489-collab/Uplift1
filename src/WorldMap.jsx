@@ -79,7 +79,9 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
 const AUTO_ROTATE_SPEED = 0.12;
 
-export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactorUids = [] }) {
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -113,9 +115,22 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   const flyToStartTimeRef = useRef(null);
   // Tap vs drag tracking
   const mouseMovedRef = useRef(false);
-  // Reactor country highlighting + send burst
-  const reactorCountriesRef = useRef(new Set());
+  // Reactor + "seen" country highlighting + send burst
+  const reactedRef = useRef(new Map());   // country -> emoji (reacted, bright gold)
+  const seenRef = useRef(new Set());      // countries that have "seen" my kindness (dim)
+  const activeUsersRef = useRef([]);
   const lastSendTimeRef = useRef(0);
+  const sendBurstIntervalRef = useRef(null);
+  // "Seen" countries persisted 5h, sender-only
+  const [seenCountries, setSeenCountries] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seen_seen_v1") || "{}");
+      const now = Date.now();
+      const pruned = {};
+      for (const [c, v] of Object.entries(raw)) if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      return pruned;
+    } catch (_) { return {}; }
+  });
   // Country card
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [countryMessages, setCountryMessages] = useState([]);
@@ -144,36 +159,90 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
   useEffect(() => { myConnectionCountriesRef.current = myConnectionCountries; }, [myConnectionCountries]);
 
-  // Cross-reference reactor UIDs with active users to find their countries
-  useEffect(() => {
-    const uidSet = new Set(reactorUids);
-    const countries = new Set(
-      activeUsers.filter(u => uidSet.has(u.uid)).map(u => u.country).filter(Boolean)
-    );
-    reactorCountriesRef.current = countries;
-  }, [activeUsers, reactorUids]);
+  // Keep a ref of active users for the send-burst loop (so it isn't restarted
+  // every time activeUsers changes)
+  useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
 
-  // Send burst: when user sends a message, fire arcs radiating out from the
-  // user's country. Targets active users' countries if any exist, otherwise
-  // falls back to a worldwide spread so a solo sender still sees the burst.
+  // Reacted countries (bright gold + emoji) come straight from the sender's prop
+  useEffect(() => {
+    const m = new Map();
+    const now = Date.now();
+    for (const [c, v] of Object.entries(reactedCountries || {})) {
+      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, v.emoji);
+    }
+    reactedRef.current = m;
+  }, [reactedCountries]);
+
+  // "Seen" tier: while the map is open and I've sent a greeting, every foreign
+  // active country is recorded as having seen my kindness (dim light, 5h)
+  useEffect(() => {
+    if (!hasSent || !mapReady) return;
+    const foreign = [...new Set(
+      activeUsers.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
+    )];
+    if (!foreign.length) return;
+    setSeenCountries(prev => {
+      const now = Date.now();
+      const next = { ...prev };
+      foreign.forEach(c => { next[c] = { at: now }; });
+      for (const [c, v] of Object.entries(next)) if (now - v.at >= FIVE_HOURS_MS) delete next[c];
+      try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  }, [activeUsers, hasSent, mapReady, myCountry]);
+
+  // Prune "seen" lighting older than 5h once a minute
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setSeenCountries(prev => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        for (const [c, v] of Object.entries(prev)) { if (now - v.at < FIVE_HOURS_MS) next[c] = v; else changed = true; }
+        if (changed) { try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {} return next; }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Sync the seen ref for the draw loop (reacted countries take priority)
+  useEffect(() => {
+    const reacted = reactedRef.current;
+    seenRef.current = new Set(Object.keys(seenCountries).filter(c => !reacted.has(c) && COUNTRY_COORDS[c]));
+  }, [seenCountries, reactedCountries]);
+
+  // Send burst: when the user sends a greeting, fire arcs radiating out from
+  // their country CONTINUOUSLY for 30 seconds. Targets active users' countries
+  // if any exist, otherwise a worldwide spread so a solo sender still sees it.
   useEffect(() => {
     if (!mapReady || !myCoords || lastSendTime === lastSendTimeRef.current) return;
     lastSendTimeRef.current = lastSendTime;
-    const activeOthers = [...new Set(
-      activeUsers.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
-    )];
-    const others = activeOthers.length
-      ? activeOthers
-      : GLOBAL_BURST_TARGETS.filter(c => c !== myCountry && COUNTRY_COORDS[c]);
-    others.forEach((country, i) => {
-      setTimeout(() => {
-        const toC = COUNTRY_COORDS[country];
-        const id = ++arcIdRef.current;
-        arcsRef.current = [...arcsRef.current.slice(-20), { id, fromC: myCoords, toC, startTime: Date.now(), isSend: true }];
-        setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3200);
-      }, i * 55);
-    });
-  }, [mapReady, lastSendTime, myCoords, myCountry, activeUsers]);
+    const endAt = Date.now() + 30000;
+    const fireWave = () => {
+      const activeOthers = [...new Set(
+        activeUsersRef.current.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
+      )];
+      const others = activeOthers.length
+        ? activeOthers
+        : GLOBAL_BURST_TARGETS.filter(c => c !== myCountry && COUNTRY_COORDS[c]);
+      others.forEach((country, i) => {
+        setTimeout(() => {
+          const toC = COUNTRY_COORDS[country];
+          const id = ++arcIdRef.current;
+          arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC: myCoords, toC, startTime: Date.now(), isSend: true }];
+          setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3200);
+        }, i * 55);
+      });
+    };
+    fireWave();
+    clearInterval(sendBurstIntervalRef.current);
+    sendBurstIntervalRef.current = setInterval(() => {
+      if (Date.now() > endAt) { clearInterval(sendBurstIntervalRef.current); return; }
+      fireWave();
+    }, 2500);
+    return () => clearInterval(sendBurstIntervalRef.current);
+  }, [mapReady, lastSendTime, myCoords, myCountry]);
 
   const furthestCountry = useMemo(() => {
     if (!myCoords || !myConnectionCountries.length) return null;
@@ -375,26 +444,42 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       }
 
       // ── Dots ──
-      const dots = tabRef.current === "world"
+      // Build a combined country map: active users + "seen" + "reacted" tiers.
+      const dotMap = {};
+      const base = tabRef.current === "world"
         ? worldDotsRef.current
         : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
-      const reactors = reactorCountriesRef.current;
+      for (const d of base) dotMap[d.country] = { country: d.country, count: d.count, isMe: d.isMe };
+      // "Seen" tier (dim) — include even if not currently active
+      for (const c of seenRef.current) {
+        if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
+        if (!dotMap[c].isMe) dotMap[c].seen = true;
+      }
+      // "Reacted" tier (bright gold) — takes priority, include even if not active
+      for (const [c, emoji] of reactedRef.current) {
+        if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
+        if (!dotMap[c].isMe) { dotMap[c].reacted = emoji; dotMap[c].seen = false; }
+      }
+      const now2 = Date.now();
 
-      for (const { country, count, isMe } of dots) {
+      for (const { country, count, isMe, seen, reacted } of Object.values(dotMap)) {
         const coords = COUNTRY_COORDS[country];
         if (!coords || !isVisible(coords[0], coords[1])) continue;
         const pt = proj(coords);
         if (!pt) continue;
 
-        const isReactor = reactors.has(country);
-        const r = isMe ? 6 : Math.min(3 + count, 6);
-        const dotColor = isMe ? "#4DFFB0" : isReactor ? "#FFB347" : "#1D9E75";
-        const glowRgb = isMe ? "77,255,176" : isReactor ? "255,179,71" : "29,158,117";
-        const glowR = isReactor ? r * 5.5 : r * 3.5;
+        const r = isMe ? 6 : reacted ? 6 : Math.min(3 + count, 6);
+        const dotColor = isMe ? "#4DFFB0" : reacted ? "#FFC24D" : seen ? "#6FA8DC" : "#1D9E75";
+        const glowRgb = isMe ? "77,255,176" : reacted ? "255,194,77" : seen ? "111,168,220" : "29,158,117";
+        const glowR = reacted ? r * 5.5 : seen ? r * 4 : r * 3.5;
+
+        // Reacted countries pulse gently
+        const pulse = reacted ? 0.7 + 0.3 * Math.sin(now2 / 400) : 1;
 
         // Glow halo
+        const glowAlpha = (isMe ? 0.55 : reacted ? 0.55 : seen ? 0.3 : 0.35) * pulse;
         const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
-        glow.addColorStop(0, `rgba(${glowRgb},${isMe ? 0.55 : isReactor ? 0.5 : 0.35})`);
+        glow.addColorStop(0, `rgba(${glowRgb},${glowAlpha.toFixed(2)})`);
         glow.addColorStop(1, "rgba(0,0,0,0)");
         ctx.beginPath();
         ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
@@ -406,28 +491,28 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
         ctx.fillStyle = dotColor;
         ctx.shadowColor = dotColor;
-        ctx.shadowBlur = isReactor ? 16 : 8;
+        ctx.shadowBlur = reacted ? 16 : seen ? 6 : 8;
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Ring for "me" and reactor countries
-        if (isMe || isReactor) {
+        // Ring for "me" and reacted countries
+        if (isMe || reacted) {
           ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r + (isReactor && !isMe ? 5 : 4), 0, Math.PI * 2);
-          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : "rgba(255,179,71,0.6)";
-          ctx.lineWidth = isReactor && !isMe ? 1.8 : 1.5;
+          ctx.arc(pt[0], pt[1], r + (reacted && !isMe ? 5 : 4), 0, Math.PI * 2);
+          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : `rgba(255,194,77,${(0.6 * pulse).toFixed(2)})`;
+          ctx.lineWidth = reacted && !isMe ? 1.8 : 1.5;
           ctx.stroke();
         }
 
         // Labels
-        ctx.font = "bold 9px system-ui, sans-serif";
+        ctx.font = "bold 10px system-ui, sans-serif";
         ctx.textAlign = "center";
         if (isMe) {
+          ctx.font = "bold 9px system-ui, sans-serif";
           ctx.fillStyle = "rgba(255,255,255,0.9)";
           ctx.fillText("YOU", pt[0], pt[1] - r - 7);
-        } else if (isReactor) {
-          ctx.fillStyle = "rgba(255,210,80,0.95)";
-          ctx.fillText("♥", pt[0], pt[1] - r - 7);
+        } else if (reacted) {
+          ctx.fillText(reacted, pt[0], pt[1] - r - 7);
         }
       }
     };
