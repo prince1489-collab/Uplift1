@@ -1723,24 +1723,30 @@ export default function App() {
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
-              {/* Post-send map prompt */}
+              {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
-                  className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                  style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", animation: "hackOverlayIn 0.4s ease" }}
+                <div
+                  className="sticky z-30"
+                  style={{ top: "8px" }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="text-2xl">🌍</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm" style={{ color: "#90d0ff" }}>Your kindness is traveling the world</p>
-                    <p className="text-xs mt-0.5" style={{ color: "rgba(144,208,255,0.65)" }}>Tap to watch it reach every country on the map →</p>
-                  </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); }}
-                    className="text-slate-500 hover:text-slate-300 p-1 flex-shrink-0"
-                    style={{ color: "rgba(144,208,255,0.4)" }}
-                  >✕</button>
-                </button>
+                    onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🌍</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#90d0ff" }}>Your kindness is traveling the world</p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(144,208,255,0.65)" }}>Tap to watch it reach every country on the map →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(144,208,255,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
               )}
               {/* Mood-triggered support banner */}
               {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
