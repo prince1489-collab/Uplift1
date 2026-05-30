@@ -59,6 +59,14 @@ const COUNTRY_COORDS = {
   "Zambia": [27.8, -13.1], "Zimbabwe": [29.2, -20.0],
 };
 
+// Well-distributed worldwide destinations for the "send burst" when no
+// other users are active — so a solo sender still sees kindness radiate out.
+const GLOBAL_BURST_TARGETS = [
+  "United States", "Brazil", "United Kingdom", "Nigeria", "South Africa",
+  "India", "China", "Japan", "Australia", "Canada", "Mexico", "Germany",
+  "Egypt", "Kenya", "Indonesia", "Argentina", "Russia", "France",
+];
+
 function approxKm([lon1, lat1], [lon2, lat2]) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -145,13 +153,18 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     reactorCountriesRef.current = countries;
   }, [activeUsers, reactorUids]);
 
-  // Send burst: when user sends a message, fire arcs to all active countries
+  // Send burst: when user sends a message, fire arcs radiating out from the
+  // user's country. Targets active users' countries if any exist, otherwise
+  // falls back to a worldwide spread so a solo sender still sees the burst.
   useEffect(() => {
     if (!mapReady || !myCoords || lastSendTime === lastSendTimeRef.current) return;
     lastSendTimeRef.current = lastSendTime;
-    const others = [...new Set(
+    const activeOthers = [...new Set(
       activeUsers.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
     )];
+    const others = activeOthers.length
+      ? activeOthers
+      : GLOBAL_BURST_TARGETS.filter(c => c !== myCountry && COUNTRY_COORDS[c]);
     others.forEach((country, i) => {
       setTimeout(() => {
         const toC = COUNTRY_COORDS[country];
