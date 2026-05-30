@@ -594,12 +594,17 @@ function NotificationBell({ streak, db, currentUser }) {
       snap.docs.forEach(({ id: msgId, data }) => {
         const text = data().text;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          const allUids = [];
           rSnap.forEach((rDoc) => {
-            const count = rDoc.data().count ?? 0;
-            if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
-            else delete acc[`${msgId}:${rDoc.id}`];
+            const data = rDoc.data();
+            const count = data.count ?? 0;
+            if (count > 0) {
+              acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
+              (data.uids ?? []).forEach(uid => allUids.push(uid));
+            } else delete acc[`${msgId}:${rDoc.id}`];
           });
           setReactions(Object.values(acc).slice(0, 8));
+          if (allUids.length) setReactorUids(prev => [...new Set([...prev, ...allUids])]);
         }, () => {});
         innerUnsubs.push(unsub);
       });
@@ -987,6 +992,9 @@ export default function App() {
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
+  const [showMapPrompt, setShowMapPrompt] = useState(false);
+  const [lastSendTime, setLastSendTime] = useState(0);
+  const [reactorUids, setReactorUids] = useState([]);
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1010,6 +1018,12 @@ export default function App() {
       setTimeout(() => setPremiumSuccess(false), 5000);
     }
   }, []);
+  // Auto-dismiss map prompt after 7s
+  useEffect(() => {
+    if (!showMapPrompt) return;
+    const t = setTimeout(() => setShowMapPrompt(false), 7000);
+    return () => clearTimeout(t);
+  }, [showMapPrompt]);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -1369,6 +1383,8 @@ export default function App() {
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
+      setLastSendTime(Date.now());
+      setShowMapPrompt(true);
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
@@ -1474,7 +1490,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
           <MapTransitionWrapper visible={showMap}>
             <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/[0.07] shadow-2xl sm:h-[90vh]">
-              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} />
+              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactorUids={reactorUids} />
             </div>
           </MapTransitionWrapper>
         </div>
@@ -1707,6 +1723,25 @@ export default function App() {
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
+              {/* Post-send map prompt */}
+              {showMapPrompt && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
+                  className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                  style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", animation: "hackOverlayIn 0.4s ease" }}
+                >
+                  <span className="text-2xl">🌍</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm" style={{ color: "#90d0ff" }}>Your kindness is traveling the world</p>
+                    <p className="text-xs mt-0.5" style={{ color: "rgba(144,208,255,0.65)" }}>Tap to watch it reach every country on the map →</p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); }}
+                    className="text-slate-500 hover:text-slate-300 p-1 flex-shrink-0"
+                    style={{ color: "rgba(144,208,255,0.4)" }}
+                  >✕</button>
+                </button>
+              )}
               {/* Mood-triggered support banner */}
               {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
                 <button

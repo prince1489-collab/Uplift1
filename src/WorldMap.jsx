@@ -71,7 +71,7 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
 const AUTO_ROTATE_SPEED = 0.12;
 
-export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness }) {
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactorUids = [] }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -105,6 +105,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   const flyToStartTimeRef = useRef(null);
   // Tap vs drag tracking
   const mouseMovedRef = useRef(false);
+  // Reactor country highlighting + send burst
+  const reactorCountriesRef = useRef(new Set());
+  const lastSendTimeRef = useRef(0);
   // Country card
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [countryMessages, setCountryMessages] = useState([]);
@@ -132,6 +135,32 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   );
 
   useEffect(() => { myConnectionCountriesRef.current = myConnectionCountries; }, [myConnectionCountries]);
+
+  // Cross-reference reactor UIDs with active users to find their countries
+  useEffect(() => {
+    const uidSet = new Set(reactorUids);
+    const countries = new Set(
+      activeUsers.filter(u => uidSet.has(u.uid)).map(u => u.country).filter(Boolean)
+    );
+    reactorCountriesRef.current = countries;
+  }, [activeUsers, reactorUids]);
+
+  // Send burst: when user sends a message, fire arcs to all active countries
+  useEffect(() => {
+    if (!mapReady || !myCoords || lastSendTime === lastSendTimeRef.current) return;
+    lastSendTimeRef.current = lastSendTime;
+    const others = [...new Set(
+      activeUsers.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
+    )];
+    others.forEach((country, i) => {
+      setTimeout(() => {
+        const toC = COUNTRY_COORDS[country];
+        const id = ++arcIdRef.current;
+        arcsRef.current = [...arcsRef.current.slice(-20), { id, fromC: myCoords, toC, startTime: Date.now(), isSend: true }];
+        setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3200);
+      }, i * 55);
+    });
+  }, [mapReady, lastSendTime, myCoords, myCountry, activeUsers]);
 
   const furthestCountry = useMemo(() => {
     if (!myCoords || !myConnectionCountries.length) return null;
@@ -219,11 +248,12 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
       ctx.clearRect(0, 0, size, size);
 
-      // Ocean with radial gradient
-      const oceanGrad = ctx.createRadialGradient(cx - scale * 0.2, cy - scale * 0.25, scale * 0.1, cx, cy, scale);
-      oceanGrad.addColorStop(0, "#1e5070");
-      oceanGrad.addColorStop(0.6, "#0f2d45");
-      oceanGrad.addColorStop(1, "#081820");
+      // Deep space ocean
+      const oceanGrad = ctx.createRadialGradient(cx - scale * 0.22, cy - scale * 0.28, scale * 0.05, cx, cy, scale);
+      oceanGrad.addColorStop(0, "#1c6080");
+      oceanGrad.addColorStop(0.35, "#0d3852");
+      oceanGrad.addColorStop(0.7, "#07213a");
+      oceanGrad.addColorStop(1, "#020d1a");
       ctx.beginPath();
       path({ type: "Sphere" });
       ctx.fillStyle = oceanGrad;
@@ -236,28 +266,32 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       ctx.lineWidth = 0.5;
       ctx.stroke();
 
-      // Countries
-      for (const feature of countriesRef.current) {
+      // Countries — subtle shade variety for visual depth
+      const LAND_SHADES = ["#2d6142", "#296039", "#316a47", "#2a5a3c", "#307050"];
+      for (let fi = 0; fi < countriesRef.current.length; fi++) {
         ctx.beginPath();
-        path(feature);
-        ctx.fillStyle = "#2d5a3d";
+        path(countriesRef.current[fi]);
+        ctx.fillStyle = LAND_SHADES[fi % LAND_SHADES.length];
         ctx.fill();
-        ctx.strokeStyle = "rgba(0,0,0,0.25)";
-        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = "rgba(0,0,0,0.18)";
+        ctx.lineWidth = 0.4;
         ctx.stroke();
       }
 
-      // Atmosphere rim
+      // Atmosphere — blue-white rim + outer glow like real Earth photos
+      const outerAtm = ctx.createRadialGradient(cx, cy, scale * 0.87, cx, cy, scale * 1.07);
+      outerAtm.addColorStop(0, "rgba(50,140,255,0)");
+      outerAtm.addColorStop(0.5, "rgba(65,160,255,0.07)");
+      outerAtm.addColorStop(1, "rgba(110,195,255,0.18)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, scale * 1.07, 0, Math.PI * 2);
+      ctx.fillStyle = outerAtm;
+      ctx.fill();
       ctx.beginPath();
       ctx.arc(cx, cy, scale, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(77,255,176,0.3)";
+      ctx.strokeStyle = "rgba(90,170,255,0.5)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
-      const atmGrad = ctx.createRadialGradient(cx, cy, scale * 0.88, cx, cy, scale * 1.0);
-      atmGrad.addColorStop(0, "rgba(77,255,176,0)");
-      atmGrad.addColorStop(1, "rgba(77,255,176,0.08)");
-      ctx.fillStyle = atmGrad;
-      ctx.fill();
 
       // Specular highlight
       const specGrad = ctx.createRadialGradient(cx - scale * 0.28, cy - scale * 0.3, 0, cx, cy, scale);
@@ -269,11 +303,19 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       ctx.fillStyle = specGrad;
       ctx.fill();
 
-      // ── Animated Arcs ──
+      // ── Animated Arcs — comet-trail style ──
       if (tabRef.current === "world") {
         const now = Date.now();
-        const ARC_DURATION = 1800;
-        for (const { fromC, toC, startTime } of arcsRef.current) {
+        const ARC_RGB = {
+          "#4DFFB0": [77, 255, 176],
+          "#FFD700": [255, 215, 0],
+          "#FF6B9D": [255, 107, 157],
+          "#67E8F9": [103, 232, 249],
+          "#A78BFA": [167, 139, 250],
+        };
+        const SEND_RGB = [255, 165, 55];
+        for (const { fromC, toC, startTime, color, isSend } of arcsRef.current) {
+          const ARC_DURATION = isSend ? 2600 : 1800;
           const progress = Math.min(1, (now - (startTime ?? now)) / ARC_DURATION);
           const interp = d3.geoInterpolate(fromC, toC);
           const nSteps = Math.max(2, Math.floor(60 * progress));
@@ -283,25 +325,36 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
             if (p) pts.push(p);
           }
           if (pts.length < 2) continue;
-          // Fade out in final 25% of animation
-          const alpha = progress < 0.75 ? 0.75 : 0.75 * (1 - (progress - 0.75) / 0.25);
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.strokeStyle = `rgba(77,255,176,${alpha.toFixed(2)})`;
-          ctx.lineWidth = 1.5;
-          ctx.shadowColor = "#4DFFB0";
-          ctx.shadowBlur = 6;
-          ctx.stroke();
+
+          const baseAlpha = progress < 0.75 ? 0.85 : 0.85 * (1 - (progress - 0.75) / 0.25);
+          const rgb = isSend ? SEND_RGB : (ARC_RGB[color] || [77, 255, 176]);
+
+          // Comet tail: segments fade from transparent (back) to bright (tip)
+          const tailLen = Math.max(3, Math.floor(pts.length * 0.5));
+          const tailStart = Math.max(0, pts.length - tailLen - 1);
+          for (let i = tailStart; i < pts.length - 1; i++) {
+            const t = (i - tailStart) / Math.max(1, pts.length - 1 - tailStart);
+            const segAlpha = baseAlpha * (0.06 + t * 0.94);
+            const segWidth = 0.5 + t * (isSend ? 2.6 : 1.8);
+            ctx.beginPath();
+            ctx.moveTo(pts[i][0], pts[i][1]);
+            ctx.lineTo(pts[i + 1][0], pts[i + 1][1]);
+            ctx.strokeStyle = `rgba(${rgb.join(",")},${segAlpha.toFixed(2)})`;
+            ctx.lineWidth = segWidth;
+            ctx.shadowColor = `rgb(${rgb.join(",")})`;
+            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : 5) : 0;
+            ctx.stroke();
+          }
           ctx.shadowBlur = 0;
-          // Glowing tip dot travelling along the arc
-          if (progress < 0.88 && pts.length > 0) {
+
+          // Bright glowing tip
+          if (progress < 0.9 && pts.length > 0) {
             const tip = pts[pts.length - 1];
             ctx.beginPath();
-            ctx.arc(tip[0], tip[1], 3.5, 0, Math.PI * 2);
-            ctx.fillStyle = "#fff";
-            ctx.shadowColor = "#4DFFB0";
-            ctx.shadowBlur = 14;
+            ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = `rgb(${rgb.join(",")})`;
+            ctx.shadowBlur = isSend ? 24 : 14;
             ctx.fill();
             ctx.shadowBlur = 0;
           }
@@ -312,6 +365,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const dots = tabRef.current === "world"
         ? worldDotsRef.current
         : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
+      const reactors = reactorCountriesRef.current;
 
       for (const { country, count, isMe } of dots) {
         const coords = COUNTRY_COORDS[country];
@@ -319,40 +373,48 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         const pt = proj(coords);
         if (!pt) continue;
 
+        const isReactor = reactors.has(country);
         const r = isMe ? 6 : Math.min(3 + count, 6);
-        const color = isMe ? "#4DFFB0" : "#1D9E75";
+        const dotColor = isMe ? "#4DFFB0" : isReactor ? "#FFB347" : "#1D9E75";
+        const glowRgb = isMe ? "77,255,176" : isReactor ? "255,179,71" : "29,158,117";
+        const glowR = isReactor ? r * 5.5 : r * 3.5;
 
-        // Glow
-        const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], r * 3.5);
-        glow.addColorStop(0, isMe ? "rgba(77,255,176,0.5)" : "rgba(29,158,117,0.35)");
+        // Glow halo
+        const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
+        glow.addColorStop(0, `rgba(${glowRgb},${isMe ? 0.55 : isReactor ? 0.5 : 0.35})`);
         glow.addColorStop(1, "rgba(0,0,0,0)");
         ctx.beginPath();
-        ctx.arc(pt[0], pt[1], r * 3.5, 0, Math.PI * 2);
+        ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
         ctx.fillStyle = glow;
         ctx.fill();
 
         // Dot
         ctx.beginPath();
         ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
+        ctx.fillStyle = dotColor;
+        ctx.shadowColor = dotColor;
+        ctx.shadowBlur = isReactor ? 16 : 8;
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Ring for "me"
-        if (isMe) {
+        // Ring for "me" and reactor countries
+        if (isMe || isReactor) {
           ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r + 4, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(77,255,176,0.45)";
-          ctx.lineWidth = 1.5;
+          ctx.arc(pt[0], pt[1], r + (isReactor && !isMe ? 5 : 4), 0, Math.PI * 2);
+          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : "rgba(255,179,71,0.6)";
+          ctx.lineWidth = isReactor && !isMe ? 1.8 : 1.5;
           ctx.stroke();
+        }
 
-          // YOU label
-          ctx.font = "bold 9px system-ui, sans-serif";
+        // Labels
+        ctx.font = "bold 9px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        if (isMe) {
           ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.textAlign = "center";
           ctx.fillText("YOU", pt[0], pt[1] - r - 7);
+        } else if (isReactor) {
+          ctx.fillStyle = "rgba(255,210,80,0.95)";
+          ctx.fillText("♥", pt[0], pt[1] - r - 7);
         }
       }
     };
@@ -604,6 +666,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   // ── Arc animation ────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || activeUsers.length < 2) return;
+    const ARC_PALETTE = ["#4DFFB0", "#FFD700", "#FF6B9D", "#67E8F9", "#A78BFA"];
     const addArc = () => {
       const others = activeUsers.filter(u => u.uid !== currentUser?.uid);
       if (!others.length) return;
@@ -616,8 +679,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const fromC = COUNTRY_COORDS[from.country];
       const toC = COUNTRY_COORDS[to.country];
       if (!fromC || !toC) return;
+      const color = ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
       const id = ++arcIdRef.current;
-      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now() }];
+      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now(), color }];
       setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
     };
     addArc();
@@ -629,7 +693,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: "#060e10", overflow: "hidden", position: "relative" }}>
 
       {/* ── GLOBE AREA ── */}
-      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(ellipse at 40% 40%, #0d2535 0%, #060e10 70%)" }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(ellipse at 35% 35%, #0e1e30 0%, #060c16 50%, #020810 100%)" }}>
 
         {/* Loading */}
         {!mapReady && (
@@ -639,7 +703,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           </div>
         )}
 
-        <canvas ref={canvasRef} style={{ display: mapReady ? "block" : "none", cursor: "grab", borderRadius: "50%", boxShadow: "0 0 80px rgba(77,255,176,0.07), 0 8px 60px rgba(0,0,0,0.9)" }} />
+        <canvas ref={canvasRef} style={{ display: mapReady ? "block" : "none", cursor: "grab", borderRadius: "50%", boxShadow: "0 0 60px rgba(50,130,255,0.12), 0 0 120px rgba(50,130,255,0.06), 0 8px 60px rgba(0,0,0,0.95)" }} />
 
         {/* Tooltip */}
         {tooltip && (
