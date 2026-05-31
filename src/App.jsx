@@ -56,7 +56,7 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, arrayUnion, collection, deleteDoc, doc, getFirestore,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
   limit, limitToLast, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -597,6 +597,7 @@ function NotificationBell({ streak, db, currentUser }) {
         const text = data().text;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
             const count = rDoc.data().count ?? 0;
             if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
             else delete acc[`${msgId}:${rDoc.id}`];
@@ -1057,6 +1058,7 @@ export default function App() {
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
             const emoji = rDoc.id;
             const data = rDoc.data();
             const countries = data.countries || {};
@@ -1092,6 +1094,31 @@ export default function App() {
       });
     }, () => {});
     return () => { clearTimeout(readyTimer); outer(); innerUnsubs.forEach((u) => u()); };
+  }, [db, currentUser]);
+
+  // One-time cleanup: delete legacy non-heart reaction docs from Firestore
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const DONE_KEY = "seen_reaction_cleanup_v1";
+    if (localStorage.getItem(DONE_KEY)) return;
+    const run = async () => {
+      try {
+        const q = query(collection(db, "publicMessages"), orderBy("timestamp", "desc"), limit(50));
+        const msgs = await getDocs(q);
+        const deletes = [];
+        for (const msgDoc of msgs.docs) {
+          const rSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "reactions"));
+          rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️" && !rDoc.id.startsWith("sticker_")) {
+              deletes.push(deleteDoc(rDoc.ref));
+            }
+          });
+        }
+        await Promise.all(deletes);
+        localStorage.setItem(DONE_KEY, "1");
+      } catch (_) {}
+    };
+    run();
   }, [db, currentUser]);
 
   // Prune reactor lighting older than 5h once a minute
