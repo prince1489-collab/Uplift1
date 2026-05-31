@@ -130,12 +130,13 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   // Tap vs drag tracking
   const mouseMovedRef = useRef(false);
   // Reactor + "seen" country highlighting + send burst
-  const reactedRef = useRef(new Map());   // country -> emoji (reacted, bright gold)
-  const seenRef = useRef(new Set());      // countries that have "seen" my kindness (dim)
+  const reactedRef = useRef(new Map());   // country -> { emoji, at }
+  const seenRef = useRef(new Set());      // countries that have "seen" my kindness
   const activeUsersRef = useRef([]);
   const lastSendTimeRef = useRef(0);
   const sendBurstIntervalRef = useRef(null);
-  const hometownPingRef = useRef(0);     // timestamp of last same-country reaction for ripple animation
+  const hometownPingRef = useRef(0);
+  const countryNameToFeatureRef = useRef({}); // country name → GeoJSON feature (built once on load)
   // "Seen" countries persisted 5h, sender-only
   const [seenCountries, setSeenCountries] = useState(() => {
     try {
@@ -304,6 +305,30 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const world = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
       countriesRef.current = window.topojson.feature(world, world.objects.countries).features;
       d3Ref.current = window.d3;
+
+      // Build country-name → GeoJSON feature mapping once so the draw loop can
+      // fill entire countries with colour.  Try exact containment first; fall back
+      // to nearest centroid for island nations whose centroid sits over water.
+      const d3l = window.d3;
+      const nameToFeature = {};
+      for (const [name, coords] of Object.entries(COUNTRY_COORDS)) {
+        let found = null;
+        for (const f of countriesRef.current) {
+          if (d3l.geoContains(f, coords)) { found = f; break; }
+        }
+        if (!found) {
+          let best = null, minDist = Infinity;
+          for (const f of countriesRef.current) {
+            const c = d3l.geoCentroid(f);
+            const dist = (c[0] - coords[0]) ** 2 + (c[1] - coords[1]) ** 2;
+            if (dist < minDist) { minDist = dist; best = f; }
+          }
+          found = best;
+        }
+        if (found) nameToFeature[name] = found;
+      }
+      countryNameToFeatureRef.current = nameToFeature;
+
       setMapReady(true);
     };
     load().catch(console.error);
@@ -384,6 +409,44 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         ctx.strokeStyle = "rgba(0,0,0,0.18)";
         ctx.lineWidth = 0.4;
         ctx.stroke();
+      }
+
+      // ── Sender-only country fills (visible only to the greeting sender) ──
+      // Computed once here so the dots section and tags section share the same frame values.
+      const now2 = Date.now();
+      const beat = heartbeat(now2);
+
+      // Seen tier — warm amber, beats like a heartbeat for 5h
+      for (const c of seenRef.current) {
+        const feature = countryNameToFeatureRef.current[c];
+        if (!feature) continue;
+        const fillA  = (0.22 + 0.55 * beat).toFixed(2);
+        const strokeA = (0.35 + 0.55 * beat).toFixed(2);
+        const blur = 4 + 14 * beat;
+        ctx.beginPath(); path(feature);
+        ctx.fillStyle = `rgba(244,164,53,${fillA})`;
+        ctx.shadowColor = "#F4A435"; ctx.shadowBlur = blur;
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); path(feature);
+        ctx.strokeStyle = `rgba(244,164,53,${strokeA})`;
+        ctx.lineWidth = 1.2;
+        ctx.shadowColor = "#F4A435"; ctx.shadowBlur = blur * 0.6;
+        ctx.stroke(); ctx.shadowBlur = 0;
+      }
+
+      // Reacted tier — static rose-coral #FF5A7E, no pulse
+      for (const [c] of reactedRef.current) {
+        const feature = countryNameToFeatureRef.current[c];
+        if (!feature) continue;
+        ctx.beginPath(); path(feature);
+        ctx.fillStyle = "rgba(255,90,126,0.70)";
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = 18;
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); path(feature);
+        ctx.strokeStyle = "rgba(255,90,126,0.90)";
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = 8;
+        ctx.stroke(); ctx.shadowBlur = 0;
       }
 
       // Atmosphere — blue-white rim + outer glow like real Earth photos
@@ -469,58 +532,38 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         }
       }
 
-      // ── Dots ──
-      // Build a combined country map: active users + "seen" + "reacted" tiers.
-      // seen  → amber heartbeat (country has seen my greeting, 5h)
-      // reacted → coral static + floating tag (someone there reacted)
+      // ── Dots: YOU + active users only ──
+      // Seen/reacted country highlighting is done via full country fills above.
+      // Here we only render the YOU marker and dots for currently-active users.
       const dotMap = {};
       const base = tabRef.current === "world"
         ? worldDotsRef.current
         : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
       for (const d of base) dotMap[d.country] = { country: d.country, count: d.count, isMe: d.isMe };
-      // "Seen" tier (amber heartbeat) — include even if not currently active
+      // Register seen/reacted countries with count:0 so the YOU dot still renders when my
+      // country is in one of those sets, but no extra dot appears for countries with no active users.
       for (const c of seenRef.current) {
-        if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
-        dotMap[c].seen = true;
+        if (!dotMap[c]) dotMap[c] = { country: c, count: 0, isMe: false };
       }
-      // "Reacted" tier (coral + tag) — takes priority over seen, include even if not active
-      for (const [c, info] of reactedRef.current) {
-        if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
-        dotMap[c].reacted = info.emoji;
-        dotMap[c].reactedAt = info.at;
-        dotMap[c].seen = false;
+      for (const [c] of reactedRef.current) {
+        if (!dotMap[c]) dotMap[c] = { country: c, count: 0, isMe: false };
       }
-      const now2 = Date.now();
-      const beat = heartbeat(now2); // shared heartbeat amplitude this frame
 
-      for (const { country, count, isMe, seen, reacted, reactedAt } of Object.values(dotMap)) {
+      for (const { country, count, isMe } of Object.values(dotMap)) {
+        if (!isMe && count === 0) continue; // no active users; country fill shows the state
         const coords = COUNTRY_COORDS[country];
         if (!coords || !isVisible(coords[0], coords[1])) continue;
         const pt = proj(coords);
         if (!pt) continue;
 
-        const isBeating = seen && !reacted;       // seen-but-not-yet-reacted → beats
-        const baseR = isMe ? 6 : reacted ? 6 : Math.min(3 + count, 6);
-        const r = baseR * (isBeating ? 1 + 0.4 * beat : 1);
+        const r = isMe ? 6 : Math.min(3 + count, 6);
+        const dotColor = isMe ? "#4DFFB0" : "#1D9E75";
+        const glowRgb  = isMe ? "77,255,176" : "29,158,117";
 
-        // Base dot colour — "me" green always wins, then reacted coral, then seen amber
-        const dotColor = isMe ? "#4DFFB0"
-          : reacted ? `rgb(${REACTED_RGB.join(",")})`
-          : seen ? `rgb(${SEEN_BEAT_RGB.join(",")})`
-          : "#1D9E75";
-        const glowRgb = isMe ? "77,255,176"
-          : reacted ? REACTED_RGB.join(",")
-          : seen ? SEEN_BEAT_RGB.join(",")
-          : "29,158,117";
-        const glowR = (reacted ? 5.5 : seen ? 4.5 : 3.5) * baseR;
-
-        // Glow halo — beating countries pulse their glow with the heartbeat
-        const glowAlpha = isMe ? 0.55
-          : reacted ? 0.5
-          : isBeating ? 0.22 + 0.5 * beat
-          : 0.35;
+        // Glow halo
+        const glowR = r * 3.5;
         const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
-        glow.addColorStop(0, `rgba(${glowRgb},${glowAlpha.toFixed(2)})`);
+        glow.addColorStop(0, `rgba(${glowRgb},${isMe ? "0.55" : "0.35"})`);
         glow.addColorStop(1, "rgba(0,0,0,0)");
         ctx.beginPath();
         ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
@@ -532,96 +575,96 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
         ctx.fillStyle = dotColor;
         ctx.shadowColor = dotColor;
-        ctx.shadowBlur = reacted ? 16 : isBeating ? 4 + 8 * beat : 8;
+        ctx.shadowBlur = 8;
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Ring for "me" and reacted countries
-        if (isMe || reacted) {
+        // Ring for YOU
+        if (isMe) {
           ctx.beginPath();
-          ctx.arc(pt[0], pt[1], baseR + (reacted && !isMe ? 5 : 4), 0, Math.PI * 2);
-          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : `rgba(${REACTED_RGB.join(",")},0.75)`;
-          ctx.lineWidth = reacted && !isMe ? 1.8 : 1.5;
+          ctx.arc(pt[0], pt[1], r + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(77,255,176,0.45)";
+          ctx.lineWidth = 1.5;
           ctx.stroke();
         }
 
-        // Hometown ripple — three staggered expanding rings on the YOU dot when a local reacts
+        // Hometown ripple — three staggered expanding rings on YOU when a local reacts
         if (isMe && hometownPingRef.current > 0) {
           const hometownAge = now2 - hometownPingRef.current;
           if (hometownAge < 3000) {
-            const phases = [0, 700, 1400];
-            for (const delay of phases) {
+            for (const delay of [0, 700, 1400]) {
               const age = hometownAge - delay;
               if (age < 0 || age > 2200) continue;
               const p = age / 2200;
-              const rr = baseR + 6 + p * 24;
-              const alpha = (1 - p) * 0.65;
               ctx.beginPath();
-              ctx.arc(pt[0], pt[1], rr, 0, Math.PI * 2);
-              ctx.strokeStyle = `rgba(77,255,176,${alpha.toFixed(2)})`;
+              ctx.arc(pt[0], pt[1], r + 6 + p * 24, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(77,255,176,${((1 - p) * 0.65).toFixed(2)})`;
               ctx.lineWidth = 1.5;
               ctx.stroke();
             }
           }
         }
 
-        // ── "YOU" label ──
+        // YOU label
         if (isMe) {
           ctx.font = "bold 9px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.fillText("YOU", pt[0], pt[1] - baseR - 7);
+          ctx.fillText("YOU", pt[0], pt[1] - r - 7);
         }
+      }
 
-        // ── Reacted tag — a small bubble that erects from the country for 8s ──
-        if (reacted) {
-          const reactAge = now2 - (reactedAt ?? 0);
-          if (reactAge < REACT_TAG_MS) {
-            // fade/scale in (first 300ms), hold, then fade out (last 800ms)
-            let tagAlpha = 1;
-            if (reactAge < 300) tagAlpha = reactAge / 300;
-            else if (reactAge > REACT_TAG_MS - 800) tagAlpha = Math.max(0, (REACT_TAG_MS - reactAge) / 800);
-            const pop = reactAge < 300 ? 0.55 + 0.45 * (reactAge / 300) : 1;
+      // ── Reaction tags — rendered last so they sit above everything else ──
+      // Tag erects for REACT_TAG_MS ms (with fade-in/out), then collapses to a
+      // floating emoji permanently pinned above the country centroid.
+      for (const [c, info] of reactedRef.current) {
+        const coords = COUNTRY_COORDS[c];
+        if (!coords || !isVisible(coords[0], coords[1])) continue;
+        const pt = proj(coords);
+        if (!pt) continue;
+        const reactAge = now2 - (info.at ?? 0);
+        const anchorY = pt[1] - 4;
 
-            const label = `${reacted} reacted!`;
-            ctx.font = "bold 11px system-ui, sans-serif";
-            const tw = ctx.measureText(label).width;
-            const padX = 8, bubbleH = 19;
-            const bw = tw + padX * 2;
-            const stemH = 16 * pop;
-            const bubbleY = pt[1] - baseR - 6 - stemH - bubbleH;
-            const bx = pt[0] - bw / 2;
+        if (reactAge < REACT_TAG_MS) {
+          let tagAlpha = 1;
+          if (reactAge < 300) tagAlpha = reactAge / 300;
+          else if (reactAge > REACT_TAG_MS - 800) tagAlpha = Math.max(0, (REACT_TAG_MS - reactAge) / 800);
+          const pop = reactAge < 300 ? 0.55 + 0.45 * (reactAge / 300) : 1;
 
-            ctx.globalAlpha = tagAlpha;
-            // stem
-            ctx.beginPath();
-            ctx.moveTo(pt[0], pt[1] - baseR - 4);
-            ctx.lineTo(pt[0], bubbleY + bubbleH);
-            ctx.strokeStyle = `rgb(${REACTED_RGB.join(",")})`;
-            ctx.lineWidth = 1.3;
-            ctx.stroke();
-            // bubble
-            ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(bx, bubbleY, bw, bubbleH, 9);
-            else ctx.rect(bx, bubbleY, bw, bubbleH);
-            ctx.fillStyle = `rgba(${REACTED_RGB.join(",")},0.95)`;
-            ctx.shadowColor = `rgb(${REACTED_RGB.join(",")})`;
-            ctx.shadowBlur = 10;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            // label text
-            ctx.fillStyle = "#ffffff";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(label, pt[0], bubbleY + bubbleH / 2 + 0.5);
-            ctx.textBaseline = "alphabetic";
-            ctx.globalAlpha = 1;
-          } else {
-            // collapsed — just the reaction emoji floating above the coral dot
-            ctx.font = "12px system-ui, sans-serif";
-            ctx.textAlign = "center";
-            ctx.fillText(reacted, pt[0], pt[1] - baseR - 8);
-          }
+          const label = `${info.emoji} reacted!`;
+          ctx.font = "bold 11px system-ui, sans-serif";
+          const padX = 8, bubbleH = 20;
+          const bw = ctx.measureText(label).width + padX * 2;
+          const stemH = 18 * pop;
+          const bubbleY = anchorY - stemH - bubbleH;
+
+          ctx.globalAlpha = tagAlpha;
+          ctx.beginPath();
+          ctx.moveTo(pt[0], anchorY);
+          ctx.lineTo(pt[0], bubbleY + bubbleH);
+          ctx.strokeStyle = `rgb(${REACTED_RGB.join(",")})`;
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(pt[0] - bw / 2, bubbleY, bw, bubbleH, 9);
+          else ctx.rect(pt[0] - bw / 2, bubbleY, bw, bubbleH);
+          ctx.fillStyle = `rgba(${REACTED_RGB.join(",")},0.95)`;
+          ctx.shadowColor = `rgb(${REACTED_RGB.join(",")})`;
+          ctx.shadowBlur = 10;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, pt[0], bubbleY + bubbleH / 2 + 0.5);
+          ctx.textBaseline = "alphabetic";
+          ctx.globalAlpha = 1;
+        } else {
+          // Collapsed: floating emoji above the country centroid indefinitely
+          ctx.font = "14px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(info.emoji, pt[0], anchorY - 6);
         }
       }
     };
