@@ -975,6 +975,7 @@ export default function App() {
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [reactionBarId, setReactionBarId] = useState(null);
+  const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
   const longPressTimer = useRef(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
@@ -1979,7 +1980,11 @@ export default function App() {
                                             onClose={() => setReactionBarId(null)}
                                             onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
                                             onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
-                                            onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
+                                            onReact={(emoji) => {
+                                              triggerReactionBurst(emoji);
+                                              haptic([5]);
+                                              if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
+                                            }}
                                             onUpgrade={() => setShowUpgrade(true)}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />
@@ -2019,48 +2024,49 @@ export default function App() {
                                         }
                                         setActiveMessageId(isActive ? null : m.id);
                                       }}>
-                                      {(() => {
-                                        const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
-                                        const isBursting = burstingMystery === m.id;
-                                        const moodStyle = getMoodBubbleStyle(group.moodTag, mine);
-                                        const hasMood = Boolean(moodStyle);
-                                        return (
-                                          <div
-                                            className={`border px-4 py-3.5 text-base font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
-                                              mine
-                                                ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
-                                                : isUnwrapped
-                                                ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
-                                                : isMystery
-                                                ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
-                                                : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
-                                            } ${isBursting ? "mystery-burst" : ""} ${
-                                              hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""
-                                            }`}
-                                            style={
-                                              hasMood && !isUnwrapped && !(isMystery && !mine)
-                                                ? moodStyle
-                                                : isUnwrapped
-                                                ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
-                                                : isMystery && !mine
-                                                ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
-                                                : {}
-                                            }>
-                                            {isMystery && !mine ? (
-                                              isUnwrapped ? (
-                                                <span className="mystery-reveal">{unwrappedMysteries[m.id]}</span>
+                                      <div className="relative">
+                                        {(() => {
+                                          const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
+                                          const isBursting = burstingMystery === m.id;
+                                          const moodStyle = getMoodBubbleStyle(group.moodTag, mine);
+                                          const hasMood = Boolean(moodStyle);
+                                          return (
+                                            <div
+                                              className={`border px-4 py-3.5 text-base font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                                mine
+                                                  ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
+                                                  : isUnwrapped
+                                                  ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
+                                                  : isMystery
+                                                  ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
+                                                  : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
+                                              } ${isBursting ? "mystery-burst" : ""} ${
+                                                hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""
+                                              }`}
+                                              style={
+                                                hasMood && !isUnwrapped && !(isMystery && !mine)
+                                                  ? moodStyle
+                                                  : isUnwrapped
+                                                  ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
+                                                  : isMystery && !mine
+                                                  ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
+                                                  : {}
+                                              }>
+                                              {isMystery && !mine ? (
+                                                isUnwrapped ? (
+                                                  <span className="mystery-reveal">{unwrappedMysteries[m.id]}</span>
+                                                ) : (
+                                                  <span>🎁 Tap to unwrap</span>
+                                                )
                                               ) : (
-                                                <span>🎁 Tap to unwrap</span>
-                                              )
-                                            ) : (
-                                              <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
-                                            )}
-                                            {hasMood && mine && <span className="seen-mood-shimmer" aria-hidden="true" />}
-                                          </div>
-                                        );
-                                      })()}
-
-                                      <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} />
+                                                <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
+                                              )}
+                                              {hasMood && mine && <span className="seen-mood-shimmer" aria-hidden="true" />}
+                                            </div>
+                                          );
+                                        })()}
+                                        <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
+                                      </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>

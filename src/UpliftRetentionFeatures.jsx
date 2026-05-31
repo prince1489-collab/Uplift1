@@ -724,7 +724,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry }) {
+export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry, localHearted = false }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -737,17 +737,47 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
     }, () => {});
   }, [db, messageId]);
 
-  const active = EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
-  if (active.length === 0) return null;
+  const userAlreadyReacted = reactions["❤️"]?.uids?.includes(currentUser?.uid);
+  const serverCount = reactions["❤️"]?.count ?? 0;
+  // Optimistic +1 while waiting for Firestore to confirm the reaction
+  const displayCount = serverCount + (localHearted && !userAlreadyReacted ? 1 : 0);
+  const active = displayCount > 0 ? ["❤️"] : EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
 
-  const toggle = async (emoji) => {
+  if (active.length === 0 && displayCount === 0) return null;
+
+  const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
     const EMOJIS_ALL = ["❤️"];
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
     const isSame = currentEmoji === emoji;
 
+    // Optimistic local update
+    setReactions((prev) => {
+      const updated = { ...prev };
+      if (currentEmoji && !isSame) {
+        const old = { ...(updated[currentEmoji] ?? { count: 0, uids: [] }) };
+        old.uids = (old.uids ?? []).filter((u) => u !== currentUser.uid);
+        old.count = Math.max(0, old.uids.length);
+        const countries = { ...(old.countries ?? {}) };
+        delete countries[currentUser.uid];
+        updated[currentEmoji] = { ...old, countries };
+      }
+      const existing = { ...(updated[emoji] ?? { count: 0, uids: [] }) };
+      if (isSame) {
+        existing.uids = (existing.uids ?? []).filter((u) => u !== currentUser.uid);
+        existing.count = Math.max(0, existing.uids.length);
+      } else {
+        existing.uids = [...(existing.uids ?? []), currentUser.uid];
+        existing.count = existing.uids.length;
+      }
+      updated[emoji] = existing;
+      return updated;
+    });
+
+    if (!isSame && onReact) onReact(emoji);
+
     const myCountry = reactorCountry ?? null;
-    await runTransaction(db, async (tx) => {
+    runTransaction(db, async (tx) => {
       if (currentEmoji && !isSame) {
         const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
         const oldSnap = await tx.get(oldRef);
@@ -770,8 +800,7 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
         countries[currentUser.uid] = myCountry;
         tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
       }
-    });
-    if (!isSame && onReact) onReact(emoji);
+    }).catch(() => {});
   };
 
   return (
@@ -779,13 +808,14 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
       className="absolute -bottom-3 right-1 flex gap-0.5"
       style={{ zIndex: 3 }}>
       {active.map((e) => {
-        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid);
+        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
+        const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
         return (
           <button key={e} onClick={() => toggle(e)}
             className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 ${
               mine2 ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
             }`}>
-            {e}<span className="ml-0.5">{reactions[e]?.count}</span>
+            {e}<span className="ml-0.5">{count}</span>
           </button>
         );
       })}
