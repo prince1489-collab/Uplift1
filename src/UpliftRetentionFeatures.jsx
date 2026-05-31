@@ -624,7 +624,7 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
   );
 }
 
-const REACTION_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+const REACTION_EMOJIS = ["❤️"];
 
 // ── + button to open tray, per-emoji full-screen animation callbacks ──────────
 export function MessageReactions({ db, messageId, currentUser, onReact }) {
@@ -643,7 +643,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
   const react = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+    const EMOJIS_ALL = ["❤️"];
 
     // Find which emoji (if any) this user has already reacted with on this message
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
@@ -695,7 +695,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
       {open && (
         <div className="flex gap-1">
           {REACTION_EMOJIS.map((e) => {
-            const LABELS = { "❤️": "Love this", "🙏": "Thank you", "😊": "Made me smile", "🌟": "You're a star" };
+            const LABELS = { "❤️": "Love this" };
             const myCurrentEmoji = REACTION_EMOJIS.find((x) => reactions[x]?.uids?.includes(currentUser?.uid));
             const isMyPick = myCurrentEmoji === e;
             return (
@@ -726,7 +726,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 // ── Reaction counts float beside the bubble ──────────────────────────────────
 export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry }) {
   const [reactions, setReactions] = useState({});
-  const EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+  const EMOJIS = ["❤️"];
 
   useEffect(() => {
     if (!db || !messageId) return;
@@ -742,7 +742,7 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
 
   const toggle = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+    const EMOJIS_ALL = ["❤️"];
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
     const isSame = currentEmoji === emoji;
 
@@ -1466,7 +1466,7 @@ export function NotificationPermissionBanner() {
 // WHATSAPP-STYLE UNIFIED QUICK-REACT BAR
 // ─────────────────────────────────────────────────────────────────
 
-const QUICK_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+const QUICK_EMOJIS = ["❤️"];
 const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
@@ -1683,21 +1683,6 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
 
   return (
     <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
-      {isOther && (
-        <button className={`seen-qrb-btn${waved ? " seen-qrb-btn--done" : ""}`}
-          onClick={handleWave} disabled={waved} title="Wave back">
-          {waved ? "✅" : "👋"}
-        </button>
-      )}
-      {isOther && (
-        <button
-          className={`seen-qrb-btn${gifted ? " seen-qrb-btn--done" : ""}${!canGift && !gifted ? " seen-qrb-btn--dim" : ""}`}
-          onClick={handleGift} disabled={!canGift && !gifted}
-          title={gifted ? "Gifted!" : canGift ? `Gift ${QUICK_GIFT_AMOUNT} sparks` : "Not enough sparks"}>
-          {gifted ? "✅" : "🎁"}
-        </button>
-      )}
-      {isOther && <div className="seen-qrb-sep" />}
       {QUICK_EMOJIS.map((emoji) => (
         <button key={emoji}
           className={`seen-qrb-btn${myEmoji === emoji ? " seen-qrb-btn--picked" : ""}`}
@@ -1713,14 +1698,6 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} onClose={onClose} />
         </>
       )}
-      <div className="seen-qrb-sep" />
-      <button
-        className="seen-qrb-btn"
-        onClick={() => setShowStickers(true)}
-        title="React with GIF"
-        style={{ fontSize: 13, fontWeight: 700, color: "rgba(20,184,166,0.9)", width: "auto", padding: "0 8px", height: 34, letterSpacing: "-0.5px" }}>
-        GIF
-      </button>
       {mine && onDelete && (
         <>
           <div className="seen-qrb-sep" />
