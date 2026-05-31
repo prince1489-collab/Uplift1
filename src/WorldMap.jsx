@@ -495,6 +495,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           "#FF6B9D": [255, 107, 157],
           "#67E8F9": [103, 232, 249],
           "#A78BFA": [167, 139, 250],
+          "#FF5A7E": [255, 90, 126],
         };
         const SEND_RGB = [255, 165, 55];
         const REACT_ARC_RGB = REACTED_RGB; // rose-coral [255, 90, 126]
@@ -596,28 +597,42 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         const pt = proj(coords);
         if (!pt) continue;
 
+        const isReactedCountry = !isMe && reactedRef.current.has(country);
         const r = isMe ? 6 : Math.min(3 + count, 6);
         const dotColor = isMe ? "#4DFFB0" : "#1D9E75";
-        const glowRgb  = isMe ? "77,255,176" : "29,158,117";
+        const glowRgb  = isMe ? "77,255,176" : isReactedCountry ? "255,90,126" : "29,158,117";
 
-        // Glow halo
-        const glowR = r * 3.5;
-        const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
-        glow.addColorStop(0, `rgba(${glowRgb},${isMe ? "0.55" : "0.35"})`);
-        glow.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
-        ctx.fillStyle = glow;
-        ctx.fill();
+        if (isReactedCountry) {
+          // Heart emoji replaces the green dot for reacted countries
+          const heartSize = Math.round(10 + Math.min(count, 3) * 2);
+          ctx.shadowColor = "rgb(255,90,126)";
+          ctx.shadowBlur = 14;
+          ctx.font = `${heartSize}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("❤️", pt[0], pt[1]);
+          ctx.shadowBlur = 0;
+          ctx.textBaseline = "alphabetic";
+        } else {
+          // Glow halo
+          const glowR = r * 3.5;
+          const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
+          glow.addColorStop(0, `rgba(${glowRgb},${isMe ? "0.55" : "0.35"})`);
+          glow.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
+          ctx.fillStyle = glow;
+          ctx.fill();
 
-        // Dot
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
-        ctx.fillStyle = dotColor;
-        ctx.shadowColor = dotColor;
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+          // Dot
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
+          ctx.fillStyle = dotColor;
+          ctx.shadowColor = dotColor;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
 
         // Ring for YOU
         if (isMe) {
@@ -969,7 +984,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const fromC = COUNTRY_COORDS[from.country];
       const toC = COUNTRY_COORDS[to.country];
       if (!fromC || !toC) return;
-      const color = ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
+      const color = reactedRef.current.has(from.country)
+        ? "#FF5A7E"
+        : ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
       const id = ++arcIdRef.current;
       arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now(), color }];
       setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
