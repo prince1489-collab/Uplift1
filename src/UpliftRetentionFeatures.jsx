@@ -1525,11 +1525,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, on
   }, [db, currentUser, senderUid]);
 
   const handleClick = async () => {
-    if (!isPremium) {
-      onClose?.();
-      setTimeout(() => onUpgrade?.(), 50);
-      return;
-    }
     if (status || loading) return;
     setLoading(true);
     try {
@@ -1561,17 +1556,6 @@ function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, on
     return (
       <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Request sent">
         💬
-      </button>
-    );
-  }
-
-  if (!isPremium) {
-    return (
-      <button className="seen-qrb-btn seen-qrb-btn--dim" onClick={handleClick}
-        title="Premium feature — upgrade to invite to private chat"
-        style={{ position: "relative" }}>
-        💬
-        <span style={{ position: "absolute", bottom: 2, right: 2, fontSize: 7, lineHeight: 1 }}>🔒</span>
       </button>
     );
   }

@@ -16,9 +16,9 @@ export function getChatId(uid1, uid2) {
   return [uid1, uid2].sort().join("_");
 }
 
-// ── Can this user SEND a chat request? (max level required) ──────────
+// ── Can this user SEND a chat request? ───────────────────────────
 export function canSendChatRequest(profile) {
-  return Number(profile?.sparkBalance ?? 0) >= MAX_LEVEL_SPARKS;
+  return true; // open to all users
 }
 
 // ── Pending incoming requests count (used for badge in header) ───────
@@ -113,8 +113,6 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   const [senderMeta, setSenderMeta] = useState({}); // uid → profile data
   const [recipientMeta, setRecipientMeta] = useState({}); // uid → profile data
   const [partnerMeta, setPartnerMeta] = useState({});
-  const isPremium = profile?.isPremium === true;
-
   // Listen to incoming pending requests
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -191,7 +189,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   }, [db, JSON.stringify(chats.map((c) => c.id))]);
 
   const handleAccept = async (req) => {
-    if (!isPremium || !db) return;
+    if (!db) return;
     const chatId = getChatId(req.fromUid, req.toUid);
     await setDoc(doc(db, "privateChats", chatId), {
       participants: [req.fromUid, req.toUid].sort(),
@@ -216,10 +214,6 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
           <ArrowLeft size={18} className="text-slate-600" />
         </button>
         <h2 className="text-sm font-bold text-slate-800">Private Chats</h2>
-        <div className="ml-auto flex items-center gap-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5">
-          <Lock size={9} className="text-violet-500" />
-          <span className="text-[10px] font-semibold text-violet-600">Members only</span>
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -249,27 +243,16 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
                         <p className="text-[10px] text-slate-400">wants to chat privately</p>
                       </div>
                     </div>
-                    {isPremium ? (
-                      <div className="flex gap-1.5 flex-shrink-0">
-                        <button onClick={() => handleAccept(req)}
-                          className="rounded-full bg-teal-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-teal-700 transition-colors">
-                          Accept
-                        </button>
-                        <button onClick={() => handleDecline(req)}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-500 hover:bg-slate-100 transition-colors">
-                          Decline
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => startCheckout(currentUser)}
-                        className="flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 flex-shrink-0 hover:bg-amber-100 transition-colors cursor-pointer">
-                        <Lock size={9} className="text-amber-600" />
-                        <span className="text-[10px] font-semibold text-amber-700 whitespace-nowrap">
-                          Upgrade $3.99/mo
-                        </span>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button onClick={() => handleAccept(req)}
+                        className="rounded-full bg-teal-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-teal-700 transition-colors">
+                        Accept
                       </button>
-                    )}
+                      <button onClick={() => handleDecline(req)}
+                        className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-500 hover:bg-slate-100 transition-colors">
+                        Decline
+                      </button>
+                    </div>
                   </div>
                 );
               })}

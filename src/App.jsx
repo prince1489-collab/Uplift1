@@ -283,11 +283,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-slate-800 truncate">{profile?.fullName ?? firstName}</p>
-                    {isPremium && (
-                      <span className="flex-shrink-0 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-                        ✦ Premium
-                      </span>
-                    )}
                   </div>
                   <p className="text-xs text-slate-400 truncate">{currentLevel.title}</p>
                 </div>
@@ -303,19 +298,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 
               {/* Main actions */}
               <div className="px-3 py-2 space-y-0.5">
-                {!isPremium && (
-                  <button onClick={() => { onUpgrade(); close(); }}
-                    className="flex w-full items-center gap-3 px-3 py-3 mb-1 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-100 hover:border-teal-300 transition-colors">
-                    <IconBox className="bg-gradient-to-br from-teal-500 to-emerald-500">
-                      <Sparkles size={15} className="text-white" />
-                    </IconBox>
-                    <div className="flex-1 text-left">
-                      <p className="text-sm font-semibold text-teal-700">Go Premium</p>
-                      <p className="text-[11px] text-teal-500">Unlock all features · $3.99/mo</p>
-                    </div>
-                    <ArrowRight size={14} className="text-teal-400 flex-shrink-0" />
-                  </button>
-                )}
 
                 <Row
                   onClick={() => { onWorld(); close(); }}
@@ -1665,11 +1647,6 @@ export default function App() {
           </div>
         )}
 
-        {premiumSuccess && (
-          <div className="fixed top-4 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2.5 shadow-xl text-white text-sm font-semibold animate-fade-in">
-            <span>🎉</span> Welcome to Seen Premium!
-          </div>
-        )}
 
         {showChatInbox && !activeChat && (
           <PrivateChatInbox

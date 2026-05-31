@@ -190,10 +190,21 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     const m = new Map();
     const now = Date.now();
     for (const [c, v] of Object.entries(reactedCountries || {})) {
-      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, { emoji: v.emoji, at: v.at });
+      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) {
+        m.set(c, { emoji: v.emoji, at: v.at });
+        // Fire a rose-coral reaction arc for fresh reactions (within last 3s)
+        if (myCoords && now - v.at < 3000 && !reactedRef.current.has(c)) {
+          const fromC = COUNTRY_COORDS[c];
+          if (fromC) {
+            const id = ++arcIdRef.current;
+            arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC, toC: myCoords, startTime: now, isReaction: true }];
+            setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3500);
+          }
+        }
+      }
     }
     reactedRef.current = m;
-  }, [reactedCountries]);
+  }, [reactedCountries, myCoords]);
 
   // "Seen" tier: while the map is open and I've sent a greeting, every active
   // country (including my own) is recorded as having seen my kindness. These
@@ -486,8 +497,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           "#A78BFA": [167, 139, 250],
         };
         const SEND_RGB = [255, 165, 55];
-        for (const { fromC, toC, startTime, color, isSend } of arcsRef.current) {
-          const ARC_DURATION = isSend ? 2600 : 1800;
+        const REACT_ARC_RGB = REACTED_RGB; // rose-coral [255, 90, 126]
+        for (const { fromC, toC, startTime, color, isSend, isReaction } of arcsRef.current) {
+          const ARC_DURATION = isSend ? 2600 : isReaction ? 3000 : 1800;
           const progress = Math.min(1, (now - (startTime ?? now)) / ARC_DURATION);
           const interp = d3.geoInterpolate(fromC, toC);
           const nSteps = Math.max(2, Math.floor(60 * progress));
@@ -498,8 +510,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           }
           if (pts.length < 2) continue;
 
-          const baseAlpha = progress < 0.75 ? 0.85 : 0.85 * (1 - (progress - 0.75) / 0.25);
-          const rgb = isSend ? SEND_RGB : (ARC_RGB[color] || [77, 255, 176]);
+          const baseAlpha = progress < 0.75 ? 0.9 : 0.9 * (1 - (progress - 0.75) / 0.25);
+          const rgb = isSend ? SEND_RGB : isReaction ? REACT_ARC_RGB : (ARC_RGB[color] || [77, 255, 176]);
 
           // Comet tail: segments fade from transparent (back) to bright (tip)
           const tailLen = Math.max(3, Math.floor(pts.length * 0.5));
@@ -507,14 +519,14 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           for (let i = tailStart; i < pts.length - 1; i++) {
             const t = (i - tailStart) / Math.max(1, pts.length - 1 - tailStart);
             const segAlpha = baseAlpha * (0.06 + t * 0.94);
-            const segWidth = 0.5 + t * (isSend ? 2.6 : 1.8);
+            const segWidth = 0.5 + t * (isSend ? 2.6 : isReaction ? 2.2 : 1.8);
             ctx.beginPath();
             ctx.moveTo(pts[i][0], pts[i][1]);
             ctx.lineTo(pts[i + 1][0], pts[i + 1][1]);
             ctx.strokeStyle = `rgba(${rgb.join(",")},${segAlpha.toFixed(2)})`;
             ctx.lineWidth = segWidth;
             ctx.shadowColor = `rgb(${rgb.join(",")})`;
-            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : 5) : 0;
+            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : isReaction ? 12 : 5) : 0;
             ctx.stroke();
           }
           ctx.shadowBlur = 0;
@@ -522,13 +534,40 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           // Bright glowing tip
           if (progress < 0.9 && pts.length > 0) {
             const tip = pts[pts.length - 1];
-            ctx.beginPath();
-            ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowColor = `rgb(${rgb.join(",")})`;
-            ctx.shadowBlur = isSend ? 24 : 14;
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            if (isReaction) {
+              // Heart emoji at tip with glow
+              ctx.shadowColor = `rgb(${rgb.join(",")})`;
+              ctx.shadowBlur = 18;
+              ctx.font = `${Math.round(10 + baseAlpha * 6)}px system-ui, sans-serif`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.globalAlpha = baseAlpha;
+              ctx.fillText("❤️", tip[0], tip[1]);
+              ctx.globalAlpha = 1;
+              ctx.shadowBlur = 0;
+              // Trailing hearts along the arc at intervals
+              const heartPositions = [0.55, 0.35, 0.18];
+              for (let hi = 0; hi < heartPositions.length; hi++) {
+                const trailPtIdx = Math.floor(heartPositions[hi] * (pts.length - 1));
+                if (trailPtIdx < 0 || trailPtIdx >= pts.length) continue;
+                const tp = pts[trailPtIdx];
+                const trailAlpha = baseAlpha * (0.5 - hi * 0.14);
+                const trailSize = Math.round(7 - hi * 1.5);
+                ctx.font = `${trailSize}px system-ui, sans-serif`;
+                ctx.globalAlpha = trailAlpha;
+                ctx.fillText("❤️", tp[0], tp[1]);
+                ctx.globalAlpha = 1;
+              }
+              ctx.textBaseline = "alphabetic";
+            } else {
+              ctx.beginPath();
+              ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
+              ctx.fillStyle = "#ffffff";
+              ctx.shadowColor = `rgb(${rgb.join(",")})`;
+              ctx.shadowBlur = isSend ? 24 : 14;
+              ctx.fill();
+              ctx.shadowBlur = 0;
+            }
           }
         }
       }
