@@ -1066,14 +1066,28 @@ export default function App() {
               if (uid === currentUser.uid) return;
               const country = countries[uid];
               if (!country) return;
-              const key = `${country}|${emoji}`;
-              if (reactObservedRef.current.has(key)) return;
-              reactObservedRef.current.add(key);
+
+              // Always keep reactedCountries current — don't gate this on reactObservedRef.
+              // Use a functional update to avoid overwriting a fresh entry with a stale one.
+              // toastKey being new means this is a reaction first seen THIS session — use Date.now()
+              // so the globe pill tag animates. If already observed (old reaction), use a timestamp
+              // old enough that the tag doesn't re-fire, but the coral fill still shows.
+              const toastKeyForAt = `${msgId}|${uid}|${emoji}`;
+              const isNewReaction = !reactObservedRef.current.has(toastKeyForAt);
               setReactedCountries((prev) => {
-                const next = { ...prev, [country]: { emoji, at: Date.now() } };
+                const existing = prev[country];
+                // If already tracked and fresh, leave it alone so the tag timestamp stays correct.
+                if (existing && Date.now() - existing.at < FIVE_HOURS_MS) return prev;
+                const at = isNewReaction ? Date.now() : Date.now() - 60_000; // old reaction: past the 8s tag window
+                const next = { ...prev, [country]: { emoji, at } };
                 try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
                 return next;
               });
+
+              // Toast fires only ONCE per message+user+emoji (not per country — so UK re-reacts correctly)
+              const toastKey = `${msgId}|${uid}|${emoji}`;
+              if (reactObservedRef.current.has(toastKey)) return;
+              reactObservedRef.current.add(toastKey);
               if (reactReadyRef.current) {
                 if (country === myCountryRef.current && myCountryRef.current) {
                   // Same-country reaction — hometown toast + globe ripple

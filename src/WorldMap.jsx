@@ -418,6 +418,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
       // Seen tier — warm amber, beats like a heartbeat for 5h
       for (const c of seenRef.current) {
+        if (reactedRef.current.has(c)) continue; // reacted tier takes full priority
         const feature = countryNameToFeatureRef.current[c];
         if (!feature) continue;
         const fillA  = (0.22 + 0.55 * beat).toFixed(2);
