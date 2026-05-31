@@ -81,6 +81,20 @@ const AUTO_ROTATE_SPEED = 0.12;
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
+// Colours for the sender's private "kindness reach" layers
+const SEEN_BEAT_RGB = [244, 164, 53];   // #F4A435 warm amber — country has seen, beating
+const REACTED_RGB   = [255, 90, 126];   // #FF5A7E rose coral — someone reacted, static
+const REACT_TAG_MS  = 8000;             // how long the "reacted" tag stays expanded
+
+// Natural "lub-dub" heartbeat amplitude (0..1) at ~70 bpm given a time in ms.
+function heartbeat(t) {
+  const period = 850;
+  const x = (t % period) / period;        // 0..1 within one beat
+  const lub = Math.exp(-Math.pow((x - 0.00) / 0.055, 2));
+  const dub = Math.exp(-Math.pow((x - 0.20) / 0.055, 2)) * 0.65;
+  return Math.min(1, lub + dub);
+}
+
 export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false, hometownPingTime = 0 }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
@@ -170,33 +184,35 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   // every time activeUsers changes)
   useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
 
-  // Reacted countries (bright gold + emoji) come straight from the sender's prop
+  // Reacted countries (coral, static, + floating tag) come straight from the sender's prop
   useEffect(() => {
     const m = new Map();
     const now = Date.now();
     for (const [c, v] of Object.entries(reactedCountries || {})) {
-      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, v.emoji);
+      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, { emoji: v.emoji, at: v.at });
     }
     reactedRef.current = m;
   }, [reactedCountries]);
 
-  // "Seen" tier: while the map is open and I've sent a greeting, every foreign
-  // active country is recorded as having seen my kindness (dim light, 5h)
+  // "Seen" tier: while the map is open and I've sent a greeting, every active
+  // country (including my own) is recorded as having seen my kindness. These
+  // countries gently beat like a heartbeat for 5h — visible only to me.
   useEffect(() => {
     if (!hasSent || !mapReady) return;
-    const foreign = [...new Set(
-      activeUsers.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
+    // Exclude myself so my own country only beats when ANOTHER same-country user is active.
+    const seen = [...new Set(
+      activeUsers.filter(u => u.uid !== currentUser?.uid).map(u => u.country).filter(c => c && COUNTRY_COORDS[c])
     )];
-    if (!foreign.length) return;
+    if (!seen.length) return;
     setSeenCountries(prev => {
       const now = Date.now();
       const next = { ...prev };
-      foreign.forEach(c => { next[c] = { at: now }; });
+      seen.forEach(c => { next[c] = { at: now }; });
       for (const [c, v] of Object.entries(next)) if (now - v.at >= FIVE_HOURS_MS) delete next[c];
       try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {}
       return next;
     });
-  }, [activeUsers, hasSent, mapReady, myCountry]);
+  }, [activeUsers, hasSent, mapReady, myCountry, currentUser]);
 
   // Prune "seen" lighting older than 5h once a minute
   useEffect(() => {
@@ -455,39 +471,54 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
       // ── Dots ──
       // Build a combined country map: active users + "seen" + "reacted" tiers.
+      // seen  → amber heartbeat (country has seen my greeting, 5h)
+      // reacted → coral static + floating tag (someone there reacted)
       const dotMap = {};
       const base = tabRef.current === "world"
         ? worldDotsRef.current
         : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
       for (const d of base) dotMap[d.country] = { country: d.country, count: d.count, isMe: d.isMe };
-      // "Seen" tier (dim) — include even if not currently active
+      // "Seen" tier (amber heartbeat) — include even if not currently active
       for (const c of seenRef.current) {
         if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
-        if (!dotMap[c].isMe) dotMap[c].seen = true;
+        dotMap[c].seen = true;
       }
-      // "Reacted" tier (bright gold) — takes priority, include even if not active
-      for (const [c, emoji] of reactedRef.current) {
+      // "Reacted" tier (coral + tag) — takes priority over seen, include even if not active
+      for (const [c, info] of reactedRef.current) {
         if (!dotMap[c]) dotMap[c] = { country: c, count: 1, isMe: false };
-        if (!dotMap[c].isMe) { dotMap[c].reacted = emoji; dotMap[c].seen = false; }
+        dotMap[c].reacted = info.emoji;
+        dotMap[c].reactedAt = info.at;
+        dotMap[c].seen = false;
       }
       const now2 = Date.now();
+      const beat = heartbeat(now2); // shared heartbeat amplitude this frame
 
-      for (const { country, count, isMe, seen, reacted } of Object.values(dotMap)) {
+      for (const { country, count, isMe, seen, reacted, reactedAt } of Object.values(dotMap)) {
         const coords = COUNTRY_COORDS[country];
         if (!coords || !isVisible(coords[0], coords[1])) continue;
         const pt = proj(coords);
         if (!pt) continue;
 
-        const r = isMe ? 6 : reacted ? 6 : Math.min(3 + count, 6);
-        const dotColor = isMe ? "#4DFFB0" : reacted ? "#FFC24D" : seen ? "#6FA8DC" : "#1D9E75";
-        const glowRgb = isMe ? "77,255,176" : reacted ? "255,194,77" : seen ? "111,168,220" : "29,158,117";
-        const glowR = reacted ? r * 5.5 : seen ? r * 4 : r * 3.5;
+        const isBeating = seen && !reacted;       // seen-but-not-yet-reacted → beats
+        const baseR = isMe ? 6 : reacted ? 6 : Math.min(3 + count, 6);
+        const r = baseR * (isBeating ? 1 + 0.4 * beat : 1);
 
-        // Reacted countries pulse gently
-        const pulse = reacted ? 0.7 + 0.3 * Math.sin(now2 / 400) : 1;
+        // Base dot colour — "me" green always wins, then reacted coral, then seen amber
+        const dotColor = isMe ? "#4DFFB0"
+          : reacted ? `rgb(${REACTED_RGB.join(",")})`
+          : seen ? `rgb(${SEEN_BEAT_RGB.join(",")})`
+          : "#1D9E75";
+        const glowRgb = isMe ? "77,255,176"
+          : reacted ? REACTED_RGB.join(",")
+          : seen ? SEEN_BEAT_RGB.join(",")
+          : "29,158,117";
+        const glowR = (reacted ? 5.5 : seen ? 4.5 : 3.5) * baseR;
 
-        // Glow halo
-        const glowAlpha = (isMe ? 0.55 : reacted ? 0.55 : seen ? 0.3 : 0.35) * pulse;
+        // Glow halo — beating countries pulse their glow with the heartbeat
+        const glowAlpha = isMe ? 0.55
+          : reacted ? 0.5
+          : isBeating ? 0.22 + 0.5 * beat
+          : 0.35;
         const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
         glow.addColorStop(0, `rgba(${glowRgb},${glowAlpha.toFixed(2)})`);
         glow.addColorStop(1, "rgba(0,0,0,0)");
@@ -501,15 +532,15 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
         ctx.fillStyle = dotColor;
         ctx.shadowColor = dotColor;
-        ctx.shadowBlur = reacted ? 16 : seen ? 6 : 8;
+        ctx.shadowBlur = reacted ? 16 : isBeating ? 4 + 8 * beat : 8;
         ctx.fill();
         ctx.shadowBlur = 0;
 
         // Ring for "me" and reacted countries
         if (isMe || reacted) {
           ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r + (reacted && !isMe ? 5 : 4), 0, Math.PI * 2);
-          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : `rgba(255,194,77,${(0.6 * pulse).toFixed(2)})`;
+          ctx.arc(pt[0], pt[1], baseR + (reacted && !isMe ? 5 : 4), 0, Math.PI * 2);
+          ctx.strokeStyle = isMe ? "rgba(77,255,176,0.45)" : `rgba(${REACTED_RGB.join(",")},0.75)`;
           ctx.lineWidth = reacted && !isMe ? 1.8 : 1.5;
           ctx.stroke();
         }
@@ -523,7 +554,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
               const age = hometownAge - delay;
               if (age < 0 || age > 2200) continue;
               const p = age / 2200;
-              const rr = r + 6 + p * 24;
+              const rr = baseR + 6 + p * 24;
               const alpha = (1 - p) * 0.65;
               ctx.beginPath();
               ctx.arc(pt[0], pt[1], rr, 0, Math.PI * 2);
@@ -534,15 +565,63 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           }
         }
 
-        // Labels
-        ctx.font = "bold 10px system-ui, sans-serif";
-        ctx.textAlign = "center";
+        // ── "YOU" label ──
         if (isMe) {
           ctx.font = "bold 9px system-ui, sans-serif";
+          ctx.textAlign = "center";
           ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.fillText("YOU", pt[0], pt[1] - r - 7);
-        } else if (reacted) {
-          ctx.fillText(reacted, pt[0], pt[1] - r - 7);
+          ctx.fillText("YOU", pt[0], pt[1] - baseR - 7);
+        }
+
+        // ── Reacted tag — a small bubble that erects from the country for 8s ──
+        if (reacted) {
+          const reactAge = now2 - (reactedAt ?? 0);
+          if (reactAge < REACT_TAG_MS) {
+            // fade/scale in (first 300ms), hold, then fade out (last 800ms)
+            let tagAlpha = 1;
+            if (reactAge < 300) tagAlpha = reactAge / 300;
+            else if (reactAge > REACT_TAG_MS - 800) tagAlpha = Math.max(0, (REACT_TAG_MS - reactAge) / 800);
+            const pop = reactAge < 300 ? 0.55 + 0.45 * (reactAge / 300) : 1;
+
+            const label = `${reacted} reacted!`;
+            ctx.font = "bold 11px system-ui, sans-serif";
+            const tw = ctx.measureText(label).width;
+            const padX = 8, bubbleH = 19;
+            const bw = tw + padX * 2;
+            const stemH = 16 * pop;
+            const bubbleY = pt[1] - baseR - 6 - stemH - bubbleH;
+            const bx = pt[0] - bw / 2;
+
+            ctx.globalAlpha = tagAlpha;
+            // stem
+            ctx.beginPath();
+            ctx.moveTo(pt[0], pt[1] - baseR - 4);
+            ctx.lineTo(pt[0], bubbleY + bubbleH);
+            ctx.strokeStyle = `rgb(${REACTED_RGB.join(",")})`;
+            ctx.lineWidth = 1.3;
+            ctx.stroke();
+            // bubble
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(bx, bubbleY, bw, bubbleH, 9);
+            else ctx.rect(bx, bubbleY, bw, bubbleH);
+            ctx.fillStyle = `rgba(${REACTED_RGB.join(",")},0.95)`;
+            ctx.shadowColor = `rgb(${REACTED_RGB.join(",")})`;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            // label text
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(label, pt[0], bubbleY + bubbleH / 2 + 0.5);
+            ctx.textBaseline = "alphabetic";
+            ctx.globalAlpha = 1;
+          } else {
+            // collapsed — just the reaction emoji floating above the coral dot
+            ctx.font = "12px system-ui, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(reacted, pt[0], pt[1] - baseR - 8);
+          }
         }
       }
     };
@@ -997,7 +1076,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />{tab === "world" ? "Active user" : "Waved at you"}</span>
-          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>Greeting arc</span>}
+          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#F4A435", display: "inline-block", boxShadow: "0 0 6px #F4A435" }} />Saw your kindness</span>}
+          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#FF5A7E", display: "inline-block", boxShadow: "0 0 6px #FF5A7E" }} />Reacted</span>}
           {localUserCount > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: "5px", color: "#90e8a8" }}>
               🏠 {localUserCount} neighbour{localUserCount !== 1 ? "s" : ""} active
