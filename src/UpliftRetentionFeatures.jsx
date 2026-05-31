@@ -1614,40 +1614,45 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     setTimeout(() => onClose?.(), 320);
   };
 
-  const handleEmoji = async (emoji) => {
+  const handleEmoji = (emoji) => {
     if (!db || !currentUser || !messageId) return;
     const isSame = myEmoji === emoji;
+    const prevEmoji = myEmoji;
+
+    // ── Instant UI response ──────────────────────────────────────
+    setMyEmoji(isSame ? null : emoji);
     setPopping(emoji);
     setTimeout(() => setPopping(null), 400);
-    try {
-      const myCountry = profile?.country ?? null;
-      await runTransaction(db, async (tx) => {
-        if (myEmoji && !isSame) {
-          const oldRef = doc(db, "publicMessages", messageId, "reactions", myEmoji);
-          const oldSnap = await tx.get(oldRef);
-          const oldData = oldSnap.exists() ? oldSnap.data() : {};
-          const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-          const oldCountries = { ...(oldData.countries ?? {}) };
-          delete oldCountries[currentUser.uid];
-          tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
-        }
-        const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-        const snap = await tx.get(rRef);
-        const data = snap.exists() ? snap.data() : {};
-        const uids = data.uids ?? [];
-        const countries = { ...(data.countries ?? {}) };
-        if (isSame) {
-          const next = uids.filter((u) => u !== currentUser.uid);
-          delete countries[currentUser.uid];
-          tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries });
-        } else {
-          countries[currentUser.uid] = myCountry;
-          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
-        }
-      });
-      if (!isSame) onReact?.(emoji);
-    } catch {}
-    setTimeout(() => onClose?.(), 280);
+    if (!isSame) onReact?.(emoji);
+    onClose?.();
+
+    // ── Firestore write in background (no await) ─────────────────
+    // onSnapshot corrects any inconsistency if this fails.
+    const myCountry = profile?.country ?? null;
+    runTransaction(db, async (tx) => {
+      if (prevEmoji && !isSame) {
+        const oldRef = doc(db, "publicMessages", messageId, "reactions", prevEmoji);
+        const oldSnap = await tx.get(oldRef);
+        const oldData = oldSnap.exists() ? oldSnap.data() : {};
+        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
+        const oldCountries = { ...(oldData.countries ?? {}) };
+        delete oldCountries[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
+      }
+      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
+      const snap = await tx.get(rRef);
+      const data = snap.exists() ? snap.data() : {};
+      const uids = data.uids ?? [];
+      const countries = { ...(data.countries ?? {}) };
+      if (isSame) {
+        const next = uids.filter((u) => u !== currentUser.uid);
+        delete countries[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries });
+      } else {
+        countries[currentUser.uid] = myCountry;
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
+      }
+    }).catch(() => {}); // onSnapshot listener will self-correct on failure
   };
 
   const handleReport = async (reason) => {
