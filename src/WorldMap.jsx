@@ -185,26 +185,15 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   // every time activeUsers changes)
   useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
 
-  // Reacted countries (coral, static, + floating tag) come straight from the sender's prop
+  // Reacted countries (coral heartbeat + floating tag) come straight from the sender's prop
   useEffect(() => {
     const m = new Map();
     const now = Date.now();
     for (const [c, v] of Object.entries(reactedCountries || {})) {
-      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) {
-        m.set(c, { emoji: v.emoji, at: v.at });
-        // Fire a rose-coral reaction arc for fresh reactions (within last 3s)
-        if (myCoords && now - v.at < 3000 && !reactedRef.current.has(c)) {
-          const fromC = COUNTRY_COORDS[c];
-          if (fromC) {
-            const id = ++arcIdRef.current;
-            arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC, toC: myCoords, startTime: now, isReaction: true }];
-            setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3500);
-          }
-        }
-      }
+      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, { emoji: v.emoji, at: v.at });
     }
     reactedRef.current = m;
-  }, [reactedCountries, myCoords]);
+  }, [reactedCountries]);
 
   // "Seen" tier: while the map is open and I've sent a greeting, every active
   // country (including my own) is recorded as having seen my kindness. These
@@ -446,18 +435,21 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         ctx.stroke(); ctx.shadowBlur = 0;
       }
 
-      // Reacted tier — static rose-coral #FF5A7E, no pulse
+      // Reacted tier — rose-coral #FF5A7E, beats like a heartbeat (same pulse as amber)
       for (const [c] of reactedRef.current) {
         const feature = countryNameToFeatureRef.current[c];
         if (!feature) continue;
+        const fillA  = (0.30 + 0.55 * beat).toFixed(2);
+        const strokeA = (0.45 + 0.55 * beat).toFixed(2);
+        const blur = 6 + 16 * beat;
         ctx.beginPath(); path(feature);
-        ctx.fillStyle = "rgba(255,90,126,0.70)";
-        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = 18;
+        ctx.fillStyle = `rgba(255,90,126,${fillA})`;
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = blur;
         ctx.fill(); ctx.shadowBlur = 0;
         ctx.beginPath(); path(feature);
-        ctx.strokeStyle = "rgba(255,90,126,0.90)";
+        ctx.strokeStyle = `rgba(255,90,126,${strokeA})`;
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = 8;
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = blur * 0.6;
         ctx.stroke(); ctx.shadowBlur = 0;
       }
 
@@ -495,12 +487,10 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           "#FF6B9D": [255, 107, 157],
           "#67E8F9": [103, 232, 249],
           "#A78BFA": [167, 139, 250],
-          "#FF5A7E": [255, 90, 126],
         };
         const SEND_RGB = [255, 165, 55];
-        const REACT_ARC_RGB = REACTED_RGB; // rose-coral [255, 90, 126]
-        for (const { fromC, toC, startTime, color, isSend, isReaction } of arcsRef.current) {
-          const ARC_DURATION = isSend ? 2600 : isReaction ? 3000 : 1800;
+        for (const { fromC, toC, startTime, color, isSend } of arcsRef.current) {
+          const ARC_DURATION = isSend ? 2600 : 1800;
           const progress = Math.min(1, (now - (startTime ?? now)) / ARC_DURATION);
           const interp = d3.geoInterpolate(fromC, toC);
           const nSteps = Math.max(2, Math.floor(60 * progress));
@@ -511,8 +501,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           }
           if (pts.length < 2) continue;
 
-          const baseAlpha = progress < 0.75 ? 0.9 : 0.9 * (1 - (progress - 0.75) / 0.25);
-          const rgb = isSend ? SEND_RGB : isReaction ? REACT_ARC_RGB : (ARC_RGB[color] || [77, 255, 176]);
+          const baseAlpha = progress < 0.75 ? 0.85 : 0.85 * (1 - (progress - 0.75) / 0.25);
+          const rgb = isSend ? SEND_RGB : (ARC_RGB[color] || [77, 255, 176]);
 
           // Comet tail: segments fade from transparent (back) to bright (tip)
           const tailLen = Math.max(3, Math.floor(pts.length * 0.5));
@@ -520,14 +510,14 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           for (let i = tailStart; i < pts.length - 1; i++) {
             const t = (i - tailStart) / Math.max(1, pts.length - 1 - tailStart);
             const segAlpha = baseAlpha * (0.06 + t * 0.94);
-            const segWidth = 0.5 + t * (isSend ? 2.6 : isReaction ? 2.2 : 1.8);
+            const segWidth = 0.5 + t * (isSend ? 2.6 : 1.8);
             ctx.beginPath();
             ctx.moveTo(pts[i][0], pts[i][1]);
             ctx.lineTo(pts[i + 1][0], pts[i + 1][1]);
             ctx.strokeStyle = `rgba(${rgb.join(",")},${segAlpha.toFixed(2)})`;
             ctx.lineWidth = segWidth;
             ctx.shadowColor = `rgb(${rgb.join(",")})`;
-            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : isReaction ? 12 : 5) : 0;
+            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : 5) : 0;
             ctx.stroke();
           }
           ctx.shadowBlur = 0;
@@ -535,40 +525,13 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           // Bright glowing tip
           if (progress < 0.9 && pts.length > 0) {
             const tip = pts[pts.length - 1];
-            if (isReaction) {
-              // Heart emoji at tip with glow
-              ctx.shadowColor = `rgb(${rgb.join(",")})`;
-              ctx.shadowBlur = 18;
-              ctx.font = `${Math.round(10 + baseAlpha * 6)}px system-ui, sans-serif`;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.globalAlpha = baseAlpha;
-              ctx.fillText("❤️", tip[0], tip[1]);
-              ctx.globalAlpha = 1;
-              ctx.shadowBlur = 0;
-              // Trailing hearts along the arc at intervals
-              const heartPositions = [0.55, 0.35, 0.18];
-              for (let hi = 0; hi < heartPositions.length; hi++) {
-                const trailPtIdx = Math.floor(heartPositions[hi] * (pts.length - 1));
-                if (trailPtIdx < 0 || trailPtIdx >= pts.length) continue;
-                const tp = pts[trailPtIdx];
-                const trailAlpha = baseAlpha * (0.5 - hi * 0.14);
-                const trailSize = Math.round(7 - hi * 1.5);
-                ctx.font = `${trailSize}px system-ui, sans-serif`;
-                ctx.globalAlpha = trailAlpha;
-                ctx.fillText("❤️", tp[0], tp[1]);
-                ctx.globalAlpha = 1;
-              }
-              ctx.textBaseline = "alphabetic";
-            } else {
-              ctx.beginPath();
-              ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
-              ctx.fillStyle = "#ffffff";
-              ctx.shadowColor = `rgb(${rgb.join(",")})`;
-              ctx.shadowBlur = isSend ? 24 : 14;
-              ctx.fill();
-              ctx.shadowBlur = 0;
-            }
+            ctx.beginPath();
+            ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = `rgb(${rgb.join(",")})`;
+            ctx.shadowBlur = isSend ? 24 : 14;
+            ctx.fill();
+            ctx.shadowBlur = 0;
           }
         }
       }
@@ -973,10 +936,17 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     if (!mapReady || activeUsers.length < 2) return;
     const ARC_PALETTE = ["#4DFFB0", "#FFD700", "#FF6B9D", "#67E8F9", "#A78BFA"];
     const addArc = () => {
-      const others = activeUsers.filter(u => u.uid !== currentUser?.uid);
+      // Exclude countries that are currently lit (seen amber / reacted coral) — those
+      // show their state purely through the country heartbeat, never through flares.
+      const others = activeUsers.filter(u =>
+        u.uid !== currentUser?.uid &&
+        !seenRef.current.has(u.country) &&
+        !reactedRef.current.has(u.country)
+      );
       if (!others.length) return;
       const from = others[Math.floor(Math.random() * others.length)];
-      const toCandidates = myCoords
+      const myLit = seenRef.current.has(myCountry) || reactedRef.current.has(myCountry);
+      const toCandidates = (myCoords && !myLit)
         ? [{ country: myCountry }]
         : others.filter(u => u.country !== from.country);
       if (!toCandidates.length) return;
@@ -984,9 +954,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const fromC = COUNTRY_COORDS[from.country];
       const toC = COUNTRY_COORDS[to.country];
       if (!fromC || !toC) return;
-      const color = reactedRef.current.has(from.country)
-        ? "#FF5A7E"
-        : ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
+      const color = ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
       const id = ++arcIdRef.current;
       arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now(), color }];
       setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
