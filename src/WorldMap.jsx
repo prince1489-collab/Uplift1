@@ -560,22 +560,12 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         const pt = proj(coords);
         if (!pt) continue;
 
-        const isReactedCountry = !isMe && reactedRef.current.has(country);
         const r = isMe ? 6 : Math.min(3 + count, 6);
         const dotColor = isMe ? "#4DFFB0" : "#1D9E75";
-        const glowRgb  = isMe ? "77,255,176" : isReactedCountry ? "255,90,126" : "29,158,117";
+        const glowRgb  = isMe ? "77,255,176" : "29,158,117";
 
-        if (isReactedCountry) {
-          // Heart emoji replaces the green dot for reacted countries
-          const heartSize = Math.round(10 + Math.min(count, 3) * 2);
-          ctx.shadowColor = "rgb(255,90,126)";
-          ctx.shadowBlur = 14;
-          ctx.font = `${heartSize}px system-ui, sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("❤️", pt[0], pt[1]);
-          ctx.shadowBlur = 0;
-          ctx.textBaseline = "alphabetic";
+        if (!isMe && reactedRef.current.has(country)) {
+          // Reacted country: country fill shows the state; suppress the active-user dot
         } else {
           // Glow halo
           const glowR = r * 3.5;
