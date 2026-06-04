@@ -206,7 +206,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" data-dark-shell>
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose}
@@ -380,7 +380,7 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" data-dark-shell>
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onBack}
