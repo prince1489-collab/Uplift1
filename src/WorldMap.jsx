@@ -623,8 +623,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       }
 
       // ── Reaction tags — rendered last so they sit above everything else ──
-      // Tag erects for REACT_TAG_MS ms (with fade-in/out), then collapses to a
-      // floating emoji permanently pinned above the country centroid.
+      // Tag erects for REACT_TAG_MS ms (with fade-in/out), then disappears.
+      // After that the coral country heartbeat alone carries the reacted state.
       for (const [c, info] of reactedRef.current) {
         const coords = COUNTRY_COORDS[c];
         if (!coords || !isVisible(coords[0], coords[1])) continue;
@@ -667,12 +667,6 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           ctx.fillText(label, pt[0], bubbleY + bubbleH / 2 + 0.5);
           ctx.textBaseline = "alphabetic";
           ctx.globalAlpha = 1;
-        } else {
-          // Collapsed: floating emoji above the country centroid indefinitely
-          ctx.font = "14px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "alphabetic";
-          ctx.fillText(info.emoji, pt[0], anchorY - 6);
         }
       }
     };
