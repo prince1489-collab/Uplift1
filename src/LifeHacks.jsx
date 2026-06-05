@@ -2,6 +2,19 @@
 // LifeHacks.jsx — Daily life hack cards with expand + sparkle flip reveal.
 
 import React, { useEffect, useState } from "react";
+import { HACK_LIBRARY } from "./LifeHackLibrary.js";
+
+// Area metadata (emoji + styles) — keyed by area name
+const AREA_META = {
+  Mind:               { emoji: "🧠" },
+  Body:               { emoji: "💪" },
+  Relationships:      { emoji: "❤️" },
+  Work:               { emoji: "💼" },
+  Finance:            { emoji: "💰" },
+  Home:               { emoji: "🏡" },
+  Digital:            { emoji: "📱" },
+  "Weird & Wonderful":{ emoji: "🪄" },
+};
 
 // ── Area styles ───────────────────────────────────────────────────────────────
 
@@ -283,7 +296,6 @@ function ExpandedCard({ hack, onClose }) {
 export default function LifeHacks() {
   const [hacks, setHacks]         = useState(null);
   const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
   const [activeHack, setActive]   = useState(null);
   const [countdown, setCountdown] = useState(timeUntilMidnight());
 
@@ -293,9 +305,11 @@ export default function LifeHacks() {
   }, []);
 
   useEffect(() => {
-    const todayKey = `lhacks4_${new Date().toISOString().split("T")[0]}`;
+    const today = new Date().toISOString().split("T")[0];
+    const todayKey = `lhacks5_${today}`;
+    const historyKey = "lhacks_history_v1";
 
-    // Serve from localStorage if we already fetched today's hacks
+    // Serve today's cached selection if already computed
     try {
       const cached = localStorage.getItem(todayKey);
       if (cached) {
@@ -305,23 +319,43 @@ export default function LifeHacks() {
       }
     } catch (_) {}
 
-    fetch("/api/lifehacks")
-      .then((r) => { if (!r.ok) throw new Error("Could not load Life Hacks"); return r.json(); })
-      .then((data) => {
-        setHacks(data.hacks);
-        setLoading(false);
-        // Only cache if the API confirmed today's date (guards against stale CDN responses)
-        if (data.date === todayKey.replace("lhacks4_", "")) {
-          try {
-            // Remove previous days' entries
-            Object.keys(localStorage)
-              .filter((k) => k.startsWith("lhacks4_") && k !== todayKey)
-              .forEach((k) => localStorage.removeItem(k));
-            localStorage.setItem(todayKey, JSON.stringify(data.hacks));
-          } catch (_) {}
-        }
-      })
-      .catch((err) => { setError(err.message); setLoading(false); });
+    // Load history: hackId → ISO date string of last display
+    let history = {};
+    try { history = JSON.parse(localStorage.getItem(historyKey) || "{}"); } catch (_) {}
+
+    // Round-robin selection: for each category pick the hack with the oldest lastSeen
+    // (never-seen sorts first as "1970-01-01"). This guarantees no repeat until all
+    // 52 hacks in a category are exhausted (~52 days per category, 416 unique total).
+    const selected = [];
+    const newHistory = { ...history };
+
+    for (const [area, hacks] of Object.entries(HACK_LIBRARY)) {
+      const areaEmoji = AREA_META[area]?.emoji ?? "✨";
+      const sorted = [...hacks].sort((a, b) => {
+        const aDate = history[a.id] || "1970-01-01";
+        const bDate = history[b.id] || "1970-01-01";
+        return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+      });
+      const pick = sorted[0];
+      newHistory[pick.id] = today;
+      selected.push({ ...pick, area, areaEmoji });
+    }
+
+    setHacks(selected);
+    setLoading(false);
+
+    // Persist history and today's selection; prune stale daily keys
+    try {
+      localStorage.setItem(historyKey, JSON.stringify(newHistory));
+      localStorage.setItem(todayKey, JSON.stringify(selected));
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("lhacks5_") && k !== todayKey)
+        .forEach((k) => localStorage.removeItem(k));
+      // Also clean up old API-based cache keys
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("lhacks4_"))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch (_) {}
   }, []);
 
   return (
@@ -347,12 +381,6 @@ export default function LifeHacks() {
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
           </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-            <span className="text-4xl mb-3">😔</span>
-            <p className="text-sm font-semibold text-slate-600 mb-1">Couldn't load today's hacks</p>
-            <p className="text-xs text-slate-400">{error}</p>
-          </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {hacks?.map((hack) => (
@@ -361,7 +389,7 @@ export default function LifeHacks() {
           </div>
         )}
 
-        {!loading && !error && (
+        {!loading && (
           <p className="text-center text-[10px] text-slate-300 pt-4 pb-2">
             Fresh hacks every day at midnight
           </p>
