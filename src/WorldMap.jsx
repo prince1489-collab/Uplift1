@@ -560,7 +560,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         const pt = proj(coords);
         if (!pt) continue;
 
-        const r = isMe ? 6 : Math.min(3 + count, 6);
+        const r = isMe ? 3 : Math.min(3 + count, 6);
         const dotColor = isMe ? "#4DFFB0" : "#1D9E75";
         const glowRgb  = isMe ? "77,255,176" : "29,158,117";
 
@@ -613,13 +613,6 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           }
         }
 
-        // YOU label
-        if (isMe) {
-          ctx.font = "bold 9px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.fillText("YOU", pt[0], pt[1] - r - 7);
-        }
       }
 
       // ── Reaction tags — rendered last so they sit above everything else ──
@@ -1083,9 +1076,6 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
               <button key={t} onClick={() => setTab(t)} style={{ borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)", background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)", color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>{label}</button>
             ))}
           </div>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />Live
-          </span>
         </div>}
       </div>
 
@@ -1096,56 +1086,16 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         canvas { touch-action: none; user-select: none; }
       `}</style>
 
-      {/* ── IMPACT BAR ── */}
+      {/* ── LEGEND BAR ── */}
       <div style={{ flexShrink: 0, background: "#0d1f1a", borderTop: "1px solid rgba(77,255,176,0.12)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {tab === "world" ? (
-            <>
-              <ImpactStat label="Active now" value={activeUsers.length} />
-              <ImpactStat label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} divider />
-              <ImpactStat label="Greetings today" value={totalToday} divider />
-            </>
-          ) : (
-            <>
-              <ImpactStat label="Seen from" value={`${myConnectionCountries.length} countries`} />
-              <ImpactStat label="Waves received" value={myWaves.length} divider />
-              <ImpactStat label="Furthest reach" value={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "—"} divider />
-            </>
-          )}
-        </div>
-
-        {tab === "mine" && myConnectionCountries.length > 0 && (
-          <div style={{ padding: "10px 16px 14px", overflowX: "auto" }}>
-            <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(77,255,176,0.6)", margin: "0 0 8px" }}>Countries that saw you</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-              {myConnectionCountries.map(c => (
-                <span key={c} style={{ borderRadius: "20px", border: "1px solid rgba(77,255,176,0.25)", background: "rgba(77,255,176,0.08)", padding: "3px 10px", fontSize: "11px", fontWeight: 500, color: "#5DCAA5" }}>{c}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />{tab === "world" ? "Active user" : "Waved at you"}</span>
-          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#F4A435", display: "inline-block", boxShadow: "0 0 6px #F4A435" }} />Saw your kindness</span>}
-          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#FF5A7E", display: "inline-block", boxShadow: "0 0 6px #FF5A7E" }} />Reacted</span>}
-          {localUserCount > 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: "5px", color: "#90e8a8" }}>
-              🏠 {localUserCount} neighbour{localUserCount !== 1 ? "s" : ""} active
-            </span>
-          )}
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />Active user</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#F4A435", display: "inline-block", boxShadow: "0 0 6px #F4A435" }} />Saw your kindness</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#FF5A7E", display: "inline-block", boxShadow: "0 0 6px #FF5A7E" }} />Reacted</span>
         </div>
       </div>
     </div>
   );
 }
 
-function ImpactStat({ label, value, divider }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 8px", borderLeft: divider ? "1px solid rgba(255,255,255,0.06)" : "none", textAlign: "center" }}>
-      <p style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "white", lineHeight: 1.1 }}>{value}</p>
-      <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", margin: "3px 0 0", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
-    </div>
-  );
-}
