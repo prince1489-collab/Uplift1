@@ -536,68 +536,10 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         }
       }
 
-      // ── Dots: YOU + active users only ──
-      // Seen/reacted country highlighting is done via full country fills above.
-      // Here we only render the YOU marker and dots for currently-active users.
-      const dotMap = {};
-      const base = tabRef.current === "world"
-        ? worldDotsRef.current
-        : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
-      for (const d of base) dotMap[d.country] = { country: d.country, count: d.count, isMe: d.isMe };
-      // Register seen/reacted countries with count:0 so the YOU dot still renders when my
-      // country is in one of those sets, but no extra dot appears for countries with no active users.
-      for (const c of seenRef.current) {
-        if (!dotMap[c]) dotMap[c] = { country: c, count: 0, isMe: false };
-      }
-      for (const [c] of reactedRef.current) {
-        if (!dotMap[c]) dotMap[c] = { country: c, count: 0, isMe: false };
-      }
-
-      for (const { country, count, isMe } of Object.values(dotMap)) {
-        if (!isMe && count === 0) continue; // no active users; country fill shows the state
-        const coords = COUNTRY_COORDS[country];
-        if (!coords || !isVisible(coords[0], coords[1])) continue;
-        const pt = proj(coords);
-        if (!pt) continue;
-
-        const r = isMe ? 3 : Math.min(3 + count, 6);
-        const dotColor = isMe ? "#4DFFB0" : "#1D9E75";
-        const glowRgb  = isMe ? "77,255,176" : "29,158,117";
-
-        if (!isMe && reactedRef.current.has(country)) {
-          // Reacted country: country fill shows the state; suppress the active-user dot
-        } else {
-          // Glow halo
-          const glowR = r * 3.5;
-          const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], glowR);
-          glow.addColorStop(0, `rgba(${glowRgb},${isMe ? "0.55" : "0.35"})`);
-          glow.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.beginPath();
-          ctx.arc(pt[0], pt[1], glowR, 0, Math.PI * 2);
-          ctx.fillStyle = glow;
-          ctx.fill();
-
-          // Dot
-          ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
-          ctx.fillStyle = dotColor;
-          ctx.shadowColor = dotColor;
-          ctx.shadowBlur = 8;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-
-        // Ring for YOU
-        if (isMe) {
-          ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r + 4, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(77,255,176,0.45)";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-
-        // Hometown ripple — three staggered expanding rings on YOU when a local reacts
-        if (isMe && hometownPingRef.current > 0) {
+      // Hometown ripple — expanding rings on viewer's country centroid when a local reacts
+      if (myCoords && isVisible(myCoords[0], myCoords[1]) && hometownPingRef.current > 0) {
+        const pt = proj(myCoords);
+        if (pt) {
           const hometownAge = now2 - hometownPingRef.current;
           if (hometownAge < 3000) {
             for (const delay of [0, 700, 1400]) {
@@ -605,14 +547,13 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
               if (age < 0 || age > 2200) continue;
               const p = age / 2200;
               ctx.beginPath();
-              ctx.arc(pt[0], pt[1], r + 6 + p * 24, 0, Math.PI * 2);
+              ctx.arc(pt[0], pt[1], 6 + p * 24, 0, Math.PI * 2);
               ctx.strokeStyle = `rgba(77,255,176,${((1 - p) * 0.65).toFixed(2)})`;
               ctx.lineWidth = 1.5;
               ctx.stroke();
             }
           }
         }
-
       }
 
       // ── Reaction tags — rendered last so they sit above everything else ──
@@ -1068,15 +1009,6 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
           </div>
         )}
 
-        {/* ── FLOATING TABS ── */}
-        {!selectedCountry && <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 12px", background: "linear-gradient(to top, rgba(6,14,16,0.95) 0%, transparent 100%)" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)} style={{ borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)", background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)", color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>{label}</button>
-            ))}
-          </div>
-        </div>}
       </div>
 
       <style>{`
@@ -1089,8 +1021,6 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       {/* ── LEGEND BAR ── */}
       <div style={{ flexShrink: 0, background: "#0d1f1a", borderTop: "1px solid rgba(77,255,176,0.12)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />Active user</span>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#F4A435", display: "inline-block", boxShadow: "0 0 6px #F4A435" }} />Saw your kindness</span>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#FF5A7E", display: "inline-block", boxShadow: "0 0 6px #FF5A7E" }} />Reacted</span>
         </div>
