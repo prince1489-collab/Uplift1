@@ -676,6 +676,8 @@ export function MapTransitionWrapper({ visible, children }) {
 
   return (
     <div style={{
+      width: "100%",
+      height: "100%",
       animationName: animOut ? "seenMapOut" : "seenMapIn",
       animationDuration: "220ms",
       animationTimingFunction: "cubic-bezier(0.34,1.2,0.64,1)",

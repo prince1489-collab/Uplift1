@@ -1610,15 +1610,15 @@ export default function App() {
       <AnimationLayer controller={anim} />
       <ReactionBurstLayer burst={reactionBurst} />
 
-      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
-
-        {showMap && (
+      {showMap && (
+        <div className="fixed inset-0 z-[200]">
           <MapTransitionWrapper visible={showMap}>
-            <div className="absolute inset-0 z-50 overflow-hidden">
-              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} />
-            </div>
+            <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} />
           </MapTransitionWrapper>
-        )}
+        </div>
+      )}
+
+      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
