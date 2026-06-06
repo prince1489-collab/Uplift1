@@ -22,6 +22,7 @@ import { StickerDisplay } from "./StickerReactions";
 import GoodNews from "./GoodNews";
 import LifeHacks from "./LifeHacks";
 import Support from "./Support";
+import MyImpact from "./MyImpact";
 
 import {
   useStreak, computeSparkReward,
@@ -187,134 +188,11 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Weekly reach stats — fetches once per hour, cached in localStorage
-// ─────────────────────────────────────────────────────────────────
-
-const STATS_CACHE_KEY = "seen_weekly_stats_v1";
-const STATS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-function useWeeklyStats(db, currentUser, open) {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !db || !currentUser) return;
-
-    // Serve from cache if fresh
-    try {
-      const cached = JSON.parse(localStorage.getItem(STATS_CACHE_KEY) || "null");
-      if (cached && cached.uid === currentUser.uid && Date.now() - cached.fetchedAt < STATS_CACHE_TTL) {
-        setStats(cached.stats);
-        return;
-      }
-    } catch (_) {}
-
-    setLoading(true);
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-    (async () => {
-      try {
-        // My messages this week
-        const myMsgSnap = await getDocs(
-          query(collection(db, "publicMessages"),
-            where("uid", "==", currentUser.uid),
-            where("timestamp", ">=", weekAgo),
-            limit(100)
-          )
-        );
-        const sentCount = myMsgSnap.size;
-        const myMsgIds = myMsgSnap.docs.map(d => d.id);
-
-        // All messages this week → unique countries (everyone reading the global feed saw your messages)
-        const allMsgSnap = await getDocs(
-          query(collection(db, "publicMessages"),
-            where("timestamp", ">=", weekAgo),
-            limit(500)
-          )
-        );
-        const countriesReached = new Set();
-        allMsgSnap.forEach(d => {
-          const c = d.data().country;
-          if (c && d.data().uid !== currentUser.uid) countriesReached.add(c);
-        });
-
-        // Reactions on my messages → total count + unique reacting countries
-        let totalReactions = 0;
-        const reactionCountries = new Set();
-        await Promise.all(myMsgIds.map(async (msgId) => {
-          try {
-            const rSnap = await getDocs(collection(db, "publicMessages", msgId, "reactions"));
-            rSnap.forEach(rDoc => {
-              const data = rDoc.data();
-              const uids = data.uids || [];
-              const countries = data.countries || {};
-              uids.forEach(uid => {
-                if (uid !== currentUser.uid) {
-                  totalReactions++;
-                  if (countries[uid]) reactionCountries.add(countries[uid]);
-                }
-              });
-            });
-          } catch (_) {}
-        }));
-
-        const result = { sent: sentCount, countriesReached: countriesReached.size, reactions: totalReactions, reactionCountries: reactionCountries.size };
-        setStats(result);
-        try { localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ uid: currentUser.uid, fetchedAt: Date.now(), stats: result })); } catch (_) {}
-      } catch (_) {
-        setStats({ sent: 0, countriesReached: 0, reactions: 0, reactionCountries: 0 });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [open, db, currentUser]);
-
-  return { stats, loading };
-}
-
-function WeeklyStatsCard({ stats, loading }) {
-  const Tile = ({ value, label, sub }) => (
-    <div style={{ flex: 1, textAlign: "center", padding: "0 2px" }}>
-      {loading ? (
-        <div style={{ height: "26px", borderRadius: "6px", background: "rgba(16,185,129,0.1)", margin: "2px auto 6px", width: "55%", animation: "seenTypingDot 1.4s ease-in-out infinite" }} />
-      ) : (
-        <p style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", margin: 0, lineHeight: 1.1, letterSpacing: "-0.03em" }}>
-          {value ?? 0}
-        </p>
-      )}
-      <p style={{ fontSize: "9.5px", fontWeight: 700, color: "#6b7280", margin: "5px 0 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</p>
-      {sub && <p style={{ fontSize: "9.5px", color: "#10b981", margin: "2px 0 0", fontWeight: 600 }}>{sub}</p>}
-    </div>
-  );
-
-  return (
-    <div style={{ margin: "0 16px 4px", borderRadius: "16px", background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)", border: "1px solid #bbf7d0", padding: "13px 14px 11px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "11px" }}>
-        <p style={{ fontSize: "10px", fontWeight: 800, color: "#059669", margin: 0, textTransform: "uppercase", letterSpacing: "0.06em" }}>Your reach · this week</p>
-        <span style={{ fontSize: "9px", color: "#34d399", fontWeight: 700, background: "rgba(16,185,129,0.1)", padding: "2px 7px", borderRadius: "99px" }}>7 days</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
-        <Tile value={stats?.sent} label="Sent" />
-        <div style={{ width: "1px", background: "#bbf7d0", alignSelf: "stretch", margin: "0 4px" }} />
-        <Tile value={stats?.countriesReached} label="Countries" sub="reached" />
-        <div style={{ width: "1px", background: "#bbf7d0", alignSelf: "stretch", margin: "0 4px" }} />
-        <Tile
-          value={stats?.reactions}
-          label="Reactions"
-          sub={stats?.reactionCountries ? `${stats.reactionCountries} ${stats.reactionCountries === 1 ? "country" : "countries"}` : undefined}
-        />
-      </div>
-    </div>
-  );
-}
-
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, onImpact }) {
   const [open, setOpen] = useState(false);
   const [showCircles, setShowCircles] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const { stats, loading: statsLoading } = useWeeklyStats(db, currentUser, open);
 
   const inviteLink = `https://seenapp.app/?ref=${currentUser?.uid || ""}`;
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -419,11 +297,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 
               <div className="mx-4 border-t border-slate-100" />
 
-              {/* Weekly reach stats */}
-              <div className="pt-3 pb-1">
-                <WeeklyStatsCard stats={stats} loading={statsLoading} />
-              </div>
-
               {/* Main actions */}
               <div className="px-3 py-2 space-y-0.5">
 
@@ -432,6 +305,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
                   label="World Map"
                   sub="See who's spreading kindness"
+                />
+                <Row
+                  onClick={() => { onImpact(); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🌍</span></IconBox>}
+                  label="My Kindness Footprint"
+                  sub="Your reach · countries · reactions"
                 />
                 <Row
                   onClick={() => { onShare(); close(); }}
@@ -1864,6 +1743,7 @@ export default function App() {
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
                       onWorld={() => setShowMap(true)}
+                      onImpact={() => setActiveTab("impact")}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
                       onSupport={() => setShowSupport(true)}
@@ -1959,12 +1839,23 @@ export default function App() {
                 }`}>
                 💚 Support
               </button>
+              <button
+                onClick={() => setActiveTab("impact")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "impact"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                🌍 Impact
+              </button>
             </div>
 
             {activeTab === "hacks" ? (
               <LifeHacks />
             ) : activeTab === "support" ? (
               <Support country={profile?.country} />
+            ) : activeTab === "impact" ? (
+              <MyImpact db={db} currentUser={currentUser} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>

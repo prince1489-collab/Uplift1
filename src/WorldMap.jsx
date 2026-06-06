@@ -16,7 +16,7 @@ import {
 import { X } from "lucide-react";
 
 // ── Country centroids [longitude, latitude] ──────────────────────
-const COUNTRY_COORDS = {
+export const COUNTRY_COORDS = {
   "Afghanistan": [67.7, 33.9], "Albania": [20.2, 41.2], "Algeria": [3.0, 28.0],
   "Angola": [18.5, -11.2], "Argentina": [-64.0, -34.0], "Armenia": [45.0, 40.2],
   "Australia": [134.0, -25.0], "Austria": [14.6, 47.7], "Azerbaijan": [47.6, 40.1],
