@@ -87,6 +87,51 @@ function useReactionData(db, currentUser, period) {
   return { data, loading };
 }
 
+// ── Odometer number — rolling digit reels ─────────────────────────
+
+function OdometerNumber({ value = 0, fontSize = 26, duration = 1100, color = "#fff" }) {
+  const target = Math.max(0, Math.round(Number(value) || 0));
+  const digits = String(target).split("").map(Number); // most-significant first
+  const n = digits.length;
+  const [rolled, setRolled] = useState(false);
+
+  // Roll up from 0 → target whenever the value changes (and on mount).
+  useEffect(() => {
+    setRolled(false);
+    let raf2;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setRolled(true)); });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, [target]);
+
+  const cell = fontSize;
+
+  return (
+    <span style={{ display: "inline-flex", height: cell, fontSize, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>
+      {digits.map((d, idx) => {
+        // Rightmost (ones) reel spins the most for that classic odometer whir.
+        const extra = idx + 1;
+        const colLen = 10 * (extra + 1);
+        const offset = rolled ? d + 10 * extra : 0;
+        return (
+          <span key={idx} style={{ height: cell, overflow: "hidden", display: "inline-block", width: "0.62em" }}>
+            <span style={{
+              display: "flex", flexDirection: "column",
+              transform: `translateY(-${offset * cell}px)`,
+              transition: rolled ? `transform ${duration}ms cubic-bezier(0.22,1,0.36,1)` : "none",
+            }}>
+              {Array.from({ length: colLen + 1 }).map((_, k) => (
+                <span key={k} style={{ height: cell, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {k % 10}
+                </span>
+              ))}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 // ── Stat tile ─────────────────────────────────────────────────────
 
 function StatTile({ value, label, sub, loading }) {
@@ -95,9 +140,9 @@ function StatTile({ value, label, sub, loading }) {
       {loading ? (
         <div style={{ height: "30px", borderRadius: "6px", background: "rgba(255,255,255,0.07)", margin: "0 auto 6px", width: "52%" }} />
       ) : (
-        <p style={{ fontSize: "26px", fontWeight: 800, color: "#fff", margin: "0 0 4px", lineHeight: 1, letterSpacing: "-0.03em" }}>
-          {value ?? 0}
-        </p>
+        <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px" }}>
+          <OdometerNumber value={value ?? 0} fontSize={26} />
+        </div>
       )}
       <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.45)", margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</p>
       {sub && <p style={{ fontSize: "9px", color: "#4DFFB0", margin: "2px 0 0", fontWeight: 600 }}>{sub}</p>}
