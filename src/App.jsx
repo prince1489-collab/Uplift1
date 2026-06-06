@@ -1515,6 +1515,8 @@ export default function App() {
       haptic([10, 30, 10]);
       setLastSendTime(Date.now());
       setShowMapPrompt(true);
+      // Bust the impact cache so the next tab open reflects this new greeting
+      try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_impact_v1_${p}_${currentUser.uid}`)); } catch (_) {}
       if (!hasSent) { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {} }
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
