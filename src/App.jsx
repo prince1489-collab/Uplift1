@@ -1411,6 +1411,17 @@ export default function App() {
     [messages, currentUser]
   );
 
+  const liveImpact = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86400000;
+    const monthAgo = Date.now() - 30 * 86400000;
+    const uid = currentUser?.uid;
+    const sent7d = messages.filter(m => m.uid === uid && m.timestamp >= weekAgo).length;
+    const sent30d = messages.filter(m => m.uid === uid && m.timestamp >= monthAgo).length;
+    const countries7d = new Set(messages.filter(m => m.uid !== uid && m.timestamp >= weekAgo && m.country).map(m => m.country)).size;
+    const countries30d = new Set(messages.filter(m => m.uid !== uid && m.timestamp >= monthAgo && m.country).map(m => m.country)).size;
+    return { sent7d, sent30d, countries7d, countries30d };
+  }, [messages, currentUser]);
+
   const handleSignOut = async () => {
     if (isSigningOut) return;
     try { setIsSigningOut(true); await signOut(auth); setPickerOpen(false); }
@@ -1516,7 +1527,7 @@ export default function App() {
       setLastSendTime(Date.now());
       setShowMapPrompt(true);
       // Bust the impact cache so the next tab open reflects this new greeting
-      try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_impact_v1_${p}_${currentUser.uid}`)); } catch (_) {}
+      try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
       if (!hasSent) { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {} }
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
@@ -1857,7 +1868,7 @@ export default function App() {
             ) : activeTab === "support" ? (
               <Support country={profile?.country} />
             ) : activeTab === "impact" ? (
-              <MyImpact db={db} currentUser={currentUser} />
+              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>

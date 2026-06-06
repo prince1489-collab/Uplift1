@@ -1,21 +1,31 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
+
+// ── Haversine distance ────────────────────────────────────────────
+
+function kmBetween([lon1, lat1], [lon2, lat2]) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 // ── Data hook ─────────────────────────────────────────────────────
 
 const CACHE_TTL = 60 * 60 * 1000;
 
-function useImpactData(db, currentUser, period) {
+function useReactionData(db, currentUser, period) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!db || !currentUser) return;
-    const cacheKey = `seen_impact_v1_${period}_${currentUser.uid}`;
+    const cacheKey = `seen_react_v1_${period}_${currentUser.uid}`;
 
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
@@ -44,17 +54,6 @@ function useImpactData(db, currentUser, period) {
           dayMap[key] = (dayMap[key] || 0) + 1;
         });
 
-        const allSnap = await getDocs(query(
-          collection(db, "publicMessages"),
-          where("timestamp", ">=", cutoff),
-          limit(500)
-        ));
-        const countriesReached = new Set();
-        allSnap.forEach(d => {
-          const c = d.data().country;
-          if (c && d.data().uid !== currentUser.uid) countriesReached.add(c);
-        });
-
         const myMsgIds = mySnap.docs.map(d => d.id);
         let totalReactions = 0;
         const reactionByCountry = {};
@@ -74,17 +73,11 @@ function useImpactData(db, currentUser, period) {
           } catch (_) {}
         }));
 
-        const result = {
-          sent: mySnap.size,
-          countriesReached: [...countriesReached],
-          totalReactions,
-          reactionByCountry,
-          dayMap,
-        };
+        const result = { totalReactions, reactionByCountry, dayMap };
         setData(result);
         try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
       } catch (_) {
-        setData({ sent: 0, countriesReached: [], totalReactions: 0, reactionByCountry: {}, dayMap: {} });
+        setData({ totalReactions: 0, reactionByCountry: {}, dayMap: {} });
       } finally {
         setLoading(false);
       }
@@ -92,133 +85,6 @@ function useImpactData(db, currentUser, period) {
   }, [db, currentUser, period]);
 
   return { data, loading };
-}
-
-// ── Mini flat world map ───────────────────────────────────────────
-
-function MiniWorldMap({ countriesReached = [], reactionCountries = [] }) {
-  const containerRef = useRef(null);
-  const canvasRef = useRef(null);
-  const mapRef = useRef({ nameToFeature: {}, d3: null, ready: false });
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      if (!window.d3) {
-        await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-      if (!window.topojson) {
-        await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-      const world = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
-      const features = window.topojson.feature(world, world.objects.countries).features;
-      const d3l = window.d3;
-      const nameToFeature = {};
-
-      for (const [name, coords] of Object.entries(COUNTRY_COORDS)) {
-        let found = null;
-        for (const f of features) {
-          if (d3l.geoContains(f, coords)) { found = f; break; }
-        }
-        if (!found) {
-          let best = null, minDist = Infinity;
-          for (const f of features) {
-            const c = d3l.geoCentroid(f);
-            const dist = (c[0] - coords[0]) ** 2 + (c[1] - coords[1]) ** 2;
-            if (dist < minDist) { minDist = dist; best = f; }
-          }
-          found = best;
-        }
-        if (found) nameToFeature[name] = found;
-      }
-
-      mapRef.current = { nameToFeature, d3: d3l, ready: true };
-      setReady(true);
-    })().catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!ready || !canvasRef.current || !containerRef.current) return;
-
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    const dpr = window.devicePixelRatio || 1;
-    const w = container.clientWidth;
-    const h = Math.round(w * 0.46);
-
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-
-    const ctx = canvas.getContext("2d");
-    ctx.scale(dpr, dpr);
-
-    const { d3, nameToFeature } = mapRef.current;
-    const proj = d3.geoNaturalEarth1().scale(w / 6.28).translate([w / 2, h / 2]);
-    const path = d3.geoPath().projection(proj).context(ctx);
-
-    ctx.fillStyle = "#07111e";
-    ctx.fillRect(0, 0, w, h);
-
-    const reachedSet = new Set(countriesReached);
-    const reactedSet = new Set(reactionCountries);
-
-    // Base pass — all countries dim
-    for (const [, feature] of Object.entries(nameToFeature)) {
-      ctx.beginPath(); path(feature);
-      ctx.fillStyle = "rgba(22, 42, 70, 0.6)";
-      ctx.strokeStyle = "rgba(35, 65, 105, 0.5)";
-      ctx.lineWidth = 0.3 / dpr;
-      ctx.fill(); ctx.stroke();
-    }
-
-    // Highlight pass — reached (amber) then reacted (coral) on top
-    for (const tier of ["reached", "reacted"]) {
-      const activeSet = tier === "reached" ? reachedSet : reactedSet;
-      for (const [name, feature] of Object.entries(nameToFeature)) {
-        if (!activeSet.has(name)) continue;
-        // Skip reached if it's also reacted — reacted pass will handle it
-        if (tier === "reached" && reactedSet.has(name)) continue;
-
-        ctx.beginPath(); path(feature);
-        if (tier === "reacted") {
-          ctx.shadowColor = "rgba(255, 90, 126, 0.9)";
-          ctx.shadowBlur = 12;
-          ctx.fillStyle = "rgba(255, 80, 120, 0.62)";
-          ctx.strokeStyle = "rgba(255, 140, 165, 1)";
-          ctx.lineWidth = 0.8 / dpr;
-        } else {
-          ctx.shadowColor = "rgba(255, 175, 60, 0.7)";
-          ctx.shadowBlur = 9;
-          ctx.fillStyle = "rgba(255, 160, 50, 0.42)";
-          ctx.strokeStyle = "rgba(255, 200, 100, 0.85)";
-          ctx.lineWidth = 0.5 / dpr;
-        }
-        ctx.fill(); ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-    }
-  }, [ready, countriesReached, reactionCountries]);
-
-  return (
-    <div ref={containerRef} style={{ width: "100%", borderRadius: "14px", overflow: "hidden", background: "#07111e", minHeight: "140px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {!ready && (
-        <p style={{ color: "rgba(77,255,176,0.35)", fontSize: "11px", fontWeight: 600, margin: 0 }}>Loading map…</p>
-      )}
-      <canvas ref={canvasRef} style={{ display: ready ? "block" : "none" }} />
-    </div>
-  );
 }
 
 // ── Stat tile ─────────────────────────────────────────────────────
@@ -239,11 +105,142 @@ function StatTile({ value, label, sub, loading }) {
   );
 }
 
+// ── Milestone card ────────────────────────────────────────────────
+
+const MILESTONES = [1, 5, 10, 20, 35, 50, 75, 100];
+
+function MilestoneCard({ countriesCount }) {
+  const reached = MILESTONES.filter(m => countriesCount >= m);
+  const next = MILESTONES.find(m => countriesCount < m) || null;
+  const prev = reached.length > 0 ? reached[reached.length - 1] : 0;
+  const progress = next ? Math.round(((countriesCount - prev) / (next - prev)) * 100) : 100;
+
+  return (
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
+        Milestone Progress
+      </p>
+      <div style={{ display: "flex", gap: "6px", marginBottom: "14px", flexWrap: "wrap" }}>
+        {MILESTONES.map(m => (
+          <div key={m} style={{
+            padding: "3px 8px", borderRadius: "8px", fontSize: "10px", fontWeight: 700,
+            background: countriesCount >= m ? "rgba(77,255,176,0.15)" : "rgba(255,255,255,0.05)",
+            color: countriesCount >= m ? "#4DFFB0" : "rgba(255,255,255,0.2)",
+            border: `1px solid ${countriesCount >= m ? "rgba(77,255,176,0.3)" : "rgba(255,255,255,0.06)"}`,
+          }}>
+            {m}
+          </div>
+        ))}
+      </div>
+      {next ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>{countriesCount} / {next} countries</span>
+            <span style={{ fontSize: "11px", color: "#4DFFB0", fontWeight: 700 }}>{progress}%</span>
+          </div>
+          <div style={{ height: "5px", borderRadius: "3px", background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, borderRadius: "3px", background: "linear-gradient(90deg, #4DFFB0, #00d9a3)", transition: "width 0.8s cubic-bezier(0.34,1.2,0.64,1)" }} />
+          </div>
+          <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", margin: "8px 0 0", fontWeight: 500 }}>
+            {next - countriesCount} more {next - countriesCount === 1 ? "country" : "countries"} to next milestone
+          </p>
+        </>
+      ) : (
+        <p style={{ fontSize: "12px", color: "#4DFFB0", fontWeight: 700, margin: 0, textAlign: "center" }}>
+          🏆 All milestones reached!
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Furthest Reach card ───────────────────────────────────────────
+
+function FurthestReachCard({ reactionByCountry, homeCountry }) {
+  const result = useMemo(() => {
+    const homeCoords = COUNTRY_COORDS[homeCountry];
+    if (!homeCoords || !reactionByCountry || Object.keys(reactionByCountry).length === 0) return null;
+    let best = null, bestKm = 0;
+    for (const country of Object.keys(reactionByCountry)) {
+      const coords = COUNTRY_COORDS[country];
+      if (!coords) continue;
+      const km = kmBetween(homeCoords, coords);
+      if (km > bestKm) { bestKm = km; best = country; }
+    }
+    if (!best) return null;
+    return { country: best, km: Math.round(bestKm) };
+  }, [reactionByCountry, homeCountry]);
+
+  if (!result) return null;
+
+  return (
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
+        Furthest Reaction
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <span style={{ fontSize: "32px", lineHeight: 1 }}>{countryToFlag(result.country)}</span>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: "15px", fontWeight: 700, color: "#fff", margin: "0 0 2px" }}>{result.country}</p>
+          <p style={{ fontSize: "12px", color: "#4DFFB0", fontWeight: 600, margin: 0 }}>{result.km.toLocaleString()} km from home</p>
+        </div>
+        <span style={{ fontSize: "24px" }}>✈️</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Rhythm card ───────────────────────────────────────────────────
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function RhythmCard({ streak, dayMap }) {
+  const bestDay = useMemo(() => {
+    const totals = [0, 0, 0, 0, 0, 0, 0];
+    Object.entries(dayMap || {}).forEach(([dateStr, count]) => {
+      const dow = new Date(dateStr + "T12:00:00").getDay();
+      totals[dow] += count;
+    });
+    const max = Math.max(...totals);
+    if (max === 0) return null;
+    return DAY_NAMES[totals.indexOf(max)];
+  }, [dayMap]);
+
+  return (
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 14px" }}>
+        Your Rhythm
+      </p>
+      <div style={{ display: "flex", gap: "12px" }}>
+        <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center" }}>
+          <p style={{ fontSize: "28px", margin: "0 0 4px", lineHeight: 1 }}>{streak >= 7 ? "🔥" : streak >= 3 ? "✨" : "💫"}</p>
+          <p style={{ fontSize: "22px", fontWeight: 800, color: streak > 0 ? "#fff" : "rgba(255,255,255,0.3)", margin: "0 0 2px", lineHeight: 1 }}>{streak}</p>
+          <p style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Day streak</p>
+        </div>
+        {bestDay ? (
+          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center" }}>
+            <p style={{ fontSize: "28px", margin: "0 0 4px", lineHeight: 1 }}>📅</p>
+            <p style={{ fontSize: "14px", fontWeight: 800, color: "#fff", margin: "0 0 2px", lineHeight: 1.2 }}>{bestDay}</p>
+            <p style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Best day</p>
+          </div>
+        ) : (
+          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)", margin: 0, fontWeight: 500, lineHeight: 1.4 }}>Send more to discover your best day</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────
 
-export default function MyImpact({ db, currentUser }) {
+export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
-  const { data, loading } = useImpactData(db, currentUser, period);
+  const { data, loading } = useReactionData(db, currentUser, period);
+
+  const sentCount = period === "7d" ? (liveStats?.sent7d ?? null) : (liveStats?.sent30d ?? null);
+  const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
 
   const days = useMemo(() => {
     const n = period === "30d" ? 30 : 7;
@@ -264,7 +261,7 @@ export default function MyImpact({ db, currentUser }) {
     Object.entries(data?.reactionByCountry || {}).sort(([, a], [, b]) => b - a).slice(0, 10),
     [data]
   );
-  const reactionCountryNames = useMemo(() => Object.keys(data?.reactionByCountry || {}), [data]);
+  const reactingCountriesCount = Object.keys(data?.reactionByCountry || {}).length;
 
   return (
     <div style={{ flex: 1, background: "#060e18", overflowY: "auto", display: "flex", flexDirection: "column", paddingBottom: "32px" }}>
@@ -293,41 +290,28 @@ export default function MyImpact({ db, currentUser }) {
         </div>
       </div>
 
-      {/* ── Mini World Map ── */}
-      <div style={{ padding: "0 18px 10px" }}>
-        <MiniWorldMap
-          countriesReached={data?.countriesReached || []}
-          reactionCountries={reactionCountryNames}
-        />
-      </div>
-
-      {/* Legend */}
-      <div style={{ padding: "0 20px 20px", display: "flex", gap: "18px" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", fontWeight: 600, color: "rgba(255,175,60,0.85)" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "rgba(255,160,50,0.7)", flexShrink: 0 }} />
-          Countries active
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", fontWeight: 600, color: "rgba(255,100,140,0.85)" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "rgba(255,80,120,0.7)", flexShrink: 0 }} />
-          Reacted to you
-        </span>
-      </div>
-
-      {/* ── Stat tiles ── */}
+      {/* ── Stat tiles — Sent + Countries are live (no loading); Reactions from Firestore ── */}
       <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", padding: "18px 8px 16px", display: "flex" }}>
-        <StatTile loading={loading} value={data?.sent} label="Sent" />
+        <StatTile loading={false} value={sentCount} label="Sent" />
         <div style={{ width: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
-        <StatTile loading={loading} value={data?.countriesReached?.length} label="Countries" sub="reached" />
+        <StatTile loading={false} value={countriesCount} label="Countries" sub="reached" />
         <div style={{ width: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
         <StatTile
           loading={loading}
           value={data?.totalReactions}
           label="Reactions"
-          sub={data?.reactionByCountry && Object.keys(data.reactionByCountry).length > 0
-            ? `${Object.keys(data.reactionByCountry).length} ${Object.keys(data.reactionByCountry).length === 1 ? "country" : "countries"}`
-            : undefined}
+          sub={reactingCountriesCount > 0 ? `${reactingCountriesCount} ${reactingCountriesCount === 1 ? "country" : "countries"}` : undefined}
         />
       </div>
+
+      {/* ── Milestone Progress ── */}
+      <MilestoneCard countriesCount={countriesCount ?? 0} />
+
+      {/* ── Furthest Reaction ── */}
+      {!loading && <FurthestReachCard reactionByCountry={data?.reactionByCountry} homeCountry={profile?.country} />}
+
+      {/* ── Your Rhythm ── */}
+      <RhythmCard streak={streak} dayMap={data?.dayMap} />
 
       {/* ── Daily activity ── */}
       <div style={{ margin: "0 18px 26px" }}>
