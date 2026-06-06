@@ -77,7 +77,7 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 }
 
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
-const AUTO_ROTATE_SPEED = 0.12;
+const AUTO_ROTATE_SPEED = 0.15;
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
