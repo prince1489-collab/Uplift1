@@ -268,35 +268,19 @@
 .welcome-affirmation__text--in  { opacity: 1; transform: translateY(0); }
 .welcome-affirmation__text--out { opacity: 0; transform: translateY(-8px); }
 
-/* ─── Globe preview ──────────────────────────────────────────── */
+/* ─── Globe preview (canvas-based) ──────────────────────────── */
 .welcome-globe {
   width: 180px;
   height: 180px;
   margin: 16px auto 6px;
   flex-shrink: 0;
-}
-
-.welcome-globe svg {
-  width: 100%;
-  height: 100%;
   filter:
-    drop-shadow(0 0 22px rgba(77,255,176,0.30))
-    drop-shadow(0 8px 32px rgba(20,184,166,0.22))
-    drop-shadow(0 2px 8px rgba(0,0,0,0.22));
+    drop-shadow(0 0 22px rgba(77,255,176,0.28))
+    drop-shadow(0 8px 32px rgba(20,184,166,0.2))
+    drop-shadow(0 2px 8px rgba(0,0,0,0.25));
 }
 
-@keyframes wgArc {
-  0%   { stroke-dashoffset: 1; opacity: 0; }
-  6%   { opacity: 1; }
-  52%  { stroke-dashoffset: 0; opacity: 1; }
-  72%  { stroke-dashoffset: 0; opacity: 0.5; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
-}
-
-@keyframes wgDot {
-  0%, 50%  { transform: scale(0); opacity: 0; }
-  58%      { transform: scale(1.2); opacity: 1; }
-  70%      { transform: scale(1); opacity: 0.8; }
-  85%      { transform: scale(2.5); opacity: 0; }
-  100%     { transform: scale(0); opacity: 0; }
+.welcome-globe canvas {
+  display: block;
+  border-radius: 50%;
 }

@@ -6,6 +6,9 @@ import {
   collection, onSnapshot, orderBy, query, limit, where,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
+import { geoOrthographic, geoPath, geoGraticule, geoInterpolate } from "d3-geo";
+import { feature } from "topojson-client";
+import worldAtlas from "world-atlas/countries-110m.json";
 import "./WelcomeStep.css";
 
 const PRESENCE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — matches "today" label
@@ -185,124 +188,180 @@ const HIGHLIGHTS = [
   },
 ];
 
-// ── Animated globe preview ─────────────────────────────────────────────
+// ── Canvas Globe — d3-geo orthographic projection ──────────────────────
 
-// Equirectangular → SVG200: x = 100 + 80*(lon/180), y = 100 - 80*(lat/90)
-// ALL vertices verified to be inside the sphere (dist < 79 from centre 100,100).
-// Outside-sphere vertices cause SVG clipPath to create huge arc-shaped fills.
-const CONTINENTS = [
-  // North America — stays within visible hemisphere (no far-west Alaska)
-  "52,38 67,38 76,58 64,78 60,86 51,79 45,56 44,47",
-  // South America
-  "63,90 73,90 84,104 78,149 70,149 66,143 64,96",
-  // Europe
-  "96,68 116,67 118,51 112,38 104,48 98,51 96,57",
-  // Africa — NE corner is Egypt (lon≈25°E), NOT Iran (lon=52°E)
-  "97,68 111,72 119,90 116,122 108,130 100,95 92,81",
-  // Asia — capped at lon≈105°E for 70°N so no point leaves the sphere
-  "112,36 147,38 160,59 162,69 148,78 136,93 130,80 116,67 113,63",
-  // Australia
-  "150,111 168,111 168,139 158,139 150,120",
-  // Greenland
-  "73,27 90,27 90,37 75,37",
+const _LAND      = feature(worldAtlas, worldAtlas.objects.land);
+const _COUNTRIES = feature(worldAtlas, worldAtlas.objects.countries);
+const _GRATICULE = geoGraticule().step([20, 20])();
+
+const GLOBE_CONNECTIONS = [
+  { from: [-0.1, 51.5], to: [-74,  40.7], delay: 0   }, // London → NYC
+  { from: [79,   21  ], to: [139,  35.7], delay: 0.9 }, // Mumbai → Tokyo
+  { from: [7,    5.5 ], to: [-46, -13.6], delay: 1.8 }, // Lagos → Brasília
+  { from: [-0.1, 51.5], to: [133, -25  ], delay: 2.7 }, // London → Australia
 ];
 
-// Arc paths — control points pushed outside the sphere so arcs fly above the surface.
-const GLOBE_ARCS = [
-  // UK → USA East Coast
-  { id: "a", d: "M 100,55 Q 65,16 58,66", cx: 58, cy: 66, delay: "0s" },
-  // India → Japan
-  { id: "b", d: "M 135,81 Q 158,36 162,68", cx: 162, cy: 68, delay: "0.9s" },
-  // West Africa → India
-  { id: "c", d: "M 104,92 Q 112,16 135,81", cx: 135, cy: 81, delay: "1.8s" },
-  // Nigeria → Australia
-  { id: "d", d: "M 104,92 Q 165,50 159,122", cx: 159, cy: 122, delay: "2.7s" },
-];
+const ARC_STEPS = 64;
+const ARC_COORDS = GLOBE_CONNECTIONS.map(({ from, to }) => {
+  const interp = geoInterpolate(from, to);
+  return Array.from({ length: ARC_STEPS + 1 }, (_, i) => interp(i / ARC_STEPS));
+});
 
 function GlobePreview() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const DPR  = Math.min(window.devicePixelRatio || 1, 2);
+    const CSS  = 180;
+    canvas.width  = CSS * DPR;
+    canvas.height = CSS * DPR;
+    canvas.style.width  = CSS + "px";
+    canvas.style.height = CSS + "px";
+
+    const ctx = canvas.getContext("2d");
+    ctx.scale(DPR, DPR);
+
+    const CX = CSS / 2;
+    const CY = CSS / 2;
+    const R  = CSS * 0.44;
+
+    const proj = geoOrthographic()
+      .scale(R)
+      .translate([CX, CY])
+      .clipAngle(90);
+
+    const pathGen = geoPath().projection(proj).context(ctx);
+
+    let lon = -20;
+    let rafId;
+    const t0 = performance.now();
+
+    function frame(now) {
+      const t = (now - t0) / 1000;
+      lon -= 0.04;
+      proj.rotate([lon, -25, 0]);
+
+      ctx.clearRect(0, 0, CSS, CSS);
+
+      // Ocean
+      ctx.beginPath();
+      pathGen({ type: "Sphere" });
+      const ocean = ctx.createRadialGradient(CX - R * 0.3, CY - R * 0.3, 0, CX, CY, R);
+      ocean.addColorStop(0, "#1e4a7a");
+      ocean.addColorStop(1, "#050d1c");
+      ctx.fillStyle = ocean;
+      ctx.fill();
+
+      // Graticule
+      ctx.beginPath();
+      pathGen(_GRATICULE);
+      ctx.strokeStyle = "rgba(77,255,176,0.1)";
+      ctx.lineWidth = 0.4;
+      ctx.stroke();
+
+      // Land fill
+      ctx.beginPath();
+      pathGen(_LAND);
+      ctx.fillStyle = "rgba(77,255,176,0.22)";
+      ctx.fill();
+
+      // Country borders — all batched into one stroke call
+      ctx.beginPath();
+      _COUNTRIES.features.forEach(f => pathGen(f));
+      ctx.strokeStyle = "rgba(77,255,176,0.38)";
+      ctx.lineWidth = 0.35;
+      ctx.stroke();
+
+      // Animated arcs
+      GLOBE_CONNECTIONS.forEach(({ to, delay }, i) => {
+        const PERIOD = 3.6;
+        const el = ((t - delay) % PERIOD + PERIOD) % PERIOD;
+        const drawProg = Math.min(el / (PERIOD * 0.52), 1);
+        const alpha = el > PERIOD * 0.7
+          ? Math.max(0, 1 - (el - PERIOD * 0.7) / (PERIOD * 0.3))
+          : 1;
+
+        if (drawProg < 0.02 || alpha < 0.01) return;
+
+        const steps = Math.max(2, Math.floor(drawProg * ARC_STEPS));
+        const arcFeat = { type: "LineString", coordinates: ARC_COORDS[i].slice(0, steps + 1) };
+
+        // Soft glow
+        ctx.beginPath();
+        pathGen(arcFeat);
+        ctx.strokeStyle = `rgba(77,255,176,${0.22 * alpha})`;
+        ctx.lineWidth = 7;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        // Bright core
+        ctx.beginPath();
+        pathGen(arcFeat);
+        ctx.strokeStyle = `rgba(77,255,176,${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        // Destination pulse dot
+        if (drawProg >= 0.98) {
+          const pt = proj(to);
+          if (pt) {
+            const pulse = Math.min((el - PERIOD * 0.52) / 0.5, 1);
+            const dotR  = 3 + pulse * 5;
+            const dotA  = alpha * Math.max(0, 1 - pulse * 0.6);
+            ctx.beginPath();
+            ctx.arc(pt[0], pt[1], dotR, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(77,255,176,${dotA})`;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pt[0], pt[1], 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(77,255,176,${alpha})`;
+            ctx.fill();
+          }
+        }
+      });
+
+      // Atmosphere halo
+      const atm = ctx.createRadialGradient(CX, CY, R * 0.88, CX, CY, R * 1.1);
+      atm.addColorStop(0, "rgba(77,255,176,0)");
+      atm.addColorStop(1, "rgba(77,255,176,0.15)");
+      ctx.beginPath();
+      ctx.arc(CX, CY, R * 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = atm;
+      ctx.fill();
+
+      // Sphere outline
+      ctx.beginPath();
+      pathGen({ type: "Sphere" });
+      ctx.strokeStyle = "rgba(77,255,176,0.28)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Specular shine
+      const shine = ctx.createRadialGradient(
+        CX - R * 0.38, CY - R * 0.38, 0,
+        CX - R * 0.1,  CY - R * 0.1,  R * 0.85
+      );
+      shine.addColorStop(0, "rgba(255,255,255,0.16)");
+      shine.addColorStop(0.6, "rgba(255,255,255,0)");
+      ctx.beginPath();
+      ctx.arc(CX, CY, R, 0, Math.PI * 2);
+      ctx.fillStyle = shine;
+      ctx.fill();
+
+      rafId = requestAnimationFrame(frame);
+    }
+
+    rafId = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
     <div className="welcome-globe" aria-hidden="true">
-      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" overflow="visible">
-        <defs>
-          <radialGradient id="wg-fill" cx="38%" cy="32%">
-            <stop offset="0%" stopColor="#1a3a6e" />
-            <stop offset="100%" stopColor="#050d1c" />
-          </radialGradient>
-          <radialGradient id="wg-atm" cx="50%" cy="50%">
-            <stop offset="74%" stopColor="rgba(77,255,176,0)" />
-            <stop offset="100%" stopColor="rgba(77,255,176,0.16)" />
-          </radialGradient>
-          <radialGradient id="wg-shine" cx="32%" cy="24%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
-            <stop offset="55%" stopColor="rgba(255,255,255,0)" />
-          </radialGradient>
-          <clipPath id="wg-clip">
-            <circle cx="100" cy="100" r="79" />
-          </clipPath>
-        </defs>
-
-        {/* Atmosphere halo */}
-        <circle cx="100" cy="100" r="86" fill="url(#wg-atm)" />
-
-        {/* Sphere base */}
-        <circle cx="100" cy="100" r="80" fill="url(#wg-fill)" stroke="rgba(77,255,176,0.28)" strokeWidth="0.8" />
-
-        {/* Grid lines — clipped to sphere */}
-        <g clipPath="url(#wg-clip)" fill="none" strokeLinecap="round">
-          <ellipse cx="100" cy="100" rx="79" ry="10" stroke="rgba(77,255,176,0.18)" strokeWidth="0.8" />
-          <ellipse cx="100" cy="73"  rx="68" ry="8"  stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
-          <ellipse cx="100" cy="127" rx="68" ry="8"  stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
-          <ellipse cx="100" cy="50"  rx="43" ry="5"  stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
-          <path d="M 100,21 Q 170,100 100,179" stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
-          <path d="M 100,21 Q  30,100 100,179" stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
-          <path d="M 100,21 Q 186,58 179,100 Q 186,142 100,179" stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
-          <path d="M 100,21 Q  14,58  21,100 Q  14,142 100,179" stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
-        </g>
-
-        {/* Continent fills — clipped to sphere */}
-        <g
-          clipPath="url(#wg-clip)"
-          fill="rgba(77,255,176,0.14)"
-          stroke="rgba(77,255,176,0.45)"
-          strokeWidth="0.8"
-          strokeLinejoin="round"
-        >
-          {CONTINENTS.map((pts, i) => (
-            <polygon key={i} points={pts} />
-          ))}
-        </g>
-
-        {/* Animated arcs + destination pulses */}
-        {GLOBE_ARCS.map(({ id, d, cx, cy, delay }) => (
-          <g key={id}>
-            {/* Wide soft glow under the arc */}
-            <path
-              d={d} pathLength="1" fill="none"
-              stroke="rgba(77,255,176,0.28)" strokeWidth="8" strokeLinecap="round"
-              strokeDasharray="1" strokeDashoffset="1"
-              style={{ animation: `wgArc 3.6s ease-out ${delay} infinite` }}
-            />
-            {/* Crisp bright arc */}
-            <path
-              d={d} pathLength="1" fill="none"
-              stroke="#4DFFB0" strokeWidth="2.2" strokeLinecap="round"
-              strokeDasharray="1" strokeDashoffset="1"
-              style={{ animation: `wgArc 3.6s ease-out ${delay} infinite` }}
-            />
-            {/* Destination pulse */}
-            <circle cx={cx} cy={cy} r="5" fill="#4DFFB0"
-              style={{
-                animation: `wgDot 3.6s ease-out ${delay} infinite`,
-                transformOrigin: `${cx}px ${cy}px`,
-                filter: "drop-shadow(0 0 8px rgba(77,255,176,1))",
-              }}
-            />
-          </g>
-        ))}
-
-        {/* Shine overlay */}
-        <circle cx="100" cy="100" r="80" fill="url(#wg-shine)" />
-      </svg>
+      <canvas ref={canvasRef} />
     </div>
   );
 }
