@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  ArrowRight, Bell, Calendar, ChevronDown, Globe,
-  Loader2, Mail, LogOut, Send, Sparkles, Gift, User, Share2, Shield, X,
+  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X,
 } from "lucide-react";
 import WorldMap from "./WorldMap";
-import MyImpact from "./MyImpact";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
@@ -13,21 +15,37 @@ import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
+import IntroStep from "./IntroStep";
+
+import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
+import { StickerDisplay } from "./StickerReactions";
+import GoodNews from "./GoodNews";
+import LifeHacks from "./LifeHacks";
+import Support from "./Support";
+import MyImpact from "./MyImpact";
 
 import {
   useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
-  KindnessPledge, BuddyPanel, SparkGiftButton,
+  SparkGiftButton,
   LiveGreeterCount, MessageReactions,
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
+  GiftOverlay,
   MoodSelector, MoodPill,
   PremiumUpgradePrompt,
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
+  QuickReactBar,
 } from "./UpliftRetentionFeatures";
 
-import { getGreetingsByCategory, getAccessibleGreetings } from "./greetings";
+import {
+  PrivateChatInbox,
+  PrivateChatWindow,
+  usePendingChatCount,
+} from "./PrivateChat";
+
+import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES } from "./greetings";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -39,9 +57,9 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, collection, doc, getFirestore,
-  limit, onSnapshot, orderBy, query,
-  runTransaction, serverTimestamp, setDoc, where,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
+  limit, limitToLast, onSnapshot, orderBy, query,
+  runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -90,15 +108,34 @@ const COUNTRY_OPTIONS = [
 ];
 
 const LEVEL_THRESHOLDS = [
-  { min: 0,   title: "Novice Greeter" },
-  { min: 50,  title: "Kindness Scout" },
-  { min: 150, title: "Beacon of Hope" },
-  { min: 300, title: "Sunshine Bringer" },
-  { min: 600, title: "Guardian of Joy" },
+  { min: 0,         title: "Still Loading…" },
+  { min: 50,        title: "Vibe Check: Passed" },
+  { min: 150,       title: "It's Giving Kind" },
+  { min: 300,       title: "Chronically Wholesome" },
+  { min: 600,       title: "Main Character Energy" },
+  { min: 1_500,     title: "Understood the Assignment" },
+  { min: 4_000,     title: "Serotonin Dealer" },
+  { min: 10_000,    title: "Ate and Left No Crumbs" },
+  { min: 25_000,    title: "Lowkey Iconic" },
+  { min: 60_000,    title: "Living Rent Free in Hearts" },
+  { min: 150_000,   title: "Real One, No Debate" },
+  { min: 350_000,   title: "In Your Kindness Era" },
+  { min: 750_000,   title: "Highkey Goated" },
+  { min: 1_500_000, title: "It's Giving Legend" },
+  { min: 3_000_000, title: "The Algorithm Fears You" },
+  { min: 5_000_000, title: "No Cap, Just Impact" },
+  { min: 7_500_000, title: "Ate Every Assignment" },
+  { min: 10_000_000,title: "Chronically GOATED" },
 ];
 
 const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
+
+function fmtTime(ts) {
+  if (!ts) return "";
+  const ms = typeof ts === "number" ? ts : ts?.toMillis ? ts.toMillis() : Number(ts);
+  return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
 function startOfToday() {
   const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
@@ -115,74 +152,391 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-function MeatballMenu({ onWorld, onShare, onImpact, onSignOut, isSigningOut, globePulse, db, currentUser, profile }) {
+const MOOD_TAGLINES = {
+  grateful:   "feeling grateful",
+  hopeful:    "feeling hopeful",
+  tired:      "a little tired",
+  happy:      "feeling happy",
+  struggling: "going through it",
+  peaceful:   "at peace",
+  energised:  "full of energy",
+  lonely:     "feeling a bit lonely",
+};
+
+function getMoodBubbleStyle(moodTag, isMine) {
+  if (!moodTag) return null;
+  const MINE = {
+    grateful:   { background: "linear-gradient(135deg,#87a87a,#6b8f6b)", borderColor: "#6b8f6b", boxShadow: "0 4px 14px rgba(107,143,107,0.35)" },
+    hopeful:    { background: "linear-gradient(135deg,#fcd34d,#eab308)", borderColor: "#eab308", boxShadow: "0 4px 14px rgba(234,179,8,0.35)"    },
+    tired:      { background: "linear-gradient(135deg,#94a3b8,#64748b)", borderColor: "#64748b", boxShadow: "0 4px 14px rgba(100,116,139,0.35)"  },
+    happy:      { background: "linear-gradient(135deg,#fb923c,#f97316)", borderColor: "#f97316", boxShadow: "0 4px 14px rgba(249,115,22,0.35)"   },
+    struggling: { background: "linear-gradient(135deg,#c9899a,#a86778)", borderColor: "#a86778", boxShadow: "0 4px 14px rgba(168,103,120,0.35)"  },
+    peaceful:   { background: "linear-gradient(135deg,#7dd3fc,#38bdf8)", borderColor: "#38bdf8", boxShadow: "0 4px 14px rgba(56,189,248,0.28)"   },
+    energised:  { background: "linear-gradient(135deg,#f87171,#ef4444)", borderColor: "#ef4444", boxShadow: "0 4px 14px rgba(239,68,68,0.35)"    },
+    lonely:     { background: "linear-gradient(135deg,#7c3aed,#4c1d95)", borderColor: "#4c1d95", boxShadow: "0 4px 14px rgba(76,29,149,0.35)"    },
+  };
+  const THEIRS = {
+    grateful:   { backgroundColor: "#f0f4ef", borderColor: "#b5cdb5", color: "#3d6e3d" },
+    hopeful:    { backgroundColor: "#fefce8", borderColor: "#fde047", color: "#713f12" },
+    tired:      { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1", color: "#334155" },
+    happy:      { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
+    struggling: { backgroundColor: "#fdf2f5", borderColor: "#f0c4cf", color: "#8b3547" },
+    peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" },
+    energised:  { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" },
+    lonely:     { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" },
+  };
+  return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
+}
+
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, onImpact }) {
   const [open, setOpen] = useState(false);
-  const [showBuddies, setShowBuddies] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const [showCircles, setShowCircles] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const inviteLink = `https://seenapp.app/?ref=${currentUser?.uid || ""}`;
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleCopyInvite = async () => {
+    try { await navigator.clipboard.writeText(inviteLink); } catch (_) {}
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2500);
+  };
+
+  const handleShareInvite = async () => {
+    try {
+      await navigator.share({
+        title: "Join me on Seen",
+        text: "Someone out there needs to hear from you 💌 — join Seen, the kindness app. We both get +50 Sparks when you sign up!",
+        url: inviteLink,
+      });
+    } catch (_) {}
+  };
+
+  const currentLevel = LEVEL_THRESHOLDS.reduce(
+    (l, t) => sparkBalance >= t.min ? t : l,
+    LEVEL_THRESHOLDS[0]
+  );
+  const firstName = profile?.fullName?.trim()?.split(" ")?.[0]
+    || currentUser?.displayName?.split(" ")?.[0]
+    || "You";
+
+  const close = () => setOpen(false);
+
+  const IconBox = ({ children, className = "bg-slate-100" }) => (
+    <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${className}`}>
+      {children}
+    </div>
+  );
+
+  const Row = ({ onClick, icon, label, sub, danger = false }) => (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors ${danger ? "hover:bg-red-50" : "hover:bg-slate-50"}`}>
+      {icon}
+      <div className="flex-1 text-left min-w-0">
+        <p className={`text-sm font-medium truncate ${danger ? "text-red-500" : "text-slate-700"}`}>{label}</p>
+        {sub && <p className="text-[11px] text-slate-400 truncate">{sub}</p>}
+      </div>
+    </button>
+  );
+
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+        onClick={() => setOpen(true)}
+        className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
         aria-label="More options">
         <span className="text-lg leading-none tracking-widest">···</span>
       </button>
-      {open && (
-        <div className="absolute right-0 top-9 z-50 min-w-[175px] rounded-2xl border border-slate-100 bg-white py-1.5 shadow-xl">
-          <button onClick={() => { onWorld(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span>{globePulse ? "🌍" : "🌐"}</span> World Map
-          </button>
-          <button onClick={() => { onImpact(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span>✨</span> My Impact
-          </button>
-          <button onClick={() => { onShare(); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span>👤</span> My Profile
-          </button>
-          <button onClick={() => setShowBuddies((v) => !v)}
-            className="flex w-full items-center justify-between gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <span className="flex items-center gap-2.5"><span>🤝</span> Uplift Buddies</span>
-            <span className="text-slate-400 text-xs">{showBuddies ? "▲" : "▼"}</span>
-          </button>
-          {showBuddies && (
-            <div className="mx-2 mb-1 rounded-xl border border-slate-100 bg-slate-50 px-2 py-1">
-              <BuddyPanel db={db} currentUser={currentUser} profile={profile} compact />
+
+      {open && createPortal(
+        <div data-portal className="fixed inset-0 z-[150] flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={(e) => {
+              if (!e.target.closest?.("[data-portal] > div:last-child")) close();
+            }}
+          />
+
+          {/* Sheet */}
+          <div
+            className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[90dvh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full bg-slate-200" />
             </div>
-          )}
-          <div className="my-1 border-t border-slate-100" />
-          <button onClick={() => { onSignOut(); setOpen(false); }} disabled={isSigningOut}
-            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
-            <span>🚪</span> {isSigningOut ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto overscroll-contain">
+
+              {/* User header */}
+              <div className="px-4 pt-1 pb-4 flex items-center gap-3">
+                {profile?.profilePhotoUrl
+                  ? <img src={profile.profilePhotoUrl} alt="" className="h-12 w-12 rounded-full object-cover flex-shrink-0 ring-2 ring-slate-100" />
+                  : <div className="h-12 w-12 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-lg font-bold text-white flex-shrink-0">
+                      {firstName[0]?.toUpperCase()}
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-slate-800 truncate">{profile?.fullName ?? firstName}</p>
+                  </div>
+                  <p className="text-xs text-slate-400 truncate">{currentLevel.title}</p>
+                </div>
+                {streak > 0 && (
+                  <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
+                    <span className="text-xl leading-none">{streak >= 7 ? "🔥" : "✨"}</span>
+                    <span className="text-[10px] font-bold text-slate-500">{streak}d</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Main actions */}
+              <div className="px-3 py-2 space-y-0.5">
+
+                <Row
+                  onClick={() => { onWorld(); close(); }}
+                  icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
+                  label="World Map"
+                  sub="See who's spreading kindness"
+                />
+                <Row
+                  onClick={() => { onImpact(); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🌍</span></IconBox>}
+                  label="My Kindness Footprint"
+                  sub="Your reach · countries · reactions"
+                />
+                <Row
+                  onClick={() => { onShare(); close(); }}
+                  icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
+                  label="My Profile"
+                  sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
+                />
+
+                {/* Circles row — expands inline */}
+                <button
+                  onClick={() => setShowCircles(v => !v)}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
+                  <IconBox><Users size={16} className="text-slate-500" /></IconBox>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Circles</p>
+                    <p className="text-[11px] text-slate-400">Your private kindness groups</p>
+                  </div>
+                  <ChevronDown
+                    size={15}
+                    className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showCircles ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {showCircles && (
+                  <div className="mx-1 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <CirclesPanel db={db} currentUser={currentUser} isPremium={isPremium} />
+                  </div>
+                )}
+
+              </div>
+
+              {/* Invite a Friend */}
+              <div className="mx-4 border-t border-slate-100 mt-1" />
+              <div className="px-3 py-2 space-y-0.5">
+                <button
+                  onClick={() => setShowInvite(v => !v)}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
+                  <IconBox className="bg-emerald-50">
+                    <UserPlus size={16} className="text-emerald-500" />
+                  </IconBox>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Invite a Friend</p>
+                    <p className="text-[11px] text-slate-400">You both earn +50 Sparks ✨</p>
+                  </div>
+                  <ChevronDown size={15} className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showInvite ? "rotate-180" : ""}`} />
+                </button>
+                {showInvite && (
+                  <div className="mx-1 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 space-y-2">
+                    <p className="text-[11px] font-semibold text-emerald-800">Your invite link:</p>
+                    <div className="flex items-center rounded-xl border border-emerald-200 bg-white px-3 py-2">
+                      <p className="flex-1 text-[10px] text-slate-500 truncate font-mono">{inviteLink}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCopyInvite}
+                        className={`flex-1 rounded-xl py-2 text-[11px] font-bold transition-all border ${
+                          inviteCopied
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                        }`}>
+                        {inviteCopied ? "Copied ✓" : "Copy link"}
+                      </button>
+                      {canShare && (
+                        <button
+                          onClick={handleShareInvite}
+                          className="flex-1 rounded-xl py-2 text-[11px] font-bold bg-emerald-500 text-white border border-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1">
+                          <Share2 size={11} /> Share
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-emerald-600 text-center">
+                      Friend signs up → you both get +50 Sparks automatically
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Support */}
+              <div className="px-3 py-2 space-y-0.5">
+                <Row
+                  onClick={() => { onSupport(); close(); }}
+                  icon={<IconBox className="bg-rose-50"><Heart size={16} className="text-rose-400" /></IconBox>}
+                  label="If you're struggling"
+                  sub="Mental health resources"
+                />
+              </div>
+
+              <div className="mx-4 border-t border-slate-100" />
+
+              {/* Sign out */}
+              <div className="px-3 py-2 pb-8">
+                <button
+                  onClick={onSignOut}
+                  disabled={isSigningOut}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-red-50 transition-colors disabled:opacity-50">
+                  <IconBox className="bg-red-50">
+                    <LogOut size={16} className="text-red-400" />
+                  </IconBox>
+                  <p className="text-sm font-medium text-red-500">
+                    {isSigningOut ? "Signing out…" : "Sign out"}
+                  </p>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
+  );
+}
+
+const SUPPORT_RESOURCES = [
+  {
+    name: "Samaritans",
+    desc: "Free, 24/7 listening support",
+    contact: "Call 116 123",
+    href: "https://www.samaritans.org",
+    color: "bg-green-50 border-green-200",
+    text: "text-green-800",
+  },
+  {
+    name: "Mind",
+    desc: "Mental health information & support",
+    contact: "mind.org.uk",
+    href: "https://www.mind.org.uk",
+    color: "bg-blue-50 border-blue-200",
+    text: "text-blue-800",
+  },
+  {
+    name: "Shout",
+    desc: "Free crisis text line, 24/7",
+    contact: "Text SHOUT to 85258",
+    href: "https://www.giveusashout.org",
+    color: "bg-violet-50 border-violet-200",
+    text: "text-violet-800",
+  },
+  {
+    name: "Papyrus",
+    desc: "Support for under-35s",
+    contact: "Call 0800 068 4141",
+    href: "https://www.papyrus-uk.org",
+    color: "bg-amber-50 border-amber-200",
+    text: "text-amber-800",
+  },
+  {
+    name: "International",
+    desc: "Crisis centres worldwide",
+    contact: "findahelpline.com",
+    href: "https://findahelpline.com",
+    color: "bg-teal-50 border-teal-200",
+    text: "text-teal-800",
+  },
+];
+
+function SupportPanel({ onClose }) {
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+          <ArrowLeft size={18} className="text-slate-600" />
+        </button>
+        <h2 className="text-sm font-bold text-slate-800">If you're struggling</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
+        <p className="text-[13px] text-slate-500 leading-relaxed pb-1">
+          It's okay to not be okay. These services are free, confidential, and here whenever you need them.
+        </p>
+
+        {SUPPORT_RESOURCES.map((r) => (
+          <a key={r.name} href={r.href} target="_blank" rel="noopener noreferrer"
+            className={`flex items-start gap-3 rounded-2xl border ${r.color} px-4 py-3.5 transition-opacity active:opacity-70`}>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-bold ${r.text}`}>{r.name}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
+              <p className={`text-[11px] font-semibold mt-1.5 ${r.text}`}>{r.contact}</p>
+            </div>
+            <ArrowRight size={14} className="text-slate-300 flex-shrink-0 mt-1" />
+          </a>
+        ))}
+
+        <p className="text-center text-xs text-slate-300 pt-3 pb-1">
+          You don't have to face it alone.
+        </p>
+      </div>
+    </div>,
+    document.body
   );
 }
 
 const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
+const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
   const [reactions, setReactions] = useState([]);
+  const [circleInvites, setCircleInvites] = useState([]);
   const [dismissedReactions, setDismissedReactions] = useState(new Set());
-  const ref = useRef(null);
-  const prevCountsRef = useRef({});
-  const notifReadyRef = useRef(false);
+  const [dismissedInvites, setDismissedInvites] = useState(new Set());
+  const prevWaveIdsRef = useRef(new Set());
+  const prevReactionKeysRef = useRef(new Set());
+  const notifyReadyRef = useRef(false);
+  // Don't fire notifications on initial load — only for events that arrive after mount
+  useEffect(() => { const t = setTimeout(() => { notifyReadyRef.current = true; }, 2500); return () => clearTimeout(t); }, []);
 
-  // Wait 3 s before firing push notifications so initial load doesn't spam.
+  // Browser notification for new reactions
   useEffect(() => {
-    const t = setTimeout(() => { notifReadyRef.current = true; }, 3000);
-    return () => clearTimeout(t);
-  }, []);
+    if (!notifyReadyRef.current) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    reactions.forEach((r) => {
+      if (!prevReactionKeysRef.current.has(r.key)) {
+        const label = r.emoji.startsWith("sticker_") ? "a sticker" : r.emoji;
+        new Notification(`New reaction on your message ${label}`, {
+          body: `"${(r.text || "").slice(0, 70)}"`,
+          icon: "/favicon.svg",
+        });
+      }
+    });
+    prevReactionKeysRef.current = new Set(reactions.map((r) => r.key));
+  }, [reactions]);
+  const ref = useRef(null);
 
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -194,7 +548,29 @@ function NotificationBell({ streak, db, currentUser }) {
     if (!db || !currentUser) return;
     const q = query(collection(db, "waves"), where("toUid", "==", currentUser.uid), where("read", "==", false), limit(10));
     return onSnapshot(q, (snap) => {
-      setWaves(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const newWaves = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        newWaves.forEach((w) => {
+          if (!prevWaveIdsRef.current.has(w.id)) {
+            new Notification("Someone waved at you 👋", { body: "Open Seen to wave back", icon: "/favicon.svg" });
+          }
+        });
+      }
+      prevWaveIdsRef.current = new Set(newWaves.map((w) => w.id));
+      setWaves(newWaves);
+    }, () => {});
+  }, [db, currentUser]);
+
+  // Circle invite notifications
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "circleInvites"),
+      where("toUid", "==", currentUser.uid),
+      where("status", "==", "pending")
+    );
+    return onSnapshot(q, (snap) => {
+      setCircleInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, () => {});
   }, [db, currentUser]);
 
@@ -210,24 +586,10 @@ function NotificationBell({ streak, db, currentUser }) {
         const text = data().text;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
             const count = rDoc.data().count ?? 0;
-            const key = `${msgId}:${rDoc.id}`;
-            if (count > 0) acc[key] = { key, msgId, text, emoji: rDoc.id, count };
-            else delete acc[key];
-            // Fire a browser push notification when a genuinely new reaction arrives.
-            if (notifReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
-              const prev = prevCountsRef.current[key] ?? 0;
-              if (count > prev) {
-                const short = text.length > 45 ? text.slice(0, 45) + "…" : text;
-                new Notification(`${rDoc.id} Someone reacted to your message`, {
-                  body: `"${short}"`,
-                  icon: "/favicon.svg",
-                  tag: key,
-                  renotify: true,
-                });
-              }
-            }
-            prevCountsRef.current[key] = count;
+            if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
+            else delete acc[`${msgId}:${rDoc.id}`];
           });
           setReactions(Object.values(acc).slice(0, 8));
         }, () => {});
@@ -243,9 +605,11 @@ function NotificationBell({ streak, db, currentUser }) {
   };
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
   const dismissReaction = (key) => setDismissedReactions((s) => new Set(s).add(key));
+  const dismissInvite = (id) => setDismissedInvites((s) => new Set(s).add(id));
 
   const visibleReactions = reactions.filter((r) => !dismissedReactions.has(r.key));
-  const totalUnread = waves.length + visibleReactions.length;
+  const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
+  const totalUnread = waves.length + visibleReactions.length + visibleInvites.length;
   const hot = streak >= 7;
 
   return (
@@ -273,10 +637,27 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleReactions.length === 0 ? (
+            {waves.length === 0 && visibleReactions.length === 0 && visibleInvites.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
+                {visibleInvites.map((inv) => (
+                  <div key={inv.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-teal-50">
+                    <span className="text-base flex-shrink-0">{inv.circleEmoji ?? "⭐"}</span>
+                    <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                      <span className="font-semibold">{inv.fromName ?? "Someone"}</span> invited you to join{" "}
+                      <span className="font-semibold text-teal-700">{inv.circleName}</span>
+                      <span className="text-slate-400 block">Open ··· → Circles to accept</span>
+                    </p>
+                    <button onClick={() => dismissInvite(inv.id)}
+                      className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {visibleInvites.length > 0 && (waves.length > 0 || visibleReactions.length > 0) && (
+                  <div className="mx-4 my-1 border-t border-slate-100" />
+                )}
                 {waves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
@@ -311,10 +692,14 @@ function NotificationBell({ streak, db, currentUser }) {
               </div>
             )}
           </div>
-          {(waves.length > 1 || visibleReactions.length > 0) && (
+          {(waves.length > 1 || visibleReactions.length > 0 || visibleInvites.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
-                onClick={() => { dismissAllWaves(); visibleReactions.forEach((r) => dismissReaction(r.key)); }}
+                onClick={() => {
+                  dismissAllWaves();
+                  visibleReactions.forEach((r) => dismissReaction(r.key));
+                  visibleInvites.forEach((inv) => dismissInvite(inv.id));
+                }}
                 className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
                 Clear all
               </button>
@@ -360,8 +745,8 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             <Sparkles size={24} />
           </div>
         </div>
-        <h1 className="text-center text-[42px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800">Welcome to Seen</h1>
-        <p className="pb-4 text-center text-[22px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
+        <h1 className="font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em] text-slate-800">Welcome to Seen</h1>
+        <p className="pb-4 text-center text-[20px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
 
         <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
           <select name="country" value={form.country} onChange={onChange}
@@ -424,7 +809,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
           <Gift className="animate-bounce" size={30} />
         </div>
         <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
-        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">You unlocked a bonus!</h2>
+        <h2 className="mt-2 font-display text-[28px] font-normal tracking-[-0.04em] text-slate-800">You unlocked a bonus!</h2>
         <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
         <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
         <button type="button" onClick={onClose}
@@ -437,18 +822,20 @@ function MysteryGiftModal({ open, reward, onClose }) {
 }
 
 function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday }) {
-  const isPremium = Boolean(profile?.isPremium);
+  const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
 
   const activeGreetings = categories.find((c) => c.id === activeCategory)?.greetings ?? [];
+  const theme = getCurrentMonthTheme();
   const allCategories = [
-    { id: "core", label: "Greetings", emoji: "☀️", isPremium: false },
-    { id: "warmth", label: "Warmth", emoji: "💛", isPremium: true },
-    { id: "strength", label: "Strength", emoji: "💪", isPremium: true },
-    { id: "celebrate", label: "Celebrate", emoji: "🎉", isPremium: true },
-    { id: "calm", label: "Calm", emoji: "🌿", isPremium: true },
-    { id: "cultural", label: "World", emoji: "🌍", isPremium: true },
+    { id: "core",      label: "Greetings",       emoji: "☀️",  isPremium: false },
+    { id: "warmth",    label: "Warmth",           emoji: "💛",  isPremium: false },
+    { id: "calm",      label: "Calm",             emoji: "🌿",  isPremium: false },
+    { id: "strength",  label: "Strength",         emoji: "💪",  isPremium: true  },
+    { id: "celebrate", label: "Celebrate",        emoji: "🎉",  isPremium: true  },
+    { id: "cultural",  label: "World",            emoji: "🌍",  isPremium: true  },
+    { id: "themed",    label: theme?.name ?? "This Month", emoji: theme?.emoji ?? "🗓️", isPremium: true },
   ];
 
   return (
@@ -483,7 +870,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
               }`}>
               <span style={{ fontSize: "11px" }}>{cat.emoji}</span>
               {cat.label}
-              {locked && <span className="text-[9px]">✨</span>}
+              {locked && <span className="text-[10px]">🔒</span>}
             </button>
           );
         })}
@@ -507,35 +894,52 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   );
 }
 
-function SparkRing({ value, max, percent }) {
-  const size = 44, stroke = 3.5, r = (size - stroke) / 2;
+
+function SparkRing({ value, max, percent, initial = "✨" }) {
+  const size = 52, stroke = 3, r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const filled = circ * (percent / 100);
+  const isLetter = initial.length === 1 && /[A-Za-z]/.test(initial);
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none"
           stroke="url(#sparkGrad)" strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circ}
           strokeDashoffset={circ - filled}
-          style={{ transition: "stroke-dashoffset 0.7s ease" }} />
+          style={{ transition: "stroke-dashoffset 0.85s cubic-bezier(0.34,1.2,0.64,1)" }} />
         <defs>
           <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#2dd4bf" />
-            <stop offset="100%" stopColor="#34d399" />
+            <stop offset="0%" stopColor="#f59e0b" />
+            <stop offset="100%" stopColor="#2dd4bf" />
           </linearGradient>
         </defs>
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span style={{ fontSize: "11px", fontWeight: 700, color: "#0f766e", lineHeight: 1 }}>✨</span>
+      <div className="absolute inset-0 flex items-center justify-center rounded-full"
+        style={{ background: "rgba(255,255,255,0.05)" }}>
+        <span style={{
+          fontSize: isLetter ? "17px" : "11px",
+          fontWeight: isLetter ? 700 : 700,
+          color: isLetter ? "#e2e8f0" : "#0f766e",
+          lineHeight: 1,
+          fontFamily: isLetter ? "Inter, sans-serif" : "inherit",
+        }}>{initial}</span>
       </div>
     </div>
   );
 }
 
 export default function App() {
+  const [darkMode, setDarkMode] = useState(() => {
+    try { const v = localStorage.getItem("seen-theme"); return v !== null ? v === "dark" : true; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("seen-theme", darkMode ? "dark" : "light"); } catch {}
+  }, [darkMode]);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -547,12 +951,26 @@ export default function App() {
   const [lastLiveAt, setLastLiveAt] = useState(null);
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sendError, setSendError] = useState("");
+  // Buddy invite: detect ?add=UID in URL
+  const [pendingBuddyUid] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
+  });
+  // Referral: detect ?ref=UID in URL and persist to localStorage
+  const [pendingReferralUid] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("ref") || null; } catch { return null; }
+  });
   const [isSending, setIsSending] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
-  // ── Tap-to-reveal: which message group's action bar is open ──
+  // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
+  const [reactionBarId, setReactionBarId] = useState(null);
+  const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
+  const longPressTimer = useRef(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
+  const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
@@ -561,13 +979,185 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [unauthScreen, setUnauthScreen] = useState("welcome");
+  const [activeTab, setActiveTab] = useState("feed");
+  const [showMapPrompt, setShowMapPrompt] = useState(false);
+  const [lastSendTime, setLastSendTime] = useState(0);
+  const [hasSent, setHasSent] = useState(() => !!localStorage.getItem("seen_has_sent"));
+  // Countries that reacted to MY messages → { [country]: { emoji, at } }, persisted 5h
+  const [reactedCountries, setReactedCountries] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seen_reacted_v1") || "{}");
+      const now = Date.now();
+      const pruned = {};
+      for (const [c, v] of Object.entries(raw)) if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      return pruned;
+    } catch (_) { return {}; }
+  });
+  const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
+  const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
+  const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
+  const reactObservedRef = useRef(new Set());
+  const reactReadyRef = useRef(false);
+  const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
+  const [unauthScreen, setUnauthScreen] = useState(
+    localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
+  );
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [mysteryReward, setMysteryReward] = useState(0);
+  // Mystery unwrap: { [messageId]: revealedText } persisted to localStorage
+  const [unwrappedMysteries, setUnwrappedMysteries] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}"); }
+    catch (_) { return {}; }
+  });
+  const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [premiumSuccess, setPremiumSuccess] = useState(false);
+  // Detect Stripe checkout return
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("premium") === "success") {
+      setPremiumSuccess(true);
+      window.history.replaceState({}, "", "/");
+      setTimeout(() => setPremiumSuccess(false), 5000);
+    }
+  }, []);
+  // Sync myCountry into a ref so the reactions listener closure always reads the latest value
+  useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
+
+  // Auto-dismiss map prompt after 7s
+  useEffect(() => {
+    if (!showMapPrompt) return;
+    const t = setTimeout(() => setShowMapPrompt(false), 7000);
+    return () => clearTimeout(t);
+  }, [showMapPrompt]);
+
+  // Listen for reactions on MY messages → light reactor countries (5h) + fire named toast
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    reactReadyRef.current = false;
+    const readyTimer = setTimeout(() => { reactReadyRef.current = true; }, 4000);
+    const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
+    let innerUnsubs = [];
+    const outer = onSnapshot(q, (snap) => {
+      innerUnsubs.forEach((u) => u());
+      innerUnsubs = [];
+      snap.docs.forEach((d) => {
+        const msgId = d.id;
+        const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          const newToasts = [];
+          rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
+            const emoji = rDoc.id;
+            const data = rDoc.data();
+            const countries = data.countries || {};
+            (data.uids || []).forEach((uid) => {
+              if (uid === currentUser.uid) return;
+              const country = countries[uid];
+              if (!country) return;
+
+              // Always keep reactedCountries current — don't gate this on reactObservedRef.
+              // Use a functional update to avoid overwriting a fresh entry with a stale one.
+              // toastKey being new means this is a reaction first seen THIS session — use Date.now()
+              // so the globe pill tag animates. If already observed (old reaction), use a timestamp
+              // old enough that the tag doesn't re-fire, but the coral fill still shows.
+              const toastKeyForAt = `${msgId}|${uid}|${emoji}`;
+              const isNewReaction = !reactObservedRef.current.has(toastKeyForAt);
+              setReactedCountries((prev) => {
+                const existing = prev[country];
+                // If already tracked and fresh, leave it alone so the tag timestamp stays correct.
+                if (existing && Date.now() - existing.at < FIVE_HOURS_MS) return prev;
+                const at = isNewReaction ? Date.now() : Date.now() - 60_000; // old reaction: past the 8s tag window
+                const next = { ...prev, [country]: { emoji, at } };
+                try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
+                return next;
+              });
+
+              // Toast fires only ONCE per message+user+emoji (not per country — so UK re-reacts correctly)
+              const toastKey = `${msgId}|${uid}|${emoji}`;
+              if (reactObservedRef.current.has(toastKey)) return;
+              reactObservedRef.current.add(toastKey);
+              if (reactReadyRef.current) {
+                if (country === myCountryRef.current && myCountryRef.current) {
+                  // Same-country reaction — hometown toast + globe ripple
+                  setHometownToast({ id: Date.now(), emoji });
+                  setHometownPingTime(Date.now());
+                } else {
+                  newToasts.push({ emoji, country });
+                }
+              }
+            });
+          });
+          if (newToasts.length) {
+            const t0 = newToasts[newToasts.length - 1];
+            setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
+          }
+        }, () => {});
+        innerUnsubs.push(unsub);
+      });
+    }, () => {});
+    return () => { clearTimeout(readyTimer); outer(); innerUnsubs.forEach((u) => u()); };
+  }, [db, currentUser]);
+
+  // One-time cleanup: delete legacy non-heart reaction docs from Firestore
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const DONE_KEY = "seen_reaction_cleanup_v1";
+    if (localStorage.getItem(DONE_KEY)) return;
+    const run = async () => {
+      try {
+        const q = query(collection(db, "publicMessages"), orderBy("timestamp", "desc"), limit(50));
+        const msgs = await getDocs(q);
+        const deletes = [];
+        for (const msgDoc of msgs.docs) {
+          const rSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "reactions"));
+          rSnap.forEach((rDoc) => {
+            if (rDoc.id !== "❤️" && !rDoc.id.startsWith("sticker_")) {
+              deletes.push(deleteDoc(rDoc.ref));
+            }
+          });
+        }
+        await Promise.all(deletes);
+        localStorage.setItem(DONE_KEY, "1");
+      } catch (_) {}
+    };
+    run();
+  }, [db, currentUser]);
+
+  // Prune reactor lighting older than 5h once a minute
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setReactedCountries((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        for (const [c, v] of Object.entries(prev)) {
+          if (now - v.at < FIVE_HOURS_MS) next[c] = v; else changed = true;
+        }
+        if (changed) { try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {} return next; }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Auto-dismiss reaction toast after 6s
+  useEffect(() => {
+    if (!reactionToast) return;
+    const t = setTimeout(() => setReactionToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [reactionToast]);
+
+  // Auto-dismiss hometown toast after 7s
+  useEffect(() => {
+    if (!hometownToast) return;
+    const t = setTimeout(() => setHometownToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [hometownToast]);
+  // Private chat
+  const [showChatInbox, setShowChatInbox] = useState(false);
+  const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
   const [showMap, setShowMap] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat");
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
@@ -582,6 +1172,7 @@ export default function App() {
 
   const anim = useAnimations();
   const { burst: reactionBurst, trigger: triggerReactionBurst } = useReactionBurst();
+  const pendingChatCount = usePendingChatCount(db, isRealSignedInUser ? currentUser : null);
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -610,8 +1201,60 @@ export default function App() {
     return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
 
+  // Persist referral code and clean URL
+  useEffect(() => {
+    if (!pendingReferralUid) return;
+    try {
+      localStorage.setItem("seen_ref", pendingReferralUid);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ref");
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-add buddy from invite link (?add=UID)
+  useEffect(() => {
+    if (!pendingBuddyUid || !isRealSignedInUser || !db || !currentUser) return;
+    // Remove param from URL without reload
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("add");
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+    // Don't add yourself
+    if (pendingBuddyUid === currentUser.uid) return;
+    updateDoc(doc(db, "users", currentUser.uid), { buddies: arrayUnion(pendingBuddyUid) }).catch(() => {});
+  }, [pendingBuddyUid, isRealSignedInUser, db, currentUser]);
+
   useEffect(() => {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
+  }, [isRealSignedInUser, hasCompletedOnboarding]);
+
+  // Re-engagement: when user leaves the app, schedule a "come back" push for 9 AM tomorrow
+  useEffect(() => {
+    if (!isRealSignedInUser || !hasCompletedOnboarding) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    let retryTimer = null;
+    const MESSAGES = [
+      { title: "Seen misses you 💌", body: "Someone out there is waiting to hear something kind from you." },
+      { title: "Your streak is waiting 🔥", body: "Keep the kindness going — open Seen and spread some warmth." },
+      { title: "Today's Wonderful News is in 🌟", body: "Start your day with something uplifting." },
+    ];
+    const scheduleReEngagement = () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() + 1);
+      target.setHours(9, 0, 0, 0);
+      const msg = MESSAGES[new Date().getDay() % MESSAGES.length];
+      retryTimer = setTimeout(() => new Notification(msg.title, { body: msg.body, icon: "/favicon.svg" }), target.getTime() - now.getTime());
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) scheduleReEngagement();
+      else { if (retryTimer) clearTimeout(retryTimer); }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => { document.removeEventListener("visibilitychange", onVisibilityChange); if (retryTimer) clearTimeout(retryTimer); };
   }, [isRealSignedInUser, hasCompletedOnboarding]);
 
   useEffect(() => {
@@ -652,8 +1295,10 @@ export default function App() {
       return { ok: true };
     } catch (error) {
       if (error?.code === "auth/invalid-email") return { error: "That email address is invalid." };
-      if (error?.code === "auth/operation-not-allowed") return { error: "Email link sign-in is not enabled." };
-      return { error: "Unable to send a sign-in link right now." };
+      if (error?.code === "auth/operation-not-allowed") return { error: "Email link sign-in is not enabled — contact support." };
+      if (error?.code === "auth/too-many-requests") return { error: "Too many attempts. Please try again later." };
+      if (error?.code === "auth/network-request-failed") return { error: "Network error — please check your connection." };
+      return { error: `Unable to send a sign-in link right now. (${error?.code ?? "unknown"})` };
     } finally { setIsEmailActionLoading(false); }
   };
 
@@ -713,7 +1358,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
-    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limit(100));
+    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limitToLast(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -747,6 +1392,8 @@ export default function App() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  const isPremium = true; // all features free — grow the user base
+  const circles = useCircles(db, currentUser);
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
   const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
@@ -801,7 +1448,31 @@ export default function App() {
         profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
-      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done");
+
+      // Referral reward — award +50 Sparks to both users
+      const pendingRef = localStorage.getItem("seen_ref");
+      if (pendingRef && pendingRef !== user.uid) {
+        try {
+          const referralDocRef = doc(db, "referrals", user.uid);
+          const newUserRef = userProfileRef(user.uid);
+          const referrerRef = doc(db, "users", pendingRef);
+          await runTransaction(db, async (tx) => {
+            const [existing, referrerSnap, newUserSnap] = await Promise.all([
+              tx.get(referralDocRef), tx.get(referrerRef), tx.get(newUserRef),
+            ]);
+            if (existing.exists()) return; // already rewarded
+            if (!referrerSnap.exists()) return; // invalid referrer
+            const referrerSparks = referrerSnap.data().sparkBalance ?? 0;
+            const newUserSparks = newUserSnap.exists() ? (newUserSnap.data().sparkBalance ?? 0) : 0;
+            tx.set(referralDocRef, { referrerUid: pendingRef, newUserUid: user.uid, awardedAt: serverTimestamp() });
+            tx.update(referrerRef, { sparkBalance: referrerSparks + 50 });
+            tx.set(newUserRef, { sparkBalance: newUserSparks + 50 }, { merge: true });
+          });
+          localStorage.removeItem("seen_ref");
+        } catch (err) { console.error("Referral award error:", err); }
+      }
+
+      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
@@ -810,48 +1481,115 @@ export default function App() {
     } finally { setIsSavingProfile(false); }
   };
 
-  const DAILY_GREETING_LIMIT = 10;
+  const DAILY_GREETING_LIMIT = 50;
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
+
+  const handleUnwrapMystery = (messageId) => {
+    if (unwrappedMysteries[messageId]) return;
+    const msg = MYSTERY_MESSAGES[Math.floor(Math.random() * MYSTERY_MESSAGES.length)];
+    try {
+      const saved = JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}");
+      saved[messageId] = msg;
+      localStorage.setItem("seen-mystery-reveals", JSON.stringify(saved));
+    } catch (_) {}
+    setUnwrappedMysteries((prev) => ({ ...prev, [messageId]: msg }));
+    setBurstingMystery(messageId);
+    triggerReactionBurst("🎁");
+    haptic([10, 25, 10, 25, 10]);
+    setTimeout(() => setBurstingMystery(null), 600);
+  };
 
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
     setIsSending(true);
+    setSendError("");
     try {
+      const earnedSparks = computeSparkReward(greeting.sparkReward, streak);
       await addDoc(publicMessagesRef, {
         uid: currentUser.uid,
         sender: profile.fullName,
         text: greeting.text,
         timestamp: nowMs(),
         moodTag: profile?.moodTag ?? null,
+        country: profile?.country ?? null,
+        isMystery: greeting.isMystery ?? false,
+        isPremium: isPremium,
+        sparkReward: earnedSparks,
       });
-      const reward = computeSparkReward(greeting.sparkReward, streak);
-      const refDoc = userProfileRef(currentUser.uid);
-      let newStreak = streak;
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(refDoc);
-        const profileData = snap.exists() ? snap.data() : {};
-        transaction.set(refDoc, {
-          sparkBalance: Number(profileData?.sparkBalance ?? 0) + reward,
-          lastGreetingAt: nowMs(),
-          ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
-        }, { merge: true });
-      });
-      await recordGreetingDay();
-      newStreak = streak + 1;
+
+      // Message is written — close picker and play animations immediately
+      setPickerOpen(false);
+      setIsSending(false);
+      const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
+      setLastSendTime(Date.now());
+      setShowMapPrompt(true);
+      // Bust the impact cache so the next tab open reflects this new greeting
+      try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
+      if (!hasSent) { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {} }
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
       if (greeting.isMystery) {
-        setMysteryReward(reward);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        setShowGiftModal(true);
+        setMysteryReward(computeSparkReward(greeting.sparkReward, streak));
+        setTimeout(() => setShowGiftModal(true), 1000);
       }
-      setPickerOpen(false);
-    } finally {
+
+      // Bookkeeping runs in the background — doesn't block the UI
+      const refDoc = userProfileRef(currentUser.uid);
+      Promise.all([
+        runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(refDoc);
+          const profileData = snap.exists() ? snap.data() : {};
+          transaction.set(refDoc, {
+            sparkBalance: Number(profileData?.sparkBalance ?? 0) + earnedSparks,
+            lastGreetingAt: nowMs(),
+            ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
+          }, { merge: true });
+        }),
+        recordGreetingDay(),
+      ]).catch((err) => console.error("Reward update failed:", err));
+
+    } catch (err) {
+      console.error("Send failed:", err);
+      setSendError("Couldn't send — please try again.");
+      setTimeout(() => setSendError(""), 4000);
       setIsSending(false);
+    }
+  };
+
+  const handleShareStory = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const refDoc = userProfileRef(currentUser.uid);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(refDoc);
+        const data = snap.exists() ? snap.data() : {};
+        tx.set(refDoc, { sparkBalance: Number(data.sparkBalance ?? 0) + 5 }, { merge: true });
+      });
+    } catch (err) {
+      console.error("Share spark award failed:", err);
+    }
+  }, [currentUser]);
+
+  const handleDeleteMessage = async (messageId, sparkReward) => {
+    if (!currentUser) return;
+    try {
+      await deleteDoc(doc(db, "publicMessages", messageId));
+      if (sparkReward > 0) {
+        const refDoc = userProfileRef(currentUser.uid);
+        runTransaction(db, async (tx) => {
+          const snap = await tx.get(refDoc);
+          const data = snap.exists() ? snap.data() : {};
+          tx.set(refDoc, {
+            sparkBalance: Math.max(0, Number(data.sparkBalance ?? 0) - sparkReward),
+          }, { merge: true });
+        }).catch((err) => console.error("Spark deduct failed:", err));
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
     }
   };
 
@@ -860,11 +1598,14 @@ export default function App() {
   }
 
   if (!isRealSignedInUser) {
+    if (unauthScreen === "intro") {
+      return <IntroStep onDone={() => setUnauthScreen("welcome")} />;
+    }
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
           {unauthScreen === "welcome"
-            ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} />
+            ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
             : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
@@ -877,7 +1618,7 @@ export default function App() {
   const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-teal-50 to-cyan-100 p-2 sm:p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
       {/* Keyframe for action bar spring-in */}
       <style>{`
         @keyframes seenActionBarIn {
@@ -890,24 +1631,59 @@ export default function App() {
       <ReactionBurstLayer burst={reactionBurst} />
 
       {showMap && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-2 sm:p-6">
+        <div className="fixed inset-0 z-[200]">
           <MapTransitionWrapper visible={showMap}>
-            <div className="relative h-[100dvh] w-full max-w-md overflow-hidden rounded-3xl border border-white/80 shadow-2xl sm:h-[90vh]">
-              <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} />
-            </div>
+            <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} />
           </MapTransitionWrapper>
         </div>
       )}
 
-      <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
         {showProfileCard && (
-          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} />
+          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser} />
         )}
 
-        {showUpgrade && <PremiumUpgradePrompt onClose={() => setShowUpgrade(false)} />}
+
+        {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
+
+        {showWelcomeMoment && (
+          <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
+            onClick={() => setShowWelcomeMoment(false)}>
+            <div className="mb-6 text-6xl animate-bounce" style={{ animationDuration: "2s" }}>🌍</div>
+            <p className="text-white text-xl font-bold leading-snug tracking-tight max-w-xs">
+              You just joined a global community that believes one kind message can change someone's day.
+            </p>
+            <p className="mt-4 text-white/80 text-base font-medium">Start with a greeting.</p>
+            <button
+              onClick={() => setShowWelcomeMoment(false)}
+              className="mt-10 rounded-full bg-white px-8 py-3 text-sm font-bold text-teal-700 shadow-lg active:scale-95 transition-transform">
+              Let's go ✨
+            </button>
+          </div>
+        )}
+
+
+        {showChatInbox && !activeChat && (
+          <PrivateChatInbox
+            db={db} currentUser={currentUser} profile={profile}
+            onOpenChat={(chatId, otherUid, otherName) => {
+              setActiveChat({ chatId, otherUid, otherName });
+            }}
+            onClose={() => setShowChatInbox(false)}
+          />
+        )}
+
+        {activeChat && (
+          <PrivateChatWindow
+            db={db} currentUser={currentUser}
+            chatId={activeChat.chatId}
+            otherName={activeChat.otherName}
+            onBack={() => setActiveChat(null)}
+          />
+        )}
 
         {!hasCompletedOnboarding || !profile ? (
           <>
@@ -946,32 +1722,69 @@ export default function App() {
                         {{ grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" }[profile.moodTag]}
                       </span>
                     )}
-                    {streak > 0 && (
-                      <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold border ${
-                        streak >= 7 ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
-                      }`}>
-                        {streak >= 7 ? "🔥" : "✨"}{streak}d
-                      </span>
-                    )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
                   <div onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setDarkMode(v => !v)}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+                      aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+                      {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+                    </button>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setShowChatInbox(true)}
+                      className="relative rounded-full p-1.5 hover:bg-slate-100 transition-colors"
+                      title="Private chats">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      {pendingChatCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet-500 text-[8px] font-bold text-white">
+                          {pendingChatCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell streak={streak} db={db} currentUser={currentUser} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
                       onWorld={() => setShowMap(true)}
-                      onShare={() => setShowProfileCard(true)}
                       onImpact={() => setActiveTab("impact")}
+                      onShare={() => setShowProfileCard(true)}
+                      onUpgrade={() => setShowUpgrade(true)}
+                      onSupport={() => setShowSupport(true)}
+                      onManageSubscription={async () => {
+                        const cid = profile?.stripeCustomerId;
+                        if (!cid) { alert("No subscription found."); return; }
+                        try {
+                          const res = await fetch("/api/create-portal-session", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ customerId: cid }),
+                          });
+                          const data = await res.json();
+                          if (data.url) window.location.href = data.url;
+                          else throw new Error(data.error || "Unknown error");
+                        } catch (err) {
+                          alert("Could not open subscription portal. Please try again.");
+                        }
+                      }}
                       onSignOut={handleSignOut}
                       isSigningOut={isSigningOut}
                       globePulse={anim.globePulse}
                       db={db}
                       currentUser={currentUser}
                       profile={profile}
+                      isPremium={isPremium}
+                      streak={streak}
+                      sparkBalance={sparkBalance}
                     />
                   </div>
                 </div>
@@ -982,7 +1795,7 @@ export default function App() {
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
                   <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} />
+                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} initial={firstName?.[0]?.toUpperCase() ?? "✨"} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
                       <p className="text-[11px] text-slate-500"
@@ -994,9 +1807,7 @@ export default function App() {
                           style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                       </div>
                     </div>
-                    <StreakFreezeButton freezes={freezesAvailable} sparkBalance={sparkBalance} onBuy={buyFreeze} onSell={sellFreeze} />
                   </div>
-                  <KindnessPledge db={db} uid={currentUser.uid} todayMessageCount={todayMessageCount} />
                   <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
                   <div className="space-y-1">
                     <NotificationPermissionBanner />
@@ -1010,17 +1821,167 @@ export default function App() {
               </div>
             </header>
 
-            {activeTab === "impact" && (
-              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} />
-            )}
+            <CircleInviteBanner db={db} currentUser={currentUser} />
 
-            <main className={`flex-1 overflow-y-auto bg-slate-50/60 p-4 ${activeTab !== "chat" ? "hidden" : ""}`}>
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-100 bg-white flex-shrink-0">
+              <button
+                onClick={() => setActiveTab("feed")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "feed"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💬 Feed
+              </button>
+              <button
+                onClick={() => setActiveTab("hacks")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "hacks"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💡 Life Hacks
+              </button>
+              <button
+                onClick={() => setActiveTab("support")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "support"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💚 Support
+              </button>
+              <button
+                onClick={() => setActiveTab("impact")}
+                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "impact"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                🌍 Impact
+              </button>
+            </div>
+
+            {activeTab === "hacks" ? (
+              <LifeHacks />
+            ) : activeTab === "support" ? (
+              <Support country={profile?.country} />
+            ) : activeTab === "impact" ? (
+              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} />
+            ) : (
+            <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
+              onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
+              {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
+              {showMapPrompt && (
+                <div
+                  className="sticky z-30"
+                  style={{ top: "8px" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🌍</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#90d0ff" }}>Your kindness is traveling the world</p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(144,208,255,0.65)" }}>Tap to watch it reach every country on the map →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(144,208,255,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Reaction-from-country toast */}
+              {reactionToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setReactionToast(null); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #3a2a05, #5a3d0a)", border: "1px solid rgba(255,179,71,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">{reactionToast.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#ffce80" }}>
+                        You got a {REACTION_WORD[reactionToast.emoji] || "reaction"} from {reactionToast.country}!
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(255,206,128,0.7)" }}>Your kindness was felt — see it light up the map →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setReactionToast(null); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(255,206,128,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Hometown reaction toast — same-country validation (warm green) */}
+              {hometownToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setHometownToast(null); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #0a2e1a, #133d24)", border: "1px solid rgba(80,200,120,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🏠</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#80e8a0" }}>
+                        A neighbour just {REACTION_WORD[hometownToast.emoji] ? `sent you a ${REACTION_WORD[hometownToast.emoji]}` : "reacted"}!
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(128,232,160,0.7)" }}>
+                        Someone from your own country felt your kindness {hometownToast.emoji}
+                      </p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setHometownToast(null); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(128,232,160,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Mood-triggered support banner */}
+              {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
+                  className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
+                  style={{
+                    background: profile?.moodTag === "struggling"
+                      ? "linear-gradient(135deg, #fce7f3, #fbcfe8)"
+                      : profile?.moodTag === "lonely"
+                      ? "linear-gradient(135deg, #ede9fe, #ddd6fe)"
+                      : "linear-gradient(135deg, #dbeafe, #bfdbfe)",
+                    border: "1px solid",
+                    borderColor: profile?.moodTag === "struggling" ? "#f9a8d4"
+                      : profile?.moodTag === "lonely" ? "#c4b5fd" : "#93c5fd",
+                  }}
+                >
+                  <span className="text-2xl">
+                    {profile?.moodTag === "struggling" ? "🌧️" : profile?.moodTag === "lonely" ? "🫂" : "😴"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm">
+                      {profile?.moodTag === "struggling"
+                        ? "You said you're struggling — you're not alone"
+                        : profile?.moodTag === "lonely"
+                        ? "Feeling lonely? We have support for you"
+                        : "Feeling tired? Check out our wellbeing tools"}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Tap for a free check-in &amp; resources →</p>
+                  </div>
+                </button>
+              )}
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
                   const last = grouped[grouped.length - 1];
                   if (last && last.uid === m.uid) { last.items.push(m); }
-                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.moodTag, items: [m] }); }
+                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m] }); }
                 });
                 return grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
@@ -1029,20 +1990,21 @@ export default function App() {
                   const isNewGroup = newMessageIds.has(firstId);
                   return (
                     <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
-                      <div className={`mb-4 flex ${mine ? "justify-end" : "justify-start"}`}>
-                        <div className="max-w-[82%] group">
-                          <div className={`flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400 ${mine ? "justify-end" : ""}`}>
-                            {!mine && <span>{group.sender}</span>}
+                      <div className="mb-3">
+                        <div className="w-full group">
+                          <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-semibold text-slate-400">
+                            <span className="flex items-center gap-1">
+                              {mine ? "You" : group.sender}
+                              {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
+                                <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
+                              )}
+                            </span>
                             {!mine && group.items[0].country && (
                               <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
                             )}
                             {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
-                            {mine && <span>{group.sender}</span>}
                           </div>
-                          <div className={`relative ${isMulti && !mine ? "pl-3" : isMulti && mine ? "pr-3" : ""}`}>
-                            {isMulti && (
-                              <div className={`absolute top-2 bottom-2 w-0.5 rounded-full ${mine ? "right-0 bg-teal-300" : "left-0 bg-slate-300"}`} />
-                            )}
+                          <div className="relative">
                             <div className="space-y-0.5">
                               {group.items.map((m, idx) => {
                                 const isFirst = idx === 0;
@@ -1050,54 +2012,118 @@ export default function App() {
                                 const isMystery = Boolean(m.isMystery);
                                 const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
                                 const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
-                                const tailClass = isLast ? (mine ? "rounded-br-none" : "rounded-bl-none") : "";
+                                const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} className="relative pb-3">
-                                    {/* Bubble — tap to toggle action bar */}
+                                  <div key={m.id} className="relative pb-2">
+                                    {/* WhatsApp-style reaction bar — floats above bubble on long press */}
+                                    {reactionBarId === m.id && (
+                                      <>
+                                        <div className="seen-qrb-backdrop" onClick={(e) => { e.stopPropagation(); setReactionBarId(null); }} />
+                                        <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
+                                          style={{ bottom: "calc(100% + 8px)" }}>
+                                          <QuickReactBar
+                                            db={db} messageId={m.id} senderUid={m.uid} senderName={group.sender}
+                                            currentUser={currentUser} profile={profile} mine={mine} isPremium={isPremium}
+                                            onClose={() => setReactionBarId(null)}
+                                            onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
+                                            onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
+                                            onReact={(emoji) => {
+                                              triggerReactionBurst(emoji);
+                                              haptic([5]);
+                                              if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
+                                            }}
+                                            onUpgrade={() => setShowUpgrade(true)}
+                                            onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {/* Bubble — tap for timestamp, long-press for reaction bar */}
                                     <div
-                                      className="relative"
+                                      className="relative select-none"
+                                      onContextMenu={(e) => e.preventDefault()}
+                                      onMouseDown={() => {
+                                        longPressTimer.current = setTimeout(() => {
+                                          setReactionBarId(m.id);
+                                          setActiveMessageId(null);
+                                          haptic([6, 30, 6]);
+                                        }, 450);
+                                      }}
+                                      onMouseUp={() => clearTimeout(longPressTimer.current)}
+                                      onMouseLeave={() => clearTimeout(longPressTimer.current)}
+                                      onTouchStart={(e) => {
+                                        const touch = e.touches[0];
+                                        longPressTimer.current = setTimeout(() => {
+                                          setReactionBarId(m.id);
+                                          setActiveMessageId(null);
+                                          haptic([6, 30, 6]);
+                                        }, 450);
+                                      }}
+                                      onTouchEnd={() => clearTimeout(longPressTimer.current)}
+                                      onTouchMove={() => clearTimeout(longPressTimer.current)}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (reactionBarId === m.id) { setReactionBarId(null); return; }
+                                        // Mystery tap: first tap unwraps, subsequent taps toggle timestamp
+                                        if (isMystery && !mine && !unwrappedMysteries[m.id]) {
+                                          handleUnwrapMystery(m.id); return;
+                                        }
                                         setActiveMessageId(isActive ? null : m.id);
                                       }}>
-                                      <div
-                                        className={`border px-3 py-2.5 text-sm font-semibold ${topRadius} ${botRadius} ${tailClass} ${
-                                          mine
-                                            ? "bg-teal-600 text-white border-teal-600"
-                                            : isMystery
-                                            ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900"
-                                            : "bg-white border-slate-200 text-slate-800"
-                                        }`}
-                                        style={isMystery && !mine ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" } : {}}>
-                                        {isMystery && !mine && <span className="mr-1.5">🎁</span>}
-                                        {m.text}
+                                      <div className="relative">
+                                        {(() => {
+                                          const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
+                                          const isBursting = burstingMystery === m.id;
+                                          const moodStyle = getMoodBubbleStyle(group.moodTag, mine);
+                                          const hasMood = Boolean(moodStyle);
+                                          return (
+                                            <div
+                                              className={`border px-4 py-3.5 text-base font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                                mine
+                                                  ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
+                                                  : isUnwrapped
+                                                  ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
+                                                  : isMystery
+                                                  ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
+                                                  : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
+                                              } ${isBursting ? "mystery-burst" : ""} ${
+                                                hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""
+                                              }`}
+                                              style={
+                                                hasMood && !isUnwrapped && !(isMystery && !mine)
+                                                  ? moodStyle
+                                                  : isUnwrapped
+                                                  ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
+                                                  : isMystery && !mine
+                                                  ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
+                                                  : {}
+                                              }>
+                                              {isMystery && !mine ? (
+                                                isUnwrapped ? (
+                                                  <span className="mystery-reveal">{unwrappedMysteries[m.id]}</span>
+                                                ) : (
+                                                  <span>🎁 Tap to unwrap</span>
+                                                )
+                                              ) : (
+                                                <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
+                                              )}
+                                              {hasMood && mine && <span className="seen-mood-shimmer" aria-hidden="true" />}
+                                            </div>
+                                          );
+                                        })()}
+                                        <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
                                       </div>
-                                      <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} />
+                                      <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
+                                      <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 
-                                    {/* ── Tap-to-reveal action bar ── */}
-                                    {isLast && isActive && (
-                                      <div
-                                        className={`flex items-center gap-1.5 mt-1 ${mine ? "justify-end" : "justify-start"}`}
-                                        style={{ animation: "seenActionBarIn 180ms cubic-bezier(0.34,1.3,0.64,1) both" }}
-                                        onClick={(e) => e.stopPropagation()}>
-                                        {!mine && (
-                                          <WaveBackButton
-                                            db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser}
-                                            onWave={() => { triggerReactionBurst("👋"); anim.triggerWaveRipple(15, 70); haptic([6]); }}
-                                          />
-                                        )}
-                                        {!mine && (
-                                          <SparkGiftButton
-                                            db={db} senderUid={m.uid} currentUser={currentUser} profile={profile}
-                                            onGift={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
-                                          />
-                                        )}
-                                        <MessageReactions
-                                          db={db} messageId={m.id} currentUser={currentUser}
-                                          onReact={(emoji) => { triggerReactionBurst(emoji); haptic([5]); }}
-                                        />
+                                    {/* Timestamp + read receipt — hidden until tap */}
+                                    {isLast && (
+                                      <div className={`seen-msg-ts${isActive ? " seen-msg-ts--show" : ""} ${mine ? "text-right" : "text-left"}`}>
+                                        {fmtTime(m.timestamp)}
+                                        {mine && <span className="seen-receipt ml-1" />}
                                       </div>
                                     )}
                                   </div>
@@ -1114,59 +2140,42 @@ export default function App() {
               <SendingIndicator visible={isSending} />
               <div ref={endRef} />
             </main>
+            )} {/* end activeTab === "feed" */}
 
-            {/* ── Tab bar ── */}
-            <div className="flex border-t border-slate-100 bg-white flex-shrink-0">
-              {[
-                { id: "chat", icon: "💬", label: "Chat" },
-                { id: "impact", icon: "🌍", label: "Impact" },
-              ].map(({ id, icon, label }) => (
-                <button key={id} onClick={() => setActiveTab(id)}
-                  className={`flex-1 flex flex-col items-center justify-center py-2 text-[11px] font-semibold transition-colors border-t-2 ${
-                    activeTab === id
-                      ? "border-teal-500 text-teal-600"
-                      : "border-transparent text-slate-400 hover:text-slate-500"
-                  }`}>
-                  <span className="text-base leading-tight">{icon}</span>
-                  <span className="leading-tight">{label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* FAB-style footer */}
-            {activeTab === "chat" && <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+            {/* FAB-style footer — only on feed tab */}
+            {activeTab === "feed" && (
+            <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+                <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
                   <span className="text-lg">🌙</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-amber-800">You've spread 10 greetings today!</p>
-                    <p className="text-[11px] text-amber-600">Your daily kindness quota resets at midnight. See you tomorrow ✨</p>
+                    <p className="text-xs font-bold text-teal-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
+                    <p className="text-[11px] text-teal-600">Come back tomorrow to keep the kindness going ✨</p>
                   </div>
                 </div>
               ) : !pickerOpen ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-400 cursor-pointer"
-                    onClick={() => setPickerOpen(true)}>
-                    <span>Send a kind greeting…</span>
-                    {todayMessageCount > 0 && (
-                      <span className="ml-2 text-[10px] font-semibold text-slate-400">
-                        {DAILY_GREETING_LIMIT - todayMessageCount} left today
-                      </span>
-                    )}
-                  </div>
-                  <button onClick={() => setPickerOpen(true)} disabled={isSending}
-                    className={`h-12 w-12 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
-                      isSending
-                        ? "bg-teal-400 shadow-none scale-90 cursor-not-allowed"
-                        : "bg-teal-500 shadow-md shadow-teal-200 hover:bg-teal-600 active:scale-90"
-                    }`}>
+                <>
+                  {sendError && (
+                    <p className="mb-2 text-center text-xs font-semibold text-red-500">{sendError}</p>
+                  )}
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    disabled={isSending}
+                    className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+                    style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 4px 20px rgba(20,184,166,0.4)" }}>
                     {isSending
-                      ? <Loader2 size={15} className="text-white animate-spin" />
-                      : <Send size={15} className="text-white" />}
+                      ? <Loader2 size={18} className="text-white animate-spin" />
+                      : <>
+                          ✨ Send kindness
+                          {todayMessageCount > 0 && (
+                            <span className="text-sm opacity-70 font-normal">· {DAILY_GREETING_LIMIT - todayMessageCount} left</span>
+                          )}
+                        </>}
                   </button>
-                </div>
+                </>
               ) : null}
-            </footer>}
+            </footer>
+            )} {/* end activeTab === "feed" footer */}
 
             {/* ── Bottom sheet greeting picker ── */}
             {pickerOpen && (
@@ -1178,7 +2187,7 @@ export default function App() {
                 />
                 <div
                   className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
-                  style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.1,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+                  style={{ animation: "seenSheetRise 400ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                   <GreetingPicker
                     profile={profile}
