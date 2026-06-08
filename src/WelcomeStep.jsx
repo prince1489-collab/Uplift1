@@ -187,11 +187,28 @@ const HIGHLIGHTS = [
 
 // ── Animated globe preview ─────────────────────────────────────────────
 
-// Points on a 200×200 viewBox globe (center 100,100 radius 80)
-// Coordinates derived from simplified equirectangular: x = 100 + 80*(lon/180), y = 100 - 80*(lat/90)
-// Control points pushed outside the sphere so arcs fly above the surface.
+// Equirectangular → SVG200: x = 100 + 80*(lon/180), y = 100 - 80*(lat/90)
+// Simplified continent outlines as polygon point strings.
+const CONTINENTS = [
+  // North America
+  "24,42 38,38 64,36 77,58 64,78 61,87 48,80 44,57 31,47",
+  // South America
+  "63,90 73,90 84,108 78,149 70,149 66,143 64,96",
+  // Europe
+  "96,68 116,67 118,51 112,38 104,48 98,51 96,57",
+  // Africa
+  "92,67 123,67 120,90 116,131 108,131 92,104",
+  // Asia (main mass incl. India)
+  "111,36 164,38 164,91 153,100 144,96 136,93 130,80 116,67 111,63",
+  // Australia
+  "150,111 168,111 168,139 158,139 150,120",
+  // Greenland
+  "73,27 90,27 90,37 75,37",
+];
+
+// Arc paths — control points pushed outside the sphere so arcs fly above the surface.
 const GLOBE_ARCS = [
-  // UK → Americas
+  // UK → USA East Coast
   { id: "a", d: "M 100,55 Q 65,16 58,66", cx: 58, cy: 66, delay: "0s" },
   // India → Japan
   { id: "b", d: "M 135,81 Q 158,36 162,68", cx: 162, cy: 68, delay: "0.9s" },
@@ -207,11 +224,15 @@ function GlobePreview() {
       <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" overflow="visible">
         <defs>
           <radialGradient id="wg-fill" cx="38%" cy="32%">
-            <stop offset="0%" stopColor="#1a3a5c" />
-            <stop offset="100%" stopColor="#060e18" />
+            <stop offset="0%" stopColor="#1a3a6e" />
+            <stop offset="100%" stopColor="#050d1c" />
+          </radialGradient>
+          <radialGradient id="wg-atm" cx="50%" cy="50%">
+            <stop offset="74%" stopColor="rgba(77,255,176,0)" />
+            <stop offset="100%" stopColor="rgba(77,255,176,0.16)" />
           </radialGradient>
           <radialGradient id="wg-shine" cx="32%" cy="24%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.13)" />
+            <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
             <stop offset="55%" stopColor="rgba(255,255,255,0)" />
           </radialGradient>
           <clipPath id="wg-clip">
@@ -219,37 +240,60 @@ function GlobePreview() {
           </clipPath>
         </defs>
 
-        {/* Sphere */}
-        <circle cx="100" cy="100" r="80" fill="url(#wg-fill)" stroke="rgba(77,255,176,0.18)" strokeWidth="1" />
+        {/* Atmosphere halo */}
+        <circle cx="100" cy="100" r="86" fill="url(#wg-atm)" />
+
+        {/* Sphere base */}
+        <circle cx="100" cy="100" r="80" fill="url(#wg-fill)" stroke="rgba(77,255,176,0.28)" strokeWidth="0.8" />
 
         {/* Grid lines — clipped to sphere */}
         <g clipPath="url(#wg-clip)" fill="none" strokeLinecap="round">
-          {/* Latitude */}
-          <ellipse cx="100" cy="100" rx="79" ry="9"  stroke="rgba(77,255,176,0.09)" strokeWidth="0.8" />
-          <ellipse cx="100" cy="73"  rx="68" ry="7"  stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
-          <ellipse cx="100" cy="127" rx="68" ry="7"  stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
-          <ellipse cx="100" cy="50"  rx="42" ry="5"  stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
-          {/* Longitude */}
-          <path d="M 100,21 Q 170,100 100,179" stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
-          <path d="M 100,21 Q  30,100 100,179" stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
-          <path d="M 100,21 Q 185,55 179,100 Q 185,145 100,179" stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
-          <path d="M 100,21 Q  15,55  21,100 Q  15,145 100,179" stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
+          <ellipse cx="100" cy="100" rx="79" ry="10" stroke="rgba(77,255,176,0.18)" strokeWidth="0.8" />
+          <ellipse cx="100" cy="73"  rx="68" ry="8"  stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
+          <ellipse cx="100" cy="127" rx="68" ry="8"  stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
+          <ellipse cx="100" cy="50"  rx="43" ry="5"  stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
+          <path d="M 100,21 Q 170,100 100,179" stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
+          <path d="M 100,21 Q  30,100 100,179" stroke="rgba(77,255,176,0.12)" strokeWidth="0.6" />
+          <path d="M 100,21 Q 186,58 179,100 Q 186,142 100,179" stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
+          <path d="M 100,21 Q  14,58  21,100 Q  14,142 100,179" stroke="rgba(77,255,176,0.08)" strokeWidth="0.5" />
+        </g>
+
+        {/* Continent fills — clipped to sphere */}
+        <g
+          clipPath="url(#wg-clip)"
+          fill="rgba(77,255,176,0.18)"
+          stroke="rgba(77,255,176,0.55)"
+          strokeWidth="0.9"
+          strokeLinejoin="round"
+        >
+          {CONTINENTS.map((pts, i) => (
+            <polygon key={i} points={pts} />
+          ))}
         </g>
 
         {/* Animated arcs + destination pulses */}
         {GLOBE_ARCS.map(({ id, d, cx, cy, delay }) => (
           <g key={id}>
+            {/* Wide soft glow under the arc */}
             <path
               d={d} pathLength="1" fill="none"
-              stroke="#4DFFB0" strokeWidth="1.6" strokeLinecap="round"
+              stroke="rgba(77,255,176,0.28)" strokeWidth="8" strokeLinecap="round"
               strokeDasharray="1" strokeDashoffset="1"
               style={{ animation: `wgArc 3.6s ease-out ${delay} infinite` }}
             />
-            <circle cx={cx} cy={cy} r="3.5" fill="#4DFFB0"
+            {/* Crisp bright arc */}
+            <path
+              d={d} pathLength="1" fill="none"
+              stroke="#4DFFB0" strokeWidth="2.2" strokeLinecap="round"
+              strokeDasharray="1" strokeDashoffset="1"
+              style={{ animation: `wgArc 3.6s ease-out ${delay} infinite` }}
+            />
+            {/* Destination pulse */}
+            <circle cx={cx} cy={cy} r="5" fill="#4DFFB0"
               style={{
                 animation: `wgDot 3.6s ease-out ${delay} infinite`,
                 transformOrigin: `${cx}px ${cy}px`,
-                filter: "drop-shadow(0 0 5px rgba(77,255,176,0.9))",
+                filter: "drop-shadow(0 0 8px rgba(77,255,176,1))",
               }}
             />
           </g>
