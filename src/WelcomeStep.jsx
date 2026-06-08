@@ -188,18 +188,19 @@ const HIGHLIGHTS = [
 // ── Animated globe preview ─────────────────────────────────────────────
 
 // Equirectangular → SVG200: x = 100 + 80*(lon/180), y = 100 - 80*(lat/90)
-// Simplified continent outlines as polygon point strings.
+// ALL vertices verified to be inside the sphere (dist < 79 from centre 100,100).
+// Outside-sphere vertices cause SVG clipPath to create huge arc-shaped fills.
 const CONTINENTS = [
-  // North America
-  "24,42 38,38 64,36 77,58 64,78 61,87 48,80 44,57 31,47",
+  // North America — stays within visible hemisphere (no far-west Alaska)
+  "52,38 67,38 76,58 64,78 60,86 51,79 45,56 44,47",
   // South America
-  "63,90 73,90 84,108 78,149 70,149 66,143 64,96",
+  "63,90 73,90 84,104 78,149 70,149 66,143 64,96",
   // Europe
   "96,68 116,67 118,51 112,38 104,48 98,51 96,57",
-  // Africa
-  "92,67 123,67 120,90 116,131 108,131 92,104",
-  // Asia (main mass incl. India)
-  "111,36 164,38 164,91 153,100 144,96 136,93 130,80 116,67 111,63",
+  // Africa — NE corner is Egypt (lon≈25°E), NOT Iran (lon=52°E)
+  "97,68 111,72 119,90 116,122 108,130 100,95 92,81",
+  // Asia — capped at lon≈105°E for 70°N so no point leaves the sphere
+  "112,36 147,38 160,59 162,69 148,78 136,93 130,80 116,67 113,63",
   // Australia
   "150,111 168,111 168,139 158,139 150,120",
   // Greenland
@@ -261,9 +262,9 @@ function GlobePreview() {
         {/* Continent fills — clipped to sphere */}
         <g
           clipPath="url(#wg-clip)"
-          fill="rgba(77,255,176,0.18)"
-          stroke="rgba(77,255,176,0.55)"
-          strokeWidth="0.9"
+          fill="rgba(77,255,176,0.14)"
+          stroke="rgba(77,255,176,0.45)"
+          strokeWidth="0.8"
           strokeLinejoin="round"
         >
           {CONTINENTS.map((pts, i) => (
