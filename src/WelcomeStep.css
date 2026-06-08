@@ -267,3 +267,33 @@
 
 .welcome-affirmation__text--in  { opacity: 1; transform: translateY(0); }
 .welcome-affirmation__text--out { opacity: 0; transform: translateY(-8px); }
+
+/* ─── Globe preview ──────────────────────────────────────────── */
+.welcome-globe {
+  width: 150px;
+  height: 150px;
+  margin: 14px auto 6px;
+  flex-shrink: 0;
+}
+
+.welcome-globe svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 8px 28px rgba(20,184,166,0.25)) drop-shadow(0 2px 6px rgba(0,0,0,0.12));
+}
+
+@keyframes wgArc {
+  0%   { stroke-dashoffset: 1; opacity: 0; }
+  6%   { opacity: 1; }
+  52%  { stroke-dashoffset: 0; opacity: 1; }
+  72%  { stroke-dashoffset: 0; opacity: 0.5; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes wgDot {
+  0%, 50%  { transform: scale(0); opacity: 0; }
+  58%      { transform: scale(1.2); opacity: 1; }
+  70%      { transform: scale(1); opacity: 0.8; }
+  85%      { transform: scale(2.5); opacity: 0; }
+  100%     { transform: scale(0); opacity: 0; }
+}

@@ -185,6 +185,83 @@ const HIGHLIGHTS = [
   },
 ];
 
+// ── Animated globe preview ─────────────────────────────────────────────
+
+// Points on a 200×200 viewBox globe (center 100,100 radius 80)
+// Coordinates derived from simplified equirectangular: x = 100 + 80*(lon/180), y = 100 - 80*(lat/90)
+// Control points pushed outside the sphere so arcs fly above the surface.
+const GLOBE_ARCS = [
+  // UK → Americas
+  { id: "a", d: "M 100,55 Q 65,16 58,66", cx: 58, cy: 66, delay: "0s" },
+  // India → Japan
+  { id: "b", d: "M 135,81 Q 158,36 162,68", cx: 162, cy: 68, delay: "0.9s" },
+  // West Africa → India
+  { id: "c", d: "M 104,92 Q 112,16 135,81", cx: 135, cy: 81, delay: "1.8s" },
+  // Nigeria → Australia
+  { id: "d", d: "M 104,92 Q 165,50 159,122", cx: 159, cy: 122, delay: "2.7s" },
+];
+
+function GlobePreview() {
+  return (
+    <div className="welcome-globe" aria-hidden="true">
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+        <defs>
+          <radialGradient id="wg-fill" cx="38%" cy="32%">
+            <stop offset="0%" stopColor="#1a3a5c" />
+            <stop offset="100%" stopColor="#060e18" />
+          </radialGradient>
+          <radialGradient id="wg-shine" cx="32%" cy="24%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.13)" />
+            <stop offset="55%" stopColor="rgba(255,255,255,0)" />
+          </radialGradient>
+          <clipPath id="wg-clip">
+            <circle cx="100" cy="100" r="79" />
+          </clipPath>
+        </defs>
+
+        {/* Sphere */}
+        <circle cx="100" cy="100" r="80" fill="url(#wg-fill)" stroke="rgba(77,255,176,0.18)" strokeWidth="1" />
+
+        {/* Grid lines — clipped to sphere */}
+        <g clipPath="url(#wg-clip)" fill="none" strokeLinecap="round">
+          {/* Latitude */}
+          <ellipse cx="100" cy="100" rx="79" ry="9"  stroke="rgba(77,255,176,0.09)" strokeWidth="0.8" />
+          <ellipse cx="100" cy="73"  rx="68" ry="7"  stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
+          <ellipse cx="100" cy="127" rx="68" ry="7"  stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
+          <ellipse cx="100" cy="50"  rx="42" ry="5"  stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
+          {/* Longitude */}
+          <path d="M 100,21 Q 170,100 100,179" stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
+          <path d="M 100,21 Q  30,100 100,179" stroke="rgba(77,255,176,0.06)" strokeWidth="0.6" />
+          <path d="M 100,21 Q 185,55 179,100 Q 185,145 100,179" stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
+          <path d="M 100,21 Q  15,55  21,100 Q  15,145 100,179" stroke="rgba(77,255,176,0.04)" strokeWidth="0.5" />
+        </g>
+
+        {/* Animated arcs + destination pulses */}
+        {GLOBE_ARCS.map(({ id, d, cx, cy, delay }) => (
+          <g key={id}>
+            <path
+              d={d} pathLength="1" fill="none"
+              stroke="#4DFFB0" strokeWidth="1.6" strokeLinecap="round"
+              strokeDasharray="1" strokeDashoffset="1"
+              style={{ animation: `wgArc 3.6s ease-out ${delay} infinite` }}
+            />
+            <circle cx={cx} cy={cy} r="3.5" fill="#4DFFB0"
+              style={{
+                animation: `wgDot 3.6s ease-out ${delay} infinite`,
+                transformOrigin: `${cx}px ${cy}px`,
+                filter: "drop-shadow(0 0 5px rgba(77,255,176,0.9))",
+              }}
+            />
+          </g>
+        ))}
+
+        {/* Shine overlay */}
+        <circle cx="100" cy="100" r="80" fill="url(#wg-shine)" />
+      </svg>
+    </div>
+  );
+}
+
 function WelcomeStep({ onStartJourney, db, auth }) {
   useAnonymousAuth(auth);
 
@@ -201,6 +278,9 @@ function WelcomeStep({ onStartJourney, db, auth }) {
         {/* Brand */}
         <h1 className="welcome-step__title">Seen</h1>
         <p className="welcome-step__tagline">You matter</p>
+
+        {/* Animated globe — the hook before sign-up */}
+        <GlobePreview />
 
         {/* Emotional cards */}
         <div className="welcome-step__list">

@@ -1525,10 +1525,17 @@ export default function App() {
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
       setLastSendTime(Date.now());
-      setShowMapPrompt(true);
       // Bust the impact cache so the next tab open reflects this new greeting
       try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
-      if (!hasSent) { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {} }
+      if (!hasSent) {
+        // First send ever — skip the prompt, open the globe automatically so they
+        // see their arc flying to another country.
+        setHasSent(true);
+        try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {}
+        setTimeout(() => setShowMap(true), 1100);
+      } else {
+        setShowMapPrompt(true);
+      }
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => anim.triggerStreakConfetti(), 300);
       }
