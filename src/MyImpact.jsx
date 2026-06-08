@@ -1,11 +1,11 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 
-// ── Haversine distance ────────────────────────────────────────────
+// ── Haversine distance ─────────────────────────────────────────────
 
 function kmBetween([lon1, lat1], [lon2, lat2]) {
   const R = 6371;
@@ -15,7 +15,7 @@ function kmBetween([lon1, lat1], [lon2, lat2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Data hook ─────────────────────────────────────────────────────
+// ── Data hook (reactions + dayMap only) ───────────────────────────
 
 const CACHE_TTL = 60 * 60 * 1000;
 
@@ -87,42 +87,35 @@ function useReactionData(db, currentUser, period) {
   return { data, loading };
 }
 
-// ── Odometer number — rolling digit reels ─────────────────────────
+// ── Odometer digit reel ────────────────────────────────────────────
 
-function OdometerNumber({ value = 0, fontSize = 26, duration = 1100, color = "#fff" }) {
+function OdometerNumber({ value = 0, fontSize = 26, duration = 1100 }) {
   const target = Math.max(0, Math.round(Number(value) || 0));
-  const digits = String(target).split("").map(Number); // most-significant first
-  const n = digits.length;
+  const digits = String(target).split("").map(Number);
   const [rolled, setRolled] = useState(false);
 
-  // Roll up from 0 → target whenever the value changes (and on mount).
   useEffect(() => {
     setRolled(false);
-    let raf2;
-    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setRolled(true)); });
-    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    let r2;
+    const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setRolled(true)); });
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
   }, [target]);
 
-  const cell = fontSize;
-
   return (
-    <span style={{ display: "inline-flex", height: cell, fontSize, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>
+    <span style={{ display: "inline-flex", height: fontSize, fontSize, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1 }}>
       {digits.map((d, idx) => {
-        // Rightmost (ones) reel spins the most for that classic odometer whir.
         const extra = idx + 1;
         const colLen = 10 * (extra + 1);
         const offset = rolled ? d + 10 * extra : 0;
         return (
-          <span key={idx} style={{ height: cell, overflow: "hidden", display: "inline-block", width: "0.62em" }}>
+          <span key={idx} style={{ height: fontSize, overflow: "hidden", display: "inline-block", width: "0.62em" }}>
             <span style={{
               display: "flex", flexDirection: "column",
-              transform: `translateY(-${offset * cell}px)`,
+              transform: `translateY(-${offset * fontSize}px)`,
               transition: rolled ? `transform ${duration}ms cubic-bezier(0.22,1,0.36,1)` : "none",
             }}>
               {Array.from({ length: colLen + 1 }).map((_, k) => (
-                <span key={k} style={{ height: cell, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {k % 10}
-                </span>
+                <span key={k} style={{ height: fontSize, display: "flex", alignItems: "center", justifyContent: "center" }}>{k % 10}</span>
               ))}
             </span>
           </span>
@@ -150,7 +143,7 @@ function StatTile({ value, label, sub, loading }) {
   );
 }
 
-// ── Milestone card ────────────────────────────────────────────────
+// ── Milestone card ─────────────────────────────────────────────────
 
 const MILESTONES = [1, 5, 10, 20, 35, 50, 75, 100];
 
@@ -199,7 +192,7 @@ function MilestoneCard({ countriesCount }) {
   );
 }
 
-// ── Furthest Reach card ───────────────────────────────────────────
+// ── Furthest Reach card ────────────────────────────────────────────
 
 function FurthestReachCard({ reactionByCountry, homeCountry }) {
   const result = useMemo(() => {
@@ -235,7 +228,7 @@ function FurthestReachCard({ reactionByCountry, homeCountry }) {
   );
 }
 
-// ── Rhythm card ───────────────────────────────────────────────────
+// ── Rhythm card ────────────────────────────────────────────────────
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -278,7 +271,189 @@ function RhythmCard({ streak, dayMap }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────
+// ── Share card (Canvas → Web Share API) ───────────────────────────
+
+function drawShareCard({ sentCount, countriesCount, totalReactions, streak, name, country }) {
+  const W = 600, H = 320, DPR = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(DPR, DPR);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#060e18");
+  bg.addColorStop(1, "#0a1f38");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle top glow
+  const glow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, H * 0.7);
+  glow.addColorStop(0, "rgba(77,255,176,0.08)");
+  glow.addColorStop(1, "rgba(77,255,176,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Rounded card border
+  ctx.strokeStyle = "rgba(77,255,176,0.18)";
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, 1, 1, W - 2, H - 2, 20);
+  ctx.stroke();
+
+  // App name
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(77,255,176,0.7)";
+  ctx.textBaseline = "top";
+  ctx.fillText("✦ SEEN", 28, 26);
+
+  // Main title
+  ctx.font = "bold 28px system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("My Kindness Footprint", 28, 52);
+
+  // Subtitle (name + country)
+  if (name || country) {
+    ctx.font = "500 13px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    const sub = [name, country].filter(Boolean).join(" · ");
+    ctx.fillText(sub, 28, 88);
+  }
+
+  // Divider
+  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(28, 112);
+  ctx.lineTo(W - 28, 112);
+  ctx.stroke();
+
+  // Stat boxes
+  const stats = [
+    { value: sentCount ?? 0, label: "SENT" },
+    { value: countriesCount ?? 0, label: "COUNTRIES" },
+    { value: totalReactions ?? 0, label: "REACTIONS" },
+  ];
+  const boxW = (W - 56 - 24) / 3;
+  stats.forEach(({ value, label }, i) => {
+    const x = 28 + i * (boxW + 12);
+    const y = 128;
+
+    // Box background
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    roundRect(ctx, x, y, boxW, 90, 12);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x, y, boxW, 90, 12);
+    ctx.stroke();
+
+    // Value
+    ctx.font = "bold 36px system-ui, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(value), x + boxW / 2, y + 42);
+
+    // Label
+    ctx.font = "600 10px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillText(label, x + boxW / 2, y + 74);
+  });
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Streak badge
+  if (streak > 0) {
+    const badge = `${streak >= 7 ? "🔥" : "✨"} ${streak}-day streak`;
+    ctx.font = "bold 11px system-ui, sans-serif";
+    const bw = ctx.measureText(badge).width + 20;
+    ctx.fillStyle = "rgba(255,200,100,0.12)";
+    roundRect(ctx, 28, 240, bw, 24, 8);
+    ctx.fill();
+    ctx.fillStyle = streak >= 7 ? "#fbbf24" : "#4DFFB0";
+    ctx.fillText(badge, 38, 244);
+  }
+
+  // Footer tagline
+  ctx.font = "500 11px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fillText("Spreading kindness worldwide · seen.app", 28, H - 28);
+
+  // Green accent dot top-right
+  ctx.fillStyle = "rgba(77,255,176,0.5)";
+  ctx.beginPath();
+  ctx.arc(W - 36, 36, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function ShareButton({ sentCount, countriesCount, totalReactions, streak, profile }) {
+  const [sharing, setSharing] = useState(false);
+
+  const handleShare = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const canvas = drawShareCard({
+        sentCount, countriesCount, totalReactions, streak,
+        name: profile?.fullName?.split(" ")[0] || "",
+        country: profile?.country || "",
+      });
+
+      const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+      const file = new File([blob], "my-kindness-footprint.png", { type: "image/png" });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "My Kindness Footprint",
+          text: `I've sent ${sentCount} kindness greetings across ${countriesCount} countries on Seen 🌍`,
+        });
+      } else {
+        // Fallback: download the image
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "my-kindness-footprint.png";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (_) {}
+    finally { setSharing(false); }
+  };
+
+  return (
+    <button onClick={handleShare} disabled={sharing} style={{
+      display: "flex", alignItems: "center", gap: "5px",
+      padding: "6px 12px", borderRadius: "10px", fontSize: "11px", fontWeight: 700,
+      background: "rgba(77,255,176,0.15)", color: "#4DFFB0",
+      border: "1px solid rgba(77,255,176,0.3)",
+      cursor: sharing ? "default" : "pointer", opacity: sharing ? 0.6 : 1,
+      transition: "opacity 0.15s",
+    }}>
+      <span style={{ fontSize: "13px" }}>↗</span>
+      {sharing ? "Sharing…" : "Share"}
+    </button>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────
 
 export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
@@ -321,21 +496,30 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
             Footprint
           </p>
         </div>
-        <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: "10px", padding: "3px", marginTop: "2px" }}>
-          {["7d", "30d"].map(p => (
-            <button key={p} onClick={() => setPeriod(p)} style={{
-              padding: "5px 13px", borderRadius: "7px", fontSize: "11px", fontWeight: 700,
-              border: "none", cursor: "pointer", transition: "all 0.15s",
-              background: period === p ? "rgba(77,255,176,0.18)" : "transparent",
-              color: period === p ? "#4DFFB0" : "rgba(255,255,255,0.35)",
-            }}>
-              {p}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+          <ShareButton
+            sentCount={sentCount}
+            countriesCount={countriesCount}
+            totalReactions={data?.totalReactions}
+            streak={streak}
+            profile={profile}
+          />
+          <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: "10px", padding: "3px" }}>
+            {["7d", "30d"].map(p => (
+              <button key={p} onClick={() => setPeriod(p)} style={{
+                padding: "5px 13px", borderRadius: "7px", fontSize: "11px", fontWeight: 700,
+                border: "none", cursor: "pointer", transition: "all 0.15s",
+                background: period === p ? "rgba(77,255,176,0.18)" : "transparent",
+                color: period === p ? "#4DFFB0" : "rgba(255,255,255,0.35)",
+              }}>
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* ── Stat tiles — Sent + Countries are live (no loading); Reactions from Firestore ── */}
+      {/* ── Stat tiles — Sent + Countries live; Reactions from Firestore ── */}
       <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", padding: "18px 8px 16px", display: "flex" }}>
         <StatTile loading={false} value={sentCount} label="Sent" />
         <div style={{ width: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
@@ -368,25 +552,16 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
             const isBest = count > 0 && count === maxCount;
             return (
               <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" }}>
-                <div
-                  title={`${key}: ${count} sent`}
-                  style={{
-                    width: "100%", borderRadius: "3px 3px 2px 2px",
-                    height: `${Math.max(3, (count / maxCount) * 46)}px`,
-                    background: count === 0
-                      ? "rgba(255,255,255,0.06)"
-                      : isBest
-                      ? "rgba(77,255,176,0.85)"
-                      : "rgba(77,255,176,0.35)",
-                    boxShadow: isBest ? "0 0 8px rgba(77,255,176,0.4)" : "none",
-                    transition: "height 0.5s cubic-bezier(0.34,1.2,0.64,1)",
-                  }}
-                />
-                {label ? (
-                  <span style={{ fontSize: "8px", fontWeight: 600, color: count > 0 ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)", lineHeight: 1 }}>
-                    {label}
-                  </span>
-                ) : <span style={{ height: "9px" }} />}
+                <div title={`${key}: ${count} sent`} style={{
+                  width: "100%", borderRadius: "3px 3px 2px 2px",
+                  height: `${Math.max(3, (count / maxCount) * 46)}px`,
+                  background: count === 0 ? "rgba(255,255,255,0.06)" : isBest ? "rgba(77,255,176,0.85)" : "rgba(77,255,176,0.35)",
+                  boxShadow: isBest ? "0 0 8px rgba(77,255,176,0.4)" : "none",
+                  transition: "height 0.5s cubic-bezier(0.34,1.2,0.64,1)",
+                }} />
+                {label
+                  ? <span style={{ fontSize: "8px", fontWeight: 600, color: count > 0 ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)", lineHeight: 1 }}>{label}</span>
+                  : <span style={{ height: "9px" }} />}
               </div>
             );
           })}
@@ -406,12 +581,8 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
         ) : reactionList.length === 0 ? (
           <div style={{ textAlign: "center", padding: "28px 0" }}>
             <p style={{ fontSize: "36px", margin: "0 0 10px" }}>🌍</p>
-            <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 500 }}>
-              No reactions yet
-            </p>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", margin: "5px 0 0" }}>
-              Keep spreading kindness — they're coming
-            </p>
+            <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 500 }}>No reactions yet</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", margin: "5px 0 0" }}>Keep spreading kindness — they're coming</p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -426,9 +597,7 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
                     <span key={i} style={{ fontSize: "13px" }}>❤️</span>
                   ))}
                   {count > 5 && (
-                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginLeft: "2px" }}>
-                      +{count - 5}
-                    </span>
+                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginLeft: "2px" }}>+{count - 5}</span>
                   )}
                 </div>
               </div>
