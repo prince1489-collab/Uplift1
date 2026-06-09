@@ -1186,6 +1186,8 @@ export default function App() {
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
+  const [adminClearing, setAdminClearing] = useState(false);
+  const [adminClearError, setAdminClearError] = useState("");
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
@@ -1626,9 +1628,10 @@ export default function App() {
 
   const handleClearAllMessages = async () => {
     if (!isAdmin) return;
-    setAdminConfirm(false);
+    setAdminClearing(true);
+    setAdminClearError("");
     try {
-      const snap = await getDocs(query(collection(db, "publicMessages"), orderBy("timestamp", "asc")));
+      const snap = await getDocs(collection(db, "publicMessages"));
       const deletes = [];
       for (const msgDoc of snap.docs) {
         const rSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "reactions"));
@@ -1636,8 +1639,14 @@ export default function App() {
         deletes.push(deleteDoc(msgDoc.ref));
       }
       await Promise.all(deletes);
+      setAdminConfirm(false);
     } catch (err) {
       console.error("Clear all messages failed:", err);
+      setAdminClearError(err.code === "permission-denied"
+        ? "Permission denied — update your Firestore rules to allow admin deletes."
+        : `Failed: ${err.message}`);
+    } finally {
+      setAdminClearing(false);
     }
   };
 
@@ -2269,19 +2278,24 @@ export default function App() {
                     </div>
                     <p className="font-bold text-slate-800 text-base">Clear all messages?</p>
                     <p className="text-sm text-slate-500">This will permanently delete every message and its reactions from the public feed. This cannot be undone.</p>
+                    {adminClearError && (
+                      <p className="text-xs font-semibold text-red-500 bg-red-50 rounded-xl px-3 py-2 w-full">{adminClearError}</p>
+                    )}
                   </div>
                   <div className="mt-5 flex gap-3">
                     <button
-                      onClick={() => setAdminConfirm(false)}
-                      className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                      onClick={() => { setAdminConfirm(false); setAdminClearError(""); }}
+                      disabled={adminClearing}
+                      className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleClearAllMessages}
-                      className="flex-1 rounded-2xl bg-red-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-95"
+                      disabled={adminClearing}
+                      className="flex-1 rounded-2xl bg-red-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
                     >
-                      Delete all
+                      {adminClearing ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : "Delete all"}
                     </button>
                   </div>
                 </div>
