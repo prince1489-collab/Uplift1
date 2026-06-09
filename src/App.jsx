@@ -507,6 +507,7 @@ function SupportPanel({ onClose }) {
 const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+const ADMIN_EMAIL = "prince1489@googlemail.com";
 
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
@@ -1183,6 +1184,8 @@ export default function App() {
 
   const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
+  const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
@@ -1618,6 +1621,23 @@ export default function App() {
       }
     } catch (err) {
       console.error("Delete failed:", err);
+    }
+  };
+
+  const handleClearAllMessages = async () => {
+    if (!isAdmin) return;
+    setAdminConfirm(false);
+    try {
+      const snap = await getDocs(query(collection(db, "publicMessages"), orderBy("timestamp", "asc")));
+      const deletes = [];
+      for (const msgDoc of snap.docs) {
+        const rSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "reactions"));
+        rSnap.forEach((rDoc) => deletes.push(deleteDoc(rDoc.ref)));
+        deletes.push(deleteDoc(msgDoc.ref));
+      }
+      await Promise.all(deletes);
+    } catch (err) {
+      console.error("Clear all messages failed:", err);
     }
   };
 
@@ -2202,6 +2222,15 @@ export default function App() {
                   </button>
                 </>
               ) : null}
+              {isAdmin && (
+                <button
+                  onClick={() => setAdminConfirm(true)}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-400 opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  <Shield size={11} />
+                  Admin: Clear all messages
+                </button>
+              )}
             </footer>
             )} {/* end activeTab === "feed" footer */}
 
@@ -2226,6 +2255,35 @@ export default function App() {
                     isSending={isSending}
                     remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* ── Admin: confirm clear-all modal ── */}
+            {adminConfirm && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+                <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                      <Shield size={22} className="text-red-500" />
+                    </div>
+                    <p className="font-bold text-slate-800 text-base">Clear all messages?</p>
+                    <p className="text-sm text-slate-500">This will permanently delete every message and its reactions from the public feed. This cannot be undone.</p>
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    <button
+                      onClick={() => setAdminConfirm(false)}
+                      className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClearAllMessages}
+                      className="flex-1 rounded-2xl bg-red-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-95"
+                    >
+                      Delete all
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
