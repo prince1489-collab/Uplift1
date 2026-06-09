@@ -1139,7 +1139,20 @@ export default function App() {
       });
     }, 60000);
     return () => clearInterval(iv);
+
   }, []);
+
+  // Reset "reacted" and "seen" country highlights on every new send so stale
+  // reactions from a previous session don't bleed into the current one and
+  // incorrectly colour countries as "Reacted" when they only saw the message.
+  useEffect(() => {
+    if (!lastSendTime) return;
+    setReactedCountries({});
+    try {
+      localStorage.removeItem("seen_reacted_v1");
+      localStorage.removeItem("seen_seen_v1");
+    } catch (_) {}
+  }, [lastSendTime]);
 
   // Auto-dismiss reaction toast after 6s
   useEffect(() => {
