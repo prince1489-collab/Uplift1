@@ -981,7 +981,9 @@ export default function App() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
   const [showMapPrompt, setShowMapPrompt] = useState(false);
-  const [lastSendTime, setLastSendTime] = useState(0);
+  const [lastSendTime, setLastSendTime] = useState(() => {
+    try { return parseInt(localStorage.getItem("seen_last_send_time") || "0", 10) || 0; } catch (_) { return 0; }
+  });
   const [hasSent, setHasSent] = useState(() => !!localStorage.getItem("seen_has_sent"));
   // Countries that reacted to MY messages → { [country]: { emoji, at } }, persisted 5h
   const [reactedCountries, setReactedCountries] = useState(() => {
@@ -1044,7 +1046,10 @@ export default function App() {
       innerUnsubs = [];
       snap.docs.forEach((d) => {
         const msgId = d.id;
+        let isInitialSnapshot = true; // first onSnapshot callback is the existing-data load
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          const isInitial = isInitialSnapshot;
+          isInitialSnapshot = false;
           const newToasts = [];
           rSnap.forEach((rDoc) => {
             if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
@@ -1058,16 +1063,17 @@ export default function App() {
 
               // Always keep reactedCountries current — don't gate this on reactObservedRef.
               // Use a functional update to avoid overwriting a fresh entry with a stale one.
-              // toastKey being new means this is a reaction first seen THIS session — use Date.now()
-              // so the globe pill tag animates. If already observed (old reaction), use a timestamp
-              // old enough that the tag doesn't re-fire, but the coral fill still shows.
+              // isInitial reactions already existed before this session — stamp them at=0 so
+              // WorldMap's lastSendTime floor always excludes them (pre-send stale data).
+              // Live reactions get Date.now() so the globe pill tag animates.
               const toastKeyForAt = `${msgId}|${uid}|${emoji}`;
               const isNewReaction = !reactObservedRef.current.has(toastKeyForAt);
               setReactedCountries((prev) => {
                 const existing = prev[country];
                 // If already tracked and fresh, leave it alone so the tag timestamp stays correct.
                 if (existing && Date.now() - existing.at < FIVE_HOURS_MS) return prev;
-                const at = isNewReaction ? Date.now() : Date.now() - 60_000; // old reaction: past the 8s tag window
+                // Initial snapshot = pre-existing reaction; give it at=0 so sendFloor always excludes it.
+                const at = isInitial ? 0 : isNewReaction ? Date.now() : Date.now() - 60_000;
                 const next = { ...prev, [country]: { emoji, at } };
                 try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
                 return next;
@@ -1537,7 +1543,9 @@ export default function App() {
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
-      setLastSendTime(Date.now());
+      const sendTs = Date.now();
+      setLastSendTime(sendTs);
+      try { localStorage.setItem("seen_last_send_time", String(sendTs)); } catch (_) {}
       // Bust the impact cache so the next tab open reflects this new greeting
       try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
       if (!hasSent) {
