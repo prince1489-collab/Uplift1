@@ -185,15 +185,21 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   // every time activeUsers changes)
   useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
 
-  // Reacted countries (coral heartbeat + floating tag) come straight from the sender's prop
+  // Reacted countries (coral heartbeat + floating tag) come straight from the sender's prop.
+  // Only include reactions whose timestamp is >= lastSendTime so stale Firestore entries
+  // from a previous send can never bleed into the current send's globe view — even if the
+  // onSnapshot listener re-adds them after a clear (because reactObservedRef is still live).
   useEffect(() => {
     const m = new Map();
     const now = Date.now();
+    const sendFloor = lastSendTime || 0;
     for (const [c, v] of Object.entries(reactedCountries || {})) {
-      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) m.set(c, { emoji: v.emoji, at: v.at });
+      if (v && now - v.at < FIVE_HOURS_MS && v.at >= sendFloor && COUNTRY_COORDS[c]) {
+        m.set(c, { emoji: v.emoji, at: v.at });
+      }
     }
     reactedRef.current = m;
-  }, [reactedCountries]);
+  }, [reactedCountries, lastSendTime]);
 
   // "Seen" tier: while the map is open and I've sent a greeting, every active
   // country (including my own) is recorded as having seen my kindness. These
