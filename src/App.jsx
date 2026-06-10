@@ -995,6 +995,7 @@ export default function App() {
   const reactObservedRef = useRef(new Set());
   const reactReadyRef = useRef(false);
   const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
+  const sendTimeInitRef = useRef(lastSendTime); // holds value from mount — used to skip wipe on refresh
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1136,11 +1137,13 @@ export default function App() {
 
   }, []);
 
-  // Reset "reacted" and "seen" country highlights on every new send so stale
-  // reactions from a previous session don't bleed into the current one and
-  // incorrectly colour countries as "Reacted" when they only saw the message.
+  // Reset "reacted" and "seen" country highlights when the user sends a NEW message
+  // so stale reactions from a previous session don't bleed in. The guard against
+  // sendTimeInitRef ensures this never fires on page-load/refresh (when lastSendTime
+  // is restored from localStorage but hasn't actually changed — that was wiping
+  // the persisted coral state every time the app reloaded).
   useEffect(() => {
-    if (!lastSendTime) return;
+    if (!lastSendTime || lastSendTime === sendTimeInitRef.current) return;
     setReactedCountries({});
     try {
       localStorage.removeItem("seen_reacted_v1");
