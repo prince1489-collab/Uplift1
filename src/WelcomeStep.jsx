@@ -1,34 +1,167 @@
-import React, { useEffect, useState } from "react";
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
+import {
+  collection, onSnapshot, orderBy, query, limit, where,
+} from "firebase/firestore";
+import { signInAnonymously } from "firebase/auth";
+import { geoOrthographic, geoPath, geoGraticule, geoInterpolate } from "d3-geo";
+import { feature } from "topojson-client";
+import worldAtlas from "world-atlas/countries-110m.json";
 import "./WelcomeStep.css";
 
-// Generates a plausible live count that feels real and updates subtly
-function useLiveCount() {
-  const [count, setCount] = useState(null);
+const PRESENCE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — matches "today" label
 
+function useAnonymousAuth(auth) {
   useEffect(() => {
-    // Base count grows through the day, with small random variance
-    const hour = new Date().getHours();
-    const base = 120 + hour * 18 + Math.floor(Math.random() * 40);
-    setCount(base);
+    if (!auth) return;
+    signInAnonymously(auth).catch(() => {});
+  }, [auth]);
+}
 
-    // Tick up by 1-3 every 8s to feel live
-    const id = setInterval(() => {
-      setCount((c) => c + Math.floor(Math.random() * 3) + 1);
-    }, 8000);
+// Real Firebase presence count — rolling 24h window, refreshes every minute.
+function useLiveCount(db) {
+  const [count, setCount] = useState(null);
+  const [cutoff, setCutoff] = useState(() => Date.now() - PRESENCE_TTL_MS);
+
+  // Slide the window forward every minute so old entries fall off naturally
+  useEffect(() => {
+    const id = setInterval(() => setCutoff(Date.now() - PRESENCE_TTL_MS), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "presence"), where("lastSeen", ">=", cutoff));
+    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => setCount(0));
+    return unsub;
+  }, [db, cutoff]);
 
   return count;
 }
 
-// Improvement 5: Drifting soft background blobs
-function BackgroundBlobs() {
+// Real messages from publicMessages collection
+function useRecentMessages(db) {
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(
+      collection(db, "publicMessages"),
+      orderBy("timestamp", "desc"),
+      limit(12)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const msgs = snap.docs
+          .map((d) => d.data())
+          .filter((m) => m.sender || m.country);
+        setMessages(msgs);
+      },
+      () => setMessages([])
+    );
+    return unsub;
+  }, [db]);
+
+  return messages;
+}
+
+function buildTickerText(msg) {
+  const name = (msg.sender || "Someone").split(" ")[0];
+  const country = msg.country || "the world";
+  return `${name} just sent kindness to someone in ${country}`;
+}
+
+const AFFIRMATIONS = [
+  "You are not invisible.",
+  "Someone out there is rooting for you.",
+  "It's okay to not be okay.",
+  "You showed up today. That's enough.",
+  "One message can change someone's whole day.",
+  "You matter more than you know.",
+  "Kindness finds its way back to you.",
+];
+
+function AffirmationRotator() {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const rotate = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % AFFIRMATIONS.length);
+        setVisible(true);
+      }, 400);
+    }, 4500);
+    return () => clearInterval(rotate);
+  }, []);
+
   return (
-    <div className="welcome-blobs" aria-hidden="true">
-      <div className="welcome-blob welcome-blob--1" />
-      <div className="welcome-blob welcome-blob--2" />
-      <div className="welcome-blob welcome-blob--3" />
+    <div className="welcome-affirmation">
+      <span className="welcome-affirmation__icon">🤍</span>
+      <span className={`welcome-affirmation__text${visible ? " welcome-affirmation__text--in" : " welcome-affirmation__text--out"}`}>
+        {AFFIRMATIONS[idx]}
+      </span>
+    </div>
+  );
+}
+function BackgroundAmbient() {
+  return (
+    <div className="welcome-ambient" aria-hidden="true">
+      <div className="welcome-ambient__radial" />
+      <div className="welcome-ambient__grain" />
+    </div>
+  );
+}
+
+// Activity ticker — uses real messages when available
+function ActivityTicker({ db }) {
+  const realMessages = useRecentMessages(db);
+  const items =
+    realMessages.length > 0
+      ? realMessages.map(buildTickerText)
+      : FALLBACK_TICKER;
+
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const idxRef = useRef(0);
+  const lenRef = useRef(items.length);
+
+  // When items switches from fallback→real, restart from 0
+  useEffect(() => {
+    if (lenRef.current !== items.length) {
+      lenRef.current = items.length;
+      idxRef.current = 0;
+      setIdx(0);
+      setVisible(true);
+    }
+  }, [items.length]);
+
+  useEffect(() => {
+    const rotate = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        idxRef.current = (idxRef.current + 1) % items.length;
+        setIdx(idxRef.current);
+        setVisible(true);
+      }, 300);
+    }, 3800);
+    return () => clearInterval(rotate);
+  }, [items.length]);
+
+  return (
+    <div className="welcome-ticker">
+      <span className="welcome-ticker__label">Live</span>
+      <span
+        className={`welcome-ticker__text${
+          visible ? " welcome-ticker__text--in" : " welcome-ticker__text--out"
+        }`}
+      >
+        {items[idx]}
+      </span>
     </div>
   );
 }
@@ -55,22 +188,190 @@ const HIGHLIGHTS = [
   },
 ];
 
-function WelcomeStep({ onStartJourney }) {
-  const count = useLiveCount();
-  const [dotPulse, setDotPulse] = useState(true);
+// ── Canvas Globe — d3-geo orthographic projection ──────────────────────
 
-  // Re-trigger the live dot pulse every 4s
+const _LAND      = feature(worldAtlas, worldAtlas.objects.land);
+const _COUNTRIES = feature(worldAtlas, worldAtlas.objects.countries);
+const _GRATICULE = geoGraticule().step([20, 20])();
+
+const GLOBE_CONNECTIONS = [
+  { from: [-0.1, 51.5], to: [-74,  40.7], delay: 0   }, // London → NYC
+  { from: [79,   21  ], to: [139,  35.7], delay: 0.9 }, // Mumbai → Tokyo
+  { from: [7,    5.5 ], to: [-46, -13.6], delay: 1.8 }, // Lagos → Brasília
+  { from: [-0.1, 51.5], to: [133, -25  ], delay: 2.7 }, // London → Australia
+];
+
+const ARC_STEPS = 64;
+const ARC_COORDS = GLOBE_CONNECTIONS.map(({ from, to }) => {
+  const interp = geoInterpolate(from, to);
+  return Array.from({ length: ARC_STEPS + 1 }, (_, i) => interp(i / ARC_STEPS));
+});
+
+function GlobePreview() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const id = setInterval(() => {
-      setDotPulse(false);
-      setTimeout(() => setDotPulse(true), 80);
-    }, 4000);
-    return () => clearInterval(id);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const DPR  = Math.min(window.devicePixelRatio || 1, 2);
+    const CSS  = 180;
+    canvas.width  = CSS * DPR;
+    canvas.height = CSS * DPR;
+    canvas.style.width  = CSS + "px";
+    canvas.style.height = CSS + "px";
+
+    const ctx = canvas.getContext("2d");
+    ctx.scale(DPR, DPR);
+
+    const CX = CSS / 2;
+    const CY = CSS / 2;
+    const R  = CSS * 0.44;
+
+    const proj = geoOrthographic()
+      .scale(R)
+      .translate([CX, CY])
+      .clipAngle(90);
+
+    const pathGen = geoPath().projection(proj).context(ctx);
+
+    let lon = -20;
+    let rafId;
+    const t0 = performance.now();
+
+    function frame(now) {
+      const t = (now - t0) / 1000;
+      lon -= 0.04;
+      proj.rotate([lon, -25, 0]);
+
+      ctx.clearRect(0, 0, CSS, CSS);
+
+      // Ocean
+      ctx.beginPath();
+      pathGen({ type: "Sphere" });
+      const ocean = ctx.createRadialGradient(CX - R * 0.3, CY - R * 0.3, 0, CX, CY, R);
+      ocean.addColorStop(0, "#1e4a7a");
+      ocean.addColorStop(1, "#050d1c");
+      ctx.fillStyle = ocean;
+      ctx.fill();
+
+      // Graticule
+      ctx.beginPath();
+      pathGen(_GRATICULE);
+      ctx.strokeStyle = "rgba(77,255,176,0.1)";
+      ctx.lineWidth = 0.4;
+      ctx.stroke();
+
+      // Land fill
+      ctx.beginPath();
+      pathGen(_LAND);
+      ctx.fillStyle = "rgba(77,255,176,0.22)";
+      ctx.fill();
+
+      // Country borders — all batched into one stroke call
+      ctx.beginPath();
+      _COUNTRIES.features.forEach(f => pathGen(f));
+      ctx.strokeStyle = "rgba(77,255,176,0.38)";
+      ctx.lineWidth = 0.35;
+      ctx.stroke();
+
+      // Animated arcs
+      GLOBE_CONNECTIONS.forEach(({ to, delay }, i) => {
+        const PERIOD = 3.6;
+        const el = ((t - delay) % PERIOD + PERIOD) % PERIOD;
+        const drawProg = Math.min(el / (PERIOD * 0.52), 1);
+        const alpha = el > PERIOD * 0.7
+          ? Math.max(0, 1 - (el - PERIOD * 0.7) / (PERIOD * 0.3))
+          : 1;
+
+        if (drawProg < 0.02 || alpha < 0.01) return;
+
+        const steps = Math.max(2, Math.floor(drawProg * ARC_STEPS));
+        const arcFeat = { type: "LineString", coordinates: ARC_COORDS[i].slice(0, steps + 1) };
+
+        // Soft glow
+        ctx.beginPath();
+        pathGen(arcFeat);
+        ctx.strokeStyle = `rgba(77,255,176,${0.22 * alpha})`;
+        ctx.lineWidth = 7;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        // Bright core
+        ctx.beginPath();
+        pathGen(arcFeat);
+        ctx.strokeStyle = `rgba(77,255,176,${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        // Destination pulse dot
+        if (drawProg >= 0.98) {
+          const pt = proj(to);
+          if (pt) {
+            const pulse = Math.min((el - PERIOD * 0.52) / 0.5, 1);
+            const dotR  = 3 + pulse * 5;
+            const dotA  = alpha * Math.max(0, 1 - pulse * 0.6);
+            ctx.beginPath();
+            ctx.arc(pt[0], pt[1], dotR, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(77,255,176,${dotA})`;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pt[0], pt[1], 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(77,255,176,${alpha})`;
+            ctx.fill();
+          }
+        }
+      });
+
+      // Atmosphere halo
+      const atm = ctx.createRadialGradient(CX, CY, R * 0.88, CX, CY, R * 1.1);
+      atm.addColorStop(0, "rgba(77,255,176,0)");
+      atm.addColorStop(1, "rgba(77,255,176,0.15)");
+      ctx.beginPath();
+      ctx.arc(CX, CY, R * 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = atm;
+      ctx.fill();
+
+      // Sphere outline
+      ctx.beginPath();
+      pathGen({ type: "Sphere" });
+      ctx.strokeStyle = "rgba(77,255,176,0.28)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Specular shine
+      const shine = ctx.createRadialGradient(
+        CX - R * 0.38, CY - R * 0.38, 0,
+        CX - R * 0.1,  CY - R * 0.1,  R * 0.85
+      );
+      shine.addColorStop(0, "rgba(255,255,255,0.16)");
+      shine.addColorStop(0.6, "rgba(255,255,255,0)");
+      ctx.beginPath();
+      ctx.arc(CX, CY, R, 0, Math.PI * 2);
+      ctx.fillStyle = shine;
+      ctx.fill();
+
+      rafId = requestAnimationFrame(frame);
+    }
+
+    rafId = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
+    <div className="welcome-globe" aria-hidden="true">
+      <canvas ref={canvasRef} />
+    </div>
+  );
+}
+
+function WelcomeStep({ onStartJourney, db, auth }) {
+  useAnonymousAuth(auth);
+
+  return (
     <div className="welcome-step">
-      <BackgroundBlobs />
+      <BackgroundAmbient />
 
       <div className="welcome-step__content">
         {/* Logo icon */}
@@ -82,20 +383,16 @@ function WelcomeStep({ onStartJourney }) {
         <h1 className="welcome-step__title">Seen</h1>
         <p className="welcome-step__tagline">You matter</p>
 
-        {/* Improvement 2: live social proof counter */}
-        {count !== null && (
-          <div className="welcome-live">
-            <span className={`welcome-live__dot${dotPulse ? " welcome-live__dot--pulse" : ""}`} />
-            <span className="welcome-live__text">
-              <strong>{count.toLocaleString()}</strong> people connected today
-            </span>
-          </div>
-        )}
+        {/* Animated globe — the hook before sign-up */}
+        <GlobePreview />
 
-        {/* Improvement 1: emotional cards */}
+        {/* Emotional cards */}
         <div className="welcome-step__list">
           {HIGHLIGHTS.map((h) => (
-            <article className={`welcome-card welcome-card--${h.mod}`} key={h.title}>
+            <article
+              className={`welcome-card welcome-card--${h.mod}`}
+              key={h.title}
+            >
               <span className="welcome-card__emoji">{h.emoji}</span>
               <div>
                 <h2 className="welcome-card__title">{h.title}</h2>
@@ -106,14 +403,12 @@ function WelcomeStep({ onStartJourney }) {
         </div>
       </div>
 
-      {/* Bottom: trust line + CTA */}
+      {/* Bottom: ticker + trust line + CTA — always visible */}
       <div className="welcome-step__footer">
-        {/* Improvement 4: trust statement */}
+        <AffirmationRotator />
         <p className="welcome-trust">No posts · No followers · Just kindness</p>
-
-        {/* Improvement 3: warmer CTA */}
         <button className="welcome-step__cta" onClick={onStartJourney}>
-          I want to feel seen <ArrowRight size={18} />
+          I want to feel seen <ArrowRight size={20} />
         </button>
       </div>
     </div>

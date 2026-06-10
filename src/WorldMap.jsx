@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 /**
  * WorldMap.jsx — Revolving 3D Globe
  *
@@ -9,12 +11,12 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   collection, doc, getDoc, limit,
-  onSnapshot, query, where,
+  onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { X } from "lucide-react";
 
 // ── Country centroids [longitude, latitude] ──────────────────────
-const COUNTRY_COORDS = {
+export const COUNTRY_COORDS = {
   "Afghanistan": [67.7, 33.9], "Albania": [20.2, 41.2], "Algeria": [3.0, 28.0],
   "Angola": [18.5, -11.2], "Argentina": [-64.0, -34.0], "Armenia": [45.0, 40.2],
   "Australia": [134.0, -25.0], "Austria": [14.6, 47.7], "Azerbaijan": [47.6, 40.1],
@@ -57,6 +59,14 @@ const COUNTRY_COORDS = {
   "Zambia": [27.8, -13.1], "Zimbabwe": [29.2, -20.0],
 };
 
+// Well-distributed worldwide destinations for the "send burst" when no
+// other users are active — so a solo sender still sees kindness radiate out.
+const GLOBAL_BURST_TARGETS = [
+  "United States", "Brazil", "United Kingdom", "Nigeria", "South Africa",
+  "India", "China", "Japan", "Australia", "Canada", "Mexico", "Germany",
+  "Egypt", "Kenya", "Indonesia", "Argentina", "Russia", "France",
+];
+
 function approxKm([lon1, lat1], [lon2, lat2]) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -67,9 +77,25 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 }
 
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
-const AUTO_ROTATE_SPEED = 0.12;
+const AUTO_ROTATE_SPEED = 0.15;
 
-export default function WorldMap({ db, currentUser, profile, onClose }) {
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
+// Colours for the sender's private "kindness reach" layers
+const SEEN_BEAT_RGB = [244, 164, 53];   // #F4A435 warm amber — country has seen, beating
+const REACTED_RGB   = [255, 90, 126];   // #FF5A7E rose coral — someone reacted, static
+const REACT_TAG_MS  = 8000;             // how long the "reacted" tag stays expanded
+
+// Natural "lub-dub" heartbeat amplitude (0..1) at ~70 bpm given a time in ms.
+function heartbeat(t) {
+  const period = 850;
+  const x = (t % period) / period;        // 0..1 within one beat
+  const lub = Math.exp(-Math.pow((x - 0.00) / 0.055, 2));
+  const dub = Math.exp(-Math.pow((x - 0.20) / 0.055, 2)) * 0.65;
+  return Math.min(1, lub + dub);
+}
+
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false, hometownPingTime = 0 }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -97,6 +123,33 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   const lastPinchRef = useRef(null);
   const worldDotsRef = useRef([]);
   const myConnectionCountriesRef = useRef([]);
+  // "Find me" fly-to animation
+  const flyToTargetRef = useRef(null);
+  const flyToStartRef = useRef(null);
+  const flyToStartTimeRef = useRef(null);
+  // Tap vs drag tracking
+  const mouseMovedRef = useRef(false);
+  // Reactor + "seen" country highlighting + send burst
+  const reactedRef = useRef(new Map());   // country -> { emoji, at }
+  const seenRef = useRef(new Set());      // countries that have "seen" my kindness
+  const activeUsersRef = useRef([]);
+  const lastSendTimeRef = useRef(0);
+  const sendBurstIntervalRef = useRef(null);
+  const hometownPingRef = useRef(0);
+  const countryNameToFeatureRef = useRef({}); // country name → GeoJSON feature (built once on load)
+  // "Seen" countries persisted 5h, sender-only
+  const [seenCountries, setSeenCountries] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("seen_seen_v1") || "{}");
+      const now = Date.now();
+      const pruned = {};
+      for (const [c, v] of Object.entries(raw)) if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      return pruned;
+    } catch (_) { return {}; }
+  });
+  // Country card
+  const [selectedCountry, setSelectedCountry] = useState(null);
+  const [countryMessages, setCountryMessages] = useState([]);
 
   const myCountry = profile?.country ?? null;
   const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
@@ -121,6 +174,108 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
   );
 
   useEffect(() => { myConnectionCountriesRef.current = myConnectionCountries; }, [myConnectionCountries]);
+
+  // Count of active users from the same country as me (excluding myself) — for "local presence" badge
+  const localUserCount = useMemo(() => {
+    if (!myCountry || !hasSent) return 0;
+    return activeUsers.filter(u => u.uid !== currentUser?.uid && u.country === myCountry).length;
+  }, [activeUsers, myCountry, currentUser, hasSent]);
+
+  // Keep a ref of active users for the send-burst loop (so it isn't restarted
+  // every time activeUsers changes)
+  useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
+
+  // Reacted countries (coral heartbeat + floating tag) come straight from the sender's prop.
+  // Only include reactions whose timestamp is >= lastSendTime so stale Firestore entries
+  // from a previous send can never bleed into the current send's globe view — even if the
+  // onSnapshot listener re-adds them after a clear (because reactObservedRef is still live).
+  useEffect(() => {
+    const m = new Map();
+    const now = Date.now();
+    const sendFloor = lastSendTime || 0;
+    for (const [c, v] of Object.entries(reactedCountries || {})) {
+      if (v && now - v.at < FIVE_HOURS_MS && v.at >= sendFloor && COUNTRY_COORDS[c]) {
+        m.set(c, { emoji: v.emoji, at: v.at });
+      }
+    }
+    reactedRef.current = m;
+  }, [reactedCountries, lastSendTime]);
+
+  // "Seen" tier: while the map is open and I've sent a greeting, every active
+  // country (including my own) is recorded as having seen my kindness. These
+  // countries gently beat like a heartbeat for 5h — visible only to me.
+  useEffect(() => {
+    if (!hasSent || !mapReady) return;
+    // Exclude myself so my own country only beats when ANOTHER same-country user is active.
+    const seen = [...new Set(
+      activeUsers.filter(u => u.uid !== currentUser?.uid).map(u => u.country).filter(c => c && COUNTRY_COORDS[c])
+    )];
+    if (!seen.length) return;
+    setSeenCountries(prev => {
+      const now = Date.now();
+      const next = { ...prev };
+      seen.forEach(c => { next[c] = { at: now }; });
+      for (const [c, v] of Object.entries(next)) if (now - v.at >= FIVE_HOURS_MS) delete next[c];
+      try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  }, [activeUsers, hasSent, mapReady, myCountry, currentUser]);
+
+  // Prune "seen" lighting older than 5h once a minute
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setSeenCountries(prev => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        for (const [c, v] of Object.entries(prev)) { if (now - v.at < FIVE_HOURS_MS) next[c] = v; else changed = true; }
+        if (changed) { try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {} return next; }
+        return prev;
+      });
+    }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Sync the seen ref for the draw loop (reacted countries take priority)
+  useEffect(() => {
+    const reacted = reactedRef.current;
+    seenRef.current = new Set(Object.keys(seenCountries).filter(c => !reacted.has(c) && COUNTRY_COORDS[c]));
+  }, [seenCountries, reactedCountries]);
+
+  // Keep hometown ping timestamp accessible in the draw loop without re-running draw effect
+  useEffect(() => { hometownPingRef.current = hometownPingTime; }, [hometownPingTime]);
+
+  // Send burst: when the user sends a greeting, fire arcs radiating out from
+  // their country CONTINUOUSLY for 30 seconds. Targets active users' countries
+  // if any exist, otherwise a worldwide spread so a solo sender still sees it.
+  useEffect(() => {
+    if (!mapReady || !myCoords || lastSendTime === lastSendTimeRef.current) return;
+    lastSendTimeRef.current = lastSendTime;
+    const endAt = Date.now() + 30000;
+    const fireWave = () => {
+      const activeOthers = [...new Set(
+        activeUsersRef.current.map(u => u.country).filter(c => c && c !== myCountry && COUNTRY_COORDS[c])
+      )];
+      const others = activeOthers.length
+        ? activeOthers
+        : GLOBAL_BURST_TARGETS.filter(c => c !== myCountry && COUNTRY_COORDS[c]);
+      others.forEach((country, i) => {
+        setTimeout(() => {
+          const toC = COUNTRY_COORDS[country];
+          const id = ++arcIdRef.current;
+          arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC: myCoords, toC, startTime: Date.now(), isSend: true }];
+          setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3200);
+        }, i * 55);
+      });
+    };
+    fireWave();
+    clearInterval(sendBurstIntervalRef.current);
+    sendBurstIntervalRef.current = setInterval(() => {
+      if (Date.now() > endAt) { clearInterval(sendBurstIntervalRef.current); return; }
+      fireWave();
+    }, 2500);
+    return () => clearInterval(sendBurstIntervalRef.current);
+  }, [mapReady, lastSendTime, myCoords, myCountry]);
 
   const furthestCountry = useMemo(() => {
     if (!myCoords || !myConnectionCountries.length) return null;
@@ -156,6 +311,30 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       const world = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
       countriesRef.current = window.topojson.feature(world, world.objects.countries).features;
       d3Ref.current = window.d3;
+
+      // Build country-name → GeoJSON feature mapping once so the draw loop can
+      // fill entire countries with colour.  Try exact containment first; fall back
+      // to nearest centroid for island nations whose centroid sits over water.
+      const d3l = window.d3;
+      const nameToFeature = {};
+      for (const [name, coords] of Object.entries(COUNTRY_COORDS)) {
+        let found = null;
+        for (const f of countriesRef.current) {
+          if (d3l.geoContains(f, coords)) { found = f; break; }
+        }
+        if (!found) {
+          let best = null, minDist = Infinity;
+          for (const f of countriesRef.current) {
+            const c = d3l.geoCentroid(f);
+            const dist = (c[0] - coords[0]) ** 2 + (c[1] - coords[1]) ** 2;
+            if (dist < minDist) { minDist = dist; best = f; }
+          }
+          found = best;
+        }
+        if (found) nameToFeature[name] = found;
+      }
+      countryNameToFeatureRef.current = nameToFeature;
+
       setMapReady(true);
     };
     load().catch(console.error);
@@ -208,11 +387,12 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
       ctx.clearRect(0, 0, size, size);
 
-      // Ocean with radial gradient
-      const oceanGrad = ctx.createRadialGradient(cx - scale * 0.2, cy - scale * 0.25, scale * 0.1, cx, cy, scale);
-      oceanGrad.addColorStop(0, "#1e5070");
-      oceanGrad.addColorStop(0.6, "#0f2d45");
-      oceanGrad.addColorStop(1, "#081820");
+      // Deep space ocean
+      const oceanGrad = ctx.createRadialGradient(cx - scale * 0.22, cy - scale * 0.28, scale * 0.05, cx, cy, scale);
+      oceanGrad.addColorStop(0, "#1c6080");
+      oceanGrad.addColorStop(0.35, "#0d3852");
+      oceanGrad.addColorStop(0.7, "#07213a");
+      oceanGrad.addColorStop(1, "#020d1a");
       ctx.beginPath();
       path({ type: "Sphere" });
       ctx.fillStyle = oceanGrad;
@@ -225,28 +405,74 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       ctx.lineWidth = 0.5;
       ctx.stroke();
 
-      // Countries
-      for (const feature of countriesRef.current) {
+      // Countries — subtle shade variety for visual depth
+      const LAND_SHADES = ["#2d6142", "#296039", "#316a47", "#2a5a3c", "#307050"];
+      for (let fi = 0; fi < countriesRef.current.length; fi++) {
         ctx.beginPath();
-        path(feature);
-        ctx.fillStyle = "#2d5a3d";
+        path(countriesRef.current[fi]);
+        ctx.fillStyle = LAND_SHADES[fi % LAND_SHADES.length];
         ctx.fill();
-        ctx.strokeStyle = "rgba(0,0,0,0.25)";
+        ctx.strokeStyle = "rgba(77,255,176,0.32)";
         ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
-      // Atmosphere rim
+      // ── Sender-only country fills (visible only to the greeting sender) ──
+      // Computed once here so the dots section and tags section share the same frame values.
+      const now2 = Date.now();
+      const beat = heartbeat(now2);
+
+      // Seen tier — warm amber, beats like a heartbeat for 5h
+      for (const c of seenRef.current) {
+        if (reactedRef.current.has(c)) continue; // reacted tier takes full priority
+        const feature = countryNameToFeatureRef.current[c];
+        if (!feature) continue;
+        const fillA  = (0.22 + 0.55 * beat).toFixed(2);
+        const strokeA = (0.35 + 0.55 * beat).toFixed(2);
+        const blur = 4 + 14 * beat;
+        ctx.beginPath(); path(feature);
+        ctx.fillStyle = `rgba(244,164,53,${fillA})`;
+        ctx.shadowColor = "#F4A435"; ctx.shadowBlur = blur;
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); path(feature);
+        ctx.strokeStyle = `rgba(244,164,53,${strokeA})`;
+        ctx.lineWidth = 1.2;
+        ctx.shadowColor = "#F4A435"; ctx.shadowBlur = blur * 0.6;
+        ctx.stroke(); ctx.shadowBlur = 0;
+      }
+
+      // Reacted tier — rose-coral #FF5A7E, beats like a heartbeat (same pulse as amber)
+      for (const [c] of reactedRef.current) {
+        const feature = countryNameToFeatureRef.current[c];
+        if (!feature) continue;
+        const fillA  = (0.30 + 0.55 * beat).toFixed(2);
+        const strokeA = (0.45 + 0.55 * beat).toFixed(2);
+        const blur = 6 + 16 * beat;
+        ctx.beginPath(); path(feature);
+        ctx.fillStyle = `rgba(255,90,126,${fillA})`;
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = blur;
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); path(feature);
+        ctx.strokeStyle = `rgba(255,90,126,${strokeA})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#FF5A7E"; ctx.shadowBlur = blur * 0.6;
+        ctx.stroke(); ctx.shadowBlur = 0;
+      }
+
+      // Atmosphere — blue-white rim + outer glow like real Earth photos
+      const outerAtm = ctx.createRadialGradient(cx, cy, scale * 0.87, cx, cy, scale * 1.07);
+      outerAtm.addColorStop(0, "rgba(50,140,255,0)");
+      outerAtm.addColorStop(0.5, "rgba(65,160,255,0.07)");
+      outerAtm.addColorStop(1, "rgba(110,195,255,0.18)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, scale * 1.07, 0, Math.PI * 2);
+      ctx.fillStyle = outerAtm;
+      ctx.fill();
       ctx.beginPath();
       ctx.arc(cx, cy, scale, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(77,255,176,0.3)";
+      ctx.strokeStyle = "rgba(90,170,255,0.5)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
-      const atmGrad = ctx.createRadialGradient(cx, cy, scale * 0.88, cx, cy, scale * 1.0);
-      atmGrad.addColorStop(0, "rgba(77,255,176,0)");
-      atmGrad.addColorStop(1, "rgba(77,255,176,0.08)");
-      ctx.fillStyle = atmGrad;
-      ctx.fill();
 
       // Specular highlight
       const specGrad = ctx.createRadialGradient(cx - scale * 0.28, cy - scale * 0.3, 0, cx, cy, scale);
@@ -258,79 +484,147 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       ctx.fillStyle = specGrad;
       ctx.fill();
 
-      // ── Arcs ──
+      // ── Animated Arcs — comet-trail style ──
       if (tabRef.current === "world") {
-        for (const { fromC, toC } of arcsRef.current) {
+        const now = Date.now();
+        const ARC_RGB = {
+          "#4DFFB0": [77, 255, 176],
+          "#FFD700": [255, 215, 0],
+          "#FF6B9D": [255, 107, 157],
+          "#67E8F9": [103, 232, 249],
+          "#A78BFA": [167, 139, 250],
+        };
+        const SEND_RGB = [255, 165, 55];
+        for (const { fromC, toC, startTime, color, isSend } of arcsRef.current) {
+          const ARC_DURATION = isSend ? 2600 : 1800;
+          const progress = Math.min(1, (now - (startTime ?? now)) / ARC_DURATION);
           const interp = d3.geoInterpolate(fromC, toC);
+          const nSteps = Math.max(2, Math.floor(60 * progress));
           const pts = [];
-          for (let i = 0; i <= 60; i++) {
+          for (let i = 0; i <= nSteps; i++) {
             const p = proj(interp(i / 60));
             if (p) pts.push(p);
           }
           if (pts.length < 2) continue;
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.strokeStyle = "rgba(77,255,176,0.7)";
-          ctx.lineWidth = 1.5;
-          ctx.shadowColor = "#4DFFB0";
-          ctx.shadowBlur = 6;
-          ctx.stroke();
+
+          const baseAlpha = progress < 0.75 ? 0.85 : 0.85 * (1 - (progress - 0.75) / 0.25);
+          const rgb = isSend ? SEND_RGB : (ARC_RGB[color] || [77, 255, 176]);
+
+          // Comet tail: segments fade from transparent (back) to bright (tip)
+          const tailLen = Math.max(3, Math.floor(pts.length * 0.5));
+          const tailStart = Math.max(0, pts.length - tailLen - 1);
+          for (let i = tailStart; i < pts.length - 1; i++) {
+            const t = (i - tailStart) / Math.max(1, pts.length - 1 - tailStart);
+            const segAlpha = baseAlpha * (0.06 + t * 0.94);
+            const segWidth = 0.5 + t * (isSend ? 2.6 : 1.8);
+            ctx.beginPath();
+            ctx.moveTo(pts[i][0], pts[i][1]);
+            ctx.lineTo(pts[i + 1][0], pts[i + 1][1]);
+            ctx.strokeStyle = `rgba(${rgb.join(",")},${segAlpha.toFixed(2)})`;
+            ctx.lineWidth = segWidth;
+            ctx.shadowColor = `rgb(${rgb.join(",")})`;
+            ctx.shadowBlur = t > 0.6 ? (isSend ? 10 : 5) : 0;
+            ctx.stroke();
+          }
           ctx.shadowBlur = 0;
+
+          // Bright glowing tip
+          if (progress < 0.9 && pts.length > 0) {
+            const tip = pts[pts.length - 1];
+            ctx.beginPath();
+            ctx.arc(tip[0], tip[1], isSend ? 4.5 : 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = `rgb(${rgb.join(",")})`;
+            ctx.shadowBlur = isSend ? 24 : 14;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
         }
       }
 
-      // ── Dots ──
-      const dots = tabRef.current === "world"
-        ? worldDotsRef.current
-        : myConnectionCountriesRef.current.map(c => ({ country: c, count: 1, isMe: false }));
+      // Hometown ripple — expanding rings on viewer's country centroid when a local reacts
+      if (myCoords && isVisible(myCoords[0], myCoords[1]) && hometownPingRef.current > 0) {
+        const pt = proj(myCoords);
+        if (pt) {
+          const hometownAge = now2 - hometownPingRef.current;
+          if (hometownAge < 3000) {
+            for (const delay of [0, 700, 1400]) {
+              const age = hometownAge - delay;
+              if (age < 0 || age > 2200) continue;
+              const p = age / 2200;
+              ctx.beginPath();
+              ctx.arc(pt[0], pt[1], 6 + p * 24, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(77,255,176,${((1 - p) * 0.65).toFixed(2)})`;
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+            }
+          }
+        }
+      }
 
-      for (const { country, count, isMe } of dots) {
-        const coords = COUNTRY_COORDS[country];
+      // ── Reaction tags — rendered last so they sit above everything else ──
+      // Tag erects for REACT_TAG_MS ms (with fade-in/out), then disappears.
+      // After that the coral country heartbeat alone carries the reacted state.
+      for (const [c, info] of reactedRef.current) {
+        const coords = COUNTRY_COORDS[c];
         if (!coords || !isVisible(coords[0], coords[1])) continue;
         const pt = proj(coords);
         if (!pt) continue;
+        const reactAge = now2 - (info.at ?? 0);
+        const anchorY = pt[1] - 4;
 
-        const r = isMe ? 6 : Math.min(3 + count, 6);
-        const color = isMe ? "#4DFFB0" : "#1D9E75";
+        if (reactAge < REACT_TAG_MS) {
+          let tagAlpha = 1;
+          if (reactAge < 300) tagAlpha = reactAge / 300;
+          else if (reactAge > REACT_TAG_MS - 800) tagAlpha = Math.max(0, (REACT_TAG_MS - reactAge) / 800);
+          const pop = reactAge < 300 ? 0.55 + 0.45 * (reactAge / 300) : 1;
 
-        // Glow
-        const glow = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], r * 3.5);
-        glow.addColorStop(0, isMe ? "rgba(77,255,176,0.5)" : "rgba(29,158,117,0.35)");
-        glow.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], r * 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = glow;
-        ctx.fill();
+          const label = `${info.emoji} reacted!`;
+          ctx.font = "bold 11px system-ui, sans-serif";
+          const padX = 8, bubbleH = 20;
+          const bw = ctx.measureText(label).width + padX * 2;
+          const stemH = 18 * pop;
+          const bubbleY = anchorY - stemH - bubbleH;
 
-        // Dot
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Ring for "me"
-        if (isMe) {
+          ctx.globalAlpha = tagAlpha;
           ctx.beginPath();
-          ctx.arc(pt[0], pt[1], r + 4, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(77,255,176,0.45)";
-          ctx.lineWidth = 1.5;
+          ctx.moveTo(pt[0], anchorY);
+          ctx.lineTo(pt[0], bubbleY + bubbleH);
+          ctx.strokeStyle = `rgb(${REACTED_RGB.join(",")})`;
+          ctx.lineWidth = 1.4;
           ctx.stroke();
-
-          // YOU label
-          ctx.font = "bold 9px system-ui, sans-serif";
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(pt[0] - bw / 2, bubbleY, bw, bubbleH, 9);
+          else ctx.rect(pt[0] - bw / 2, bubbleY, bw, bubbleH);
+          ctx.fillStyle = `rgba(${REACTED_RGB.join(",")},0.95)`;
+          ctx.shadowColor = `rgb(${REACTED_RGB.join(",")})`;
+          ctx.shadowBlur = 10;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#ffffff";
           ctx.textAlign = "center";
-          ctx.fillText("YOU", pt[0], pt[1] - r - 7);
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, pt[0], bubbleY + bubbleH / 2 + 0.5);
+          ctx.textBaseline = "alphabetic";
+          ctx.globalAlpha = 1;
         }
       }
     };
 
     const tick = () => {
-      if (autoRotateRef.current && !isDraggingRef.current) {
+      if (flyToTargetRef.current) {
+        const elapsed = Date.now() - flyToStartTimeRef.current;
+        const t = Math.min(1, elapsed / 900);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease-in-out
+        const [sx, sy] = flyToStartRef.current;
+        const [tx, ty] = flyToTargetRef.current;
+        // Handle longitude wrap
+        let dx = tx - sx;
+        if (dx > 180) dx -= 360;
+        if (dx < -180) dx += 360;
+        rotationRef.current = [sx + dx * ease, sy + (ty - sy) * ease, 0];
+        if (t >= 1) { rotationRef.current = [tx, ty, 0]; flyToTargetRef.current = null; }
+      } else if (autoRotateRef.current && !isDraggingRef.current) {
         rotationRef.current = [rotationRef.current[0] + AUTO_ROTATE_SPEED, rotationRef.current[1], 0];
       }
       draw();
@@ -349,8 +643,36 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     if (!mapReady || !canvasRef.current) return;
     const canvas = canvasRef.current;
 
+    // Tap hit-test: invert the tap point to lon/lat, then find nearest country centroid
+    const handleTap = (x, y) => {
+      if (!projRef.current) return;
+      // Check tap is within the globe circle
+      const size = parseFloat(canvasRef.current?.style.width) || 300;
+      const cx = size / 2, cy = size / 2;
+      const scale = scaleRef.current || cx * 0.9;
+      if ((x - cx) ** 2 + (y - cy) ** 2 > scale ** 2) return; // outside globe
+
+      // Invert to geographic coordinates
+      const geo = projRef.current.invert?.([x, y]);
+      if (!geo) return;
+      const [tapLon, tapLat] = geo;
+
+      // Find closest country centroid to the tapped lat/lon
+      let closest = null, minDist = Infinity;
+      const countMap = {};
+      for (const { country, count } of worldDotsRef.current) countMap[country] = count;
+
+      for (const [country, [lon, lat]] of Object.entries(COUNTRY_COORDS)) {
+        const dLon = tapLon - lon, dLat = tapLat - lat;
+        const dist = Math.sqrt(dLon * dLon + dLat * dLat);
+        if (dist < minDist) { minDist = dist; closest = { country, count: countMap[country] ?? 0 }; }
+      }
+      if (closest) setSelectedCountry(closest);
+    };
+
     const onMouseDown = (e) => {
       e.preventDefault();
+      mouseMovedRef.current = false;
       isDraggingRef.current = true;
       autoRotateRef.current = false;
       setIsAutoRotating(false);
@@ -360,6 +682,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
 
     const onMouseMove = (e) => {
       if (isDraggingRef.current) {
+        mouseMovedRef.current = true;
         const scale = scaleRef.current || 150;
         const dx = e.clientX - dragStartRef.current[0];
         const dy = e.clientY - dragStartRef.current[1];
@@ -393,6 +716,13 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     const onMouseUp = () => { isDraggingRef.current = false; };
     const onMouseLeave = () => { isDraggingRef.current = false; setTooltip(null); };
 
+    // Click = mousedown + mouseup without drag
+    const onClick = (e) => {
+      if (mouseMovedRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      handleTap(e.clientX - rect.left, e.clientY - rect.top);
+    };
+
     const onTouchStart = (e) => {
       if (e.touches.length === 2) {
         isDraggingRef.current = false;
@@ -400,6 +730,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         lastPinchRef.current = { dist: Math.sqrt(dx * dx + dy * dy), scale: scaleRef.current };
       } else if (e.touches.length === 1) {
+        mouseMovedRef.current = false;
         isDraggingRef.current = true;
         autoRotateRef.current = false;
         setIsAutoRotating(false);
@@ -411,12 +742,14 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     const onTouchMove = (e) => {
       e.preventDefault();
       if (e.touches.length === 2 && lastPinchRef.current) {
+        mouseMovedRef.current = true;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const size = parseFloat(canvas.style.width) || 300;
         scaleRef.current = Math.max(size * 0.25, Math.min(size * 1.6, lastPinchRef.current.scale * dist / lastPinchRef.current.dist));
       } else if (e.touches.length === 1 && isDraggingRef.current) {
+        mouseMovedRef.current = true;
         const scale = scaleRef.current || 150;
         const dx = e.touches[0].clientX - dragStartRef.current[0];
         const dy = e.touches[0].clientY - dragStartRef.current[1];
@@ -428,7 +761,16 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       }
     };
 
-    const onTouchEnd = () => { isDraggingRef.current = false; lastPinchRef.current = null; };
+    const onTouchEnd = (e) => {
+      // Detect tap: single touch that didn't move
+      if (e.changedTouches.length === 1 && !mouseMovedRef.current && !lastPinchRef.current) {
+        const touch = e.changedTouches[0];
+        const rect = canvas.getBoundingClientRect();
+        handleTap(touch.clientX - rect.left, touch.clientY - rect.top);
+      }
+      isDraggingRef.current = false;
+      lastPinchRef.current = null;
+    };
 
     const onWheel = (e) => {
       e.preventDefault();
@@ -440,6 +782,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     canvas.addEventListener("mousedown", onMouseDown);
     canvas.addEventListener("mousemove", onMouseMove);
     canvas.addEventListener("mouseleave", onMouseLeave);
+    canvas.addEventListener("click", onClick);
     canvas.addEventListener("touchstart", onTouchStart, { passive: true });
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd);
@@ -450,6 +793,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       canvas.removeEventListener("mousedown", onMouseDown);
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseleave", onMouseLeave);
+      canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchmove", onTouchMove);
       canvas.removeEventListener("touchend", onTouchEnd);
@@ -497,14 +841,36 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     }, () => {});
   }, [db, currentUser]);
 
+  // ── Country card: load recent messages when a dot is tapped ──
+  useEffect(() => {
+    if (!db || !selectedCountry) { setCountryMessages([]); return; }
+    const q = query(
+      collection(db, "publicMessages"),
+      where("country", "==", selectedCountry.country),
+      orderBy("timestamp", "desc"),
+      limit(3)
+    );
+    return onSnapshot(q, (snap) => {
+      setCountryMessages(snap.docs.map(d => d.data().text).filter(Boolean));
+    }, () => {});
+  }, [db, selectedCountry?.country]);
+
   // ── Arc animation ────────────────────────────────────────────
   useEffect(() => {
-    if (!mapReady || activeUsers.length < 2) return;
+    if (!mapReady || !hasSent || activeUsers.length < 2) return;
+    const ARC_PALETTE = ["#4DFFB0", "#FFD700", "#FF6B9D", "#67E8F9", "#A78BFA"];
     const addArc = () => {
-      const others = activeUsers.filter(u => u.uid !== currentUser?.uid);
+      // Exclude countries that are currently lit (seen amber / reacted coral) — those
+      // show their state purely through the country heartbeat, never through flares.
+      const others = activeUsers.filter(u =>
+        u.uid !== currentUser?.uid &&
+        !seenRef.current.has(u.country) &&
+        !reactedRef.current.has(u.country)
+      );
       if (!others.length) return;
       const from = others[Math.floor(Math.random() * others.length)];
-      const toCandidates = myCoords
+      const myLit = seenRef.current.has(myCountry) || reactedRef.current.has(myCountry);
+      const toCandidates = (myCoords && !myLit)
         ? [{ country: myCountry }]
         : others.filter(u => u.country !== from.country);
       if (!toCandidates.length) return;
@@ -512,9 +878,10 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
       const fromC = COUNTRY_COORDS[from.country];
       const toC = COUNTRY_COORDS[to.country];
       if (!fromC || !toC) return;
+      const color = ARC_PALETTE[Math.floor(Math.random() * ARC_PALETTE.length)];
       const id = ++arcIdRef.current;
-      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC }];
-      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 3000);
+      arcsRef.current = [...arcsRef.current.slice(-6), { id, fromC, toC, startTime: Date.now(), color }];
+      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
     };
     addArc();
     arcTimerRef.current = setInterval(addArc, 2500);
@@ -525,7 +892,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: "#060e10", overflow: "hidden", position: "relative" }}>
 
       {/* ── GLOBE AREA ── */}
-      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(ellipse at 40% 40%, #0d2535 0%, #060e10 70%)" }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(ellipse at 35% 35%, #0e1e30 0%, #060c16 50%, #020810 100%)" }}>
 
         {/* Loading */}
         {!mapReady && (
@@ -535,7 +902,7 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           </div>
         )}
 
-        <canvas ref={canvasRef} style={{ display: mapReady ? "block" : "none", cursor: "grab", borderRadius: "50%", boxShadow: "0 0 80px rgba(77,255,176,0.07), 0 8px 60px rgba(0,0,0,0.9)" }} />
+        <canvas ref={canvasRef} style={{ display: mapReady ? "block" : "none", cursor: "grab", borderRadius: "50%", boxShadow: "0 0 60px rgba(50,130,255,0.12), 0 0 120px rgba(50,130,255,0.06), 0 8px 60px rgba(0,0,0,0.95)" }} />
 
         {/* Tooltip */}
         {tooltip && (
@@ -558,6 +925,22 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
             <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", margin: "2px 0 0" }}>Kindness crossing borders</p>
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {/* Find me */}
+            {myCoords && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  flyToStartRef.current = [...rotationRef.current];
+                  flyToTargetRef.current = [-myCoords[0], -myCoords[1]];
+                  flyToStartTimeRef.current = Date.now();
+                  autoRotateRef.current = false;
+                  setIsAutoRotating(false);
+                }}
+                title="Fly to my country"
+                style={{ border: "1px solid rgba(255,255,255,0.2)", borderRadius: "8px", padding: "5px 8px", background: "rgba(0,0,0,0.4)", cursor: "pointer", fontSize: "13px", color: "rgba(255,255,255,0.75)", backdropFilter: "blur(4px)" }}>
+                ◎ Find me
+              </button>
+            )}
             {/* Auto-rotate toggle */}
             <button onClick={(e) => { e.stopPropagation(); autoRotateRef.current = !autoRotateRef.current; setIsAutoRotating(r => !r); }}
               title={isAutoRotating ? "Pause rotation" : "Resume rotation"}
@@ -570,70 +953,85 @@ export default function WorldMap({ db, currentUser, profile, onClose }) {
           </div>
         </div>
 
-        {/* ── FLOATING TABS ── */}
-        <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 12px", background: "linear-gradient(to top, rgba(6,14,16,0.95) 0%, transparent 100%)" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            {[["world", "🌍 World"], ["mine", "✨ My connections"]].map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)} style={{ borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", border: tab === t ? "1px solid #4DFFB0" : "1px solid rgba(255,255,255,0.2)", background: tab === t ? "rgba(77,255,176,0.15)" : "rgba(0,0,0,0.3)", color: tab === t ? "#4DFFB0" : "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>{label}</button>
-            ))}
+        {/* ── COUNTRY CARD ── */}
+        {selectedCountry && (
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            style={{
+              position: "absolute", bottom: 0, left: 0, right: 0,
+              background: "linear-gradient(to top, rgba(6,14,16,0.98) 0%, rgba(8,18,22,0.92) 100%)",
+              backdropFilter: "blur(16px)",
+              borderTop: "1px solid rgba(77,255,176,0.18)",
+              padding: "16px 18px 20px",
+              animation: "cardSlideUp 0.28s cubic-bezier(0.34,1.1,0.64,1) both",
+            }}>
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "15px", color: "white" }}>
+                  {selectedCountry.country}
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: "11px", color: "rgba(77,255,176,0.75)" }}>
+                  {selectedCountry.count} {selectedCountry.count === 1 ? "person" : "people"} spreading kindness here
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedCountry(null)}
+                style={{ border: "1px solid rgba(255,255,255,0.15)", borderRadius: "50%", padding: "5px", background: "rgba(0,0,0,0.4)", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                <X size={12} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+            {/* Recent messages */}
+            {countryMessages.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "13px" }}>
+                {countryMessages.map((text, i) => (
+                  <div key={i} style={{
+                    background: "rgba(77,255,176,0.07)", border: "1px solid rgba(77,255,176,0.12)",
+                    borderRadius: "10px", padding: "7px 11px",
+                    fontSize: "12px", color: "rgba(255,255,255,0.8)", lineHeight: 1.4,
+                  }}>
+                    "{text}"
+                  </div>
+                ))}
+              </div>
+            )}
+            {countryMessages.length === 0 && (
+              <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginBottom: "13px" }}>
+                No recent messages from here yet.
+              </p>
+            )}
+            {/* CTA */}
+            <button
+              onClick={() => { setSelectedCountry(null); onSendKindness?.(); }}
+              style={{
+                width: "100%", padding: "10px", borderRadius: "12px",
+                background: "rgba(77,255,176,0.15)", border: "1px solid rgba(77,255,176,0.35)",
+                color: "#4DFFB0", fontWeight: 700, fontSize: "13px", cursor: "pointer",
+                letterSpacing: "-0.01em",
+              }}>
+              Send kindness to someone today ✨
+            </button>
           </div>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block", animation: "seenLive 1.5s infinite" }} />Live
-          </span>
-        </div>
+        )}
+
       </div>
 
       <style>{`
         @keyframes seenLive { 0%,100%{opacity:.4} 50%{opacity:1} }
         @keyframes seenSpin { to{transform:rotate(360deg)} }
+        @keyframes cardSlideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
         canvas { touch-action: none; user-select: none; }
       `}</style>
 
-      {/* ── IMPACT BAR ── */}
+      {/* ── LEGEND BAR ── */}
       <div style={{ flexShrink: 0, background: "#0d1f1a", borderTop: "1px solid rgba(77,255,176,0.12)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {tab === "world" ? (
-            <>
-              <ImpactStat label="Active now" value={activeUsers.length} />
-              <ImpactStat label="Countries" value={[...new Set(activeUsers.map(u => u.country).filter(Boolean))].length} divider />
-              <ImpactStat label="Greetings today" value={totalToday} divider />
-            </>
-          ) : (
-            <>
-              <ImpactStat label="Seen from" value={`${myConnectionCountries.length} countries`} />
-              <ImpactStat label="Waves received" value={myWaves.length} divider />
-              <ImpactStat label="Furthest reach" value={furthestCountry ? `~${furthestCountry.km.toLocaleString()} km` : "—"} divider />
-            </>
-          )}
-        </div>
-
-        {tab === "mine" && myConnectionCountries.length > 0 && (
-          <div style={{ padding: "10px 16px 14px", overflowX: "auto" }}>
-            <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(77,255,176,0.6)", margin: "0 0 8px" }}>Countries that saw you</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-              {myConnectionCountries.map(c => (
-                <span key={c} style={{ borderRadius: "20px", border: "1px solid rgba(77,255,176,0.25)", background: "rgba(77,255,176,0.08)", padding: "3px 10px", fontSize: "11px", fontWeight: 500, color: "#5DCAA5" }}>{c}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "8px 16px 12px", fontSize: "11px", color: "rgba(255,255,255,0.4)", flexWrap: "wrap" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#4DFFB0", display: "inline-block" }} />You</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#1D9E75", display: "inline-block" }} />{tab === "world" ? "Active user" : "Waved at you"}</span>
-          {tab === "world" && <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><svg width="20" height="8" viewBox="0 0 20 8"><path d="M1,6 Q10,1 19,6" fill="none" stroke="#4DFFB0" strokeWidth="1.5" strokeLinecap="round" /></svg>Greeting arc</span>}
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#F4A435", display: "inline-block", boxShadow: "0 0 6px #F4A435" }} />Saw your kindness</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#FF5A7E", display: "inline-block", boxShadow: "0 0 6px #FF5A7E" }} />Reacted</span>
         </div>
       </div>
     </div>
   );
 }
 
-function ImpactStat({ label, value, divider }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 8px", borderLeft: divider ? "1px solid rgba(255,255,255,0.06)" : "none", textAlign: "center" }}>
-      <p style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "white", lineHeight: 1.1 }}>{value}</p>
-      <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", margin: "3px 0 0", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
-    </div>
-  );
-}

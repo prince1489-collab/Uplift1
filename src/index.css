@@ -11,10 +11,473 @@ body {
   font-family: "Inter", system-ui, sans-serif;
 }
 
+/* Mood heartbeat — two subtle pulses (lub-dub) every 4s */
+@keyframes seenHeartbeat {
+  0%, 100% { transform: scale(1); }
+  7%  { transform: scale(1.022); }
+  14% { transform: scale(1.005); }
+  20% { transform: scale(1.018); }
+  28% { transform: scale(1); }
+}
+.seen-heartbeat {
+  animation: seenHeartbeat 4s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Dynamic mood bubbles (own messages) — gradient drift (A) + shimmer sweep (B) */
+@keyframes seenGradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes seenShimmerSweep {
+  0%   { transform: translateX(-150%); opacity: 0; }
+  5%   { opacity: 1; }
+  30%  { transform: translateX(350%); opacity: 1; }
+  31%  { opacity: 0; }
+  100% { transform: translateX(-150%); opacity: 0; }
+}
+.seen-mood-dynamic {
+  background-size: 200% 200% !important;
+  animation: seenHeartbeat 4s ease-in-out infinite, seenGradientShift 8s ease-in-out infinite;
+  will-change: background-position, transform;
+}
+.seen-mood-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+  animation: seenShimmerSweep 5s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* ─── Dark Shell (Suggestion 3) ─────────────────────────────────────────── */
+[data-dark-shell] {
+  background: #0e1219;
+  border-color: rgba(255,255,255,0.07) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.4) !important;
+  color: #e2e8f0;
+}
+
+/* Structural zones */
+[data-dark-shell] header {
+  background: rgba(13,17,23,0.92) !important;
+  border-bottom-color: rgba(255,255,255,0.07) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+[data-dark-shell] main  { background: rgba(10,13,19,0.55) !important; }
+[data-dark-shell] footer {
+  background: #0e1219 !important;
+  border-top-color: rgba(255,255,255,0.07) !important;
+}
+
+/* Text */
+[data-dark-shell] .text-slate-900 { color: #f1f5f9 !important; }
+[data-dark-shell] .text-slate-800 { color: #e2e8f0 !important; }
+[data-dark-shell] .text-slate-700 { color: #cbd5e1 !important; }
+[data-dark-shell] .text-slate-600 { color: #94a3b8 !important; }
+[data-dark-shell] .text-slate-500 { color: #64748b !important; }
+[data-dark-shell] .text-slate-400 { color: #4a5568 !important; }
+
+/* Backgrounds */
+[data-dark-shell] .bg-white           { background-color: #161b22 !important; }
+[data-dark-shell] .bg-white\/95       { background-color: rgba(22,27,34,0.95) !important; }
+[data-dark-shell] .bg-white\/90       { background-color: rgba(22,27,34,0.9) !important; }
+[data-dark-shell] .bg-slate-50        { background-color: #0d1117 !important; }
+[data-dark-shell] .bg-slate-100       { background-color: #161b22 !important; }
+[data-dark-shell] .bg-slate-50\/80    { background-color: rgba(13,17,23,0.8) !important; }
+[data-dark-shell] .bg-slate-50\/60    { background-color: rgba(13,17,23,0.6) !important; }
+[data-dark-shell] .bg-slate-100\/80   { background-color: rgba(22,27,34,0.8) !important; }
+
+/* Borders */
+[data-dark-shell] .border-slate-100  { border-color: rgba(255,255,255,0.07) !important; }
+[data-dark-shell] .border-slate-200  { border-color: rgba(255,255,255,0.09) !important; }
+[data-dark-shell] .border-slate-300  { border-color: rgba(255,255,255,0.12) !important; }
+
+/* Hover states */
+[data-dark-shell] .hover\:bg-slate-50:hover  { background-color: rgba(255,255,255,0.04) !important; }
+[data-dark-shell] .hover\:bg-slate-100:hover { background-color: rgba(255,255,255,0.06) !important; }
+[data-dark-shell] .hover\:bg-red-50:hover    { background-color: rgba(239,68,68,0.08) !important; }
+
+/* Floating panels — glassmorphism (dropdowns & bottom sheet) */
+[data-dark-shell] .z-50.rounded-2xl {
+  background: rgba(15,18,26,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.5) !important;
+}
+[data-dark-shell] .z-10.rounded-t-3xl {
+  background: rgba(13,17,23,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* Handle bar in greeting sheet */
+[data-dark-shell] .z-10.rounded-t-3xl .bg-slate-200 { background-color: rgba(255,255,255,0.12) !important; }
+
+/* Streak badge cold variant */
+[data-dark-shell] .bg-slate-50.border-slate-200 { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Input placeholder bars */
+[data-dark-shell] .bg-slate-100.rounded-2xl { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Amber accent — hot streak badges in dark mode */
+[data-dark-shell] .bg-orange-50      { background-color: rgba(245,158,11,0.12) !important; }
+[data-dark-shell] .border-orange-200 { border-color: rgba(245,158,11,0.35) !important; }
+[data-dark-shell] .text-orange-700   { color: #fbbf24 !important; }
+[data-dark-shell] .text-orange-500   { color: #f59e0b !important; }
+
+/* ─── 44px minimum tap targets (Suggestion 4) ───────────────────────────── */
+/* Expand tap area without changing visual layout */
+[data-dark-shell] button,
+[data-dark-shell] a,
+[data-dark-shell] [role="button"] {
+  position: relative;
+}
+[data-dark-shell] button::before,
+[data-dark-shell] a::before,
+[data-dark-shell] [role="button"]::before {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ─── Shimmer animation for high-value badges (Suggestion 8) ─────────────── */
+@keyframes seenShimmerSlide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+.seen-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.seen-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.55) 50%,
+    transparent 100%
+  );
+  animation: seenShimmerSlide 2.2s ease-in-out infinite;
+  animation-delay: 1s;
+  pointer-events: none;
+}
+
+/* ─── Message timestamps (Suggestion 7) ─────────────────────────────────── */
+.seen-msg-ts {
+  font-size: 10px;
+  color: #94a3b8;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  padding: 0 4px;
+  margin-top: 2px;
+}
+[data-dark-shell] .seen-msg-ts { color: rgba(148,163,184,0.6); }
+.seen-msg-ts--show { opacity: 1; }
+.group:hover .seen-msg-ts { opacity: 1; }
+
+/* ─── Read receipt dot (Suggestion 7) ───────────────────────────────────── */
+.seen-receipt {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(45,212,191,0.55);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ─── WhatsApp-style quick-react bar ─────────────────────────────────────── */
+@keyframes seenQrbIn {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.78); }
+  60%  { transform: translateY(-3px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.seen-qrb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 7px;
+  background: rgba(20, 24, 34, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  box-shadow: 0 4px 28px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  animation: seenQrbIn 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  white-space: nowrap;
+  /* Keep above bubbles but not above modals */
+  position: relative;
+  z-index: 30;
+  /* Scroll horizontally on narrow screens */
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.seen-qrb::-webkit-scrollbar { display: none; }
+
+.seen-qrb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), background 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.seen-qrb-btn:hover  { transform: scale(1.22); background: rgba(255,255,255,0.07); }
+.seen-qrb-btn:active { transform: scale(0.88) !important; }
+
+/* Currently-picked emoji ring */
+.seen-qrb-btn--picked {
+  background: rgba(45,212,191,0.14) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(45,212,191,0.45);
+}
+
+/* Done (waved/gifted) */
+.seen-qrb-btn--done { opacity: 0.7; cursor: default; font-size: 20px; }
+
+/* Dimmed/disabled */
+.seen-qrb-btn--dim  { opacity: 0.35; cursor: not-allowed; }
+
+/* Separator between special actions and emoji reactions */
+.seen-qrb-sep {
+  width: 1px;
+  height: 26px;
+  background: rgba(255,255,255,0.12);
+  margin: 0 3px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+/* Overlay backdrop that closes the bar on outside tap */
+/* Prevent native text-selection menu on message bubbles */
+.select-none {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+.seen-qrb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+}
+
+/* ─── Gift glow + badge ──────────────────────────────────────────────── */
+
+/* Golden ring pulse radiating outward from a gifted bubble */
+@keyframes giftRingPulse {
+  0%   { opacity: 0;   box-shadow: 0 0 0 0   rgba(251,191,36,0.9), inset 0 0 0 0   rgba(251,191,36,0.5); }
+  20%  { opacity: 1;   box-shadow: 0 0 0 4px rgba(251,191,36,0.6), inset 0 0 0 1px rgba(251,191,36,0.7); }
+  65%  { opacity: 0.7; box-shadow: 0 0 0 12px rgba(251,191,36,0.15), inset 0 0 0 1px rgba(251,191,36,0.3); }
+  100% { opacity: 0;   box-shadow: 0 0 0 20px rgba(251,191,36,0),  inset 0 0 0 0   rgba(251,191,36,0); }
+}
+.gift-glow-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 4;
+  animation: giftRingPulse 2s ease-out forwards;
+}
+
+/* 🎁 N badge that appears below the bubble */
+@keyframes giftBadgePop {
+  0%   { transform: scale(0) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.2)  translateY(-2px); opacity: 1; }
+  100% { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+.gift-badge {
+  position: absolute;
+  bottom: -11px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 999px;
+  background: rgba(251,191,36,0.15);
+  border: 1px solid rgba(251,191,36,0.45);
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+.gift-badge--pop {
+  animation: giftBadgePop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+[data-dark-shell] .gift-badge {
+  background: rgba(251,191,36,0.12);
+  border-color: rgba(251,191,36,0.35);
+  color: #fbbf24;
+}
+
+/* ─── Mystery Greeting unwrap animations ────────────────────────────── */
+
+/* Pre-unwrap: pulse ring on the gift bubble to invite tapping */
+@keyframes mysteryInvite {
+  0%   { box-shadow: 0 0 0 0   rgba(251,146,60,0.55); }
+  65%  { box-shadow: 0 0 0 10px rgba(251,146,60,0); }
+  100% { box-shadow: 0 0 0 0   rgba(251,146,60,0); }
+}
+.mystery-invite {
+  animation: mysteryInvite 2.2s ease-out infinite;
+}
+
+/* Burst: the moment of unwrap — scale pop + brightness flash */
+@keyframes mysteryBurst {
+  0%   { transform: scale(1);    filter: brightness(1); }
+  22%  { transform: scale(1.11); filter: brightness(1.35); }
+  55%  { transform: scale(0.96); filter: brightness(1.1); }
+  78%  { transform: scale(1.03); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.mystery-burst {
+  animation: mysteryBurst 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Revealed text springs in after burst */
+@keyframes mysteryReveal {
+  0%   { opacity: 0; transform: scale(0.82) translateY(5px); }
+  60%  { opacity: 1; transform: scale(1.04) translateY(-1px); }
+  100% { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.mystery-reveal {
+  display: inline-block;
+  animation: mysteryReveal 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
+}
+
+/* Send button bounce (Suggestion 5) */
+@keyframes seenSendBounce {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.82); }
+  55%  { transform: scale(1.18); }
+  75%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+.seen-send-btn:active {
+  animation: seenSendBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.sheet-slide-up {
+  animation: sheetSlideUp 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* ─── Sticker / GIF reaction animations ─────────────────────────────────── */
+@keyframes stickerBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%       { transform: translateY(-10px) scale(1.12); }
+  65%       { transform: translateY(-4px) scale(1.04); }
+}
+@keyframes stickerSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes stickerFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+@keyframes stickerPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.28); }
+}
+@keyframes stickerWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20%      { transform: rotate(-14deg) scale(1.1); }
+  40%      { transform: rotate(14deg) scale(1.1); }
+  60%      { transform: rotate(-8deg); }
+  80%      { transform: rotate(8deg); }
+}
+@keyframes stickerClap {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  30%      { transform: scale(1.2) rotate(-12deg); }
+  70%      { transform: scale(1.2) rotate(12deg); }
+}
+.sticker-bounce  { animation: stickerBounce 1.4s ease-in-out infinite; }
+.sticker-spin    { animation: stickerSpin   2.2s linear infinite; }
+.sticker-float   { animation: stickerFloat  2.4s ease-in-out infinite; }
+.sticker-pulse   { animation: stickerPulse  1.6s ease-in-out infinite; }
+.sticker-wiggle  { animation: stickerWiggle 0.9s ease-in-out infinite; }
+.sticker-clap    { animation: stickerClap   0.65s ease-in-out infinite; }
+
+/* ─── Hearted bubble glow ────────────────────────────────────────────────────
+   Soft rose border glow that breathes; intensity scales with heart count. */
+.seen-heart-glow {
+  border-radius: 16px;
+  animation: seenHeartGlow 2.6s ease-in-out infinite;
+}
+.seen-heart-glow[data-tier="1"] {
+  --hg-ring: rgba(251, 113, 133, 0.35);
+  --hg-soft: rgba(251, 113, 133, 0.18);
+  --hg-soft-peak: rgba(251, 113, 133, 0.32);
+}
+.seen-heart-glow[data-tier="2"] {
+  --hg-ring: rgba(251, 113, 133, 0.55);
+  --hg-soft: rgba(251, 113, 133, 0.28);
+  --hg-soft-peak: rgba(244, 63, 94, 0.45);
+}
+.seen-heart-glow[data-tier="3"] {
+  --hg-ring: rgba(244, 63, 94, 0.7);
+  --hg-soft: rgba(244, 63, 94, 0.38);
+  --hg-soft-peak: rgba(244, 63, 94, 0.6);
+}
+@keyframes seenHeartGlow {
+  0%, 100% { box-shadow: 0 0 0 1.5px var(--hg-ring), 0 0 10px var(--hg-soft); }
+  50%      { box-shadow: 0 0 0 1.5px var(--hg-ring), 0 0 20px var(--hg-soft-peak); }
+}
+
+/* ─── Life Hacks card reveal ─────────────────────────────────────────────── */
+@keyframes hackSparkleOut {
+  0%   { transform: translate(0, 0) scale(1.6); opacity: 1; }
+  30%  { opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+}
+@keyframes hackOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hackCardIn {
+  from { transform: scale(0.78); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
 }

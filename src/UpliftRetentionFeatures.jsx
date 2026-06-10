@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 import React, {
   useCallback,
   useEffect,
@@ -5,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import {
   collection,
@@ -25,12 +28,22 @@ import {
   addDoc,
 } from "firebase/firestore";
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat";
+import { startCheckout } from "./payments";
+import { AddToCircleButton } from "./Circles";
+import { StickerPicker } from "./StickerReactions";
+
 import {
   Bell,
+  Camera,
   CheckCircle2,
   Flame,
   Gift,
   Heart,
+  MapPin,
+  Pencil,
   Plus,
   Share2,
   Shield,
@@ -43,6 +56,30 @@ import {
 // ─────────────────────────────────────────────────────────────────
 // 0. SHARED HELPERS
 // ─────────────────────────────────────────────────────────────────
+
+const COUNTRY_OPTIONS = [
+  "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
+  "Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia",
+  "Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cabo Verde","Cambodia",
+  "Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica",
+  "Croatia","Cuba","Cyprus","Czech Republic","Democratic Republic of the Congo","Denmark","Djibouti","Dominica",
+  "Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia",
+  "Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea",
+  "Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel",
+  "Italy","Ivory Coast","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kiribati","Kuwait","Kyrgyzstan","Laos",
+  "Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi",
+  "Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova",
+  "Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nauru","Nepal","Netherlands",
+  "New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palau",
+  "Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania",
+  "Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino",
+  "Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia",
+  "Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan",
+  "Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo",
+  "Tonga","Trinidad and Tobago","Tunisia","Turkey","Turkmenistan","Tuvalu","Uganda","Ukraine","United Arab Emirates",
+  "United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen",
+  "Zambia","Zimbabwe",
+];
 
 export function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -176,10 +213,10 @@ export function StreakBadge({ streak }) {
   if (!streak || streak < 1) return null;
   const hot = streak >= 7;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border ${
-      hot ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-slate-50 border-slate-200 text-slate-600"
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border${
+      hot ? " seen-shimmer bg-amber-50 border-amber-300 text-amber-700" : " bg-slate-50 border-slate-200 text-slate-600"
     }`}>
-      <Flame size={12} className={hot ? "text-orange-500" : "text-slate-400"} />
+      <Flame size={12} className={hot ? "text-amber-500" : "text-slate-400"} />
       {streak}d
     </span>
   );
@@ -314,14 +351,17 @@ export function KindnessPledge({ db, uid, todayMessageCount = 0 }) {
 
 const GIFT_AMOUNT = 5;
 
-export function BuddyPanel({ db, currentUser, profile, compact = false }) {
+export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOpen }) {
   const [buddyProfiles, setBuddyProfiles] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
-  const [searchEmail, setSearchEmail] = useState("");
+  const [inviteInput, setInviteInput] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
+  const [copied, setCopied] = useState(false);
   const buddyUids = profile?.buddies ?? [];
+
+  const inviteLink = currentUser ? window.location.origin + "?add=" + currentUser.uid : "";
 
   useEffect(() => {
     if (!db || buddyUids.length === 0) { setBuddyProfiles([]); return; }
@@ -329,21 +369,34 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
       .then((docs) => setBuddyProfiles(docs.filter((d) => d.exists()).map((d) => ({ uid: d.id, ...d.data() }))));
   }, [db, JSON.stringify(buddyUids)]);
 
-  const searchForUser = async () => {
-    if (!db || !searchEmail.trim()) return;
+  const handleShareInvite = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: "Join me on Seen", url: inviteLink }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(inviteLink).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const lookupByInput = async () => {
+    if (!db || !inviteInput.trim()) return;
     setSearching(true); setSearchError(""); setSearchResult(null);
     try {
-      const snap = await getDocs(query(collection(db, "users"), where("email", "==", searchEmail.trim().toLowerCase()), limit(1)));
-      if (snap.empty) setSearchError("No user found.");
-      else { const d = snap.docs[0]; setSearchResult({ uid: d.id, ...d.data() }); }
-    } catch { setSearchError("Search failed."); }
+      const extractedUid = inviteInput.includes("?add=")
+        ? inviteInput.split("?add=")[1].split("&")[0]
+        : inviteInput.trim();
+      const snap = await getDoc(doc(db, "users", extractedUid));
+      if (!snap.exists()) setSearchError("No user found.");
+      else setSearchResult({ uid: snap.id, ...snap.data() });
+    } catch { setSearchError("Lookup failed."); }
     finally { setSearching(false); }
   };
 
   const addBuddy = async (targetUid) => {
     if (!db || !currentUser) return;
     await updateDoc(doc(db, "users", currentUser.uid), { buddies: arrayUnion(targetUid) });
-    setAddOpen(false); setSearchResult(null); setSearchEmail("");
+    setAddOpen(false); setSearchResult(null); setInviteInput("");
   };
 
   const removeBuddy = async (targetUid) => {
@@ -366,7 +419,12 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
                 : <div className="h-5 w-5 rounded-full bg-teal-100 flex items-center justify-center text-[9px] font-bold text-teal-700">{(b.fullName ?? "?")[0]}</div>}
               <span className="text-[11px] text-slate-700">{b.fullName}</span>
             </div>
-            <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
+            <div className="flex items-center gap-1">
+              {canSendChatRequest(profile) && (
+                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
+              )}
+              <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
+            </div>
           </div>
         ))}
       </div>
@@ -378,11 +436,15 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
       )}
       {addOpen && (
         <div className="mt-1 space-y-1">
-          <input value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
-            placeholder="Friend's email…"
+          <button onClick={handleShareInvite}
+            className="w-full rounded-lg border border-teal-200 bg-teal-50 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors">
+            {copied ? "Copied!" : "Share invite"}
+          </button>
+          <input value={inviteInput} onChange={(e) => setInviteInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookupByInput()}
+            placeholder="Paste invite link or code…"
             className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px]" />
-          <button onClick={searchForUser} disabled={searching}
+          <button onClick={lookupByInput} disabled={searching}
             className="w-full rounded-lg bg-teal-600 py-1 text-[11px] font-semibold text-white">
             {searching ? "…" : "Search"}
           </button>
@@ -421,17 +483,26 @@ export function BuddyPanel({ db, currentUser, profile, compact = false }) {
               <span className="text-xs text-slate-700">{b.fullName}</span>
               {b.moodTag && <MoodPill mood={b.moodTag} tiny />}
             </div>
-            <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400 transition-colors"><X size={12} /></button>
+            <div className="flex items-center gap-1.5">
+              {canSendChatRequest(profile) && (
+                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
+              )}
+              <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400 transition-colors"><X size={12} /></button>
+            </div>
           </div>
         ))}
       </div>
       {addOpen && (
         <div className="mt-2 space-y-1.5">
-          <input value={searchEmail} onChange={(e) => setSearchEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchForUser()}
-            placeholder="Friend's email…"
+          <button onClick={handleShareInvite}
+            className="w-full rounded-xl border border-teal-200 bg-teal-50 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-colors">
+            {copied ? "Copied!" : "Share invite"}
+          </button>
+          <input value={inviteInput} onChange={(e) => setInviteInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookupByInput()}
+            placeholder="Paste invite link or code…"
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400" />
-          <button onClick={searchForUser} disabled={searching}
+          <button onClick={lookupByInput} disabled={searching}
             className="w-full rounded-xl bg-teal-600 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 transition-colors">
             {searching ? "Searching…" : "Search"}
           </button>
@@ -553,7 +624,7 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
   );
 }
 
-const REACTION_EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+const REACTION_EMOJIS = ["❤️"];
 
 // ── + button to open tray, per-emoji full-screen animation callbacks ──────────
 export function MessageReactions({ db, messageId, currentUser, onReact }) {
@@ -572,7 +643,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
   const react = async (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+    const EMOJIS_ALL = ["❤️"];
 
     // Find which emoji (if any) this user has already reacted with on this message
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
@@ -585,20 +656,25 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
         const oldSnap = await tx.get(oldRef);
         const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, reactedAt: oldReactedAt });
       }
       // Toggle the tapped emoji
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
+      const reactedAt = { ...(data.reactedAt ?? {}) };
       if (isSameEmoji) {
         // Tap same emoji = remove it
         const newUids = uids.filter((u) => u !== currentUser.uid);
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, reactedAt });
       } else {
         // New emoji = add it
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], reactedAt });
       }
     });
 
@@ -624,7 +700,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
       {open && (
         <div className="flex gap-1">
           {REACTION_EMOJIS.map((e) => {
-            const LABELS = { "❤️": "Love this", "🙏": "Thank you", "😊": "Made me smile", "🌟": "You're a star" };
+            const LABELS = { "❤️": "Love this" };
             const myCurrentEmoji = REACTION_EMOJIS.find((x) => reactions[x]?.uids?.includes(currentUser?.uid));
             const isMyPick = myCurrentEmoji === e;
             return (
@@ -653,9 +729,9 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }) {
+export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry, localHearted = false }) {
   const [reactions, setReactions] = useState({});
-  const EMOJIS = ["❤️", "🙏", "😊", "🌟"];
+  const EMOJIS = ["❤️"];
 
   useEffect(() => {
     if (!db || !messageId) return;
@@ -666,53 +742,106 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact }
     }, () => {});
   }, [db, messageId]);
 
-  const active = EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
-  if (active.length === 0) return null;
+  const userAlreadyReacted = reactions["❤️"]?.uids?.includes(currentUser?.uid);
+  const serverCount = reactions["❤️"]?.count ?? 0;
+  // Optimistic +1 while waiting for Firestore to confirm the reaction
+  const displayCount = serverCount + (localHearted && !userAlreadyReacted ? 1 : 0);
+  const active = displayCount > 0 ? ["❤️"] : EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
 
-  const toggle = async (emoji) => {
+  if (active.length === 0 && displayCount === 0) return null;
+
+  const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
-    const EMOJIS_ALL = ["❤️", "🙏", "😊", "🌟"];
+    const EMOJIS_ALL = ["❤️"];
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
     const isSame = currentEmoji === emoji;
 
-    await runTransaction(db, async (tx) => {
+    // Optimistic local update
+    setReactions((prev) => {
+      const updated = { ...prev };
+      if (currentEmoji && !isSame) {
+        const old = { ...(updated[currentEmoji] ?? { count: 0, uids: [] }) };
+        old.uids = (old.uids ?? []).filter((u) => u !== currentUser.uid);
+        old.count = Math.max(0, old.uids.length);
+        const countries = { ...(old.countries ?? {}) };
+        delete countries[currentUser.uid];
+        updated[currentEmoji] = { ...old, countries };
+      }
+      const existing = { ...(updated[emoji] ?? { count: 0, uids: [] }) };
+      if (isSame) {
+        existing.uids = (existing.uids ?? []).filter((u) => u !== currentUser.uid);
+        existing.count = Math.max(0, existing.uids.length);
+      } else {
+        existing.uids = [...(existing.uids ?? []), currentUser.uid];
+        existing.count = existing.uids.length;
+      }
+      updated[emoji] = existing;
+      return updated;
+    });
+
+    if (!isSame && onReact) onReact(emoji);
+
+    const myCountry = reactorCountry ?? null;
+    runTransaction(db, async (tx) => {
       if (currentEmoji && !isSame) {
         const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
         const oldSnap = await tx.get(oldRef);
         const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+        const oldCountries = { ...(oldData.countries ?? {}) };
+        delete oldCountries[currentUser.uid];
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
       }
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
+      const countries = { ...(data.countries ?? {}) };
+      const reactedAt = { ...(data.reactedAt ?? {}) };
       if (isSame) {
         const newUids = uids.filter((u) => u !== currentUser.uid);
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+        delete countries[currentUser.uid];
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
       } else {
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+        countries[currentUser.uid] = myCountry;
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
       }
-    });
-    if (!isSame && onReact) onReact(emoji);
+    }).catch(() => {});
   };
 
+  // Glow intensity grows with heart count: 1-2 faint, 3-6 medium, 7+ vivid
+  const glowTier = displayCount >= 7 ? 3 : displayCount >= 3 ? 2 : 1;
+
   return (
+    <>
+      {displayCount > 0 && (
+        <div
+          aria-hidden="true"
+          className="seen-heart-glow pointer-events-none absolute inset-0"
+          data-tier={glowTier}
+        />
+      )}
     <div
       className="absolute -bottom-3 right-1 flex gap-0.5"
       style={{ zIndex: 3 }}>
       {active.map((e) => {
-        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid);
+        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
+        const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
         return (
           <button key={e} onClick={() => toggle(e)}
             className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 ${
               mine2 ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
             }`}>
-            {e}<span className="ml-0.5">{reactions[e]?.count}</span>
+            {e}<span className="ml-0.5">{count}</span>
           </button>
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -927,13 +1056,26 @@ export const MOOD_OPTIONS = [
   { id: "lonely",     label: "Lonely",      emoji: "🌙" },
 ];
 
+const MOOD_PILL_STYLES = {
+  grateful:   { backgroundColor: "#f0f4ef", borderColor: "#b5cdb5", color: "#3d6e3d" },
+  hopeful:    { backgroundColor: "#fefce8", borderColor: "#fde047", color: "#713f12" },
+  tired:      { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1", color: "#334155" },
+  happy:      { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
+  struggling: { backgroundColor: "#fdf2f5", borderColor: "#f0c4cf", color: "#8b3547" },
+  peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" },
+  energised:  { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" },
+  lonely:     { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" },
+};
+
 export function MoodPill({ mood, tiny = false }) {
   const found = MOOD_OPTIONS.find((m) => m.id === mood);
   if (!found) return null;
+  const s = MOOD_PILL_STYLES[mood] || { backgroundColor: "#f8fafc", borderColor: "#e2e8f0", color: "#475569" };
   return (
-    <span className={`inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white text-slate-500 ${
-      tiny ? "px-1.5 py-0 text-[9px]" : "px-2 py-0.5 text-[11px]"
-    }`}>
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full border ${tiny ? "px-1.5 py-0 text-[9px]" : "px-2 py-0.5 text-[11px]"}`}
+      style={{ backgroundColor: s.backgroundColor, borderColor: s.borderColor, color: s.color }}
+    >
       <span style={{ fontSize: tiny ? "9px" : "11px" }}>{found.emoji}</span>
       {!tiny && <span>{found.label}</span>}
     </span>
@@ -988,36 +1130,59 @@ export function MoodSelector({ db, uid, currentMood }) {
 // GAP 4 FIX — PREMIUM UPGRADE PROMPT
 // ─────────────────────────────────────────────────────────────────
 
-export function PremiumUpgradePrompt({ onClose }) {
+export function PremiumUpgradePrompt({ onClose, currentUser }) {
+  const BENEFITS = [
+    { icon: "📅", title: "25 greetings per day",       sub: "Free plan: 10/day" },
+    { icon: "⭕", title: "6 Circles · 25 members each", sub: "Free plan: 3 circles · 10 members" },
+    { icon: "💪", title: "Exclusive greeting packs",    sub: "Strength, Celebrate, World Moments" },
+    { icon: "🗓️", title: "Monthly themed pack",        sub: "Rotates every month — Earth Month, Gratitude…" },
+    { icon: "📊", title: "Kindness analytics",          sub: "Stats, streaks & 30-day activity heatmap" },
+    { icon: "✦",  title: "Premium badge on your name", sub: "Visible to everyone in the chat" },
+    { icon: "💬", title: "Accept private chats",        sub: "Connect 1-on-1 with other members" },
+  ];
+
   return (
-    <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/30 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 p-2">
-              <Sparkles size={16} className="text-white" />
+    <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-teal-500 to-emerald-500 px-5 pt-5 pb-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl bg-white/20 p-1.5">
+                <Sparkles size={15} className="text-white" />
+              </div>
+              <p className="font-bold text-white text-sm">Seen Premium</p>
             </div>
-            <p className="font-bold text-slate-800">Seen Premium</p>
+            <button onClick={onClose} className="rounded-full bg-white/20 p-1 hover:bg-white/30 transition-colors">
+              <X size={14} className="text-white" />
+            </button>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+          <p className="text-white/80 text-xs">Everything you unlock for $3.99/month</p>
         </div>
-        <p className="text-sm text-slate-600 mb-4">
-          Unlock 25+ curated greetings — Warmth, Strength, Calm, Celebrate, and World Moments packs.
-        </p>
-        <div className="space-y-2 mb-4">
-          {["Warmth & strength messages", "Cultural & seasonal greetings", "Calm & reassurance pack", "New packs added monthly"].map((f) => (
-            <div key={f} className="flex items-center gap-2 text-sm text-slate-700">
-              <CheckCircle2 size={14} className="text-teal-500 shrink-0" />
-              {f}
+
+        {/* Benefits list */}
+        <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
+          {BENEFITS.map((b) => (
+            <div key={b.title} className="flex items-start gap-3">
+              <span className="text-base flex-shrink-0 mt-0.5">{b.icon}</span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-800">{b.title}</p>
+                <p className="text-[11px] text-slate-400">{b.sub}</p>
+              </div>
+              <CheckCircle2 size={14} className="text-teal-500 flex-shrink-0 mt-0.5 ml-auto" />
             </div>
           ))}
         </div>
-        <button
-          onClick={() => alert("Payment integration coming soon!")}
-          className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
-          Upgrade — $3.99/mo
-        </button>
-        <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime. No ads, ever.</p>
+
+        {/* CTA */}
+        <div className="px-5 pb-5 pt-2 border-t border-slate-100">
+          <button
+            onClick={() => startCheckout(currentUser)}
+            className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
+            Upgrade — $3.99/mo
+          </button>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime · No ads, ever</p>
+        </div>
       </div>
     </div>
   );
@@ -1039,11 +1204,159 @@ function getLevelForBalance(balance) {
   return LEVEL_THRESHOLDS.reduce((l, t) => (balance >= t.min ? t : l), LEVEL_THRESHOLDS[0]);
 }
 
-export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
+// ─────────────────────────────────────────────────────────────────
+// EDIT PROFILE SHEET
+// ─────────────────────────────────────────────────────────────────
+
+function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
+  const [name, setName] = useState(profile?.fullName ?? "");
+  const [country, setCountry] = useState(profile?.country ?? "");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(profile?.profilePhotoUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !country || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      let profilePhotoUrl = profile?.profilePhotoUrl ?? "";
+      if (photoFile) {
+        const storage = getStorage();
+        const ext = photoFile.name.split(".").pop()?.toLowerCase() || "jpg";
+        const photoRef = ref(storage, `profilePhotos/${currentUser.uid}/avatar.${ext}`);
+        await uploadBytes(photoRef, photoFile, { contentType: photoFile.type });
+        profilePhotoUrl = await getDownloadURL(photoRef);
+      }
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        fullName: name.trim(),
+        country,
+        profilePhotoUrl,
+      });
+      onSaved?.({ fullName: name.trim(), country, profilePhotoUrl });
+      onClose();
+    } catch (err) {
+      console.error("Profile update error:", err);
+      setError("Couldn't save — please try again.");
+    }
+    setSaving(false);
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[220] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[92dvh] flex flex-col">
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 flex-shrink-0">
+          <h2 className="text-sm font-bold text-slate-800">Edit Profile</h2>
+          <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-100 transition-colors">
+            <X size={16} className="text-slate-400" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 pb-12 space-y-6">
+          {/* Photo picker */}
+          <div className="flex flex-col items-center gap-3 pt-2">
+            <div className="relative">
+              {photoPreview
+                ? <img src={photoPreview} alt="" className="h-24 w-24 rounded-full object-cover ring-4 ring-slate-100" />
+                : <div className="h-24 w-24 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-3xl font-bold text-white ring-4 ring-slate-100">
+                    {(name || profile?.fullName || "?")[0]?.toUpperCase()}
+                  </div>
+              }
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-teal-600 flex items-center justify-center shadow-lg hover:bg-teal-700 transition-colors">
+                <Camera size={14} className="text-white" />
+              </button>
+            </div>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
+              Change photo
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+          </div>
+
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
+              Display name
+            </label>
+            <div className="relative">
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                maxLength={40}
+                placeholder="Your full name"
+                className="w-full rounded-2xl border border-slate-200 pl-4 pr-10 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
+              />
+              <Pencil size={13} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Country */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
+              Location
+            </label>
+            <div className="relative">
+              <MapPin size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={country}
+                onChange={e => setCountry(e.target.value)}
+                className="w-full rounded-2xl border border-slate-200 pl-9 pr-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 bg-white appearance-none transition-colors">
+                <option value="">Select your country</option>
+                {COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+
+          {/* Save */}
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || !country || saving}
+            className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-40">
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PROFILE CARD
+// ─────────────────────────────────────────────────────────────────
+
+export function ProfileCard({ profile, streak, sparkBalance, onClose, db, currentUser }) {
   const cardRef = useRef(null);
   const [copying, setCopying] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [localProfile, setLocalProfile] = useState(profile);
+
+  useEffect(() => { setLocalProfile(profile); }, [profile]);
+
   const level = getLevelForBalance(sparkBalance);
-  const mood = MOOD_OPTIONS.find((m) => m.id === profile?.moodTag);
+  const mood = MOOD_OPTIONS.find((m) => m.id === localProfile?.moodTag);
 
   const handleShare = async () => {
     setCopying(true);
@@ -1071,54 +1384,84 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose }) {
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm">
-        <div ref={cardRef} className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl">
-          <div className="flex items-center gap-3 mb-4">
-            {profile?.profilePhotoUrl
-              ? <img src={profile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" crossOrigin="anonymous" />
-              : <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">{(profile?.fullName ?? "?")[0]}</div>}
-            <div>
-              <p className="text-lg font-extrabold">{profile?.fullName}</p>
-              <p className="text-sm text-white/80">{profile?.country}</p>
-              {mood && <p className="text-xs text-white/70 mt-0.5">{mood.emoji} {mood.label}</p>}
+    <>
+      <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-sm">
+          {/* Card (shareable) */}
+          <div ref={cardRef} className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 text-white shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              {localProfile?.profilePhotoUrl
+                ? <img src={localProfile.profilePhotoUrl} alt="" className="h-14 w-14 rounded-full border-2 border-white/40 object-cover" />
+                : <div className="h-14 w-14 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center text-xl font-bold">{(localProfile?.fullName ?? "?")[0]}</div>}
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-extrabold truncate">{localProfile?.fullName}</p>
+                <p className="text-sm text-white/80 truncate">{localProfile?.country}</p>
+                {mood && <p className="text-xs text-white/70 mt-0.5">{mood.emoji} {mood.label}</p>}
+              </div>
+              {db && currentUser && (
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="flex-shrink-0 h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  title="Edit profile">
+                  <Pencil size={13} className="text-white" />
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Flame size={16} className="mx-auto mb-1 text-orange-200" />
+                <p className="text-xl font-extrabold">{streak ?? 0}</p>
+                <p className="text-[10px] text-white/70">day streak</p>
+              </div>
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
+                <p className="text-xl font-extrabold">{sparkBalance}</p>
+                <p className="text-[10px] text-white/70">sparks</p>
+              </div>
+              <div className="rounded-2xl bg-white/20 p-3 text-center">
+                <Star size={16} className="mx-auto mb-1 text-white/80" />
+                <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
+                <p className="text-[10px] text-white/70">level</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
+              <Heart size={12} className="text-pink-200" />
+              <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Flame size={16} className="mx-auto mb-1 text-orange-200" />
-              <p className="text-xl font-extrabold">{streak ?? 0}</p>
-              <p className="text-[10px] text-white/70">day streak</p>
-            </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
-              <p className="text-xl font-extrabold">{sparkBalance}</p>
-              <p className="text-[10px] text-white/70">sparks</p>
-            </div>
-            <div className="rounded-2xl bg-white/20 p-3 text-center">
-              <Star size={16} className="mx-auto mb-1 text-white/80" />
-              <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
-              <p className="text-[10px] text-white/70">level</p>
-            </div>
+
+          {/* Actions */}
+          <div className="mt-3 flex gap-2">
+            <button onClick={handleShare} disabled={copying}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+              <Share2 size={14} />
+              {copying ? "Preparing…" : "Share / Save"}
+            </button>
+            {db && currentUser && (
+              <button onClick={() => setShowEdit(true)}
+                className="flex items-center justify-center gap-1.5 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
+            <button onClick={onClose}
+              className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
+              Close
+            </button>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
-            <Heart size={12} className="text-pink-200" />
-            <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button onClick={handleShare} disabled={copying}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
-            <Share2 size={14} />
-            {copying ? "Preparing…" : "Share / Save"}
-          </button>
-          <button onClick={onClose}
-            className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
-            Close
-          </button>
         </div>
       </div>
-    </div>
+
+      {showEdit && (
+        <EditProfileSheet
+          db={db}
+          currentUser={currentUser}
+          profile={localProfile}
+          onClose={() => setShowEdit(false)}
+          onSaved={(updates) => setLocalProfile(p => ({ ...p, ...updates }))}
+        />
+      )}
+    </>
   );
 }
 
@@ -1145,19 +1488,335 @@ export function scheduleGreetingWindowNotification(profile) {
 
 export function NotificationPermissionBanner() {
   const [status, setStatus] = useState(typeof Notification !== "undefined" ? Notification.permission : "denied");
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("seen_notif_dismissed") === "1"; } catch { return false; }
+  });
   if (status === "granted" || status === "denied" || dismissed) return null;
+  const dismiss = () => {
+    setDismissed(true);
+    try { localStorage.setItem("seen_notif_dismissed", "1"); } catch {}
+  };
   return (
-    <div className="flex items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-      <div className="flex items-center gap-2">
-        <Bell size={12} className="text-blue-500 shrink-0" />
-        <span>Enable daily reminders to keep your streak alive.</span>
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-teal-200 bg-teal-50 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-teal-800">Don't miss your reactions 🔔</p>
+        <p className="mt-0.5 text-[11px] text-teal-600">Get notified when someone waves, reacts, or sends kindness your way.</p>
       </div>
-      <div className="flex gap-2 shrink-0">
-        <button onClick={async () => setStatus(await Notification.requestPermission())}
-          className="rounded-lg bg-blue-600 px-2 py-1 text-white font-semibold hover:bg-blue-700 transition-colors">Enable</button>
-        <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600"><X size={12} /></button>
+      <div className="flex items-center gap-2 shrink-0 mt-0.5">
+        <button
+          onClick={async () => setStatus(await Notification.requestPermission())}
+          className="rounded-xl bg-teal-500 px-3 py-1.5 text-[11px] text-white font-bold hover:bg-teal-600 transition-colors whitespace-nowrap">
+          Enable
+        </button>
+        <button onClick={dismiss} className="text-teal-400 hover:text-teal-600"><X size={13} /></button>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// WHATSAPP-STYLE UNIFIED QUICK-REACT BAR
+// ─────────────────────────────────────────────────────────────────
+
+const QUICK_EMOJIS = ["❤️"];
+const QUICK_GIFT_AMOUNT = 5;
+
+// ── Private-chat invite button shown in the QuickReactBar ─────────────
+// Visible to ALL users; non-premium see a locked version that nudges upgrade.
+// The recipient can receive the request regardless of premium status but
+// can only accept/open the chat once they become premium.
+function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, onClose }) {
+  const [status, setStatus] = useState(null); // null | "pending" | "chatting"
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!db || !currentUser?.uid || !senderUid) return;
+    const chatId = getChatId(currentUser.uid, senderUid);
+    getDoc(doc(db, "privateChats", chatId)).then((snap) => {
+      if (snap.exists()) setStatus("chatting");
+    }).catch(() => {});
+    // Two where() clauses only — avoids composite index requirement
+    getDocs(query(
+      collection(db, "chatRequests"),
+      where("fromUid", "==", currentUser.uid),
+      where("toUid", "==", senderUid)
+    )).then((snap) => {
+      const hasPending = snap.docs.some((d) => d.data().status === "pending");
+      if (hasPending) setStatus((s) => s === "chatting" ? s : "pending");
+    }).catch(() => {});
+  }, [db, currentUser, senderUid]);
+
+  const handleClick = async () => {
+    if (status || loading) return;
+    setLoading(true);
+    try {
+      await addDoc(collection(db, "chatRequests"), {
+        fromUid: currentUser.uid,
+        toUid: senderUid,
+        fromName: currentUser.displayName ?? "Someone",
+        status: "pending",
+        createdAt: Date.now(),
+      });
+      setStatus("pending");
+      setTimeout(() => onClose?.(), 500);
+    } catch (err) {
+      console.error("Chat invite error:", err);
+      alert("Could not send request. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  if (status === "chatting") {
+    return (
+      <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Already chatting">
+        💬
+      </button>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Request sent">
+        💬
+      </button>
+    );
+  }
+
+  return (
+    <button className="seen-qrb-btn" onClick={handleClick} disabled={loading}
+      title="Invite to private chat">
+      {loading ? "…" : "💬"}
+    </button>
+  );
+}
+
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete }) {
+  const [waved, setWaved] = useState(false);
+  const [gifted, setGifted] = useState(false);
+  const [myEmoji, setMyEmoji] = useState(null);
+  const [popping, setPopping] = useState(null);
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    if (!db || !messageId || !currentUser) return;
+    return onSnapshot(collection(db, "publicMessages", messageId, "reactions"), (snap) => {
+      const found = QUICK_EMOJIS.find((e) => snap.docs.find((d) => d.id === e && (d.data().uids ?? []).includes(currentUser.uid)));
+      setMyEmoji(found ?? null);
+    }, () => {});
+  }, [db, messageId, currentUser]);
+
+  const isOther = !mine && senderUid && senderUid !== currentUser?.uid;
+
+  const handleWave = async () => {
+    if (!isOther || !db || waved) return;
+    try {
+      await addDoc(collection(db, "waves"), {
+        fromUid: currentUser.uid, toUid: senderUid,
+        messageId, createdAt: Date.now(), read: false,
+      });
+      setWaved(true);
+      onWave?.();
+    } catch {}
+    setTimeout(() => onClose?.(), 320);
+  };
+
+  const handleGift = async () => {
+    if (!isOther || !db || gifted) return;
+    const balance = Number(profile?.sparkBalance ?? 0);
+    if (balance < QUICK_GIFT_AMOUNT) return;
+    setGifted(true);
+    try {
+      await runTransaction(db, async (tx) => {
+        const fromRef = doc(db, "users", currentUser.uid);
+        const toRef   = doc(db, "users", senderUid);
+        const [fSnap, tSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+        const fromBal = Number(fSnap.data()?.sparkBalance ?? 0);
+        const toBal   = Number(tSnap.data()?.sparkBalance ?? 0);
+        if (fromBal < QUICK_GIFT_AMOUNT) throw new Error("low");
+        tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
+        tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
+      });
+      // Record gift in subcollection (uid as doc ID = idempotent, one gift per user)
+      // Requires Firestore rule: match /gifts/{giftId} { allow create: if giftId == request.auth.uid }
+      setDoc(doc(db, "publicMessages", messageId, "gifts", currentUser.uid), {
+        amount: QUICK_GIFT_AMOUNT,
+        timestamp: Date.now(),
+      }).catch(() => {}); // best-effort badge write — don't fail the gift if rules aren't set yet
+      onGift?.("🎁");
+    } catch { setGifted(false); }
+    setTimeout(() => onClose?.(), 320);
+  };
+
+  const handleEmoji = (emoji) => {
+    if (!db || !currentUser || !messageId) return;
+    const isSame = myEmoji === emoji;
+    const prevEmoji = myEmoji;
+
+    // ── Instant UI response ──────────────────────────────────────
+    setMyEmoji(isSame ? null : emoji);
+    setPopping(emoji);
+    setTimeout(() => setPopping(null), 400);
+    if (!isSame) onReact?.(emoji);
+    onClose?.();
+
+    // ── Firestore write in background (no await) ─────────────────
+    // onSnapshot corrects any inconsistency if this fails.
+    const myCountry = profile?.country ?? null;
+    runTransaction(db, async (tx) => {
+      if (prevEmoji && !isSame) {
+        const oldRef = doc(db, "publicMessages", messageId, "reactions", prevEmoji);
+        const oldSnap = await tx.get(oldRef);
+        const oldData = oldSnap.exists() ? oldSnap.data() : {};
+        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
+        const oldCountries = { ...(oldData.countries ?? {}) };
+        delete oldCountries[currentUser.uid];
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
+      }
+      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
+      const snap = await tx.get(rRef);
+      const data = snap.exists() ? snap.data() : {};
+      const uids = data.uids ?? [];
+      const countries = { ...(data.countries ?? {}) };
+      const reactedAt = { ...(data.reactedAt ?? {}) };
+      if (isSame) {
+        const next = uids.filter((u) => u !== currentUser.uid);
+        delete countries[currentUser.uid];
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
+      } else {
+        countries[currentUser.uid] = myCountry;
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+      }
+    }).catch(() => {}); // onSnapshot listener will self-correct on failure
+  };
+
+  const handleReport = async (reason) => {
+    setReported(true);
+    try {
+      await addDoc(collection(db, "reports"), {
+        messageId,
+        reporterUid: currentUser?.uid,
+        reason,
+        timestamp: Date.now(),
+      });
+    } catch {}
+    setTimeout(() => onClose?.(), 1400);
+  };
+
+  const canGift = isOther && !gifted && Number(profile?.sparkBalance ?? 0) >= QUICK_GIFT_AMOUNT;
+
+  if (reporting) return (
+    <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
+      <span style={{ fontSize: 11, color: "rgba(148,163,184,0.8)", padding: "0 4px", flexShrink: 0 }}>Report:</span>
+      {["Harmful","Spam","Inappropriate","Other"].map((r) => (
+        <button key={r}
+          className="seen-qrb-btn"
+          style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34 }}
+          onClick={() => handleReport(r)}>
+          {reported ? "✅" : r}
+        </button>
+      ))}
+      <div className="seen-qrb-sep" />
+      <button className="seen-qrb-btn" style={{ fontSize: 16 }} onClick={() => setReporting(false)}>✕</button>
+    </div>
+  );
+
+  return (
+    <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
+      {QUICK_EMOJIS.map((emoji) => (
+        <button key={emoji}
+          className={`seen-qrb-btn${myEmoji === emoji ? " seen-qrb-btn--picked" : ""}`}
+          onClick={() => handleEmoji(emoji)} title={emoji}
+          style={{ animation: popping === emoji ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}>
+          {emoji}
+        </button>
+      ))}
+      {isOther && (
+        <>
+          <div className="seen-qrb-sep" />
+          <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} isPremium={isPremium} />
+          <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} onClose={onClose} />
+        </>
+      )}
+      {mine && onDelete && (
+        <>
+          <div className="seen-qrb-sep" />
+          <button
+            className="seen-qrb-btn"
+            title={confirmDelete ? "Tap again to confirm" : "Delete your message"}
+            style={{ fontSize: 13, fontWeight: 700, width: "auto", padding: "0 8px", height: 34, color: confirmDelete ? "#ef4444" : "rgba(148,163,184,0.7)" }}
+            onClick={() => {
+              if (confirmDelete) { onDelete(); }
+              else {
+                setConfirmDelete(true);
+                setTimeout(() => setConfirmDelete(false), 3000);
+              }
+            }}>
+            {confirmDelete ? "Delete?" : "🗑️"}
+          </button>
+        </>
+      )}
+      <div className="seen-qrb-sep" />
+      <button className="seen-qrb-btn" onClick={() => setReporting(true)} title="Report" style={{ fontSize: 16, opacity: 0.5 }}>🚩</button>
+
+      {showStickers && (
+        <StickerPicker
+          db={db}
+          currentUser={currentUser}
+          messageId={messageId}
+          onClose={() => setShowStickers(false)}
+          onPick={(sticker) => { onReact?.(sticker.emoji); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GIFT OVERLAY — golden glow ring + count badge on gifted bubbles
+// ─────────────────────────────────────────────────────────────────
+
+export function GiftOverlay({ db, messageId }) {
+  const [count, setCount] = useState(0);
+  const [glowKey, setGlowKey] = useState(0);
+  const prevCountRef = useRef(null); // null = not yet initialized
+
+  useEffect(() => {
+    if (!db || !messageId) return;
+    // Requires Firestore rule: match /gifts/{giftId} { allow read: if request.auth != null }
+    const unsub = onSnapshot(
+      collection(db, "publicMessages", messageId, "gifts"),
+      (snap) => {
+        const newCount = snap.size;
+        if (prevCountRef.current === null) {
+          // First snapshot: baseline, no animation
+          prevCountRef.current = newCount;
+          setCount(newCount);
+          return;
+        }
+        if (newCount > prevCountRef.current) {
+          setGlowKey((k) => k + 1);
+        }
+        prevCountRef.current = newCount;
+        setCount(newCount);
+      },
+      () => {}
+    );
+    return unsub;
+  }, [db, messageId]);
+
+  if (count === 0) return null;
+
+  return (
+    <>
+      {glowKey > 0 && <div key={glowKey} className="gift-glow-ring" />}
+      <div className="gift-badge gift-badge--pop">🎁 {count}</div>
+    </>
   );
 }

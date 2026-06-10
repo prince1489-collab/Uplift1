@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 import React, { useMemo, useState } from "react";
 import {
   Eye,

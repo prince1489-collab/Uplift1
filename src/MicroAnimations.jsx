@@ -1,3 +1,5 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+
 /**
  * MicroAnimations.jsx — Seen app delight layer
  *
@@ -32,7 +34,7 @@ const uid = () => ++_nextId;
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // Country code → flag emoji
-const FLAG_MAP = {
+export const FLAG_MAP = {
   "India": "🇮🇳", "United States": "🇺🇸", "United Kingdom": "🇬🇧",
   "Canada": "🇨🇦", "Australia": "🇦🇺", "Germany": "🇩🇪", "France": "🇫🇷",
   "Brazil": "🇧🇷", "Japan": "🇯🇵", "China": "🇨🇳", "South Korea": "🇰🇷",
@@ -237,10 +239,12 @@ const KEYFRAMES = `
     40%  { transform: scale(1.55); }
     100% { transform: scale(1); }
   }
-  /* Bottom sheet rise */
+  /* Bottom sheet rise — spring overshoot */
   @keyframes seenSheetRise {
-    0%   { transform: translateY(100%); opacity: 0.6; }
-    100% { transform: translateY(0);    opacity: 1; }
+    0%   { transform: translateY(100%);  opacity: 0.5; }
+    65%  { transform: translateY(-8px);  opacity: 1; }
+    82%  { transform: translateY(3px);   opacity: 1; }
+    100% { transform: translateY(0);     opacity: 1; }
   }
   /* Backdrop fade in */
   @keyframes seenBackdropIn {
@@ -672,6 +676,8 @@ export function MapTransitionWrapper({ visible, children }) {
 
   return (
     <div style={{
+      width: "100%",
+      height: "100%",
       animationName: animOut ? "seenMapOut" : "seenMapIn",
       animationDuration: "220ms",
       animationTimingFunction: "cubic-bezier(0.34,1.2,0.64,1)",
