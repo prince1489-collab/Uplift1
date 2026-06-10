@@ -441,6 +441,32 @@ body {
 .sticker-wiggle  { animation: stickerWiggle 0.9s ease-in-out infinite; }
 .sticker-clap    { animation: stickerClap   0.65s ease-in-out infinite; }
 
+/* ─── Hearted bubble glow ────────────────────────────────────────────────────
+   Soft rose border glow that breathes; intensity scales with heart count. */
+.seen-heart-glow {
+  border-radius: 16px;
+  animation: seenHeartGlow 2.6s ease-in-out infinite;
+}
+.seen-heart-glow[data-tier="1"] {
+  --hg-ring: rgba(251, 113, 133, 0.35);
+  --hg-soft: rgba(251, 113, 133, 0.18);
+  --hg-soft-peak: rgba(251, 113, 133, 0.32);
+}
+.seen-heart-glow[data-tier="2"] {
+  --hg-ring: rgba(251, 113, 133, 0.55);
+  --hg-soft: rgba(251, 113, 133, 0.28);
+  --hg-soft-peak: rgba(244, 63, 94, 0.45);
+}
+.seen-heart-glow[data-tier="3"] {
+  --hg-ring: rgba(244, 63, 94, 0.7);
+  --hg-soft: rgba(244, 63, 94, 0.38);
+  --hg-soft-peak: rgba(244, 63, 94, 0.6);
+}
+@keyframes seenHeartGlow {
+  0%, 100% { box-shadow: 0 0 0 1.5px var(--hg-ring), 0 0 10px var(--hg-soft); }
+  50%      { box-shadow: 0 0 0 1.5px var(--hg-ring), 0 0 20px var(--hg-soft-peak); }
+}
+
 /* ─── Life Hacks card reveal ─────────────────────────────────────────────── */
 @keyframes hackSparkleOut {
   0%   { transform: translate(0, 0) scale(1.6); opacity: 1; }

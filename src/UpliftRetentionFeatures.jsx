@@ -813,7 +813,18 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
     }).catch(() => {});
   };
 
+  // Glow intensity grows with heart count: 1-2 faint, 3-6 medium, 7+ vivid
+  const glowTier = displayCount >= 7 ? 3 : displayCount >= 3 ? 2 : 1;
+
   return (
+    <>
+      {displayCount > 0 && (
+        <div
+          aria-hidden="true"
+          className="seen-heart-glow pointer-events-none absolute inset-0"
+          data-tier={glowTier}
+        />
+      )}
     <div
       className="absolute -bottom-3 right-1 flex gap-0.5"
       style={{ zIndex: 3 }}>
@@ -830,6 +841,7 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
         );
       })}
     </div>
+    </>
   );
 }
 
