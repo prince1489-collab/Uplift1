@@ -187,6 +187,11 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
   const [showSparkles, setShowSparkles] = useState(false);
   const [votes, setVotes] = useState(null); // { up, down, voters: { uid: "up"|"down" } }
   const [shareCopied, setShareCopied] = useState(false);
+  // Persist vote locally so highlight survives Firestore latency / rule issues
+  const [localVote, setLocalVote] = useState(() => {
+    if (!currentUser?.uid || !hack?.id) return null;
+    try { return localStorage.getItem(`lhv_${hack.id}_${currentUser.uid}`) || null; } catch { return null; }
+  });
 
   useEffect(() => {
     const t1 = setTimeout(() => { setFlipped(true); setShowSparkles(true); }, 280);
@@ -202,12 +207,17 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
     }, () => {});
   }, [db, hack?.id]);
 
-  const myVote = currentUser ? (votes?.voters?.[currentUser.uid] ?? null) : null;
+  // Prefer Firestore data; fall back to localStorage so button highlights immediately
+  const myVote = votes?.voters?.[currentUser?.uid] ?? localVote;
   const totalVotes = (votes?.up ?? 0) + (votes?.down ?? 0);
   const upPct = totalVotes > 0 ? Math.round(((votes?.up ?? 0) / totalVotes) * 100) : null;
 
   const castVote = (vote) => {
-    if (!db || !currentUser || !hack?.id || myVote === vote) return;
+    if (!currentUser || !hack?.id || myVote === vote) return;
+    // Optimistic local highlight — shows immediately even before Firestore responds
+    setLocalVote(vote);
+    try { localStorage.setItem(`lhv_${hack.id}_${currentUser.uid}`, vote); } catch {}
+    if (!db) return;
     const ref = doc(db, "hackVotes", String(hack.id));
     runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
