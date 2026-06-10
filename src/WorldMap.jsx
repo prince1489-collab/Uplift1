@@ -857,7 +857,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
   // ── Arc animation ────────────────────────────────────────────
   useEffect(() => {
-    if (!mapReady || activeUsers.length < 2) return;
+    if (!mapReady || !hasSent || activeUsers.length < 2) return;
     const ARC_PALETTE = ["#4DFFB0", "#FFD700", "#FF6B9D", "#67E8F9", "#A78BFA"];
     const addArc = () => {
       // Exclude countries that are currently lit (seen amber / reacted coral) — those
