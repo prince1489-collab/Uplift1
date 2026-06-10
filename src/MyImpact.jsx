@@ -1,7 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 
@@ -27,61 +27,74 @@ function useReactionData(db, currentUser, period) {
     if (!db || !currentUser) return;
     const cacheKey = `seen_react_v1_${period}_${currentUser.uid}`;
 
+    // Serve the cache instantly for first paint — but stay subscribed below so
+    // live updates (new reactions) overwrite it within seconds.
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
       if (cached && Date.now() - cached.at < CACHE_TTL) {
         setData(cached.data);
         setLoading(false);
-        return;
       }
     } catch (_) {}
 
-    setLoading(true);
     const cutoff = Date.now() - (period === "30d" ? 30 : 7) * 86400000;
+    const q = query(
+      collection(db, "publicMessages"),
+      where("uid", "==", currentUser.uid),
+      where("timestamp", ">=", cutoff),
+      limit(500)
+    );
 
-    (async () => {
-      try {
-        const mySnap = await getDocs(query(
-          collection(db, "publicMessages"),
-          where("uid", "==", currentUser.uid),
-          where("timestamp", ">=", cutoff),
-          limit(500)
-        ));
+    let reactionUnsubs = [];
+    const perMsg = new Map(); // msgId -> [{ uid, country }] reactions by others
+    let dayMap = {};
 
-        const dayMap = {};
-        mySnap.forEach(d => {
-          const key = new Date(d.data().timestamp).toISOString().split("T")[0];
-          dayMap[key] = (dayMap[key] || 0) + 1;
-        });
-
-        const myMsgIds = mySnap.docs.map(d => d.id);
-        let totalReactions = 0;
-        const reactionByCountry = {};
-        await Promise.all(myMsgIds.map(async msgId => {
-          try {
-            const rSnap = await getDocs(collection(db, "publicMessages", msgId, "reactions"));
-            rSnap.forEach(rDoc => {
-              const { uids = [], countries = {} } = rDoc.data();
-              uids.forEach(uid => {
-                if (uid !== currentUser.uid) {
-                  totalReactions++;
-                  const c = countries[uid];
-                  if (c) reactionByCountry[c] = (reactionByCountry[c] || 0) + 1;
-                }
-              });
-            });
-          } catch (_) {}
-        }));
-
-        const result = { totalReactions, reactionByCountry, dayMap };
-        setData(result);
-        try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
-      } catch (_) {
-        setData({ totalReactions: 0, reactionByCountry: {}, dayMap: {} });
-      } finally {
-        setLoading(false);
+    const recompute = () => {
+      let totalReactions = 0;
+      const reactionByCountry = {};
+      for (const entries of perMsg.values()) {
+        for (const { country } of entries) {
+          totalReactions++;
+          if (country) reactionByCountry[country] = (reactionByCountry[country] || 0) + 1;
+        }
       }
-    })();
+      const result = { totalReactions, reactionByCountry, dayMap };
+      setData(result);
+      setLoading(false);
+      try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
+    };
+
+    const outer = onSnapshot(q, (snap) => {
+      dayMap = {};
+      snap.forEach(d => {
+        const key = new Date(d.data().timestamp).toISOString().split("T")[0];
+        dayMap[key] = (dayMap[key] || 0) + 1;
+      });
+
+      reactionUnsubs.forEach(u => u());
+      reactionUnsubs = [];
+      perMsg.clear();
+
+      if (snap.empty) { recompute(); return; }
+
+      snap.docs.forEach(d => {
+        const msgId = d.id;
+        const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
+          const entries = [];
+          rSnap.forEach(rDoc => {
+            const { uids = [], countries = {} } = rDoc.data();
+            uids.forEach(uid => {
+              if (uid !== currentUser.uid) entries.push({ uid, country: countries[uid] });
+            });
+          });
+          perMsg.set(msgId, entries);
+          recompute();
+        }, () => {});
+        reactionUnsubs.push(unsub);
+      });
+    }, () => { setLoading(false); });
+
+    return () => { outer(); reactionUnsubs.forEach(u => u()); };
   }, [db, currentUser, period]);
 
   return { data, loading };
