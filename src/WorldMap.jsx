@@ -412,8 +412,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         path(countriesRef.current[fi]);
         ctx.fillStyle = LAND_SHADES[fi % LAND_SHADES.length];
         ctx.fill();
-        ctx.strokeStyle = "rgba(0,0,0,0.18)";
-        ctx.lineWidth = 0.4;
+        ctx.strokeStyle = "rgba(77,255,176,0.32)";
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
