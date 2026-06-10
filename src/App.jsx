@@ -390,7 +390,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
               <div className="mx-4 border-t border-slate-100" />
 
               {/* Sign out */}
-              <div className="px-3 py-2 pb-8">
+              <div className="px-3 py-2">
                 <button
                   onClick={onSignOut}
                   disabled={isSigningOut}
@@ -403,6 +403,11 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   </p>
                 </button>
               </div>
+
+              {/* Copyright */}
+              <p className="px-3 pb-8 pt-1 text-center text-[10px] text-slate-300">
+                © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
+              </p>
 
             </div>
           </div>
