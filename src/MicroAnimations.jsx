@@ -34,7 +34,7 @@ const uid = () => ++_nextId;
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // Country code → flag emoji
-const FLAG_MAP = {
+export const FLAG_MAP = {
   "India": "🇮🇳", "United States": "🇺🇸", "United Kingdom": "🇬🇧",
   "Canada": "🇨🇦", "Australia": "🇦🇺", "Germany": "🇩🇪", "France": "🇫🇷",
   "Brazil": "🇧🇷", "Japan": "🇯🇵", "China": "🇨🇳", "South Korea": "🇰🇷",

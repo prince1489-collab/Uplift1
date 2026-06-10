@@ -10,7 +10,7 @@ import WorldMap from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
-  ReactionBurstLayer, useReactionBurst } from "./MicroAnimations";
+  ReactionBurstLayer, useReactionBurst, FLAG_MAP } from "./MicroAnimations";
 
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
@@ -2052,7 +2052,13 @@ export default function App() {
                             </span>
                             {(() => {
                               const country = group.items[0].country ?? (mine ? profile?.country : null);
-                              return country ? <CountryReveal country={country} isNew={isNewGroup} /> : null;
+                              if (!country) return null;
+                              const flag = FLAG_MAP[country];
+                              return (
+                                <span className="font-normal text-slate-400">
+                                  · {flag ? `${flag} ` : ''}{country}
+                                </span>
+                              );
                             })()}
                             {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
                           </div>
