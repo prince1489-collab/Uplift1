@@ -1043,18 +1043,6 @@ export default function App() {
     const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
     let innerUnsubs = [];
     const outer = onSnapshot(q, (snap) => {
-      // Keep lastSendTime in sync with Firestore so the sendFloor is device-independent —
-      // a send made on desktop correctly resets the highlight window on mobile too.
-      const latestSendTs = snap.docs[0]?.data()?.timestamp ?? 0;
-      if (latestSendTs) {
-        setLastSendTime((prev) => {
-          if (latestSendTs > prev) {
-            try { localStorage.setItem("seen_last_send_time", String(latestSendTs)); } catch (_) {}
-            return latestSendTs;
-          }
-          return prev;
-        });
-      }
       innerUnsubs.forEach((u) => u());
       innerUnsubs = [];
       snap.docs.forEach((d) => {
