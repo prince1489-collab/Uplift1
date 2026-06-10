@@ -389,18 +389,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 
               <div className="mx-4 border-t border-slate-100" />
 
-              {/* Support */}
-              <div className="px-3 py-2 space-y-0.5">
-                <Row
-                  onClick={() => { onSupport(); close(); }}
-                  icon={<IconBox className="bg-rose-50"><Heart size={16} className="text-rose-400" /></IconBox>}
-                  label="If you're struggling"
-                  sub="Mental health resources"
-                />
-              </div>
-
-              <div className="mx-4 border-t border-slate-100" />
-
               {/* Sign out */}
               <div className="px-3 py-2 pb-8">
                 <button
