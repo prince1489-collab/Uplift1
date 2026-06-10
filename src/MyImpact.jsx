@@ -296,6 +296,7 @@ function RhythmCard({ streak, dayMap }) {
 export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
   const { data, loading } = useReactionData(db, currentUser, period);
+  const [activeBarKey, setActiveBarKey] = useState(null);
 
   const sentCount = period === "7d" ? (liveStats?.sent7d ?? null) : (liveStats?.sent30d ?? null);
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
@@ -379,22 +380,49 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
         <div style={{ display: "flex", alignItems: "flex-end", gap: period === "30d" ? "2px" : "5px", height: "68px" }}>
           {days.map(({ key, label, count }) => {
             const isBest = count > 0 && count === maxCount;
+            const isActive = activeBarKey === key;
             return (
               <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" }}>
                 <div
-                  title={`${key}: ${count} sent`}
+                  onClick={() => { if (count > 0) setActiveBarKey(isActive ? null : key); }}
                   style={{
                     width: "100%", borderRadius: "3px 3px 2px 2px",
                     height: `${Math.max(3, (count / maxCount) * 46)}px`,
+                    position: "relative",
+                    cursor: count > 0 ? "pointer" : "default",
                     background: count === 0
                       ? "rgba(255,255,255,0.06)"
+                      : isActive
+                      ? "rgba(77,255,176,1)"
                       : isBest
                       ? "rgba(77,255,176,0.85)"
                       : "rgba(77,255,176,0.35)",
-                    boxShadow: isBest ? "0 0 8px rgba(77,255,176,0.4)" : "none",
-                    transition: "height 0.5s cubic-bezier(0.34,1.2,0.64,1)",
+                    boxShadow: isActive
+                      ? "0 0 12px rgba(77,255,176,0.7)"
+                      : isBest ? "0 0 8px rgba(77,255,176,0.4)" : "none",
+                    transition: "height 0.5s cubic-bezier(0.34,1.2,0.64,1), background 0.15s, box-shadow 0.15s",
                   }}
-                />
+                >
+                  {isActive && (
+                    <div style={{
+                      position: "absolute",
+                      bottom: "calc(100% + 4px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "rgba(77,255,176,0.95)",
+                      color: "#060e18",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "5px",
+                      padding: "2px 6px",
+                      whiteSpace: "nowrap",
+                      pointerEvents: "none",
+                      zIndex: 10,
+                    }}>
+                      {count}
+                    </div>
+                  )}
+                </div>
                 {label ? (
                   <span style={{ fontSize: "8px", fontWeight: 600, color: count > 0 ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)", lineHeight: 1 }}>
                     {label}
