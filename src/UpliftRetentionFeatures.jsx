@@ -656,20 +656,25 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
         const oldSnap = await tx.get(oldRef);
         const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids });
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, reactedAt: oldReactedAt });
       }
       // Toggle the tapped emoji
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
+      const reactedAt = { ...(data.reactedAt ?? {}) };
       if (isSameEmoji) {
         // Tap same emoji = remove it
         const newUids = uids.filter((u) => u !== currentUser.uid);
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids });
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, reactedAt });
       } else {
         // New emoji = add it
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], reactedAt });
       }
     });
 
@@ -785,20 +790,25 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
         const oldCountries = { ...(oldData.countries ?? {}) };
         delete oldCountries[currentUser.uid];
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
       }
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
+      const reactedAt = { ...(data.reactedAt ?? {}) };
       if (isSame) {
         const newUids = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries });
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
       } else {
         countries[currentUser.uid] = myCountry;
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
       }
     }).catch(() => {});
   };
@@ -1651,20 +1661,25 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
         const oldCountries = { ...(oldData.countries ?? {}) };
         delete oldCountries[currentUser.uid];
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries });
+        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
+        delete oldReactedAt[currentUser.uid];
+        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
       }
       const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
       const snap = await tx.get(rRef);
       const data = snap.exists() ? snap.data() : {};
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
+      const reactedAt = { ...(data.reactedAt ?? {}) };
       if (isSame) {
         const next = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
-        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries });
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
       } else {
         countries[currentUser.uid] = myCountry;
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries });
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
       }
     }).catch(() => {}); // onSnapshot listener will self-correct on failure
   };

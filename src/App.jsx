@@ -1043,38 +1043,44 @@ export default function App() {
     const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
     let innerUnsubs = [];
     const outer = onSnapshot(q, (snap) => {
+      // Keep lastSendTime in sync with Firestore so the sendFloor is device-independent —
+      // a send made on desktop correctly resets the highlight window on mobile too.
+      const latestSendTs = snap.docs[0]?.data()?.timestamp ?? 0;
+      if (latestSendTs) {
+        setLastSendTime((prev) => {
+          if (latestSendTs > prev) {
+            try { localStorage.setItem("seen_last_send_time", String(latestSendTs)); } catch (_) {}
+            return latestSendTs;
+          }
+          return prev;
+        });
+      }
       innerUnsubs.forEach((u) => u());
       innerUnsubs = [];
       snap.docs.forEach((d) => {
         const msgId = d.id;
-        let isInitialSnapshot = true; // first onSnapshot callback is the existing-data load
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
-          const isInitial = isInitialSnapshot;
-          isInitialSnapshot = false;
           const newToasts = [];
           rSnap.forEach((rDoc) => {
             if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
             const emoji = rDoc.id;
             const data = rDoc.data();
             const countries = data.countries || {};
+            const reactedAt = data.reactedAt || {};
             (data.uids || []).forEach((uid) => {
               if (uid === currentUser.uid) return;
               const country = countries[uid];
               if (!country) return;
 
-              // Always keep reactedCountries current — don't gate this on reactObservedRef.
-              // Use a functional update to avoid overwriting a fresh entry with a stale one.
-              // isInitial reactions already existed before this session — stamp them at=0 so
-              // WorldMap's lastSendTime floor always excludes them (pre-send stale data).
-              // Live reactions get Date.now() so the globe pill tag animates.
-              const toastKeyForAt = `${msgId}|${uid}|${emoji}`;
-              const isNewReaction = !reactObservedRef.current.has(toastKeyForAt);
+              // Use the reactor's real timestamp from Firestore. Legacy reactions
+              // without reactedAt get 0, which the WorldMap sendFloor always excludes.
+              // Real timestamps make the coral state correct live, after reloads,
+              // and across devices — WorldMap shows only reactions >= lastSendTime.
+              const at = reactedAt[uid] ?? 0;
               setReactedCountries((prev) => {
                 const existing = prev[country];
-                // If already tracked and fresh, leave it alone so the tag timestamp stays correct.
-                if (existing && Date.now() - existing.at < FIVE_HOURS_MS) return prev;
-                // Initial snapshot = pre-existing reaction; give it at=0 so sendFloor always excludes it.
-                const at = isInitial ? 0 : isNewReaction ? Date.now() : Date.now() - 60_000;
+                // Keep the newest reaction time per country.
+                if (existing && existing.at >= at) return prev;
                 const next = { ...prev, [country]: { emoji, at } };
                 try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
                 return next;
