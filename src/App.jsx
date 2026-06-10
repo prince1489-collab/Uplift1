@@ -1903,7 +1903,7 @@ export default function App() {
             </div>
 
             {activeTab === "hacks" ? (
-              <LifeHacks />
+              <LifeHacks db={db} currentUser={currentUser} />
             ) : activeTab === "support" ? (
               <Support country={profile?.country} />
             ) : activeTab === "impact" ? (

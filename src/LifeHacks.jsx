@@ -2,6 +2,7 @@
 // LifeHacks.jsx — Daily life hack cards with expand + sparkle flip reveal.
 
 import React, { useEffect, useState } from "react";
+import { doc, onSnapshot, runTransaction } from "firebase/firestore";
 import { HACK_LIBRARY } from "./LifeHackLibrary.js";
 
 // Area metadata (emoji + styles) — keyed by area name
@@ -180,16 +181,60 @@ function PreviewCard({ hack, onTap }) {
 
 // ── Expanded overlay card ─────────────────────────────────────────────────────
 
-function ExpandedCard({ hack, onClose }) {
+function ExpandedCard({ hack, onClose, db, currentUser }) {
   const s = AREA_STYLES[hack.area] || DEFAULT_STYLE;
   const [flipped, setFlipped]         = useState(false);
   const [showSparkles, setShowSparkles] = useState(false);
+  const [votes, setVotes] = useState(null); // { up, down, voters: { uid: "up"|"down" } }
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     const t1 = setTimeout(() => { setFlipped(true); setShowSparkles(true); }, 280);
     const t2 = setTimeout(() => setShowSparkles(false), 1500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
+
+  // Live usefulness votes — shared across all users
+  useEffect(() => {
+    if (!db || !hack?.id) return;
+    return onSnapshot(doc(db, "hackVotes", String(hack.id)), (snap) => {
+      setVotes(snap.exists() ? snap.data() : { up: 0, down: 0, voters: {} });
+    }, () => {});
+  }, [db, hack?.id]);
+
+  const myVote = currentUser ? (votes?.voters?.[currentUser.uid] ?? null) : null;
+  const totalVotes = (votes?.up ?? 0) + (votes?.down ?? 0);
+  const upPct = totalVotes > 0 ? Math.round(((votes?.up ?? 0) / totalVotes) * 100) : null;
+
+  const castVote = (vote) => {
+    if (!db || !currentUser || !hack?.id || myVote === vote) return;
+    const ref = doc(db, "hackVotes", String(hack.id));
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists() ? snap.data() : { up: 0, down: 0, voters: {} };
+      const voters = { ...(data.voters ?? {}) };
+      const prev = voters[currentUser.uid];
+      let up = data.up ?? 0, down = data.down ?? 0;
+      if (prev === "up") up = Math.max(0, up - 1);
+      if (prev === "down") down = Math.max(0, down - 1);
+      if (vote === "up") up++; else down++;
+      voters[currentUser.uid] = vote;
+      tx.set(ref, { up, down, voters });
+    }).catch(() => {});
+  };
+
+  const handleShare = async () => {
+    const text = `💡 ${hack.title}\n\n${hack.hack}\n\nWhy it works: ${hack.why}\n\n— from Seen, daily kindness & life hacks → https://seenapp.app`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Life Hack: ${hack.title}`, text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch (_) {} // user cancelled the share sheet — not an error
+  };
 
   return (
     <div
@@ -279,6 +324,43 @@ function ExpandedCard({ hack, onClose }) {
                 </p>
                 <p className="text-xs text-slate-500 leading-relaxed">{hack.why}</p>
               </div>
+
+              {/* Useful? vote + share row */}
+              <div className="flex items-center justify-between gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-400">Useful?</span>
+                  <button
+                    onClick={() => castVote("up")}
+                    aria-label="Thumbs up"
+                    className={`rounded-full border px-2.5 py-1 text-sm transition-all active:scale-90 ${
+                      myVote === "up"
+                        ? "border-emerald-300 bg-emerald-50 shadow-sm"
+                        : "border-slate-200 bg-white opacity-60 hover:opacity-100"
+                    }`}>
+                    👍
+                  </button>
+                  <button
+                    onClick={() => castVote("down")}
+                    aria-label="Thumbs down"
+                    className={`rounded-full border px-2.5 py-1 text-sm transition-all active:scale-90 ${
+                      myVote === "down"
+                        ? "border-rose-300 bg-rose-50 shadow-sm"
+                        : "border-slate-200 bg-white opacity-60 hover:opacity-100"
+                    }`}>
+                    👎
+                  </button>
+                  {upPct !== null && (
+                    <span className="ml-1 text-[11px] font-bold text-emerald-600">
+                      {upPct}% 👍
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleShare}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 transition-all active:scale-95 hover:border-teal-300 hover:text-teal-600">
+                  {shareCopied ? "Copied! ✓" : "Share ↗"}
+                </button>
+              </div>
             </div>
 
             <p className="text-center text-[10px] text-slate-300 py-2.5 flex-shrink-0">
@@ -293,7 +375,7 @@ function ExpandedCard({ hack, onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function LifeHacks() {
+export default function LifeHacks({ db, currentUser }) {
   const [hacks, setHacks]         = useState(null);
   const [loading, setLoading]     = useState(true);
   const [activeHack, setActive]   = useState(null);
@@ -398,7 +480,7 @@ export default function LifeHacks() {
 
       {/* Expanded card overlay */}
       {activeHack && (
-        <ExpandedCard hack={activeHack} onClose={() => setActive(null)} />
+        <ExpandedCard hack={activeHack} onClose={() => setActive(null)} db={db} currentUser={currentUser} />
       )}
     </div>
   );
