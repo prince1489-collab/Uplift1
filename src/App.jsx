@@ -2050,9 +2050,10 @@ export default function App() {
                                 <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
                               )}
                             </span>
-                            {!mine && group.items[0].country && (
-                              <CountryReveal country={group.items[0].country} isNew={isNewGroup} />
-                            )}
+                            {(() => {
+                              const country = group.items[0].country ?? (mine ? profile?.country : null);
+                              return country ? <CountryReveal country={country} isNew={isNewGroup} /> : null;
+                            })()}
                             {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
                           </div>
                           <div className="relative">
