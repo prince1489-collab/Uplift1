@@ -996,6 +996,7 @@ export default function App() {
   const reactReadyRef = useRef(false);
   const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
   const sendTimeInitRef = useRef(lastSendTime); // holds value from mount — used to skip wipe on refresh
+  const listenerSendFloorRef = useRef(lastSendTime); // kept in sync with lastSendTime for the reactions listener
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1021,6 +1022,8 @@ export default function App() {
   }, []);
   // Sync myCountry into a ref so the reactions listener closure always reads the latest value
   useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
+  // Keep the send-floor ref in sync so the listener can skip pre-session messages without restarting
+  useEffect(() => { listenerSendFloorRef.current = lastSendTime; }, [lastSendTime]);
 
   // Auto-dismiss map prompt after 7s
   useEffect(() => {
@@ -1041,6 +1044,11 @@ export default function App() {
       innerUnsubs = [];
       snap.docs.forEach((d) => {
         const msgId = d.id;
+        // Skip reactions on messages sent BEFORE the current session's send floor.
+        // This prevents reactions from old messages (potentially with wrong/stale
+        // country data or from test accounts) bleeding into the current globe view.
+        const msgTs = d.data().timestamp ?? 0;
+        if (listenerSendFloorRef.current && msgTs < listenerSendFloorRef.current) return;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
