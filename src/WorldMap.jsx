@@ -143,7 +143,10 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const raw = JSON.parse(localStorage.getItem("seen_seen_v1") || "{}");
       const now = Date.now();
       const pruned = {};
-      for (const [c, v] of Object.entries(raw)) if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      for (const [c, v] of Object.entries(raw)) {
+        if (c === (profile?.country ?? null)) continue; // own country never glows from stale data
+        if (v && now - v.at < FIVE_HOURS_MS) pruned[c] = v;
+      }
       return pruned;
     } catch (_) { return {}; }
   });
@@ -186,20 +189,18 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
 
   // Reacted countries (coral heartbeat + floating tag) come straight from the sender's prop.
-  // Only include reactions whose timestamp is >= lastSendTime so stale Firestore entries
-  // from a previous send can never bleed into the current send's globe view — even if the
-  // onSnapshot listener re-adds them after a clear (because reactObservedRef is still live).
+  // A country stays coral for 5h after ANY heart on one of my recent messages — sending a
+  // new message doesn't hide it; entries simply age out via the TTL.
   useEffect(() => {
     const m = new Map();
     const now = Date.now();
-    const sendFloor = lastSendTime || 0;
     for (const [c, v] of Object.entries(reactedCountries || {})) {
-      if (v && now - v.at < FIVE_HOURS_MS && v.at >= sendFloor && COUNTRY_COORDS[c]) {
+      if (v && now - v.at < FIVE_HOURS_MS && COUNTRY_COORDS[c]) {
         m.set(c, { emoji: v.emoji, at: v.at });
       }
     }
     reactedRef.current = m;
-  }, [reactedCountries, lastSendTime]);
+  }, [reactedCountries]);
 
   // "Seen" tier: while the map is open and I've sent a greeting, every active
   // country (including my own) is recorded as having seen my kindness. These

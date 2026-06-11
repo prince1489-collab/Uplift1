@@ -407,6 +407,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
               {/* Copyright */}
               <p className="px-3 pb-8 pt-1 text-center text-[10px] text-slate-300">
                 © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
+                <span className="block mt-1 text-slate-200">build {__BUILD_ID__}</span>
               </p>
 
             </div>
@@ -996,8 +997,6 @@ export default function App() {
   const reactObservedRef = useRef(new Set());
   const reactReadyRef = useRef(false);
   const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
-  const sendTimeInitRef = useRef(lastSendTime); // holds value from mount — used to skip wipe on refresh
-  const listenerSendFloorRef = useRef(lastSendTime); // kept in sync with lastSendTime for the reactions listener
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1023,8 +1022,6 @@ export default function App() {
   }, []);
   // Sync myCountry into a ref so the reactions listener closure always reads the latest value
   useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
-  // Keep the send-floor ref in sync so the listener can skip pre-session messages without restarting
-  useEffect(() => { listenerSendFloorRef.current = lastSendTime; }, [lastSendTime]);
 
   // Auto-dismiss map prompt after 7s
   useEffect(() => {
@@ -1045,11 +1042,9 @@ export default function App() {
       innerUnsubs = [];
       snap.docs.forEach((d) => {
         const msgId = d.id;
-        // Skip reactions on messages sent BEFORE the current session's send floor.
-        // This prevents reactions from old messages (potentially with wrong/stale
-        // country data or from test accounts) bleeding into the current globe view.
+        // Message send time (ms) — used as the fallback reaction time for legacy
+        // reaction docs written by older app builds that lack reactedAt.
         const msgTs = d.data().timestamp?.toMillis?.() ?? 0;
-        if (listenerSendFloorRef.current && msgTs < listenerSendFloorRef.current) return;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
@@ -1067,7 +1062,7 @@ export default function App() {
                 getDoc(doc(db, "users", uid)).then(snap => {
                   const c = snap.data()?.country;
                   if (!c) return;
-                  const at2 = reactedAt[uid] ?? 0;
+                  const at2 = reactedAt[uid] ?? msgTs;
                   setReactedCountries(prev => {
                     const existing = prev[c];
                     if (existing && existing.at >= at2) return prev;
@@ -1080,10 +1075,10 @@ export default function App() {
               }
 
               // Use the reactor's real timestamp from Firestore. Legacy reactions
-              // without reactedAt get 0, which the WorldMap sendFloor always excludes.
-              // Real timestamps make the coral state correct live, after reloads,
-              // and across devices — WorldMap shows only reactions >= lastSendTime.
-              const at = reactedAt[uid] ?? 0;
+              // written by older builds lack reactedAt — fall back to the message's
+              // send time (a heart can't precede its message), so they still light
+              // coral and age out naturally via the 5h TTL.
+              const at = reactedAt[uid] ?? msgTs;
               setReactedCountries((prev) => {
                 const existing = prev[country];
                 // Keep the newest reaction time per country.
@@ -1161,20 +1156,6 @@ export default function App() {
     return () => clearInterval(iv);
 
   }, []);
-
-  // Reset "reacted" and "seen" country highlights when the user sends a NEW message
-  // so stale reactions from a previous session don't bleed in. The guard against
-  // sendTimeInitRef ensures this never fires on page-load/refresh (when lastSendTime
-  // is restored from localStorage but hasn't actually changed — that was wiping
-  // the persisted coral state every time the app reloaded).
-  useEffect(() => {
-    if (!lastSendTime || lastSendTime === sendTimeInitRef.current) return;
-    setReactedCountries({});
-    try {
-      localStorage.removeItem("seen_reacted_v1");
-      localStorage.removeItem("seen_seen_v1");
-    } catch (_) {}
-  }, [lastSendTime]);
 
   // Auto-dismiss reaction toast after 6s
   useEffect(() => {
