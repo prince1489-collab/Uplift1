@@ -961,6 +961,7 @@ export default function App() {
   const [reactionBarId, setReactionBarId] = useState(null);
   const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
   const longPressTimer = useRef(null);
+  const longPressTriggered = useRef(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
@@ -2123,14 +2124,16 @@ export default function App() {
                                       className="relative select-none"
                                       onContextMenu={(e) => e.preventDefault()}
                                       onMouseDown={() => {
+                                        longPressTriggered.current = false;
                                         longPressTimer.current = setTimeout(() => {
+                                          longPressTriggered.current = true;
                                           setReactionBarId(m.id);
                                           setActiveMessageId(null);
                                           haptic([6, 30, 6]);
                                         }, 450);
                                       }}
                                       onMouseUp={() => clearTimeout(longPressTimer.current)}
-                                      onMouseLeave={() => clearTimeout(longPressTimer.current)}
+                                      onMouseLeave={() => { clearTimeout(longPressTimer.current); longPressTriggered.current = false; }}
                                       onTouchStart={(e) => {
                                         const touch = e.touches[0];
                                         longPressTimer.current = setTimeout(() => {
@@ -2143,6 +2146,7 @@ export default function App() {
                                       onTouchMove={() => clearTimeout(longPressTimer.current)}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (longPressTriggered.current) { longPressTriggered.current = false; return; }
                                         if (reactionBarId === m.id) { setReactionBarId(null); return; }
                                         // Mystery tap: first tap unwraps, subsequent taps toggle timestamp
                                         if (isMystery && !mine && !unwrappedMysteries[m.id]) {
