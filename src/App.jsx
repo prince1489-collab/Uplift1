@@ -57,7 +57,7 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, getFirestore,
   limit, limitToLast, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -1047,7 +1047,7 @@ export default function App() {
         // Skip reactions on messages sent BEFORE the current session's send floor.
         // This prevents reactions from old messages (potentially with wrong/stale
         // country data or from test accounts) bleeding into the current globe view.
-        const msgTs = d.data().timestamp ?? 0;
+        const msgTs = d.data().timestamp?.toMillis?.() ?? 0;
         if (listenerSendFloorRef.current && msgTs < listenerSendFloorRef.current) return;
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
@@ -1060,7 +1060,23 @@ export default function App() {
             (data.uids || []).forEach((uid) => {
               if (uid === currentUser.uid) return;
               const country = countries[uid];
-              if (!country) return;
+              if (!country) {
+                // Fallback: fetch country from users doc (handles reactions written by older app
+                // builds that didn't store the countries map, or when profile was null at react time).
+                getDoc(doc(db, "users", uid)).then(snap => {
+                  const c = snap.data()?.country;
+                  if (!c) return;
+                  const at2 = reactedAt[uid] ?? 0;
+                  setReactedCountries(prev => {
+                    const existing = prev[c];
+                    if (existing && existing.at >= at2) return prev;
+                    const next = { ...prev, [c]: { emoji, at: at2 } };
+                    try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
+                    return next;
+                  });
+                }).catch(() => {});
+                return;
+              }
 
               // Use the reactor's real timestamp from Firestore. Legacy reactions
               // without reactedAt get 0, which the WorldMap sendFloor always excludes.

@@ -210,11 +210,13 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     const seen = [...new Set(
       activeUsers.filter(u => u.uid !== currentUser?.uid).map(u => u.country).filter(c => c && COUNTRY_COORDS[c])
     )];
-    if (!seen.length) return;
     setSeenCountries(prev => {
       const now = Date.now();
       const next = { ...prev };
       seen.forEach(c => { next[c] = { at: now }; });
+      // Always strip the current user's own country unless another same-country user is active.
+      // This clears stale localStorage entries where myCountry was previously added.
+      if (myCountry && !seen.includes(myCountry)) delete next[myCountry];
       for (const [c, v] of Object.entries(next)) if (now - v.at >= FIVE_HOURS_MS) delete next[c];
       try { localStorage.setItem("seen_seen_v1", JSON.stringify(next)); } catch (_) {}
       return next;
