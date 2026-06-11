@@ -1943,7 +1943,7 @@ export default function App() {
               <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
-              onClick={() => { setReactionBarId(null); setActiveMessageId(null); }}>
+              onClick={() => { setActiveMessageId(null); }}>
               {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
                 <div
