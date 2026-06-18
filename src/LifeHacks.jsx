@@ -398,7 +398,9 @@ export default function LifeHacks({ db, currentUser }) {
 
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
-    const todayKey = `lhacks5_${today}`;
+    // Include build ID so a new deployment automatically busts any cached selection
+    const build = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
+    const todayKey = `lhacks5_${build}_${today}`;
     const historyKey = "lhacks_history_v1";
 
     // Serve today's cached selection if already computed
@@ -441,7 +443,7 @@ export default function LifeHacks({ db, currentUser }) {
       localStorage.setItem(historyKey, JSON.stringify(newHistory));
       localStorage.setItem(todayKey, JSON.stringify(selected));
       Object.keys(localStorage)
-        .filter((k) => k.startsWith("lhacks5_") && k !== todayKey)
+        .filter((k) => k.startsWith("lhacks5_") && k !== todayKey)  // prune old build/date combos
         .forEach((k) => localStorage.removeItem(k));
       // Also clean up old API-based cache keys
       Object.keys(localStorage)
