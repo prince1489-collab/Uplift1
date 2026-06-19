@@ -1760,6 +1760,11 @@ export default function App() {
       }
 
       await Promise.all(deletes);
+
+      // Reset in-memory globe state so the map clears immediately
+      setReactedCountries({});
+      try { localStorage.removeItem("seen_reacted_v1"); } catch (_) {}
+
       setAdminResetConfirm(false);
     } catch (err) {
       console.error("Full reset failed:", err);
