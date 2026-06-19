@@ -1054,7 +1054,8 @@ export default function App() {
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
-            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
+            const REACT_EMOJIS = new Set(["❤️", "🙏", "😊", "🌟"]);
+            if (!REACT_EMOJIS.has(rDoc.id)) return;
             const emoji = rDoc.id;
             const data = rDoc.data();
             const countries = data.countries || {};
