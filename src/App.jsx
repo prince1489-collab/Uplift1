@@ -1254,6 +1254,9 @@ export default function App() {
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
   const [adminClearing, setAdminClearing] = useState(false);
   const [adminClearError, setAdminClearError] = useState("");
+  const [adminResetConfirm, setAdminResetConfirm] = useState(false);
+  const [adminResetting, setAdminResetting] = useState(false);
+  const [adminResetError, setAdminResetError] = useState("");
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
@@ -1713,6 +1716,58 @@ export default function App() {
         : `Failed: ${err.message}`);
     } finally {
       setAdminClearing(false);
+    }
+  };
+
+  const handleFullReset = async () => {
+    if (!isAdmin) return;
+    setAdminResetting(true);
+    setAdminResetError("");
+    try {
+      const deletes = [];
+
+      // publicMessages + reactions + gifts
+      const msgsSnap = await getDocs(collection(db, "publicMessages"));
+      for (const msgDoc of msgsSnap.docs) {
+        const rSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "reactions"));
+        rSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+        const gSnap = await getDocs(collection(db, "publicMessages", msgDoc.id, "gifts"));
+        gSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+        deletes.push(deleteDoc(msgDoc.ref));
+      }
+
+      // waves
+      const wavesSnap = await getDocs(collection(db, "waves"));
+      wavesSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+
+      // presence
+      const presSnap = await getDocs(collection(db, "presence"));
+      presSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+
+      // chatRequests
+      const reqSnap = await getDocs(collection(db, "chatRequests"));
+      reqSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+
+      // reports
+      const repSnap = await getDocs(collection(db, "reports"));
+      repSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+
+      // reactionsReceived subcollection from every user
+      const usersSnap = await getDocs(collection(db, "users"));
+      for (const userDoc of usersSnap.docs) {
+        const rxSnap = await getDocs(collection(db, "users", userDoc.id, "reactionsReceived"));
+        rxSnap.forEach((d) => deletes.push(deleteDoc(d.ref)));
+      }
+
+      await Promise.all(deletes);
+      setAdminResetConfirm(false);
+    } catch (err) {
+      console.error("Full reset failed:", err);
+      setAdminResetError(err.code === "permission-denied"
+        ? "Permission denied — check Firestore rules allow admin deletes."
+        : `Failed: ${err.message}`);
+    } finally {
+      setAdminResetting(false);
     }
   };
 
@@ -2308,13 +2363,22 @@ export default function App() {
                 </>
               ) : null}
               {isAdmin && (
-                <button
-                  onClick={() => setAdminConfirm(true)}
-                  className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-400 opacity-60 hover:opacity-100 transition-opacity"
-                >
-                  <Shield size={11} />
-                  Admin: Clear all messages
-                </button>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setAdminConfirm(true)}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-400 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <Shield size={11} />
+                    Clear feed
+                  </button>
+                  <button
+                    onClick={() => setAdminResetConfirm(true)}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-600 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <Shield size={11} />
+                    Full reset
+                  </button>
+                </div>
               )}
             </footer>
             )} {/* end activeTab === "feed" footer */}
@@ -2344,7 +2408,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Admin: confirm clear-all modal ── */}
+            {/* ── Admin: confirm clear-feed modal ── */}
             {adminConfirm && (
               <div className="absolute inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
                 <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl">
@@ -2372,6 +2436,40 @@ export default function App() {
                       className="flex-1 rounded-2xl bg-red-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {adminClearing ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : "Delete all"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Admin: confirm full-reset modal ── */}
+            {adminResetConfirm && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+                <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                      <Shield size={22} className="text-red-600" />
+                    </div>
+                    <p className="font-bold text-slate-800 text-base">Full app reset?</p>
+                    <p className="text-sm text-slate-500">Permanently deletes all messages, reactions, waves, presence, chat requests, and reports. User accounts and circles are kept. This cannot be undone.</p>
+                    {adminResetError && (
+                      <p className="text-xs font-semibold text-red-500 bg-red-50 rounded-xl px-3 py-2 w-full">{adminResetError}</p>
+                    )}
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    <button
+                      onClick={() => { setAdminResetConfirm(false); setAdminResetError(""); }}
+                      disabled={adminResetting}
+                      className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleFullReset}
+                      disabled={adminResetting}
+                      className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {adminResetting ? <><Loader2 size={14} className="animate-spin" /> Resetting…</> : "Full reset"}
                     </button>
                   </div>
                 </div>
