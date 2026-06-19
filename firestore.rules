@@ -41,7 +41,7 @@ service cloud.firestore {
 
       // Denormalized live heart feed — written by the reactor, read by the owner
       match /reactionsReceived/{reactionId} {
-        allow read: if request.auth.uid == userId;
+        allow read: if request.auth.uid == userId || isAdmin();
         allow create, update: if request.auth != null
             && request.resource.data.reactorUid == request.auth.uid
             && request.resource.data.ownerUid == userId;
@@ -65,7 +65,8 @@ service cloud.firestore {
     match /waves/{waveId} {
       allow read: if request.auth != null
           && (resource.data.fromUid == request.auth.uid
-           || resource.data.toUid   == request.auth.uid);
+           || resource.data.toUid   == request.auth.uid
+           || isAdmin());
       allow create: if request.auth != null
           && request.resource.data.fromUid == request.auth.uid;
       allow update: if request.auth != null
@@ -108,7 +109,8 @@ service cloud.firestore {
     match /chatRequests/{requestId} {
       allow read: if request.auth != null
           && (resource.data.fromUid == request.auth.uid
-           || resource.data.toUid   == request.auth.uid);
+           || resource.data.toUid   == request.auth.uid
+           || isAdmin());
       allow create: if request.auth != null
           && request.resource.data.fromUid == request.auth.uid;
       allow update, delete: if request.auth != null
