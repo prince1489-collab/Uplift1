@@ -844,7 +844,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
         return (
           <button key={e} onClick={() => toggle(e)}
-            className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 ${
+            className={`relative flex items-center gap-0.5 rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 before:absolute before:-inset-2 before:content-[''] ${
               mine2 ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
             }`}>
             {e}<span className="ml-0.5">{count}</span>
