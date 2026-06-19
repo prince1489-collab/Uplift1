@@ -729,7 +729,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, reactorCountry, localHearted = false }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, localHearted = false }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -800,15 +800,26 @@ export function ReactionSideBadges({ db, messageId, currentUser, mine, onReact, 
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
       const reactedAt = { ...(data.reactedAt ?? {}) };
+      // Denormalized owner notification → lets the message owner's globe light coral
+      // instantly via a single flat listener on users/{owner}/reactionsReceived.
+      const notifyOwner = senderUid && senderUid !== currentUser.uid;
+      const ownerRef = notifyOwner
+        ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
+        : null;
       if (isSame) {
         const newUids = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
+        if (ownerRef) tx.delete(ownerRef);
       } else {
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
         tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+        if (ownerRef) tx.set(ownerRef, {
+          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+          emoji, country: myCountry, reactedAt: Date.now(),
+        });
       }
     }).catch(() => {});
   };
@@ -1683,15 +1694,26 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
       const reactedAt = { ...(data.reactedAt ?? {}) };
+      // Denormalized owner notification → lights the message owner's globe coral instantly
+      // via a single flat listener on users/{owner}/reactionsReceived.
+      const notifyOwner = senderUid && senderUid !== currentUser.uid;
+      const ownerRef = notifyOwner
+        ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
+        : null;
       if (isSame) {
         const next = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
+        if (ownerRef) tx.delete(ownerRef);
       } else {
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
         tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+        if (ownerRef) tx.set(ownerRef, {
+          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+          emoji, country: myCountry, reactedAt: Date.now(),
+        });
       }
     }).catch(() => {}); // onSnapshot listener will self-correct on failure
   };

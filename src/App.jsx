@@ -1036,15 +1036,21 @@ export default function App() {
     reactReadyRef.current = false;
     const readyTimer = setTimeout(() => { reactReadyRef.current = true; }, 4000);
     const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
-    let innerUnsubs = [];
+    // Stable per-message subscription map (msgId → unsub). We diff on each outer fire and
+    // only attach/detach what actually changed — never a blanket teardown — so an inner
+    // reactions listener, once attached, keeps delivering heart updates for the whole session.
+    const innerSubs = new Map();
     const outer = onSnapshot(q, (snap) => {
-      innerUnsubs.forEach((u) => u());
-      innerUnsubs = [];
+      const liveIds = new Set();
       snap.docs.forEach((d) => {
         const msgId = d.id;
-        // Message send time (ms) — used as the fallback reaction time for legacy
-        // reaction docs written by older app builds that lack reactedAt.
-        const msgTs = d.data().timestamp?.toMillis?.() ?? 0;
+        liveIds.add(msgId);
+        if (innerSubs.has(msgId)) return; // already subscribed — leave it alone
+        // Message send time (ms) — fallback reaction time for legacy reaction docs lacking
+        // reactedAt. timestamp is written as a number (nowMs()), so read it as a number;
+        // only call .toMillis() if it's actually a Firestore Timestamp.
+        const ts = d.data().timestamp;
+        const msgTs = typeof ts === "number" ? ts : (ts?.toMillis?.() ?? 0);
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
@@ -1107,11 +1113,75 @@ export default function App() {
             const t0 = newToasts[newToasts.length - 1];
             setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
           }
-        }, () => {});
-        innerUnsubs.push(unsub);
+        }, (e) => console.warn("[reactions] inner listener error", e));
+        innerSubs.set(msgId, unsub);
       });
-    }, () => {});
-    return () => { clearTimeout(readyTimer); outer(); innerUnsubs.forEach((u) => u()); };
+      // Detach listeners for messages that dropped out of the top-20 window
+      for (const [msgId, unsub] of innerSubs) {
+        if (!liveIds.has(msgId)) { unsub(); innerSubs.delete(msgId); }
+      }
+    }, (e) => console.warn("[reactions] outer listener error", e));
+    return () => {
+      clearTimeout(readyTimer);
+      outer();
+      for (const unsub of innerSubs.values()) unsub();
+      innerSubs.clear();
+    };
+  }, [db, currentUser]);
+
+  // Robust live coral lighting: a single flat listener on my own reactionsReceived
+  // subcollection. Each heart writes a doc here (denormalized at react time), so this
+  // delivers the event instantly without depending on the per-message reactions
+  // listeners above re-firing. Belt-and-suspenders with the listener above — both feed
+  // the same reactedCountries state with an idempotent "keep newest at" guard.
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const col = collection(db, "users", currentUser.uid, "reactionsReceived");
+    const unsub = onSnapshot(col, (snap) => {
+      const newToasts = [];
+      snap.docChanges().forEach((chg) => {
+        if (chg.type === "removed") return; // un-heart: let the 5h TTL fade coral
+        const data = chg.doc.data();
+        const reactorUid = data.reactorUid;
+        const emoji = data.emoji || "❤️";
+        const messageId = data.messageId;
+        if (!reactorUid || reactorUid === currentUser.uid) return;
+        const at = typeof data.reactedAt === "number" ? data.reactedAt : Date.now();
+
+        const applyCountry = (country) => {
+          if (!country) return;
+          setReactedCountries((prev) => {
+            const existing = prev[country];
+            if (existing && existing.at >= at) return prev;
+            const next = { ...prev, [country]: { emoji, at } };
+            try { localStorage.setItem("seen_reacted_v1", JSON.stringify(next)); } catch (_) {}
+            return next;
+          });
+        };
+        if (data.country) applyCountry(data.country);
+        else getDoc(doc(db, "users", reactorUid))
+          .then((s) => applyCountry(s.data()?.country))
+          .catch((e) => console.warn("[reactionsReceived] country fallback failed", e));
+
+        // Toast once per message+user+emoji — shared dedupe with the listener above
+        const toastKey = `${messageId}|${reactorUid}|${emoji}`;
+        if (reactObservedRef.current.has(toastKey)) return;
+        reactObservedRef.current.add(toastKey);
+        if (reactReadyRef.current && data.country) {
+          if (data.country === myCountryRef.current && myCountryRef.current) {
+            setHometownToast({ id: Date.now(), emoji });
+            setHometownPingTime(Date.now());
+          } else {
+            newToasts.push({ emoji, country: data.country });
+          }
+        }
+      });
+      if (newToasts.length) {
+        const t0 = newToasts[newToasts.length - 1];
+        setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
+      }
+    }, (e) => console.warn("[reactionsReceived] listener error", e));
+    return () => unsub();
   }, [db, currentUser]);
 
   // One-time cleanup: delete legacy non-heart reaction docs from Firestore
@@ -2176,7 +2246,7 @@ export default function App() {
                                             </div>
                                           );
                                         })()}
-                                        <ReactionSideBadges db={db} messageId={m.id} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
