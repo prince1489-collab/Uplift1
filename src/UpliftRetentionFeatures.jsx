@@ -821,7 +821,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
           emoji, country: myCountry, reactedAt: Date.now(),
         });
       }
-    }).catch(() => {});
+    }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
   };
 
   // Glow intensity grows with heart count: 1-2 faint, 3-6 medium, 7+ vivid
@@ -1715,7 +1715,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           emoji, country: myCountry, reactedAt: Date.now(),
         });
       }
-    }).catch(() => {}); // onSnapshot listener will self-correct on failure
+    }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
   };
 
   const handleReport = async (reason) => {
