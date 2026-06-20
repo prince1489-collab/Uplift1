@@ -1185,6 +1185,32 @@ export default function App() {
     return () => unsub();
   }, [db, currentUser]);
 
+  // Listen for admin full-reset signal — clears stale globe localStorage on ALL clients
+  useEffect(() => {
+    if (!db) return;
+    return onSnapshot(doc(db, "meta", "appState"), (snap) => {
+      const lastResetAt = snap.data()?.lastResetAt ?? 0;
+      if (!lastResetAt) return;
+      try {
+        const stored = localStorage.getItem("seen_reacted_v1");
+        if (!stored) return;
+        const data = JSON.parse(stored);
+        // Drop any country entry whose reaction predates the last reset
+        const filtered = Object.fromEntries(
+          Object.entries(data).filter(([, v]) => (v?.at ?? 0) >= lastResetAt)
+        );
+        if (Object.keys(filtered).length !== Object.keys(data).length) {
+          if (Object.keys(filtered).length === 0) {
+            localStorage.removeItem("seen_reacted_v1");
+          } else {
+            localStorage.setItem("seen_reacted_v1", JSON.stringify(filtered));
+          }
+          setReactedCountries(filtered);
+        }
+      } catch (_) {}
+    }, () => {});
+  }, [db]);
+
   // One-time cleanup: delete legacy non-heart reaction docs from Firestore
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -1762,7 +1788,11 @@ export default function App() {
 
       await Promise.all(deletes);
 
-      // Reset in-memory globe state so the map clears immediately
+      // Broadcast reset timestamp — all connected clients will see this via their
+      // meta/appState listener and clear their own stale globe localStorage instantly
+      await setDoc(doc(db, "meta", "appState"), { lastResetAt: Date.now() }, { merge: true });
+
+      // Also clear this device immediately without waiting for the listener to fire
       setReactedCountries({});
       try { localStorage.removeItem("seen_reacted_v1"); } catch (_) {}
 
