@@ -1619,6 +1619,56 @@ export default function App() {
     setTimeout(() => setBurstingMystery(null), 600);
   };
 
+  // Ripple attribution: convert my recent reactions into "ripple" credits for the
+  // people whose greetings I reacted to. Only reactions within the window count, and
+  // each original sender is credited at most once (doc id = my uid). Best-effort.
+  const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
+  const recordRipples = async () => {
+    if (!currentUser) return;
+    try {
+      const cutoff = Date.now() - RIPPLE_WINDOW_MS;
+      const myReactionsRef = collection(db, "users", currentUser.uid, "outgoingReactions");
+      // Equality-only query (no composite index needed); window is applied client-side.
+      const q = query(myReactionsRef, where("converted", "==", false), limit(50));
+      const snap = await getDocs(q);
+      if (snap.empty) return;
+      const now = Date.now();
+      const myCountry = profile?.country ?? null;
+      const seenSenders = new Set();
+      await Promise.all(
+        snap.docs.map(async (d) => {
+          const { senderUid, reactedAt } = d.data();
+          // Outside the window, self-reaction, or malformed — nothing to credit, but
+          // mark it processed so it can't clog future scans.
+          if (!reactedAt || reactedAt < cutoff || !senderUid || senderUid === currentUser.uid) {
+            return setDoc(d.ref, { converted: true }, { merge: true }).catch(() => {});
+          }
+          const writes = [setDoc(d.ref, { converted: true }, { merge: true }).catch(() => {})];
+          if (!seenSenders.has(senderUid)) {
+            seenSenders.add(senderUid);
+            writes.push(
+              setDoc(
+                doc(db, "users", senderUid, "ripples", currentUser.uid),
+                {
+                  originatorUid: senderUid,
+                  responderUid: currentUser.uid,
+                  reactedAt: reactedAt ?? null,
+                  greetedAt: now,
+                  responderCountry: myCountry,
+                  createdAt: now,
+                },
+                { merge: true }
+              ).catch((err) => { console.error("[ripple write]", err?.code, err?.message); })
+            );
+          }
+          return Promise.all(writes);
+        })
+      );
+    } catch (err) {
+      console.error("[recordRipples]", err?.code, err?.message);
+    }
+  };
+
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
@@ -1680,6 +1730,11 @@ export default function App() {
         }),
         recordGreetingDay(),
       ]).catch((err) => console.error("Reward update failed:", err));
+
+      // Ripple attribution — strictly best-effort, never affects sending.
+      // If I recently reacted to someone's greeting and am now sending my own,
+      // their kindness "rippled" to me. Credit each original sender once.
+      recordRipples();
 
     } catch (err) {
       console.error("Send failed:", err);

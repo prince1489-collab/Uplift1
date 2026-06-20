@@ -52,13 +52,20 @@ function useReactionData(db, currentUser, period) {
     const recompute = () => {
       let totalReactions = 0;
       const reactionByCountry = {};
+      // The single most recent reaction from another country — powers the weekly story.
+      let notableReaction = null;
       for (const entries of perMsg.values()) {
-        for (const { country } of entries) {
+        for (const { country, reactedAt } of entries) {
           totalReactions++;
-          if (country) reactionByCountry[country] = (reactionByCountry[country] || 0) + 1;
+          if (country) {
+            reactionByCountry[country] = (reactionByCountry[country] || 0) + 1;
+            if (reactedAt && (!notableReaction || reactedAt > notableReaction.reactedAt)) {
+              notableReaction = { country, reactedAt };
+            }
+          }
         }
       }
-      const result = { totalReactions, reactionByCountry, dayMap };
+      const result = { totalReactions, reactionByCountry, dayMap, notableReaction };
       setData(result);
       setLoading(false);
       try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
@@ -82,9 +89,9 @@ function useReactionData(db, currentUser, period) {
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const entries = [];
           rSnap.forEach(rDoc => {
-            const { uids = [], countries = {} } = rDoc.data();
+            const { uids = [], countries = {}, reactedAt = {} } = rDoc.data();
             uids.forEach(uid => {
-              if (uid !== currentUser.uid) entries.push({ uid, country: countries[uid] });
+              if (uid !== currentUser.uid) entries.push({ uid, country: countries[uid], reactedAt: reactedAt[uid] });
             });
           });
           perMsg.set(msgId, entries);
@@ -98,6 +105,78 @@ function useReactionData(db, currentUser, period) {
   }, [db, currentUser, period]);
 
   return { data, loading };
+}
+
+// ── Ripple data — people my kindness sparked into greeting others ──
+// Each doc under users/{me}/ripples represents one person who reacted to my
+// greeting and then went on to send their own. Counted once per person.
+function useRippleData(db, currentUser) {
+  const [ripples, setRipples] = useState(null);
+
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const cacheKey = `seen_ripples_v1_${currentUser.uid}`;
+
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+      if (cached && Date.now() - cached.at < CACHE_TTL) setRipples(cached.data);
+    } catch (_) {}
+
+    const unsub = onSnapshot(
+      collection(db, "users", currentUser.uid, "ripples"),
+      (snap) => {
+        const list = snap.docs.map(d => d.data());
+        setRipples(list);
+        try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: list })); } catch (_) {}
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, [db, currentUser]);
+
+  return { rippleCount: ripples?.length ?? 0, ripples: ripples ?? [] };
+}
+
+// ── Weekly story — a short, human narrative assembled from this week's data.
+// Pure function: same inputs → same output, so it changes naturally week to week.
+function buildWeeklyStory({ countriesCount, notableReaction, rippleCount, dayMap }) {
+  const sentences = [];
+
+  if (countriesCount > 0) {
+    sentences.push(
+      `This week your warmth reached ${countriesCount} ${countriesCount === 1 ? "country" : "countries"}.`
+    );
+  }
+
+  if (notableReaction?.reactedAt) {
+    const d = new Date(notableReaction.reactedAt);
+    const weekday = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()];
+    let hr = d.getHours();
+    const ampm = hr >= 12 ? "pm" : "am";
+    hr = hr % 12 || 12;
+    const timeLabel = `${hr}${ampm}`;
+    sentences.push(
+      `Someone in ${notableReaction.country} reacted to your greeting at ${timeLabel} on a ${weekday} — probably right when they needed it.`
+    );
+  }
+
+  if (rippleCount > 0) {
+    sentences.push(
+      `And your kindness travelled: ${rippleCount} ${rippleCount === 1 ? "person" : "people"} you reached went on to greet someone else.`
+    );
+  }
+
+  if (sentences.length === 0) {
+    // Gentle fallback before any data exists.
+    const active = Object.keys(dayMap || {}).length;
+    sentences.push(
+      active > 0
+        ? "Your story is just getting started — every greeting is a small light for someone, somewhere."
+        : "Send your first greeting this week and watch your story begin to unfold here."
+    );
+  }
+
+  return sentences.join(" ");
 }
 
 // ── Odometer number — rolling digit reels ─────────────────────────
@@ -291,15 +370,93 @@ function RhythmCard({ streak, dayMap }) {
   );
 }
 
+// ── Hero: Lives Touched ───────────────────────────────────────────
+// Reframes the cold "greetings sent" count as felt human impact.
+function LivesTouchedHero({ sentCount }) {
+  const n = sentCount ?? 0;
+  return (
+    <div style={{ textAlign: "center", padding: "26px 18px 6px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+        <span style={{ fontSize: "22px", opacity: 0.9 }}>✨</span>
+        <OdometerNumber value={n} fontSize={56} color="#4DFFB0" duration={1300} />
+        <span style={{ fontSize: "22px", opacity: 0.9 }}>✨</span>
+      </div>
+      <p style={{ fontSize: "13px", fontWeight: 700, color: "rgba(255,255,255,0.85)", margin: "8px 0 0", letterSpacing: "0.01em" }}>
+        {n === 1 ? "day you may have brightened" : "days you may have brightened"}
+      </p>
+      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.38)", margin: "6px auto 0", maxWidth: "270px", lineHeight: 1.5 }}>
+        A single unexpected kind message can lift someone's mood for hours.
+      </p>
+    </div>
+  );
+}
+
+// ── Hero: Ripple line ─────────────────────────────────────────────
+// You → people you reached → those who passed the kindness on.
+function RippleLine({ sentCount, rippleCount }) {
+  const reached = sentCount ?? 0;
+  const node = (label, value, accent) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", minWidth: "58px" }}>
+      <span style={{ fontSize: "19px", fontWeight: 800, color: accent ? "#4DFFB0" : "#fff", lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center", lineHeight: 1.25 }}>{label}</span>
+    </div>
+  );
+  const arrow = (
+    <span style={{ fontSize: "15px", color: "rgba(77,255,176,0.5)", margin: "0 2px", marginBottom: "12px" }}>→</span>
+  );
+  return (
+    <div style={{ margin: "14px 18px 8px", borderRadius: "16px", background: "rgba(77,255,176,0.05)", border: "1px solid rgba(77,255,176,0.14)", padding: "16px 14px 14px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "2px" }}>
+        {node("You", "🫶", false)}
+        {arrow}
+        {node(reached === 1 ? "person reached" : "people reached", reached, false)}
+        {arrow}
+        {node("✦ greeted someone else", rippleCount, true)}
+      </div>
+      <p style={{ fontSize: "11.5px", fontWeight: 600, color: rippleCount > 0 ? "rgba(77,255,176,0.85)" : "rgba(255,255,255,0.4)", textAlign: "center", margin: "12px 0 0" }}>
+        {rippleCount > 0
+          ? "Your kindness didn't stop with you."
+          : "Keep going — soon your kindness will spark theirs."}
+      </p>
+    </div>
+  );
+}
+
+// ── Hero: Weekly story card ───────────────────────────────────────
+function WeeklyStoryCard({ story }) {
+  return (
+    <div style={{ margin: "8px 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px 16px 14px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(77,255,176,0.7)", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 10px" }}>
+        Your Week
+      </p>
+      <p style={{ fontSize: "14px", lineHeight: 1.6, color: "rgba(255,255,255,0.82)", margin: 0, fontWeight: 500 }}>
+        {story}
+      </p>
+      <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", margin: "12px 0 0", textAlign: "right", fontStyle: "italic" }}>
+        — your week in kindness
+      </p>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────
 
 export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
   const { data, loading } = useReactionData(db, currentUser, period);
+  const { rippleCount } = useRippleData(db, currentUser);
   const [activeBarKey, setActiveBarKey] = useState(null);
 
   const sentCount = period === "7d" ? (liveStats?.sent7d ?? null) : (liveStats?.sent30d ?? null);
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
+
+  // Weekly story always reflects the 7-day window, regardless of the toggle.
+  const weeklyStory = useMemo(() => buildWeeklyStory({
+    countriesCount: liveStats?.countries7d ?? 0,
+    notableReaction: data?.notableReaction,
+    rippleCount,
+    dayMap: data?.dayMap,
+  }), [liveStats, data, rippleCount]);
 
   const days = useMemo(() => {
     const n = period === "30d" ? 30 : 7;
@@ -324,6 +481,11 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
 
   return (
     <div style={{ flex: 1, background: "#060e18", overflowY: "auto", display: "flex", flexDirection: "column", paddingBottom: "32px" }}>
+
+      {/* ── Living Impact hero ── */}
+      <LivesTouchedHero sentCount={sentCount} />
+      <RippleLine sentCount={sentCount} rippleCount={rippleCount} />
+      <WeeklyStoryCard story={weeklyStory} />
 
       {/* ── Header ── */}
       <div style={{ padding: "22px 18px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>

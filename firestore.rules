@@ -49,6 +49,21 @@ service cloud.firestore {
             && (resource == null || resource.data.reactorUid == request.auth.uid)
             || isAdmin();
       }
+
+      // My own log of greetings I reacted to — private to me, powers ripple credit
+      match /outgoingReactions/{msgId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Ripple credits — "people my kindness sparked into greeting others".
+      // Written by the responder (who reacted then greeted), read by the originator.
+      match /ripples/{responderUid} {
+        allow read: if request.auth.uid == userId || isAdmin();
+        allow create, update: if request.auth != null
+            && request.resource.data.responderUid == request.auth.uid
+            && request.resource.data.originatorUid == userId;
+        allow delete: if isAdmin();
+      }
     }
 
     // ── Presence (ephemeral heartbeat) ──

@@ -821,13 +821,20 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
 
     // Globe notification — best-effort, separate from the reaction so it can't block the count
     if (ownerRef) {
+      // My own record of who I reacted to — powers "ripple" attribution when I later
+      // send a greeting (see handleSendMessage in App.jsx). Best-effort, invisible to UX.
+      const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
       if (isSame) {
         deleteDoc(ownerRef).catch(() => {});
+        deleteDoc(myReactionRef).catch(() => {});
       } else {
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
           emoji, country: myCountry, reactedAt: Date.now(),
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+        setDoc(myReactionRef, {
+          senderUid, messageId, country: myCountry, reactedAt: Date.now(), converted: false,
+        }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
       }
     }
   };
