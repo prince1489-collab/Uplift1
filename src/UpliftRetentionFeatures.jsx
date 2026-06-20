@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -782,6 +783,12 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     if (!isSame && onReact) onReact(emoji);
 
     const myCountry = reactorCountry ?? null;
+    const notifyOwner = senderUid && senderUid !== currentUser.uid;
+    const ownerRef = notifyOwner
+      ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
+      : null;
+
+    // Reaction doc write — own transaction so reactionsReceived failure can't roll it back
     runTransaction(db, async (tx) => {
       if (currentEmoji && !isSame) {
         const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
@@ -800,28 +807,29 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
       const reactedAt = { ...(data.reactedAt ?? {}) };
-      // Denormalized owner notification → lets the message owner's globe light coral
-      // instantly via a single flat listener on users/{owner}/reactionsReceived.
-      const notifyOwner = senderUid && senderUid !== currentUser.uid;
-      const ownerRef = notifyOwner
-        ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
-        : null;
       if (isSame) {
         const newUids = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
-        if (ownerRef) tx.delete(ownerRef);
       } else {
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
         tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
-        if (ownerRef) tx.set(ownerRef, {
-          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt: Date.now(),
-        });
       }
     }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
+
+    // Globe notification — best-effort, separate from the reaction so it can't block the count
+    if (ownerRef) {
+      if (isSame) {
+        deleteDoc(ownerRef).catch(() => {});
+      } else {
+        setDoc(ownerRef, {
+          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+          emoji, country: myCountry, reactedAt: Date.now(),
+        }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+      }
+    }
   };
 
   // Glow intensity grows with heart count: 1-2 faint, 3-6 medium, 7+ vivid
@@ -1676,6 +1684,12 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     // ── Firestore write in background (no await) ─────────────────
     // onSnapshot corrects any inconsistency if this fails.
     const myCountry = profile?.country ?? null;
+    const notifyOwner = senderUid && senderUid !== currentUser.uid;
+    const ownerRef = notifyOwner
+      ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
+      : null;
+
+    // Reaction doc write — own transaction so reactionsReceived failure can't roll it back
     runTransaction(db, async (tx) => {
       if (prevEmoji && !isSame) {
         const oldRef = doc(db, "publicMessages", messageId, "reactions", prevEmoji);
@@ -1694,28 +1708,29 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       const uids = data.uids ?? [];
       const countries = { ...(data.countries ?? {}) };
       const reactedAt = { ...(data.reactedAt ?? {}) };
-      // Denormalized owner notification → lights the message owner's globe coral instantly
-      // via a single flat listener on users/{owner}/reactionsReceived.
-      const notifyOwner = senderUid && senderUid !== currentUser.uid;
-      const ownerRef = notifyOwner
-        ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
-        : null;
       if (isSame) {
         const next = uids.filter((u) => u !== currentUser.uid);
         delete countries[currentUser.uid];
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
-        if (ownerRef) tx.delete(ownerRef);
       } else {
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
         tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
-        if (ownerRef) tx.set(ownerRef, {
-          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt: Date.now(),
-        });
       }
     }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
+
+    // Globe notification — best-effort, separate so it can't block the count
+    if (ownerRef) {
+      if (isSame) {
+        deleteDoc(ownerRef).catch(() => {});
+      } else {
+        setDoc(ownerRef, {
+          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+          emoji, country: myCountry, reactedAt: Date.now(),
+        }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+      }
+    }
   };
 
   const handleReport = async (reason) => {
