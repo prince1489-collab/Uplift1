@@ -828,12 +828,51 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         deleteDoc(ownerRef).catch(() => {});
         deleteDoc(myReactionRef).catch(() => {});
       } else {
+        const reactedAt = Date.now();
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt: Date.now(),
+          emoji, country: myCountry, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+
+        // Write outgoingReactions then immediately check if this reactor already sent
+        // a greeting within the ripple window ("send → react" ordering). If yes,
+        // credit the ripple to the original sender right now rather than waiting for
+        // the reactor's next send.
+        const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
         setDoc(myReactionRef, {
-          senderUid, messageId, country: myCountry, reactedAt: Date.now(), converted: false,
+          senderUid, messageId, country: myCountry, reactedAt, converted: false,
+        }).then(async () => {
+          try {
+            const cutoff = reactedAt - RIPPLE_WINDOW_MS;
+            const recentSendSnap = await getDocs(
+              query(
+                collection(db, "publicMessages"),
+                where("uid", "==", currentUser.uid),
+                where("timestamp", ">=", cutoff),
+                limit(1)
+              )
+            );
+            if (!recentSendSnap.empty) {
+              // Reactor already sent within the window — credit the ripple now.
+              await Promise.all([
+                setDoc(
+                  doc(db, "users", senderUid, "ripples", currentUser.uid),
+                  {
+                    originatorUid: senderUid,
+                    responderUid: currentUser.uid,
+                    reactedAt,
+                    greetedAt: recentSendSnap.docs[0].data().timestamp ?? reactedAt,
+                    responderCountry: myCountry,
+                    createdAt: reactedAt,
+                  },
+                  { merge: true }
+                ),
+                setDoc(myReactionRef, { converted: true }, { merge: true }),
+              ]);
+            }
+          } catch (err) {
+            console.error("[ripple on-react]", err?.code, err?.message);
+          }
         }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
       }
     }
