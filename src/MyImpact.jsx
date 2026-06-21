@@ -53,11 +53,13 @@ function useReactionData(db, currentUser, period) {
       let totalReactions = 0;
       const reactionByCountry = {};
       const uidsByCountry = {};
+      const allReactorUids = new Set();
       // The single most recent reaction from another country — powers the weekly story.
       let notableReaction = null;
       for (const entries of perMsg.values()) {
         for (const { uid, country, reactedAt } of entries) {
           totalReactions++;
+          allReactorUids.add(uid);
           if (country) {
             reactionByCountry[country] = (reactionByCountry[country] || 0) + 1;
             if (!uidsByCountry[country]) uidsByCountry[country] = new Set();
@@ -71,7 +73,8 @@ function useReactionData(db, currentUser, period) {
       const usersByCountry = Object.fromEntries(
         Object.entries(uidsByCountry).map(([c, s]) => [c, s.size])
       );
-      const result = { totalReactions, reactionByCountry, usersByCountry, dayMap, notableReaction };
+      const result = { totalReactions, reactionByCountry, usersByCountry,
+                       uniqueReactorCount: allReactorUids.size, dayMap, notableReaction };
       setData(result);
       setLoading(false);
       try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
@@ -399,8 +402,8 @@ function LivesTouchedHero({ sentCount }) {
 
 // ── Hero: Ripple line ─────────────────────────────────────────────
 // You → people you reached → those who passed the kindness on.
-function RippleLine({ sentCount, rippleCount }) {
-  const reached = sentCount ?? 0;
+function RippleLine({ reachedCount, rippleCount }) {
+  const reached = reachedCount ?? 0;
   const node = (label, value, accent) => (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", minWidth: "58px" }}>
       <span style={{ fontSize: "19px", fontWeight: 800, color: accent ? "#4DFFB0" : "#fff", lineHeight: 1 }}>{value}</span>
@@ -564,7 +567,7 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
 
       {/* ── Living Impact hero ── */}
       <LivesTouchedHero sentCount={sentCount} />
-      <RippleLine sentCount={sentCount} rippleCount={rippleCount} />
+      <RippleLine reachedCount={data?.uniqueReactorCount ?? 0} rippleCount={rippleCount} />
       <WeeklyStoryCard story={weeklyStory} />
 
       {/* ── Header ── */}
