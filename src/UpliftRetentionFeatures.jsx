@@ -1768,13 +1768,52 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
 
     // Globe notification — best-effort, separate so it can't block the count
     if (ownerRef) {
+      const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
       if (isSame) {
         deleteDoc(ownerRef).catch(() => {});
+        deleteDoc(myReactionRef).catch(() => {});
       } else {
+        const reactedAt = Date.now();
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt: Date.now(),
+          emoji, country: myCountry, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+
+        const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
+        setDoc(myReactionRef, {
+          senderUid, messageId, country: myCountry, reactedAt, converted: false,
+        }).then(async () => {
+          try {
+            const cutoff = reactedAt - RIPPLE_WINDOW_MS;
+            const recentSendSnap = await getDocs(
+              query(
+                collection(db, "publicMessages"),
+                where("uid", "==", currentUser.uid),
+                where("timestamp", ">=", cutoff),
+                limit(1)
+              )
+            );
+            if (!recentSendSnap.empty) {
+              await Promise.all([
+                setDoc(
+                  doc(db, "users", senderUid, "ripples", currentUser.uid),
+                  {
+                    originatorUid: senderUid,
+                    responderUid: currentUser.uid,
+                    reactedAt,
+                    greetedAt: recentSendSnap.docs[0].data().timestamp ?? reactedAt,
+                    responderCountry: myCountry,
+                    createdAt: reactedAt,
+                  },
+                  { merge: true }
+                ),
+                setDoc(myReactionRef, { converted: true }, { merge: true }),
+              ]);
+            }
+          } catch (err) {
+            console.error("[ripple on-react]", err?.code, err?.message);
+          }
+        }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
       }
     }
   };
