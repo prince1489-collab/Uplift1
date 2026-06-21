@@ -993,6 +993,7 @@ export default function App() {
   const reactObservedRef = useRef(new Set());
   const reactReadyRef = useRef(false);
   const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
+  const lastReachWriteRef = useRef(null); // last reactionsReceivedCount written to my profile (avoid redundant writes)
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
@@ -1176,6 +1177,14 @@ export default function App() {
       if (newToasts.length) {
         const t0 = newToasts[newToasts.length - 1];
         setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
+      }
+
+      // Denormalize total likes received onto my own profile so OTHER users can read it
+      // (they can read my profile but not this subcollection). Powers "Onward Reach".
+      const totalLikes = snap.size;
+      if (totalLikes !== lastReachWriteRef.current) {
+        lastReachWriteRef.current = totalLikes;
+        updateDoc(doc(db, "users", currentUser.uid), { reactionsReceivedCount: totalLikes }).catch(() => {});
       }
     }, (e) => console.warn("[reactionsReceived] listener error", e));
     return () => unsub();

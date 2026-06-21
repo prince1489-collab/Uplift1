@@ -1,7 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, limit, onSnapshot, query, where } from "firebase/firestore";
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 
@@ -146,9 +146,43 @@ function useRippleData(db, currentUser) {
   return { rippleCount: ripples?.length ?? 0, ripples: ripples ?? [] };
 }
 
+// ── Onward Reach — second-order impact ────────────────────────────
+// Of the people I reached who then sent their own greetings (ripple responders),
+// how many likes did THEIR greetings go on to receive? Each responder denormalizes
+// their own total likes received onto their profile (reactionsReceivedCount), which
+// any user can read. We sum across my ripple responders. Best-effort: a responder's
+// count only populates once they've been online running the latest build.
+function useOnwardReach(db, currentUser, ripples) {
+  const [onwardReach, setOnwardReach] = useState(() => {
+    if (!currentUser) return 0;
+    try {
+      const cached = JSON.parse(localStorage.getItem(`seen_onward_v1_${currentUser.uid}`) || "null");
+      if (cached && Date.now() - cached.at < CACHE_TTL) return cached.v;
+    } catch (_) {}
+    return 0;
+  });
+
+  useEffect(() => {
+    if (!db || !currentUser || !ripples?.length) { setOnwardReach(0); return; }
+    let cancelled = false;
+    const uids = [...new Set(ripples.map(r => r.responderUid).filter(Boolean))];
+    Promise.all(uids.map(uid =>
+      getDoc(doc(db, "users", uid)).then(s => s.data()?.reactionsReceivedCount ?? 0).catch(() => 0)
+    )).then(counts => {
+      if (cancelled) return;
+      const total = counts.reduce((a, b) => a + b, 0);
+      setOnwardReach(total);
+      try { localStorage.setItem(`seen_onward_v1_${currentUser.uid}`, JSON.stringify({ at: Date.now(), v: total })); } catch (_) {}
+    });
+    return () => { cancelled = true; };
+  }, [db, currentUser, ripples]);
+
+  return onwardReach;
+}
+
 // ── Weekly story — a short, human narrative assembled from this week's data.
 // Pure function: same inputs → same output, so it changes naturally week to week.
-function buildWeeklyStory({ countriesCount, notableReaction, rippleCount, dayMap }) {
+function buildWeeklyStory({ countriesCount, notableReaction, rippleCount, onwardReach = 0, dayMap }) {
   const sentences = [];
 
   if (countriesCount > 0) {
@@ -172,6 +206,12 @@ function buildWeeklyStory({ countriesCount, notableReaction, rippleCount, dayMap
   if (rippleCount > 0) {
     sentences.push(
       `And your kindness travelled: ${rippleCount} ${rippleCount === 1 ? "person" : "people"} you reached went on to greet someone else.`
+    );
+  }
+
+  if (onwardReach > 0) {
+    sentences.push(
+      `Those greetings went on to touch ${onwardReach} more ${onwardReach === 1 ? "person" : "people"} — your kindness, multiplied.`
     );
   }
 
@@ -402,30 +442,35 @@ function LivesTouchedHero({ sentCount }) {
 
 // ── Hero: Ripple line ─────────────────────────────────────────────
 // You → people you reached → those who passed the kindness on.
-function RippleLine({ reachedCount, rippleCount }) {
+function RippleLine({ reachedCount, rippleCount, onwardReach = 0 }) {
   const reached = reachedCount ?? 0;
+  const showOnward = rippleCount > 0;
   const node = (label, value, accent) => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", minWidth: "58px" }}>
-      <span style={{ fontSize: "19px", fontWeight: 800, color: accent ? "#4DFFB0" : "#fff", lineHeight: 1 }}>{value}</span>
-      <span style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center", lineHeight: 1.25 }}>{label}</span>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", minWidth: "50px", flex: 1 }}>
+      <span style={{ fontSize: "17px", fontWeight: 800, color: accent ? "#4DFFB0" : "#fff", lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: "8.5px", fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center", lineHeight: 1.25 }}>{label}</span>
     </div>
   );
   const arrow = (
-    <span style={{ fontSize: "15px", color: "rgba(77,255,176,0.5)", margin: "0 2px", marginBottom: "12px" }}>→</span>
+    <span style={{ fontSize: "14px", color: "rgba(77,255,176,0.5)", margin: "0 1px", marginBottom: "12px", flexShrink: 0 }}>→</span>
   );
+  let caption;
+  if (rippleCount > 0 && onwardReach > 0) caption = `Your kindness rippled onward to ${onwardReach} more ${onwardReach === 1 ? "person" : "people"}.`;
+  else if (rippleCount > 0) caption = "Your kindness didn't stop with you.";
+  else caption = "Keep going — soon your kindness will spark theirs.";
   return (
-    <div style={{ margin: "14px 18px 8px", borderRadius: "16px", background: "rgba(77,255,176,0.05)", border: "1px solid rgba(77,255,176,0.14)", padding: "16px 14px 14px" }}>
+    <div style={{ margin: "14px 18px 8px", borderRadius: "16px", background: "rgba(77,255,176,0.05)", border: "1px solid rgba(77,255,176,0.14)", padding: "16px 12px 14px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "2px" }}>
         {node("You", "🫶", false)}
         {arrow}
         {node(reached === 1 ? "person reached" : "people reached", reached, false)}
         {arrow}
-        {node("✦ greeted someone else", rippleCount, true)}
+        {node("greeted others", rippleCount, true)}
+        {showOnward && arrow}
+        {showOnward && node("🌊 reached onward", onwardReach, true)}
       </div>
       <p style={{ fontSize: "11.5px", fontWeight: 600, color: rippleCount > 0 ? "rgba(77,255,176,0.85)" : "rgba(255,255,255,0.4)", textAlign: "center", margin: "12px 0 0" }}>
-        {rippleCount > 0
-          ? "Your kindness didn't stop with you."
-          : "Keep going — soon your kindness will spark theirs."}
+        {caption}
       </p>
     </div>
   );
@@ -546,7 +591,8 @@ function ReachByCountryGraph({ usersByCountry, loading }) {
 export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
   const { data, loading } = useReactionData(db, currentUser, period);
-  const { rippleCount } = useRippleData(db, currentUser);
+  const { rippleCount, ripples } = useRippleData(db, currentUser);
+  const onwardReach = useOnwardReach(db, currentUser, ripples);
 
   const sentCount = period === "7d" ? (liveStats?.sent7d ?? null) : (liveStats?.sent30d ?? null);
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
@@ -557,8 +603,9 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
     countriesCount: Object.keys(data?.reactionByCountry ?? {}).length,
     notableReaction: data?.notableReaction,
     rippleCount,
+    onwardReach,
     dayMap: data?.dayMap,
-  }), [data, rippleCount]);
+  }), [data, rippleCount, onwardReach]);
 
   const reactingCountriesCount = Object.keys(data?.reactionByCountry || {}).length;
 
@@ -567,7 +614,7 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
 
       {/* ── Living Impact hero ── */}
       <LivesTouchedHero sentCount={sentCount} />
-      <RippleLine reachedCount={data?.uniqueReactorCount ?? 0} rippleCount={rippleCount} />
+      <RippleLine reachedCount={data?.uniqueReactorCount ?? 0} rippleCount={rippleCount} onwardReach={onwardReach} />
       <WeeklyStoryCard story={weeklyStory} />
 
       {/* ── Header ── */}
