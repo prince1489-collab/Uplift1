@@ -720,8 +720,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
     }));
   }, [initialData, initialEmail]);
 
-  const valid = Boolean(form.country) && Boolean(form.fullName) && Boolean(form.email)
-    && Boolean(form.dobMonth) && Boolean(form.dobDay) && Boolean(form.dobYear);
+  const valid = Boolean(form.country) && Boolean(form.email);
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -730,11 +729,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   return (
     <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
       <form className="mx-auto w-full max-w-sm space-y-3"
-        onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` }); }}>
-        <div className="flex justify-center gap-2 pb-3">
-          <span className="h-2 w-8 rounded-full bg-teal-500" />
-          <span className="h-2 w-8 rounded-full bg-slate-300" />
-        </div>
+        onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: (form.dobMonth && form.dobDay && form.dobYear) ? `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` : "" }); }}>
         <div className="flex justify-center pb-3">
           <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
             <Sparkles size={24} />
@@ -752,7 +747,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
         </InputRow>
 
         <InputRow icon={User}>
-          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Full Name"
+          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Full Name (optional)"
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
         </InputRow>
 
@@ -766,7 +761,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
 
         <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
-            <Calendar size={13} /><span>Date of Birth</span>
+            <Calendar size={13} /><span>Date of Birth <span className="font-normal normal-case tracking-normal text-slate-400">(optional)</span></span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -1986,14 +1981,10 @@ export default function App() {
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                 emailLinkMessage={emailLinkMessage} authError={authError} />
-            ) : onboardingStep === "details" ? (
-              <Onboarding onContinue={async (data) => { setOnboardingError(""); setPendingProfileData(data); setOnboardingStep("photo"); }}
+            ) : (
+              <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
                 loading={isSavingProfile} initialData={pendingProfileData}
                 initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
-            ) : (
-              <ProfilePhotoStep onBack={() => setOnboardingStep("details")}
-                onComplete={(photoFile) => completeOnboarding({ ...pendingProfileData, profilePhoto: photoFile })}
-                loading={isSavingProfile} initialPhoto={pendingProfileData?.profilePhotoUrl || ""} />
             )}
           </>
         ) : (
