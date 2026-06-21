@@ -844,15 +844,10 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         }).then(async () => {
           try {
             const cutoff = reactedAt - RIPPLE_WINDOW_MS;
-            const recentSendSnap = await getDocs(
-              query(
-                collection(db, "publicMessages"),
-                where("uid", "==", currentUser.uid),
-                where("timestamp", ">=", cutoff),
-                limit(1)
-              )
-            );
-            if (!recentSendSnap.empty) {
+            // Read own profile for lastGreetingAt — avoids a composite index on publicMessages.
+            const myProfileSnap = await getDoc(doc(db, "users", currentUser.uid));
+            const lastGreetingAt = myProfileSnap.data()?.lastGreetingAt ?? 0;
+            if (lastGreetingAt >= cutoff) {
               // Reactor already sent within the window — credit the ripple now.
               await Promise.all([
                 setDoc(
@@ -861,7 +856,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
                     originatorUid: senderUid,
                     responderUid: currentUser.uid,
                     reactedAt,
-                    greetedAt: recentSendSnap.docs[0].data().timestamp ?? reactedAt,
+                    greetedAt: lastGreetingAt,
                     responderCountry: myCountry,
                     createdAt: reactedAt,
                   },
@@ -1785,15 +1780,9 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         }).then(async () => {
           try {
             const cutoff = reactedAt - RIPPLE_WINDOW_MS;
-            const recentSendSnap = await getDocs(
-              query(
-                collection(db, "publicMessages"),
-                where("uid", "==", currentUser.uid),
-                where("timestamp", ">=", cutoff),
-                limit(1)
-              )
-            );
-            if (!recentSendSnap.empty) {
+            // profile.lastGreetingAt is already in scope — avoids a composite index on publicMessages.
+            const lastGreetingAt = profile?.lastGreetingAt ?? 0;
+            if (lastGreetingAt >= cutoff) {
               await Promise.all([
                 setDoc(
                   doc(db, "users", senderUid, "ripples", currentUser.uid),
@@ -1801,7 +1790,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
                     originatorUid: senderUid,
                     responderUid: currentUser.uid,
                     reactedAt,
-                    greetedAt: recentSendSnap.docs[0].data().timestamp ?? reactedAt,
+                    greetedAt: lastGreetingAt,
                     responderCountry: myCountry,
                     createdAt: reactedAt,
                   },
