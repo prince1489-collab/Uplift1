@@ -451,12 +451,13 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
 
   // Weekly story always reflects the 7-day window, regardless of the toggle.
+  // countriesCount = countries that reacted to MY messages (not the community feed diversity stat).
   const weeklyStory = useMemo(() => buildWeeklyStory({
-    countriesCount: liveStats?.countries7d ?? 0,
+    countriesCount: Object.keys(data?.reactionByCountry ?? {}).length,
     notableReaction: data?.notableReaction,
     rippleCount,
     dayMap: data?.dayMap,
-  }), [liveStats, data, rippleCount]);
+  }), [data, rippleCount]);
 
   const days = useMemo(() => {
     const n = period === "30d" ? 30 : 7;

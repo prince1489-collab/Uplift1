@@ -95,7 +95,7 @@ function heartbeat(t) {
   return Math.min(1, lub + dub);
 }
 
-export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false, hometownPingTime = 0 }) {
+export default function WorldMap({ db, currentUser, profile, onClose, onSendKindness, lastSendTime = 0, reactedCountries = {}, hasSent = false, hometownPingTime = 0, newRippleCountry = null }) {
   const canvasRef = useRef(null);
   const [tab, setTab] = useState("world");
   const [mapReady, setMapReady] = useState(false);
@@ -279,6 +279,37 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
     }, 2500);
     return () => clearInterval(sendBurstIntervalRef.current);
   }, [mapReady, lastSendTime, myCoords, myCountry]);
+
+  // Inbound reaction arcs — when a new country appears in reactedCountries, fire a comet
+  // arc FROM that country TO the user's white dot (coral-rose, inbound feel).
+  const prevReactedCountriesRef = useRef({});
+  useEffect(() => {
+    if (!mapReady || !myCoords) return;
+    const prev = prevReactedCountriesRef.current;
+    for (const country of Object.keys(reactedCountries)) {
+      if (prev[country]) continue; // already seen — skip
+      const fromC = COUNTRY_COORDS[country];
+      if (!fromC) continue;
+      const id = ++arcIdRef.current;
+      arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC, toC: myCoords, startTime: Date.now(), color: "#FF6B9D" }];
+      setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
+    }
+    prevReactedCountriesRef.current = reactedCountries;
+  }, [reactedCountries, mapReady, myCoords]);
+
+  // Ripple arc — when a new ripple is credited, fire a dim teal arc outward from the
+  // user's dot to the responder's country to show the kindness echoing forward.
+  const prevRippleCountryRef = useRef(null);
+  useEffect(() => {
+    if (!mapReady || !myCoords || !newRippleCountry) return;
+    if (newRippleCountry === prevRippleCountryRef.current) return;
+    prevRippleCountryRef.current = newRippleCountry;
+    const toC = COUNTRY_COORDS[newRippleCountry];
+    if (!toC) return;
+    const id = ++arcIdRef.current;
+    arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC: myCoords, toC, startTime: Date.now(), color: "#4DFFB0" }];
+    setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
+  }, [newRippleCountry, mapReady, myCoords]);
 
   const furthestCountry = useMemo(() => {
     if (!myCoords || !myConnectionCountries.length) return null;

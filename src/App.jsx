@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
   Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X,
 } from "lucide-react";
-import WorldMap from "./WorldMap";
+import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
@@ -994,6 +994,7 @@ export default function App() {
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
   const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
+  const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
   const reactObservedRef = useRef(new Set());
   const reactReadyRef = useRef(false);
   const myCountryRef = useRef(null); // kept in sync with profile.country for reaction listener closure
@@ -1182,6 +1183,25 @@ export default function App() {
         setReactionToast({ id: Date.now(), emoji: t0.emoji, country: t0.country });
       }
     }, (e) => console.warn("[reactionsReceived] listener error", e));
+    return () => unsub();
+  }, [db, currentUser]);
+
+  // Watch ripples — when a new ripple is credited, fire a globe arc outward to the responder's country.
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    let initialLoad = true;
+    const unsub = onSnapshot(
+      collection(db, "users", currentUser.uid, "ripples"),
+      (snap) => {
+        if (initialLoad) { initialLoad = false; return; } // skip initial snapshot
+        snap.docChanges().forEach((chg) => {
+          if (chg.type !== "added") return;
+          const country = chg.doc.data()?.responderCountry;
+          if (country && COUNTRY_COORDS[country]) setNewRippleCountry(country);
+        });
+      },
+      () => {}
+    );
     return () => unsub();
   }, [db, currentUser]);
 
@@ -1902,7 +1922,7 @@ export default function App() {
       {showMap && (
         <div className="fixed inset-0 z-[200]">
           <MapTransitionWrapper visible={showMap}>
-            <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} />
+            <WorldMap db={db} currentUser={currentUser} profile={profile} onClose={() => setShowMap(false)} onSendKindness={() => setShowMap(false)} lastSendTime={lastSendTime} reactedCountries={reactedCountries} hasSent={hasSent} hometownPingTime={hometownPingTime} newRippleCountry={newRippleCountry} />
           </MapTransitionWrapper>
         </div>
       )}
