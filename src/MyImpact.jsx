@@ -52,20 +52,26 @@ function useReactionData(db, currentUser, period) {
     const recompute = () => {
       let totalReactions = 0;
       const reactionByCountry = {};
+      const uidsByCountry = {};
       // The single most recent reaction from another country — powers the weekly story.
       let notableReaction = null;
       for (const entries of perMsg.values()) {
-        for (const { country, reactedAt } of entries) {
+        for (const { uid, country, reactedAt } of entries) {
           totalReactions++;
           if (country) {
             reactionByCountry[country] = (reactionByCountry[country] || 0) + 1;
+            if (!uidsByCountry[country]) uidsByCountry[country] = new Set();
+            uidsByCountry[country].add(uid);
             if (reactedAt && (!notableReaction || reactedAt > notableReaction.reactedAt)) {
               notableReaction = { country, reactedAt };
             }
           }
         }
       }
-      const result = { totalReactions, reactionByCountry, dayMap, notableReaction };
+      const usersByCountry = Object.fromEntries(
+        Object.entries(uidsByCountry).map(([c, s]) => [c, s.size])
+      );
+      const result = { totalReactions, reactionByCountry, usersByCountry, dayMap, notableReaction };
       setData(result);
       setLoading(false);
       try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: result })); } catch (_) {}
@@ -439,13 +445,105 @@ function WeeklyStoryCard({ story }) {
   );
 }
 
+// ── Countries Reached — interactive horizontal bar chart ──────────
+
+function ReachByCountryGraph({ usersByCountry, loading }) {
+  const [selectedCountry, setSelectedCountry] = useState(null);
+  const [sortAlpha, setSortAlpha] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const rows = Object.entries(usersByCountry || {}).sort(
+    sortAlpha ? ([a], [b]) => a.localeCompare(b) : ([, a], [, b]) => b - a
+  );
+  const maxUsers = Math.max(1, ...rows.map(([, n]) => n));
+
+  return (
+    <div style={{ margin: "0 18px 26px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+        <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>
+          Countries Reached
+        </p>
+        {rows.length > 1 && (
+          <button
+            onClick={() => setSortAlpha(v => !v)}
+            style={{
+              fontSize: "10px", fontWeight: 700, color: sortAlpha ? "#4DFFB0" : "rgba(255,255,255,0.4)",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "6px", padding: "3px 9px", cursor: "pointer",
+            }}
+          >
+            {sortAlpha ? "A–Z" : "By reach ↓"}
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        [1, 2, 3].map(i => (
+          <div key={i} style={{ height: "52px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", marginBottom: "10px" }} />
+        ))
+      ) : rows.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "28px 0" }}>
+          <p style={{ fontSize: "36px", margin: "0 0 10px" }}>🌍</p>
+          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 500 }}>No countries reached yet</p>
+          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", margin: "5px 0 0" }}>Keep spreading kindness — they're coming</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {rows.map(([country, count], idx) => {
+            const isSelected = selectedCountry === country;
+            const pct = mounted ? (count / maxUsers) * 100 : 0;
+            return (
+              <div
+                key={country}
+                onClick={() => setSelectedCountry(isSelected ? null : country)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "12px",
+                  background: isSelected ? "rgba(77,255,176,0.07)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${isSelected ? "rgba(77,255,176,0.2)" : "rgba(255,255,255,0.05)"}`,
+                  cursor: "pointer",
+                  transition: "background 0.15s, border-color 0.15s",
+                  boxShadow: isSelected ? "0 0 10px rgba(77,255,176,0.15)" : "none",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "22px", lineHeight: 1, flexShrink: 0 }}>{countryToFlag(country)}</span>
+                  <span style={{ flex: 1, fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.85)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {country}
+                  </span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#4DFFB0", flexShrink: 0 }}>
+                    {count} {count === 1 ? "person" : "people"}
+                  </span>
+                </div>
+                <div style={{ height: "5px", borderRadius: "3px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%",
+                    borderRadius: "3px",
+                    width: `${pct}%`,
+                    background: isSelected ? "rgba(77,255,176,0.85)" : "rgba(77,255,176,0.4)",
+                    transition: `width 0.55s cubic-bezier(0.34,1.2,0.64,1) ${idx * 40}ms, background 0.15s`,
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────
 
 export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
   const [period, setPeriod] = useState("7d");
   const { data, loading } = useReactionData(db, currentUser, period);
   const { rippleCount } = useRippleData(db, currentUser);
-  const [activeBarKey, setActiveBarKey] = useState(null);
 
   const sentCount = period === "7d" ? (liveStats?.sent7d ?? null) : (liveStats?.sent30d ?? null);
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
@@ -459,25 +557,6 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
     dayMap: data?.dayMap,
   }), [data, rippleCount]);
 
-  const days = useMemo(() => {
-    const n = period === "30d" ? 30 : 7;
-    const result = [];
-    for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000);
-      const key = d.toISOString().split("T")[0];
-      const label = period === "7d"
-        ? ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][d.getDay()]
-        : (i === n - 1 || i === 0 || i % 7 === 0) ? d.getDate().toString() : "";
-      result.push({ key, label, count: data?.dayMap?.[key] || 0 });
-    }
-    return result;
-  }, [period, data]);
-
-  const maxCount = Math.max(1, ...days.map(d => d.count));
-  const reactionList = useMemo(() =>
-    Object.entries(data?.reactionByCountry || {}).sort(([, a], [, b]) => b - a).slice(0, 10),
-    [data]
-  );
   const reactingCountriesCount = Object.keys(data?.reactionByCountry || {}).length;
 
   return (
@@ -535,111 +614,8 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
       {/* ── Your Rhythm ── */}
       <RhythmCard streak={streak} dayMap={data?.dayMap} />
 
-      {/* ── Daily activity ── */}
-      <div style={{ margin: "0 18px 26px" }}>
-        <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 14px" }}>
-          Daily Activity
-        </p>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: period === "30d" ? "2px" : "5px", height: "68px" }}>
-          {days.map(({ key, label, count }) => {
-            const isBest = count > 0 && count === maxCount;
-            const isActive = activeBarKey === key;
-            return (
-              <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" }}>
-                <div
-                  onClick={() => { if (count > 0) setActiveBarKey(isActive ? null : key); }}
-                  style={{
-                    width: "100%", borderRadius: "3px 3px 2px 2px",
-                    height: `${Math.max(3, (count / maxCount) * 46)}px`,
-                    position: "relative",
-                    cursor: count > 0 ? "pointer" : "default",
-                    background: count === 0
-                      ? "rgba(255,255,255,0.06)"
-                      : isActive
-                      ? "rgba(77,255,176,1)"
-                      : isBest
-                      ? "rgba(77,255,176,0.85)"
-                      : "rgba(77,255,176,0.35)",
-                    boxShadow: isActive
-                      ? "0 0 12px rgba(77,255,176,0.7)"
-                      : isBest ? "0 0 8px rgba(77,255,176,0.4)" : "none",
-                    transition: "height 0.5s cubic-bezier(0.34,1.2,0.64,1), background 0.15s, box-shadow 0.15s",
-                  }}
-                >
-                  {isActive && (
-                    <div style={{
-                      position: "absolute",
-                      bottom: "calc(100% + 4px)",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      background: "rgba(77,255,176,0.95)",
-                      color: "#060e18",
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      borderRadius: "5px",
-                      padding: "2px 6px",
-                      whiteSpace: "nowrap",
-                      pointerEvents: "none",
-                      zIndex: 10,
-                    }}>
-                      {count}
-                    </div>
-                  )}
-                </div>
-                {label ? (
-                  <span style={{ fontSize: "8px", fontWeight: 600, color: count > 0 ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)", lineHeight: 1 }}>
-                    {label}
-                  </span>
-                ) : <span style={{ height: "9px" }} />}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Reactions from ── */}
-      <div style={{ margin: "0 18px" }}>
-        <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 14px" }}>
-          Reactions from
-        </p>
-
-        {loading ? (
-          [1, 2, 3].map(i => (
-            <div key={i} style={{ height: "52px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", marginBottom: "8px" }} />
-          ))
-        ) : reactionList.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "28px 0" }}>
-            <p style={{ fontSize: "36px", margin: "0 0 10px" }}>🌍</p>
-            <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 500 }}>
-              No reactions yet
-            </p>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", margin: "5px 0 0" }}>
-              Keep spreading kindness — they're coming
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {reactionList.map(([country, count]) => (
-              <div key={country} style={{ display: "flex", alignItems: "center", gap: "13px", padding: "11px 14px", borderRadius: "13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <span style={{ fontSize: "24px", lineHeight: 1, flexShrink: 0 }}>{countryToFlag(country)}</span>
-                <p style={{ flex: 1, fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.8)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {country}
-                </p>
-                <div style={{ display: "flex", alignItems: "center", gap: "3px", flexShrink: 0 }}>
-                  {Array.from({ length: Math.min(count, 5) }).map((_, i) => (
-                    <span key={i} style={{ fontSize: "13px" }}>❤️</span>
-                  ))}
-                  {count > 5 && (
-                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginLeft: "2px" }}>
-                      +{count - 5}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ── Countries Reached ── */}
+      <ReachByCountryGraph usersByCountry={data?.usersByCountry} loading={loading} />
     </div>
   );
 }
