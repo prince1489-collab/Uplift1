@@ -104,6 +104,28 @@ function todayLabel() {
   return new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
 
+// Returns the local calendar day number (increments at LOCAL midnight, not UTC).
+function localDayNumber() {
+  const d = new Date();
+  return Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
+}
+
+// Deterministic per-user offset so different users see different rotations.
+function seedFromUid(uid) {
+  if (!uid) return 0;
+  let h = 0;
+  for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
+  return h % 10000;
+}
+
+// Local YYYY-MM-DD (matches localDayNumber's day boundary).
+function localDateString() {
+  const d = new Date();
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+
 // ── Sparkle burst ─────────────────────────────────────────────────────────────
 
 const SPARK_ANGLES = [0, 22, 45, 68, 90, 113, 135, 158, 180, 203, 225, 248, 270, 293, 315, 338];
@@ -397,13 +419,12 @@ export default function LifeHacks({ db, currentUser }) {
   }, []);
 
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
-    // Include build ID so a new deployment automatically busts any cached selection
+    const today = localDateString();
     const build = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
     const todayKey = `lhacks5_${build}_${today}`;
-    const historyKey = "lhacks_history_v1";
 
-    // Serve today's cached selection if already computed
+    // Fast path: serve today's cached selection if it exists.
+    // The cache is optional — correctness never depends on it surviving.
     try {
       const cached = localStorage.getItem(todayKey);
       if (cached) {
@@ -413,44 +434,30 @@ export default function LifeHacks({ db, currentUser }) {
       }
     } catch (_) {}
 
-    // Load history: hackId → ISO date string of last display
-    let history = {};
-    try { history = JSON.parse(localStorage.getItem(historyKey) || "{}"); } catch (_) {}
-
-    // Round-robin selection: for each category pick the hack with the oldest lastSeen
-    // (never-seen sorts first as "1970-01-01"). This guarantees no repeat until all
-    // 52 hacks in a category are exhausted (~52 days per category, 416 unique total).
-    const selected = [];
-    const newHistory = { ...history };
-
-    for (const [area, hacks] of Object.entries(HACK_LIBRARY)) {
-      const areaEmoji = AREA_META[area]?.emoji ?? "✨";
-      const sorted = [...hacks].sort((a, b) => {
-        const aDate = history[a.id] || "1970-01-01";
-        const bDate = history[b.id] || "1970-01-01";
-        return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
-      });
-      const pick = sorted[0];
-      newHistory[pick.id] = today;
-      selected.push({ ...pick, area, areaEmoji });
-    }
+    // Deterministic selection: index = (localDayNumber + userOffset) % categoryLength.
+    // This advances exactly once per local calendar day and never resets even if
+    // localStorage is evicted, cleared, or unavailable (iOS/Safari/private mode).
+    const day = localDayNumber();
+    const offset = seedFromUid(currentUser?.uid);
+    const selected = Object.entries(HACK_LIBRARY).map(([area, hacks]) => {
+      const idx = (((day + offset) % hacks.length) + hacks.length) % hacks.length;
+      return { ...hacks[idx], area, areaEmoji: AREA_META[area]?.emoji ?? "✨" };
+    });
 
     setHacks(selected);
     setLoading(false);
 
-    // Persist history and today's selection; prune stale daily keys
+    // Cache today's selection for instant repaint on same-day reopens; prune stale keys.
     try {
-      localStorage.setItem(historyKey, JSON.stringify(newHistory));
       localStorage.setItem(todayKey, JSON.stringify(selected));
       Object.keys(localStorage)
-        .filter((k) => k.startsWith("lhacks5_") && k !== todayKey)  // prune old build/date combos
+        .filter((k) => k.startsWith("lhacks5_") && k !== todayKey)
         .forEach((k) => localStorage.removeItem(k));
-      // Also clean up old API-based cache keys
       Object.keys(localStorage)
-        .filter((k) => k.startsWith("lhacks4_"))
+        .filter((k) => k.startsWith("lhacks4_") || k === "lhacks_history_v1")
         .forEach((k) => localStorage.removeItem(k));
     } catch (_) {}
-  }, []);
+  }, [currentUser?.uid]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
