@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, increment, onSnapshot,
-  orderBy, query, setDoc, updateDoc, where, limit,
+  addDoc, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot,
+  orderBy, query, setDoc, updateDoc, where, limit, writeBatch,
 } from "firebase/firestore";
 import { ArrowLeft, Lock, MessageCircle, MoreHorizontal, Send } from "lucide-react";
 
@@ -47,10 +47,14 @@ export function usePrivateUnreadCount(db, currentUser) {
     );
     return onSnapshot(q, (snap) => {
       let total = 0;
-      snap.forEach((d) => { total += d.data()?.unread?.[currentUser.uid] ?? 0; });
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data?.deletedFor?.[currentUser.uid]) return; // skip hidden chats
+        total += data?.unread?.[currentUser.uid] ?? 0;
+      });
       setCount(total);
-    }, () => {});
-  }, [db, currentUser]);
+    }, (err) => { console.error("[usePrivateUnreadCount]", err); });
+  }, [db, currentUser?.uid]);
   return count;
 }
 
@@ -341,13 +345,13 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
         )}
 
         {/* Active chats */}
-        {chats.length > 0 && (
+        {chats.filter((c) => !c.deletedFor?.[currentUser?.uid]).length > 0 && (
           <section>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">
               Chats
             </p>
             <div className="space-y-2">
-              {[...chats].sort((a, b) => {
+              {[...chats].filter((c) => !c.deletedFor?.[currentUser?.uid]).sort((a, b) => {
                 const ua = a.unread?.[currentUser?.uid] ?? 0;
                 const ub = b.unread?.[currentUser?.uid] ?? 0;
                 if ((ua > 0) !== (ub > 0)) return ub - ua; // unread chats first
@@ -390,7 +394,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
         )}
 
         {/* Empty state */}
-        {requests.length === 0 && sentRequests.length === 0 && chats.length === 0 && (
+        {requests.length === 0 && sentRequests.length === 0 && chats.filter((c) => !c.deletedFor?.[currentUser?.uid]).length === 0 && (
           <div className="flex flex-col items-center justify-center pt-20 gap-3 text-center">
             <MessageCircle size={44} className="text-slate-200" />
             <p className="text-sm font-semibold text-slate-400">No chats yet</p>
@@ -469,6 +473,8 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
   const [reportMsg, setReportMsg] = useState(null); // message object to report
   const [toast, setToast] = useState("");
   const [offerBlock, setOfferBlock] = useState(false);
+  const [selectedMsg, setSelectedMsg] = useState(null); // message for own-message options
+  const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
   const longPressTimer = useRef(null);
@@ -492,15 +498,16 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Clear my unread count whenever the window is open and new messages arrive
+  // Clear my unread count whenever the chat is open and messages are visible
   useEffect(() => {
     if (!db || !chatId || !currentUser) return;
-    if (messages.length === lastReadLenRef.current) return; // no change since last reset
+    if (messages.length === 0) return; // nothing loaded yet
+    if (messages.length === lastReadLenRef.current) return;
     lastReadLenRef.current = messages.length;
     updateDoc(doc(db, "privateChats", chatId), {
       [`unread.${currentUser.uid}`]: 0,
-    }).catch(() => {});
-  }, [db, chatId, currentUser, messages.length]);
+    }).catch((err) => console.error("[unread reset]", err));
+  }, [db, chatId, currentUser?.uid, messages.length]);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -514,18 +521,34 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
         text,
         timestamp: ts,
       });
-      // Bump the other participant's unread count + store preview for the inbox
+      // Bump the other participant's unread count, store preview, un-hide if they deleted
       if (otherUid) {
         updateDoc(doc(db, "privateChats", chatId), {
           lastMessageAt: ts,
           lastMessageSenderUid: currentUser.uid,
           lastMessageText: text,
           [`unread.${otherUid}`]: increment(1),
-        }).catch(() => {});
+          [`deletedFor.${otherUid}`]: deleteField(), // un-hide chat for recipient
+        }).catch((err) => console.error("[send unread bump]", err));
       }
     } catch { setDraft(text); }
     setSending(false);
     inputRef.current?.focus();
+  };
+
+  const handleDeleteChat = async () => {
+    if (!db || !chatId || !currentUser) return;
+    setShowMenu(false);
+    await updateDoc(doc(db, "privateChats", chatId), {
+      [`deletedFor.${currentUser.uid}`]: true,
+    }).catch((err) => console.error("[delete chat]", err));
+    onBack?.();
+  };
+
+  const handleDeleteMessage = async (msgId) => {
+    if (!db || !chatId) return;
+    await deleteDoc(doc(db, "privateChats", chatId, "messages", msgId))
+      .catch((err) => console.error("[delete msg]", err));
   };
 
   const handleBlock = async () => {
@@ -562,8 +585,13 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
   };
 
   const startLongPress = (msg) => {
-    if (msg.senderUid === currentUser?.uid) return;
-    longPressTimer.current = setTimeout(() => setReportMsg(msg), LONG_PRESS_MS);
+    longPressTimer.current = setTimeout(() => {
+      if (msg.senderUid === currentUser?.uid) {
+        setSelectedMsg(msg); // own message → show delete option
+      } else {
+        setReportMsg(msg);   // other's message → show report option
+      }
+    }, LONG_PRESS_MS);
   };
 
   const cancelLongPress = () => {
@@ -625,10 +653,16 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
 
       {/* ••• dropdown menu */}
       {showMenu && (
-        <div className="absolute top-14 right-3 z-[60] bg-white rounded-2xl shadow-xl border border-slate-100 py-1 min-w-[140px]">
+        <div className="absolute top-14 right-3 z-[60] bg-white rounded-2xl shadow-xl border border-slate-100 py-1 min-w-[160px]">
+          <button
+            onClick={() => { setShowMenu(false); setShowDeleteChatConfirm(true); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+            Delete chat
+          </button>
+          <div className="mx-3 border-t border-slate-100" />
           <button
             onClick={() => { setShowMenu(false); setShowBlockSheet(true); }}
-            className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors rounded-2xl">
+            className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
             Block {otherName}
           </button>
         </div>
@@ -702,12 +736,60 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
         </div>
       )}
 
-      {/* Report sheet */}
+      {/* Report sheet (long-press other's message) */}
       {reportMsg && (
         <ReportSheet
           onReport={handleReport}
           onCancel={() => setReportMsg(null)}
         />
+      )}
+
+      {/* Own-message options sheet (long-press own message) */}
+      {selectedMsg && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setSelectedMsg(null)}>
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white px-4 pt-4 pb-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: "seenSheetRise 300ms cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200" />
+            <div className="mb-3 rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-xs text-slate-500 line-clamp-2">{selectedMsg.text}</p>
+            </div>
+            <button
+              onClick={() => { handleDeleteMessage(selectedMsg.id); setSelectedMsg(null); }}
+              className="w-full rounded-2xl bg-red-50 border border-red-100 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-100 transition-colors mb-2">
+              Delete message
+            </button>
+            <button onClick={() => setSelectedMsg(null)}
+              className="w-full rounded-2xl border border-slate-200 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete chat confirm sheet */}
+      {showDeleteChatConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setShowDeleteChatConfirm(false)}>
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white px-4 pt-4 pb-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: "seenSheetRise 300ms cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200" />
+            <p className="text-sm font-bold text-slate-800 mb-1">Delete this chat?</p>
+            <p className="text-xs text-slate-500 mb-5">This conversation will be removed from your inbox. {otherName} will still have a copy. If they message you again it will reappear.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteChatConfirm(false)}
+                className="flex-1 rounded-2xl border border-slate-200 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleDeleteChat}
+                className="flex-1 rounded-2xl bg-red-500 py-2.5 text-sm font-bold text-white hover:bg-red-600 transition-colors">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Block confirm sheet */}
