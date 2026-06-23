@@ -2,14 +2,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  addDoc, collection, doc, getDoc, onSnapshot,
+  addDoc, collection, deleteDoc, doc, getDoc, onSnapshot,
   orderBy, query, setDoc, updateDoc, where, limit,
 } from "firebase/firestore";
-import { ArrowLeft, Lock, MessageCircle, Send } from "lucide-react";
-import { startCheckout } from "./payments";
+import { ArrowLeft, Lock, MessageCircle, MoreHorizontal, Send } from "lucide-react";
 
 const MAX_LEVEL_SPARKS = 10_000_000; // "Chronically GOATED"
 const MSG_LIMIT = 100;
+const LONG_PRESS_MS = 500;
 
 // ── Deterministic chat ID: sorted UIDs joined with _ ─────────────────
 export function getChatId(uid1, uid2) {
@@ -36,9 +36,32 @@ export function usePendingChatCount(db, currentUser) {
   return count;
 }
 
-// ── Button shown in each buddy row (only at max level) ───────────────
+// ── Hook: check if either user has blocked the other ─────────────────
+function useBlockStatus(db, currentUser, otherUid) {
+  const [blocked, setBlocked] = useState(null); // null = loading
+  const [iBlockedThem, setIBlockedThem] = useState(false);
+
+  useEffect(() => {
+    if (!db || !currentUser || !otherUid) return;
+    let cancelled = false;
+    Promise.all([
+      getDoc(doc(db, "users", currentUser.uid, "blockedUsers", otherUid)),
+      getDoc(doc(db, "users", otherUid, "blockedUsers", currentUser.uid)),
+    ]).then(([myBlock, theirBlock]) => {
+      if (cancelled) return;
+      const iBlocked = myBlock.exists();
+      setIBlockedThem(iBlocked);
+      setBlocked(iBlocked || theirBlock.exists());
+    }).catch(() => { if (!cancelled) setBlocked(false); });
+    return () => { cancelled = true; };
+  }, [db, currentUser, otherUid]);
+
+  return { blocked, iBlockedThem };
+}
+
+// ── Button shown in each buddy row ───────────────────────────────────
 export function ChatRequestButton({ db, currentUser, buddyUid, buddyName, onChatOpen }) {
-  const [status, setStatus] = useState(null); // null | "pending" | "chatting"
+  const [status, setStatus] = useState(null); // null | "pending" | "chatting" | "blocked"
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -76,6 +99,10 @@ export function ChatRequestButton({ db, currentUser, buddyUid, buddyName, onChat
     return <span className="text-[10px] text-slate-400 italic">Invite sent</span>;
   }
 
+  if (status === "blocked") {
+    return <span className="text-[10px] text-slate-300 italic">Unavailable</span>;
+  }
+
   const handleSend = async () => {
     if (loading || !db || !currentUser) return;
     setLoading(true);
@@ -83,6 +110,9 @@ export function ChatRequestButton({ db, currentUser, buddyUid, buddyName, onChat
       const chatId = getChatId(currentUser.uid, buddyUid);
       const chatSnap = await getDoc(doc(db, "privateChats", chatId));
       if (chatSnap.exists()) { setStatus("chatting"); return; }
+      // Check if buddy has blocked this user
+      const blockSnap = await getDoc(doc(db, "users", buddyUid, "blockedUsers", currentUser.uid));
+      if (blockSnap.exists()) { setStatus("blocked"); return; }
       await addDoc(collection(db, "chatRequests"), {
         fromUid: currentUser.uid,
         toUid: buddyUid,
@@ -110,9 +140,10 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   const [requests, setRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
   const [chats, setChats] = useState([]);
-  const [senderMeta, setSenderMeta] = useState({}); // uid → profile data
-  const [recipientMeta, setRecipientMeta] = useState({}); // uid → profile data
+  const [senderMeta, setSenderMeta] = useState({});
+  const [recipientMeta, setRecipientMeta] = useState({});
   const [partnerMeta, setPartnerMeta] = useState({});
+
   // Listen to incoming pending requests
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -126,7 +157,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
     }, () => {});
   }, [db, currentUser]);
 
-  // Listen to sent (outgoing) requests — single where() avoids composite index
+  // Listen to sent (outgoing) requests
   useEffect(() => {
     if (!db || !currentUser) return;
     const q = query(
@@ -330,7 +361,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
             <MessageCircle size={44} className="text-slate-200" />
             <p className="text-sm font-semibold text-slate-400">No chats yet</p>
             <p className="text-xs text-slate-300 max-w-[200px]">
-              Reach <strong>Main Character Energy</strong> and invite a buddy from the Buddies panel
+              Send an invite from the Buddies panel to start a private chat
             </p>
           </div>
         )}
@@ -339,13 +370,76 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   );
 }
 
+// ── Report reason sheet ───────────────────────────────────────────────
+const REPORT_REASONS = ["Harmful", "Inappropriate", "Spam", "Other"];
+
+function ReportSheet({ onReport, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onCancel}>
+      <div
+        className="w-full max-w-md rounded-t-3xl bg-white px-4 pt-4 pb-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "seenSheetRise 300ms cubic-bezier(0.34,1.56,0.64,1) both" }}>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200" />
+        <p className="text-sm font-bold text-slate-800 mb-3">Report this message</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {REPORT_REASONS.map((r) => (
+            <button key={r} onClick={() => onReport(r)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors">
+              {r}
+            </button>
+          ))}
+        </div>
+        <button onClick={onCancel}
+          className="w-full rounded-2xl border border-slate-200 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Block confirm sheet ───────────────────────────────────────────────
+function BlockSheet({ name, onBlock, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onCancel}>
+      <div
+        className="w-full max-w-md rounded-t-3xl bg-white px-4 pt-4 pb-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "seenSheetRise 300ms cubic-bezier(0.34,1.56,0.64,1) both" }}>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200" />
+        <p className="text-sm font-bold text-slate-800 mb-1">Block {name}?</p>
+        <p className="text-xs text-slate-500 mb-5">They won't be able to send you chat requests and this conversation will be unavailable to both of you.</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 rounded-2xl border border-slate-200 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={onBlock}
+            className="flex-1 rounded-2xl bg-red-500 py-2.5 text-sm font-bold text-white hover:bg-red-600 transition-colors">
+            Block
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Private Chat Window ───────────────────────────────────────────────
-export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }) {
+export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName, onBack }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showBlockSheet, setShowBlockSheet] = useState(false);
+  const [reportMsg, setReportMsg] = useState(null); // message object to report
+  const [toast, setToast] = useState("");
+  const [offerBlock, setOfferBlock] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const longPressTimer = useRef(null);
+
+  const { blocked, iBlockedThem } = useBlockStatus(db, currentUser, otherUid);
 
   useEffect(() => {
     if (!db || !chatId) return;
@@ -365,7 +459,7 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
 
   const handleSend = async () => {
     const text = draft.trim();
-    if (!text || !db || !chatId || !currentUser || sending) return;
+    if (!text || !db || !chatId || !currentUser || sending || blocked) return;
     setSending(true);
     setDraft("");
     try {
@@ -379,6 +473,77 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
     inputRef.current?.focus();
   };
 
+  const handleBlock = async () => {
+    if (!db || !currentUser || !otherUid) return;
+    await setDoc(doc(db, "users", currentUser.uid, "blockedUsers", otherUid), {
+      blockedAt: Date.now(),
+    }).catch(() => {});
+    setShowBlockSheet(false);
+    setShowMenu(false);
+    onBack?.();
+  };
+
+  const handleUnblock = async () => {
+    if (!db || !currentUser || !otherUid) return;
+    await deleteDoc(doc(db, "users", currentUser.uid, "blockedUsers", otherUid)).catch(() => {});
+  };
+
+  const handleReport = async (reason) => {
+    if (!reportMsg || !db || !currentUser) return;
+    setReportMsg(null);
+    await addDoc(collection(db, "reports"), {
+      reporterUid: currentUser.uid,
+      chatId,
+      messageId: reportMsg.id,
+      messageText: reportMsg.text,
+      senderUid: reportMsg.senderUid,
+      reason,
+      timestamp: Date.now(),
+      context: "private",
+    }).catch(() => {});
+    setToast("Reported. Our team will review.");
+    setOfferBlock(true);
+    setTimeout(() => { setToast(""); setOfferBlock(false); }, 5000);
+  };
+
+  const startLongPress = (msg) => {
+    if (msg.senderUid === currentUser?.uid) return;
+    longPressTimer.current = setTimeout(() => setReportMsg(msg), LONG_PRESS_MS);
+  };
+
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
+
+  // Blocked state UI
+  if (blocked !== null && blocked) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-white">
+        <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+          <button onClick={onBack} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+            <ArrowLeft size={18} className="text-slate-600" />
+          </button>
+          <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400 flex-shrink-0">
+            {(otherName ?? "?")[0]}
+          </div>
+          <h2 className="text-sm font-bold text-slate-500 truncate">{otherName ?? "Chat"}</h2>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
+            <Lock size={22} className="text-slate-400" />
+          </div>
+          <p className="text-sm font-semibold text-slate-500">This conversation is unavailable.</p>
+          {iBlockedThem && (
+            <button onClick={handleUnblock}
+              className="mt-2 rounded-full border border-slate-200 px-4 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">
+              Unblock {otherName}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {/* Header */}
@@ -390,15 +555,32 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
         <div className="h-7 w-7 rounded-full bg-teal-100 flex items-center justify-center text-xs font-bold text-teal-700 flex-shrink-0">
           {(otherName ?? "?")[0]}
         </div>
-        <h2 className="text-sm font-bold text-slate-800 truncate">{otherName ?? "Chat"}</h2>
-        <div className="ml-auto flex items-center gap-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 flex-shrink-0">
-          <Lock size={9} className="text-violet-500" />
-          <span className="text-[10px] font-semibold text-violet-600">Private</span>
+        <h2 className="text-sm font-bold text-slate-800 truncate flex-1">{otherName ?? "Chat"}</h2>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5">
+            <Lock size={9} className="text-violet-500" />
+            <span className="text-[10px] font-semibold text-violet-600">Private</span>
+          </div>
+          <button onClick={() => setShowMenu((v) => !v)}
+            className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+            <MoreHorizontal size={16} className="text-slate-500" />
+          </button>
         </div>
       </div>
 
+      {/* ••• dropdown menu */}
+      {showMenu && (
+        <div className="absolute top-14 right-3 z-[60] bg-white rounded-2xl shadow-xl border border-slate-100 py-1 min-w-[140px]">
+          <button
+            onClick={() => { setShowMenu(false); setShowBlockSheet(true); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors rounded-2xl">
+            Block {otherName}
+          </button>
+        </div>
+      )}
+
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" onClick={() => setShowMenu(false)}>
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-20 gap-2 text-center">
             <Lock size={30} className="text-slate-200" />
@@ -411,11 +593,19 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
           const mine = msg.senderUid === currentUser?.uid;
           return (
             <div key={msg.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[72%] rounded-2xl px-3.5 py-2.5 text-sm leading-snug break-words ${
-                mine
-                  ? "bg-teal-600 text-white rounded-br-sm"
-                  : "bg-slate-100 text-slate-800 rounded-bl-sm"
-              }`}>
+              <div
+                className={`max-w-[72%] rounded-2xl px-3.5 py-2.5 text-sm leading-snug break-words select-none ${
+                  mine
+                    ? "bg-teal-600 text-white rounded-br-sm"
+                    : "bg-slate-100 text-slate-800 rounded-bl-sm"
+                }`}
+                onTouchStart={() => startLongPress(msg)}
+                onTouchEnd={cancelLongPress}
+                onTouchMove={cancelLongPress}
+                onMouseDown={() => startLongPress(msg)}
+                onMouseUp={cancelLongPress}
+                onMouseLeave={cancelLongPress}
+              >
                 {msg.text}
               </div>
             </div>
@@ -441,6 +631,38 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherName, onBack }
           <Send size={15} />
         </button>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className="absolute bottom-24 left-4 right-4 z-[60] flex flex-col items-center gap-2">
+          <div className="rounded-2xl bg-slate-800 px-4 py-2.5 text-xs text-white shadow-lg text-center">
+            {toast}
+          </div>
+          {offerBlock && (
+            <button onClick={() => { setOfferBlock(false); setShowBlockSheet(true); }}
+              className="rounded-full bg-white border border-slate-200 px-4 py-1.5 text-xs text-red-500 shadow-sm hover:bg-red-50 transition-colors">
+              Also block this person?
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Report sheet */}
+      {reportMsg && (
+        <ReportSheet
+          onReport={handleReport}
+          onCancel={() => setReportMsg(null)}
+        />
+      )}
+
+      {/* Block confirm sheet */}
+      {showBlockSheet && (
+        <BlockSheet
+          name={otherName ?? "this person"}
+          onBlock={handleBlock}
+          onCancel={() => setShowBlockSheet(false)}
+        />
+      )}
     </div>
   );
 }
