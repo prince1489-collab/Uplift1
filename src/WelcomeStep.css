@@ -284,3 +284,49 @@
   display: block;
   border-radius: 50%;
 }
+
+/* ─── Short-screen responsive (phone browsers with URL bar visible) ─── */
+@media (max-height: 780px) {
+  .welcome-step {
+    padding: 20px 20px 18px;
+    gap: 10px;
+  }
+  .welcome-step__logo-wrap {
+    width: 58px;
+    height: 58px;
+  }
+  .welcome-step__title {
+    font-size: 48px;
+    margin-top: 8px;
+  }
+  .welcome-step__tagline {
+    font-size: 17px;
+    margin-top: 2px;
+  }
+  .welcome-globe {
+    width: 130px;
+    height: 130px;
+    margin: 8px auto 4px;
+  }
+  .welcome-step__list {
+    margin-top: 10px;
+    gap: 6px;
+  }
+  .welcome-card {
+    padding: 10px 14px;
+    gap: 12px;
+  }
+  .welcome-card__emoji  { font-size: 20px; }
+  .welcome-card__title  { font-size: 14px; }
+  .welcome-card__detail { font-size: 12px; }
+  .welcome-step__footer { gap: 7px; }
+  .welcome-affirmation {
+    padding: 7px 14px;
+    min-height: 34px;
+  }
+  .welcome-affirmation__text { font-size: 12px; }
+  .welcome-step__cta {
+    padding: 14px 24px;
+    font-size: 16px;
+  }
+}

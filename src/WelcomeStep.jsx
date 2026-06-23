@@ -209,13 +209,15 @@ const ARC_COORDS = GLOBE_CONNECTIONS.map(({ from, to }) => {
 
 function GlobePreview() {
   const canvasRef = useRef(null);
+  const wrapRef   = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const wrap   = wrapRef.current;
+    if (!canvas || !wrap) return;
 
     const DPR  = Math.min(window.devicePixelRatio || 1, 2);
-    const CSS  = 180;
+    const CSS  = wrap.clientWidth || 150; // reads size from CSS so @media queries control it
     canvas.width  = CSS * DPR;
     canvas.height = CSS * DPR;
     canvas.style.width  = CSS + "px";
@@ -360,7 +362,7 @@ function GlobePreview() {
   }, []);
 
   return (
-    <div className="welcome-globe" aria-hidden="true">
+    <div className="welcome-globe" ref={wrapRef} aria-hidden="true">
       <canvas ref={canvasRef} />
     </div>
   );
@@ -376,7 +378,7 @@ function WelcomeStep({ onStartJourney, db, auth }) {
       <div className="welcome-step__content">
         {/* Logo icon */}
         <div className="welcome-step__logo-wrap">
-          <Sparkles size={34} />
+          <Sparkles size={28} />
         </div>
 
         {/* Brand */}
