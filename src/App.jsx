@@ -2208,7 +2208,7 @@ export default function App() {
             ) : activeTab === "support" ? (
               <Support country={profile?.country} />
             ) : activeTab === "impact" ? (
-              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} />
+              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setActiveMessageId(null); }}>

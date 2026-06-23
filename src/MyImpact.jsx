@@ -5,6 +5,66 @@ import { collection, doc, getDoc, limit, onSnapshot, query, where } from "fireba
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 
+// ── Theme tokens ──────────────────────────────────────────────────
+const DARK = {
+  pageBg:       "#060e18",
+  card:         "rgba(255,255,255,0.04)",
+  cardInner:    "rgba(255,255,255,0.04)",
+  border:       "rgba(255,255,255,0.07)",
+  divider:      "rgba(255,255,255,0.08)",
+  toggleBg:     "rgba(255,255,255,0.06)",
+  toggleBorder: "rgba(255,255,255,0.1)",
+  text:         "#ffffff",
+  textMid:      "rgba(255,255,255,0.82)",
+  textDim:      "rgba(255,255,255,0.4)",
+  textFaint:    "rgba(255,255,255,0.25)",
+  textFaintest: "rgba(255,255,255,0.2)",
+  accent:       "#4DFFB0",
+  accentDim:    "rgba(77,255,176,0.85)",
+  accentBg:     "rgba(77,255,176,0.05)",
+  accentBorder: "rgba(77,255,176,0.14)",
+  accentLabel:  "rgba(77,255,176,0.7)",
+  accentMuted:  "rgba(77,255,176,0.4)",
+  accentBar:    "rgba(77,255,176,0.4)",
+  accentBarSel: "rgba(77,255,176,0.85)",
+  rowSelBg:     "rgba(77,255,176,0.07)",
+  rowSelBorder: "rgba(77,255,176,0.2)",
+  rowSelGlow:   "rgba(77,255,176,0.15)",
+  rowBg:        "rgba(255,255,255,0.03)",
+  rowBorder:    "rgba(255,255,255,0.05)",
+  barTrack:     "rgba(255,255,255,0.06)",
+  skeleton:     "rgba(255,255,255,0.07)",
+};
+const LIGHT = {
+  pageBg:       "#f1f5f9",
+  card:         "rgba(255,255,255,0.9)",
+  cardInner:    "rgba(0,0,0,0.03)",
+  border:       "rgba(0,0,0,0.08)",
+  divider:      "rgba(0,0,0,0.08)",
+  toggleBg:     "rgba(0,0,0,0.06)",
+  toggleBorder: "rgba(0,0,0,0.1)",
+  text:         "#0f172a",
+  textMid:      "rgba(15,23,42,0.75)",
+  textDim:      "rgba(15,23,42,0.5)",
+  textFaint:    "rgba(15,23,42,0.35)",
+  textFaintest: "rgba(15,23,42,0.25)",
+  accent:       "#0d9488",
+  accentDim:    "#0d9488",
+  accentBg:     "rgba(13,148,136,0.08)",
+  accentBorder: "rgba(13,148,136,0.2)",
+  accentLabel:  "#0d9488",
+  accentMuted:  "rgba(13,148,136,0.5)",
+  accentBar:    "rgba(13,148,136,0.4)",
+  accentBarSel: "rgba(13,148,136,0.85)",
+  rowSelBg:     "rgba(13,148,136,0.07)",
+  rowSelBorder: "rgba(13,148,136,0.2)",
+  rowSelGlow:   "rgba(13,148,136,0.1)",
+  rowBg:        "rgba(0,0,0,0.02)",
+  rowBorder:    "rgba(0,0,0,0.05)",
+  barTrack:     "rgba(0,0,0,0.07)",
+  skeleton:     "rgba(0,0,0,0.07)",
+};
+
 // ── Haversine distance ────────────────────────────────────────────
 
 function kmBetween([lon1, lat1], [lon2, lat2]) {
@@ -275,18 +335,19 @@ function OdometerNumber({ value = 0, fontSize = 26, duration = 1100, color = "#f
 
 // ── Stat tile ─────────────────────────────────────────────────────
 
-function StatTile({ value, label, sub, loading }) {
+function StatTile({ value, label, sub, loading, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   return (
     <div style={{ flex: 1, textAlign: "center", padding: "2px 4px" }}>
       {loading ? (
-        <div style={{ height: "30px", borderRadius: "6px", background: "rgba(255,255,255,0.07)", margin: "0 auto 6px", width: "52%" }} />
+        <div style={{ height: "30px", borderRadius: "6px", background: C.skeleton, margin: "0 auto 6px", width: "52%" }} />
       ) : (
         <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px" }}>
-          <OdometerNumber value={value ?? 0} fontSize={26} />
+          <OdometerNumber value={value ?? 0} fontSize={26} color={C.text} />
         </div>
       )}
-      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.45)", margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</p>
-      {sub && <p style={{ fontSize: "9px", color: "#4DFFB0", margin: "2px 0 0", fontWeight: 600 }}>{sub}</p>}
+      <p style={{ fontSize: "10px", fontWeight: 700, color: C.textDim, margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</p>
+      {sub && <p style={{ fontSize: "9px", color: C.accent, margin: "2px 0 0", fontWeight: 600 }}>{sub}</p>}
     </div>
   );
 }
@@ -295,24 +356,25 @@ function StatTile({ value, label, sub, loading }) {
 
 const MILESTONES = [1, 5, 10, 20, 35, 50, 75, 100];
 
-function MilestoneCard({ countriesCount }) {
+function MilestoneCard({ countriesCount, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const reached = MILESTONES.filter(m => countriesCount >= m);
   const next = MILESTONES.find(m => countriesCount < m) || null;
   const prev = reached.length > 0 ? reached[reached.length - 1] : 0;
   const progress = next ? Math.round(((countriesCount - prev) / (next - prev)) * 100) : 100;
 
   return (
-    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
-      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
         Milestone Progress
       </p>
       <div style={{ display: "flex", gap: "6px", marginBottom: "14px", flexWrap: "wrap" }}>
         {MILESTONES.map(m => (
           <div key={m} style={{
             padding: "3px 8px", borderRadius: "8px", fontSize: "10px", fontWeight: 700,
-            background: countriesCount >= m ? "rgba(77,255,176,0.15)" : "rgba(255,255,255,0.05)",
-            color: countriesCount >= m ? "#4DFFB0" : "rgba(255,255,255,0.2)",
-            border: `1px solid ${countriesCount >= m ? "rgba(77,255,176,0.3)" : "rgba(255,255,255,0.06)"}`,
+            background: countriesCount >= m ? C.accentBg : C.cardInner,
+            color: countriesCount >= m ? C.accent : C.textFaintest,
+            border: `1px solid ${countriesCount >= m ? C.accentBorder : C.border}`,
           }}>
             {m}
           </div>
@@ -321,18 +383,18 @@ function MilestoneCard({ countriesCount }) {
       {next ? (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>{countriesCount} / {next} countries</span>
-            <span style={{ fontSize: "11px", color: "#4DFFB0", fontWeight: 700 }}>{progress}%</span>
+            <span style={{ fontSize: "11px", color: C.textDim, fontWeight: 600 }}>{countriesCount} / {next} countries</span>
+            <span style={{ fontSize: "11px", color: C.accent, fontWeight: 700 }}>{progress}%</span>
           </div>
-          <div style={{ height: "5px", borderRadius: "3px", background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${progress}%`, borderRadius: "3px", background: "linear-gradient(90deg, #4DFFB0, #00d9a3)", transition: "width 0.8s cubic-bezier(0.34,1.2,0.64,1)" }} />
+          <div style={{ height: "5px", borderRadius: "3px", background: C.barTrack, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, borderRadius: "3px", background: `linear-gradient(90deg, ${C.accent}, ${dark ? "#00d9a3" : "#0f766e"})`, transition: "width 0.8s cubic-bezier(0.34,1.2,0.64,1)" }} />
           </div>
-          <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", margin: "8px 0 0", fontWeight: 500 }}>
+          <p style={{ fontSize: "10px", color: C.textFaint, margin: "8px 0 0", fontWeight: 500 }}>
             {next - countriesCount} more {next - countriesCount === 1 ? "country" : "countries"} to next milestone
           </p>
         </>
       ) : (
-        <p style={{ fontSize: "12px", color: "#4DFFB0", fontWeight: 700, margin: 0, textAlign: "center" }}>
+        <p style={{ fontSize: "12px", color: C.accent, fontWeight: 700, margin: 0, textAlign: "center" }}>
           🏆 All milestones reached!
         </p>
       )}
@@ -342,7 +404,8 @@ function MilestoneCard({ countriesCount }) {
 
 // ── Furthest Reach card ───────────────────────────────────────────
 
-function FurthestReachCard({ reactionByCountry, homeCountry }) {
+function FurthestReachCard({ reactionByCountry, homeCountry, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const result = useMemo(() => {
     const homeCoords = COUNTRY_COORDS[homeCountry];
     if (!homeCoords || !reactionByCountry || Object.keys(reactionByCountry).length === 0) return null;
@@ -360,15 +423,15 @@ function FurthestReachCard({ reactionByCountry, homeCountry }) {
   if (!result) return null;
 
   return (
-    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
-      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 12px" }}>
         Furthest Reaction
       </p>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <span style={{ fontSize: "32px", lineHeight: 1 }}>{countryToFlag(result.country)}</span>
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: "15px", fontWeight: 700, color: "#fff", margin: "0 0 2px" }}>{result.country}</p>
-          <p style={{ fontSize: "12px", color: "#4DFFB0", fontWeight: 600, margin: 0 }}>{result.km.toLocaleString()} km from home</p>
+          <p style={{ fontSize: "15px", fontWeight: 700, color: C.text, margin: "0 0 2px" }}>{result.country}</p>
+          <p style={{ fontSize: "12px", color: C.accent, fontWeight: 600, margin: 0 }}>{result.km.toLocaleString()} km from home</p>
         </div>
         <span style={{ fontSize: "24px" }}>✈️</span>
       </div>
@@ -380,7 +443,8 @@ function FurthestReachCard({ reactionByCountry, homeCountry }) {
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function RhythmCard({ streak, dayMap }) {
+function RhythmCard({ streak, dayMap, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const bestDay = useMemo(() => {
     const totals = [0, 0, 0, 0, 0, 0, 0];
     Object.entries(dayMap || {}).forEach(([dateStr, count]) => {
@@ -393,25 +457,25 @@ function RhythmCard({ streak, dayMap }) {
   }, [dayMap]);
 
   return (
-    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
-      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 14px" }}>
+    <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "16px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 14px" }}>
         Your Rhythm
       </p>
       <div style={{ display: "flex", gap: "12px" }}>
-        <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center" }}>
+        <div style={{ flex: 1, background: C.cardInner, borderRadius: "12px", padding: "12px", textAlign: "center" }}>
           <p style={{ fontSize: "28px", margin: "0 0 4px", lineHeight: 1 }}>{streak >= 7 ? "🔥" : streak >= 3 ? "✨" : "💫"}</p>
-          <p style={{ fontSize: "22px", fontWeight: 800, color: streak > 0 ? "#fff" : "rgba(255,255,255,0.3)", margin: "0 0 2px", lineHeight: 1 }}>{streak}</p>
-          <p style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Day streak</p>
+          <p style={{ fontSize: "22px", fontWeight: 800, color: streak > 0 ? C.text : C.textFaint, margin: "0 0 2px", lineHeight: 1 }}>{streak}</p>
+          <p style={{ fontSize: "9px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Day streak</p>
         </div>
         {bestDay ? (
-          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center" }}>
+          <div style={{ flex: 1, background: C.cardInner, borderRadius: "12px", padding: "12px", textAlign: "center" }}>
             <p style={{ fontSize: "28px", margin: "0 0 4px", lineHeight: 1 }}>📅</p>
-            <p style={{ fontSize: "14px", fontWeight: 800, color: "#fff", margin: "0 0 2px", lineHeight: 1.2 }}>{bestDay}</p>
-            <p style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Best day</p>
+            <p style={{ fontSize: "14px", fontWeight: 800, color: C.text, margin: "0 0 2px", lineHeight: 1.2 }}>{bestDay}</p>
+            <p style={{ fontSize: "9px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>Best day</p>
           </div>
         ) : (
-          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "12px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)", margin: 0, fontWeight: 500, lineHeight: 1.4 }}>Send more to discover your best day</p>
+          <div style={{ flex: 1, background: C.cardInner, borderRadius: "12px", padding: "12px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <p style={{ fontSize: "11px", color: C.textFaint, margin: 0, fontWeight: 500, lineHeight: 1.4 }}>Send more to discover your best day</p>
           </div>
         )}
       </div>
@@ -421,19 +485,20 @@ function RhythmCard({ streak, dayMap }) {
 
 // ── Hero: Lives Touched ───────────────────────────────────────────
 // Reframes the cold "greetings sent" count as felt human impact.
-function LivesTouchedHero({ sentCount }) {
+function LivesTouchedHero({ sentCount, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const n = sentCount ?? 0;
   return (
     <div style={{ textAlign: "center", padding: "26px 18px 6px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
         <span style={{ fontSize: "22px", opacity: 0.9 }}>✨</span>
-        <OdometerNumber value={n} fontSize={56} color="#4DFFB0" duration={1300} />
+        <OdometerNumber value={n} fontSize={56} color={C.accent} duration={1300} />
         <span style={{ fontSize: "22px", opacity: 0.9 }}>✨</span>
       </div>
-      <p style={{ fontSize: "13px", fontWeight: 700, color: "rgba(255,255,255,0.85)", margin: "8px 0 0", letterSpacing: "0.01em" }}>
+      <p style={{ fontSize: "13px", fontWeight: 700, color: C.textMid, margin: "8px 0 0", letterSpacing: "0.01em" }}>
         {n === 1 ? "day you may have brightened" : "days you may have brightened"}
       </p>
-      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.38)", margin: "6px auto 0", maxWidth: "270px", lineHeight: 1.5 }}>
+      <p style={{ fontSize: "11px", color: C.textDim, margin: "6px auto 0", maxWidth: "270px", lineHeight: 1.5 }}>
         A single unexpected kind message can lift someone's mood for hours.
       </p>
     </div>
@@ -442,24 +507,25 @@ function LivesTouchedHero({ sentCount }) {
 
 // ── Hero: Ripple line ─────────────────────────────────────────────
 // You → people you reached → those who passed the kindness on.
-function RippleLine({ reachedCount, rippleCount, onwardReach = 0 }) {
+function RippleLine({ reachedCount, rippleCount, onwardReach = 0, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const reached = reachedCount ?? 0;
   const showOnward = rippleCount > 0;
   const node = (label, value, accent) => (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", minWidth: "50px", flex: 1 }}>
-      <span style={{ fontSize: "17px", fontWeight: 800, color: accent ? "#4DFFB0" : "#fff", lineHeight: 1 }}>{value}</span>
-      <span style={{ fontSize: "8.5px", fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center", lineHeight: 1.25 }}>{label}</span>
+      <span style={{ fontSize: "17px", fontWeight: 800, color: accent ? C.accent : C.text, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: "8.5px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center", lineHeight: 1.25 }}>{label}</span>
     </div>
   );
   const arrow = (
-    <span style={{ fontSize: "14px", color: "rgba(77,255,176,0.5)", margin: "0 1px", marginBottom: "12px", flexShrink: 0 }}>→</span>
+    <span style={{ fontSize: "14px", color: C.accentMuted, margin: "0 1px", marginBottom: "12px", flexShrink: 0 }}>→</span>
   );
   let caption;
   if (rippleCount > 0 && onwardReach > 0) caption = `Your kindness rippled onward to ${onwardReach} more ${onwardReach === 1 ? "person" : "people"}.`;
   else if (rippleCount > 0) caption = "Your kindness didn't stop with you.";
   else caption = "Keep going — soon your kindness will spark theirs.";
   return (
-    <div style={{ margin: "14px 18px 8px", borderRadius: "16px", background: "rgba(77,255,176,0.05)", border: "1px solid rgba(77,255,176,0.14)", padding: "16px 12px 14px" }}>
+    <div style={{ margin: "14px 18px 8px", borderRadius: "16px", background: C.accentBg, border: `1px solid ${C.accentBorder}`, padding: "16px 12px 14px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "2px" }}>
         {node("You", "🫶", false)}
         {arrow}
@@ -469,7 +535,7 @@ function RippleLine({ reachedCount, rippleCount, onwardReach = 0 }) {
         {showOnward && arrow}
         {showOnward && node("🌊 reached onward", onwardReach, true)}
       </div>
-      <p style={{ fontSize: "11.5px", fontWeight: 600, color: rippleCount > 0 ? "rgba(77,255,176,0.85)" : "rgba(255,255,255,0.4)", textAlign: "center", margin: "12px 0 0" }}>
+      <p style={{ fontSize: "11.5px", fontWeight: 600, color: rippleCount > 0 ? C.accentDim : C.textDim, textAlign: "center", margin: "12px 0 0" }}>
         {caption}
       </p>
     </div>
@@ -477,16 +543,17 @@ function RippleLine({ reachedCount, rippleCount, onwardReach = 0 }) {
 }
 
 // ── Hero: Weekly story card ───────────────────────────────────────
-function WeeklyStoryCard({ story }) {
+function WeeklyStoryCard({ story, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   return (
-    <div style={{ margin: "8px 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px 16px 14px" }}>
-      <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(77,255,176,0.7)", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 10px" }}>
+    <div style={{ margin: "8px 18px 22px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "16px 16px 14px" }}>
+      <p style={{ fontSize: "10px", fontWeight: 700, color: C.accentLabel, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 10px" }}>
         Your Week
       </p>
-      <p style={{ fontSize: "14px", lineHeight: 1.6, color: "rgba(255,255,255,0.82)", margin: 0, fontWeight: 500 }}>
+      <p style={{ fontSize: "14px", lineHeight: 1.6, color: C.textMid, margin: 0, fontWeight: 500 }}>
         {story}
       </p>
-      <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", margin: "12px 0 0", textAlign: "right", fontStyle: "italic" }}>
+      <p style={{ fontSize: "10px", color: C.textFaint, margin: "12px 0 0", textAlign: "right", fontStyle: "italic" }}>
         — your week in kindness
       </p>
     </div>
@@ -495,7 +562,8 @@ function WeeklyStoryCard({ story }) {
 
 // ── Countries Reached — interactive horizontal bar chart ──────────
 
-function ReachByCountryGraph({ usersByCountry, loading }) {
+function ReachByCountryGraph({ usersByCountry, loading, dark = false }) {
+  const C = dark ? DARK : LIGHT;
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [sortAlpha, setSortAlpha] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -511,17 +579,17 @@ function ReachByCountryGraph({ usersByCountry, loading }) {
   const maxUsers = Math.max(1, ...rows.map(([, n]) => n));
 
   return (
-    <div style={{ margin: "0 18px 26px", borderRadius: "16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "16px" }}>
+    <div style={{ margin: "0 18px 26px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "16px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-        <p style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>
+        <p style={{ fontSize: "10px", fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>
           Countries Reached
         </p>
         {rows.length > 1 && (
           <button
             onClick={() => setSortAlpha(v => !v)}
             style={{
-              fontSize: "10px", fontWeight: 700, color: sortAlpha ? "#4DFFB0" : "rgba(255,255,255,0.4)",
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              fontSize: "10px", fontWeight: 700, color: sortAlpha ? C.accent : C.textDim,
+              background: C.toggleBg, border: `1px solid ${C.toggleBorder}`,
               borderRadius: "6px", padding: "3px 9px", cursor: "pointer",
             }}
           >
@@ -532,13 +600,13 @@ function ReachByCountryGraph({ usersByCountry, loading }) {
 
       {loading ? (
         [1, 2, 3].map(i => (
-          <div key={i} style={{ height: "52px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", marginBottom: "10px" }} />
+          <div key={i} style={{ height: "52px", borderRadius: "12px", background: C.cardInner, marginBottom: "10px" }} />
         ))
       ) : rows.length === 0 ? (
         <div style={{ textAlign: "center", padding: "28px 0" }}>
           <p style={{ fontSize: "36px", margin: "0 0 10px" }}>🌍</p>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 500 }}>No countries reached yet</p>
-          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", margin: "5px 0 0" }}>Keep spreading kindness — they're coming</p>
+          <p style={{ fontSize: "13px", color: C.textFaint, margin: 0, fontWeight: 500 }}>No countries reached yet</p>
+          <p style={{ fontSize: "11px", color: C.textFaintest, margin: "5px 0 0" }}>Keep spreading kindness — they're coming</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -552,28 +620,28 @@ function ReachByCountryGraph({ usersByCountry, loading }) {
                 style={{
                   padding: "10px 12px",
                   borderRadius: "12px",
-                  background: isSelected ? "rgba(77,255,176,0.07)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${isSelected ? "rgba(77,255,176,0.2)" : "rgba(255,255,255,0.05)"}`,
+                  background: isSelected ? C.rowSelBg : C.rowBg,
+                  border: `1px solid ${isSelected ? C.rowSelBorder : C.rowBorder}`,
                   cursor: "pointer",
                   transition: "background 0.15s, border-color 0.15s",
-                  boxShadow: isSelected ? "0 0 10px rgba(77,255,176,0.15)" : "none",
+                  boxShadow: isSelected ? `0 0 10px ${C.rowSelGlow}` : "none",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                   <span style={{ fontSize: "22px", lineHeight: 1, flexShrink: 0 }}>{countryToFlag(country)}</span>
-                  <span style={{ flex: 1, fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.85)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: 1, fontSize: "13px", fontWeight: 600, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {country}
                   </span>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#4DFFB0", flexShrink: 0 }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: C.accent, flexShrink: 0 }}>
                     {count} {count === 1 ? "person" : "people"}
                   </span>
                 </div>
-                <div style={{ height: "5px", borderRadius: "3px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{ height: "5px", borderRadius: "3px", background: C.barTrack, overflow: "hidden" }}>
                   <div style={{
                     height: "100%",
                     borderRadius: "3px",
                     width: `${pct}%`,
-                    background: isSelected ? "rgba(77,255,176,0.85)" : "rgba(77,255,176,0.4)",
+                    background: isSelected ? C.accentBarSel : C.accentBar,
                     transition: `width 0.55s cubic-bezier(0.34,1.2,0.64,1) ${idx * 40}ms, background 0.15s`,
                   }} />
                 </div>
@@ -588,7 +656,8 @@ function ReachByCountryGraph({ usersByCountry, loading }) {
 
 // ── Main component ────────────────────────────────────────────────
 
-export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile }) {
+export default function MyImpact({ db, currentUser, liveStats, streak = 0, profile, darkMode = false }) {
+  const C = darkMode ? DARK : LIGHT;
   const [period, setPeriod] = useState("7d");
   const { data, loading } = useReactionData(db, currentUser, period);
   const { rippleCount, ripples } = useRippleData(db, currentUser);
@@ -598,7 +667,6 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
   const countriesCount = period === "7d" ? (liveStats?.countries7d ?? null) : (liveStats?.countries30d ?? null);
 
   // Weekly story always reflects the 7-day window, regardless of the toggle.
-  // countriesCount = countries that reacted to MY messages (not the community feed diversity stat).
   const weeklyStory = useMemo(() => buildWeeklyStory({
     countriesCount: Object.keys(data?.reactionByCountry ?? {}).length,
     notableReaction: data?.notableReaction,
@@ -610,30 +678,30 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
   const reactingCountriesCount = Object.keys(data?.reactionByCountry || {}).length;
 
   return (
-    <div style={{ flex: 1, background: "#060e18", overflowY: "auto", display: "flex", flexDirection: "column", paddingBottom: "32px" }}>
+    <div style={{ flex: 1, background: C.pageBg, overflowY: "auto", display: "flex", flexDirection: "column", paddingBottom: "32px" }}>
 
       {/* ── Living Impact hero ── */}
-      <LivesTouchedHero sentCount={sentCount} />
-      <RippleLine reachedCount={data?.uniqueReactorCount ?? 0} rippleCount={rippleCount} onwardReach={onwardReach} />
-      <WeeklyStoryCard story={weeklyStory} />
+      <LivesTouchedHero sentCount={sentCount} dark={darkMode} />
+      <RippleLine reachedCount={data?.uniqueReactorCount ?? 0} rippleCount={rippleCount} onwardReach={onwardReach} dark={darkMode} />
+      <WeeklyStoryCard story={weeklyStory} dark={darkMode} />
 
       {/* ── Header ── */}
       <div style={{ padding: "22px 18px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
-          <p style={{ fontSize: "20px", fontWeight: 800, color: "#fff", margin: 0, letterSpacing: "-0.025em", lineHeight: 1.15 }}>
+          <p style={{ fontSize: "20px", fontWeight: 800, color: C.text, margin: 0, letterSpacing: "-0.025em", lineHeight: 1.15 }}>
             Your Kindness
           </p>
-          <p style={{ fontSize: "20px", fontWeight: 800, color: "#4DFFB0", margin: 0, letterSpacing: "-0.025em", lineHeight: 1.15 }}>
+          <p style={{ fontSize: "20px", fontWeight: 800, color: C.accent, margin: 0, letterSpacing: "-0.025em", lineHeight: 1.15 }}>
             Footprint
           </p>
         </div>
-        <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: "10px", padding: "3px", marginTop: "2px" }}>
+        <div style={{ display: "flex", background: C.toggleBg, borderRadius: "10px", padding: "3px", marginTop: "2px" }}>
           {["7d", "30d"].map(p => (
             <button key={p} onClick={() => setPeriod(p)} style={{
               padding: "5px 13px", borderRadius: "7px", fontSize: "11px", fontWeight: 700,
               border: "none", cursor: "pointer", transition: "all 0.15s",
-              background: period === p ? "rgba(77,255,176,0.18)" : "transparent",
-              color: period === p ? "#4DFFB0" : "rgba(255,255,255,0.35)",
+              background: period === p ? C.accentBg : "transparent",
+              color: period === p ? C.accent : C.textDim,
             }}>
               {p}
             </button>
@@ -641,31 +709,32 @@ export default function MyImpact({ db, currentUser, liveStats, streak = 0, profi
         </div>
       </div>
 
-      {/* ── Stat tiles — Sent + Countries are live (no loading); Reactions from Firestore ── */}
-      <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", padding: "18px 8px 16px", display: "flex" }}>
-        <StatTile loading={false} value={sentCount} label="Sent" />
-        <div style={{ width: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
-        <StatTile loading={false} value={countriesCount} label="Countries" sub="reached" />
-        <div style={{ width: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
+      {/* ── Stat tiles ── */}
+      <div style={{ margin: "0 18px 22px", borderRadius: "16px", background: C.card, border: `1px solid ${C.border}`, padding: "18px 8px 16px", display: "flex" }}>
+        <StatTile loading={false} value={sentCount} label="Sent" dark={darkMode} />
+        <div style={{ width: "1px", background: C.divider, margin: "4px 0" }} />
+        <StatTile loading={false} value={countriesCount} label="Countries" sub="reached" dark={darkMode} />
+        <div style={{ width: "1px", background: C.divider, margin: "4px 0" }} />
         <StatTile
           loading={loading}
           value={data?.totalReactions}
           label="Reactions"
           sub={reactingCountriesCount > 0 ? `${reactingCountriesCount} ${reactingCountriesCount === 1 ? "country" : "countries"}` : undefined}
+          dark={darkMode}
         />
       </div>
 
       {/* ── Milestone Progress ── */}
-      <MilestoneCard countriesCount={countriesCount ?? 0} />
+      <MilestoneCard countriesCount={countriesCount ?? 0} dark={darkMode} />
 
       {/* ── Furthest Reaction ── */}
-      {!loading && <FurthestReachCard reactionByCountry={data?.reactionByCountry} homeCountry={profile?.country} />}
+      {!loading && <FurthestReachCard reactionByCountry={data?.reactionByCountry} homeCountry={profile?.country} dark={darkMode} />}
 
       {/* ── Your Rhythm ── */}
-      <RhythmCard streak={streak} dayMap={data?.dayMap} />
+      <RhythmCard streak={streak} dayMap={data?.dayMap} dark={darkMode} />
 
       {/* ── Countries Reached ── */}
-      <ReachByCountryGraph usersByCountry={data?.usersByCountry} loading={loading} />
+      <ReachByCountryGraph usersByCountry={data?.usersByCountry} loading={loading} dark={darkMode} />
     </div>
   );
 }
