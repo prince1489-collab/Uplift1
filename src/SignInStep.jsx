@@ -34,7 +34,6 @@ export default function SignInStep({
 
   const ctaText = useMemo(() => {
     if (mode === "signup") return "Create account";
-    if (mode === "link") return "Email me a sign-in link";
     return "Sign in";
   }, [mode]);
 
@@ -50,11 +49,6 @@ export default function SignInStep({
     if (!normalizedEmail) { setLocalError("Please enter your email address."); return; }
     if (mode === "signup" && !fullName.trim()) { setLocalError("Please enter your full name."); return; }
     if ((mode === "signin" || mode === "signup") && !password.trim()) { setLocalError("Please enter your password."); return; }
-    if (mode === "link") {
-      const result = await onEmailLinkSignIn(normalizedEmail);
-      if (result?.error) setLocalError(result.error);
-      return;
-    }
     if (mode === "signin") {
       const result = await onPasswordSignIn(normalizedEmail, password);
       if (result?.error) setLocalError(result.error);
@@ -86,7 +80,7 @@ export default function SignInStep({
           Welcome to Seen
         </h1>
         <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
-          You matter. Sign in to get started.
+          Good to see you. Welcome back or join us.
         </p>
 
         <button type="button" onClick={onGoogleSignIn} disabled={googleLoading}
@@ -96,8 +90,8 @@ export default function SignInStep({
 
         {googleError ? <p className="mb-3 text-sm text-rose-600">{googleError}</p> : null}
 
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          {[["signin","Sign in"],["signup","Sign up"],["link","Email link"]].map(([m, label]) => (
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          {[["signin","I'm back"],["signup","I'm new"]].map(([m, label]) => (
             <button key={m} type="button" onClick={() => { resetMessages(); setMode(m); }}
               className={`rounded-xl px-3 py-2 text-sm font-semibold ${mode === m ? "bg-teal-600 text-white" : "border border-slate-200 bg-white text-slate-700"}`}>
               {label}
@@ -119,19 +113,17 @@ export default function SignInStep({
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
           </div>
 
-          {mode !== "link" && (
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-12 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
-              <button type="button" onClick={() => setShowPassword((p) => !p)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label={showPassword ? "Hide password" : "Show password"}>
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          )}
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-12 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
+            <button type="button" onClick={() => setShowPassword((p) => !p)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-label={showPassword ? "Hide password" : "Show password"}>
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
 
           {mode === "signin" && (
             <button type="button" onClick={handleForgotPassword} className="text-sm font-medium text-teal-700 hover:text-teal-800">
