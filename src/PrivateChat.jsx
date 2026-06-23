@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, onSnapshot,
+  addDoc, collection, deleteDoc, doc, getDoc, increment, onSnapshot,
   orderBy, query, setDoc, updateDoc, where, limit,
 } from "firebase/firestore";
 import { ArrowLeft, Lock, MessageCircle, MoreHorizontal, Send } from "lucide-react";
@@ -32,6 +32,24 @@ export function usePendingChatCount(db, currentUser) {
       where("status", "==", "pending")
     );
     return onSnapshot(q, (snap) => setCount(snap.size), () => {});
+  }, [db, currentUser]);
+  return count;
+}
+
+// ── Total unread private messages across all of my chats ─────────────
+export function usePrivateUnreadCount(db, currentUser) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(
+      collection(db, "privateChats"),
+      where("participants", "array-contains", currentUser.uid)
+    );
+    return onSnapshot(q, (snap) => {
+      let total = 0;
+      snap.forEach((d) => { total += d.data()?.unread?.[currentUser.uid] ?? 0; });
+      setCount(total);
+    }, () => {});
   }, [db, currentUser]);
   return count;
 }
@@ -329,10 +347,17 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
               Chats
             </p>
             <div className="space-y-2">
-              {chats.map((chat) => {
+              {[...chats].sort((a, b) => {
+                const ua = a.unread?.[currentUser?.uid] ?? 0;
+                const ub = b.unread?.[currentUser?.uid] ?? 0;
+                if ((ua > 0) !== (ub > 0)) return ub - ua; // unread chats first
+                return (b.lastMessageAt ?? b.createdAt ?? 0) - (a.lastMessageAt ?? a.createdAt ?? 0);
+              }).map((chat) => {
                 const otherUid = (chat.participants ?? []).find((u) => u !== currentUser?.uid);
                 const other = partnerMeta[otherUid];
                 const name = other?.fullName ?? "Someone";
+                const unread = chat.unread?.[currentUser?.uid] ?? 0;
+                const preview = chat.lastMessageText;
                 return (
                   <button key={chat.id}
                     onClick={() => onOpenChat?.(chat.id, otherUid, name)}
@@ -343,9 +368,18 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
                       : <div className="h-9 w-9 rounded-full bg-teal-100 flex items-center justify-center text-sm font-bold text-teal-700 flex-shrink-0">
                           {name[0]}
                         </div>}
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-700">{name}</p>
-                      <p className="text-[11px] text-slate-400">Tap to open</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-700 truncate">{name}</p>
+                        {unread > 0 && (
+                          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
+                            {unread > 9 ? "9+" : unread}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] truncate ${unread > 0 ? "text-slate-600 font-medium" : "text-slate-400"}`}>
+                        {preview ?? "Tap to open"}
+                      </p>
                     </div>
                     <MessageCircle size={14} className="text-slate-300 ml-auto flex-shrink-0" />
                   </button>
@@ -438,6 +472,7 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
   const endRef = useRef(null);
   const inputRef = useRef(null);
   const longPressTimer = useRef(null);
+  const lastReadLenRef = useRef(-1);
 
   const { blocked, iBlockedThem } = useBlockStatus(db, currentUser, otherUid);
 
@@ -457,17 +492,37 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Clear my unread count whenever the window is open and new messages arrive
+  useEffect(() => {
+    if (!db || !chatId || !currentUser) return;
+    if (messages.length === lastReadLenRef.current) return; // no change since last reset
+    lastReadLenRef.current = messages.length;
+    updateDoc(doc(db, "privateChats", chatId), {
+      [`unread.${currentUser.uid}`]: 0,
+    }).catch(() => {});
+  }, [db, chatId, currentUser, messages.length]);
+
   const handleSend = async () => {
     const text = draft.trim();
     if (!text || !db || !chatId || !currentUser || sending || blocked) return;
     setSending(true);
     setDraft("");
+    const ts = Date.now();
     try {
       await addDoc(collection(db, "privateChats", chatId, "messages"), {
         senderUid: currentUser.uid,
         text,
-        timestamp: Date.now(),
+        timestamp: ts,
       });
+      // Bump the other participant's unread count + store preview for the inbox
+      if (otherUid) {
+        updateDoc(doc(db, "privateChats", chatId), {
+          lastMessageAt: ts,
+          lastMessageSenderUid: currentUser.uid,
+          lastMessageText: text,
+          [`unread.${otherUid}`]: increment(1),
+        }).catch(() => {});
+      }
     } catch { setDraft(text); }
     setSending(false);
     inputRef.current?.focus();
