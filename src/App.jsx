@@ -50,7 +50,7 @@ import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, M
 
 import { initializeApp } from "firebase/app";
 import {
-  GoogleAuthProvider, OAuthProvider, getAuth, onAuthStateChanged, signOut,
+  GoogleAuthProvider, getAuth, onAuthStateChanged, signOut,
   signInWithPopup, signInWithRedirect, sendSignInLinkToEmail,
   isSignInWithEmailLink, signInWithEmailLink,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -79,9 +79,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
-const appleProvider = new OAuthProvider("apple.com");
-appleProvider.addScope("email");
-appleProvider.addScope("name");
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
@@ -969,7 +966,6 @@ export default function App() {
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
-  const [isAppleSigningIn, setIsAppleSigningIn] = useState(false);
   const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
   const [emailLinkMessage, setEmailLinkMessage] = useState("");
   const [authError, setAuthError] = useState("");
@@ -1509,21 +1505,6 @@ export default function App() {
     } finally { setIsGoogleSigningIn(false); }
   };
 
-  const signInWithApple = async () => {
-    setIsAppleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
-    try {
-      await signInWithPopup(auth, appleProvider);
-    } catch (error) {
-      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
-        await signInWithRedirect(auth, appleProvider); return;
-      }
-      if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
-      else if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
-      else if (error?.code === "auth/popup-closed-by-user") { /* user dismissed — no error */ }
-      else setAuthError("Apple sign-in failed. Please try again.");
-    } finally { setIsAppleSigningIn(false); }
-  };
-
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
@@ -1970,7 +1951,6 @@ export default function App() {
             ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
             : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
-                onAppleSignIn={signInWithApple} appleLoading={isAppleSigningIn}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                 emailLinkMessage={emailLinkMessage} authError={authError} />}
         </div>
@@ -2059,7 +2039,6 @@ export default function App() {
             {onboardingStep === "entry" ? (
               <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
-                onAppleSignIn={signInWithApple} appleLoading={isAppleSigningIn}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                 emailLinkMessage={emailLinkMessage} authError={authError} />
             ) : (
