@@ -110,14 +110,21 @@ function extractImage(itemXml) {
 }
 
 function cleanHtml(str) {
-  // Unescape entities before stripping tags so entity-encoded tags (e.g. &lt;script&gt;) are also removed
-  return str
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  // Decode entities first, with &amp; decoded LAST so an input like "&amp;lt;"
+  // becomes the literal "&lt;" rather than being double-unescaped into "<".
+  let s = str
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"').replace(/&#8230;/g, "…").replace(/&#8216;|&#8217;/g, "'")
     .replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, " ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/&amp;/g, "&");
+  // Strip tags repeatedly until the string stops changing, so nested or
+  // overlapping tags (e.g. "<scr<script>ipt>") can't reconstitute a live tag.
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/<[^>]*>/g, "");
+  } while (s !== prev);
+  return s.replace(/\s+/g, " ").trim();
 }
 
 function parseFeed(xml, limit = 15) {
