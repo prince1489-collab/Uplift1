@@ -77,7 +77,7 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 }
 
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
-const AUTO_ROTATE_SPEED = 0.15;
+const AUTO_ROTATE_SPEED = 0.195;
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
@@ -158,6 +158,13 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   const myCoords = myCountry ? COUNTRY_COORDS[myCountry] : null;
 
   useEffect(() => { tabRef.current = tab; }, [tab]);
+
+  const didInitialCenterRef = useRef(false);
+  useEffect(() => {
+    if (didInitialCenterRef.current || !myCoords) return;
+    didInitialCenterRef.current = true;
+    rotationRef.current = [-myCoords[0], -myCoords[1], 0];
+  }, [myCoords]);
 
   const worldDots = useMemo(() => {
     const map = {};
