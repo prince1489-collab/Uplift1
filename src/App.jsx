@@ -499,7 +499,6 @@ function SupportPanel({ onClose }) {
   );
 }
 
-const REACTION_LABEL_BELL = { "❤️": "loved your message", "🙏": "thanked you", "😊": "made them smile", "🌟": "called you a star" };
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const ADMIN_EMAIL = "prince1489@googlemail.com";
@@ -507,31 +506,22 @@ const ADMIN_EMAIL = "prince1489@googlemail.com";
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
-  const [reactions, setReactions] = useState([]);
+  const [likes, setLikes] = useState([]);
   const [circleInvites, setCircleInvites] = useState([]);
-  const [dismissedReactions, setDismissedReactions] = useState(new Set());
+  const [dismissedLikes, setDismissedLikes] = useState(new Set());
   const [dismissedInvites, setDismissedInvites] = useState(new Set());
+  const [likesSeenAt, setLikesSeenAt] = useState(() => {
+    try { return Number(localStorage.getItem("seen-likes-at")) || 0; } catch { return 0; }
+  });
   const prevWaveIdsRef = useRef(new Set());
-  const prevReactionKeysRef = useRef(new Set());
+  const prevLikeIdsRef = useRef(new Set());
+  const likeNameCacheRef = useRef({});
+  const likesSeenAtRef = useRef(likesSeenAt);
   const notifyReadyRef = useRef(false);
+  useEffect(() => { likesSeenAtRef.current = likesSeenAt; }, [likesSeenAt]);
   // Don't fire notifications on initial load — only for events that arrive after mount
   useEffect(() => { const t = setTimeout(() => { notifyReadyRef.current = true; }, 2500); return () => clearTimeout(t); }, []);
 
-  // Browser notification for new reactions
-  useEffect(() => {
-    if (!notifyReadyRef.current) return;
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    reactions.forEach((r) => {
-      if (!prevReactionKeysRef.current.has(r.key)) {
-        const label = r.emoji.startsWith("sticker_") ? "a sticker" : r.emoji;
-        new Notification(`New reaction on your message ${label}`, {
-          body: `"${(r.text || "").slice(0, 70)}"`,
-          icon: "/favicon.svg",
-        });
-      }
-    });
-    prevReactionKeysRef.current = new Set(reactions.map((r) => r.key));
-  }, [reactions]);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -570,42 +560,71 @@ function NotificationBell({ streak, db, currentUser }) {
     }, () => {});
   }, [db, currentUser]);
 
+  // Likes — someone hearted one of my messages. Every ❤️ writes a doc to
+  // users/{me}/reactionsReceived, denormalized with the reactor's first name +
+  // country, so we can show "Name from Country liked you" without extra reads.
   useEffect(() => {
     if (!db || !currentUser) return;
-    const q = query(collection(db, "publicMessages"), where("uid", "==", currentUser.uid), orderBy("timestamp", "desc"), limit(20));
-    let innerUnsubs = [];
-    const outer = onSnapshot(q, (snap) => {
-      innerUnsubs.forEach((u) => u());
-      innerUnsubs = [];
-      const acc = {};
-      snap.docs.forEach(({ id: msgId, data }) => {
-        const text = data().text;
-        const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
-          rSnap.forEach((rDoc) => {
-            if (rDoc.id !== "❤️") return; // ignore legacy non-heart reactions
-            const count = rDoc.data().count ?? 0;
-            if (count > 0) acc[`${msgId}:${rDoc.id}`] = { key: `${msgId}:${rDoc.id}`, msgId, text, emoji: rDoc.id, count };
-            else delete acc[`${msgId}:${rDoc.id}`];
-          });
-          setReactions(Object.values(acc).slice(0, 8));
-        }, () => {});
-        innerUnsubs.push(unsub);
-      });
+    const q = query(
+      collection(db, "users", currentUser.uid, "reactionsReceived"),
+      orderBy("reactedAt", "desc"),
+      limit(15)
+    );
+    return onSnapshot(q, async (snap) => {
+      const rows = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((r) => (r.emoji || "❤️") === "❤️" && r.reactorUid && r.reactorUid !== currentUser.uid);
+      const resolved = await Promise.all(rows.map(async (r) => {
+        let name = (r.reactorName || "").trim();
+        let country = r.country || "";
+        // Older reaction docs predate the denormalized name — fall back to the
+        // reactor's profile (cached per uid so we don't refetch on every snapshot).
+        if (!name) {
+          if (likeNameCacheRef.current[r.reactorUid]) {
+            name = likeNameCacheRef.current[r.reactorUid];
+          } else {
+            try {
+              const us = await getDoc(doc(db, "users", r.reactorUid));
+              name = (us.data()?.fullName || "").trim().split(" ")[0] || "Someone";
+              if (!country) country = us.data()?.country || "";
+              likeNameCacheRef.current[r.reactorUid] = name;
+            } catch { name = "Someone"; }
+          }
+        }
+        return { id: r.id, name: name || "Someone", country, at: typeof r.reactedAt === "number" ? r.reactedAt : 0 };
+      }));
+      if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        resolved.forEach((l) => {
+          if (!prevLikeIdsRef.current.has(l.id) && l.at > likesSeenAtRef.current) {
+            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked you ❤️`, { icon: "/favicon.svg" });
+          }
+        });
+      }
+      prevLikeIdsRef.current = new Set(resolved.map((l) => l.id));
+      setLikes(resolved);
     }, () => {});
-    return () => { outer(); innerUnsubs.forEach((u) => u()); };
   }, [db, currentUser]);
+
+  // Mark likes as seen once the panel is opened → clears the unread badge.
+  useEffect(() => {
+    if (!open || likes.length === 0) return;
+    const newest = likes.reduce((m, l) => Math.max(m, l.at), likesSeenAtRef.current);
+    setLikesSeenAt(newest);
+    try { localStorage.setItem("seen-likes-at", String(newest)); } catch (_) {}
+  }, [open, likes]);
 
   const dismissWave = async (id) => {
     if (!db) return;
     await setDoc(doc(db, "waves", id), { read: true }, { merge: true }).catch(() => {});
   };
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
-  const dismissReaction = (key) => setDismissedReactions((s) => new Set(s).add(key));
+  const dismissLike = (id) => setDismissedLikes((s) => new Set(s).add(id));
   const dismissInvite = (id) => setDismissedInvites((s) => new Set(s).add(id));
 
-  const visibleReactions = reactions.filter((r) => !dismissedReactions.has(r.key));
+  const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id));
   const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
-  const totalUnread = waves.length + visibleReactions.length + visibleInvites.length;
+  const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
+  const totalUnread = waves.length + newLikesCount + visibleInvites.length;
   const hot = streak >= 7;
 
   return (
@@ -633,7 +652,7 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleReactions.length === 0 && visibleInvites.length === 0 ? (
+            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
@@ -651,7 +670,7 @@ function NotificationBell({ streak, db, currentUser }) {
                     </button>
                   </div>
                 ))}
-                {visibleInvites.length > 0 && (waves.length > 0 || visibleReactions.length > 0) && (
+                {visibleInvites.length > 0 && (waves.length > 0 || visibleLikes.length > 0) && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
                 {waves.map((w) => (
@@ -664,21 +683,20 @@ function NotificationBell({ streak, db, currentUser }) {
                     </button>
                   </div>
                 ))}
-                {waves.length > 0 && visibleReactions.length > 0 && (
+                {waves.length > 0 && visibleLikes.length > 0 && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
-                {visibleReactions.map(({ key, text, emoji, count }) => {
-                  const label = REACTION_LABEL_BELL[emoji] ?? "reacted to your message";
-                  const short = text.length > 22 ? text.slice(0, 22) + "…" : text;
+                {visibleLikes.map((l) => {
+                  const fresh = l.at > likesSeenAt;
                   return (
-                    <div key={key} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
-                      <span className="text-base flex-shrink-0">{emoji}</span>
+                    <div key={l.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-rose-50/60" : ""} hover:bg-rose-50`}>
+                      <span className="text-base flex-shrink-0">❤️</span>
                       <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                        <span className="font-semibold">{count} {count === 1 ? "person" : "people"}</span>
-                        {" "}{label}
-                        <span className="text-slate-400 block truncate">&ldquo;{short}&rdquo;</span>
+                        <span className="font-semibold">{l.name}</span>
+                        {l.country ? <> from <span className="font-semibold">{l.country}</span></> : null}
+                        {" "}liked you
                       </p>
-                      <button onClick={() => dismissReaction(key)}
+                      <button onClick={() => dismissLike(l.id)}
                         className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
                         <X size={12} />
                       </button>
@@ -688,12 +706,12 @@ function NotificationBell({ streak, db, currentUser }) {
               </div>
             )}
           </div>
-          {(waves.length > 1 || visibleReactions.length > 0 || visibleInvites.length > 0) && (
+          {(waves.length > 1 || visibleLikes.length > 0 || visibleInvites.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
                 onClick={() => {
                   dismissAllWaves();
-                  visibleReactions.forEach((r) => dismissReaction(r.key));
+                  visibleLikes.forEach((l) => dismissLike(l.id));
                   visibleInvites.forEach((inv) => dismissInvite(inv.id));
                 }}
                 className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
@@ -2463,7 +2481,7 @@ export default function App() {
                                             </div>
                                           );
                                         })()}
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} reactorName={profile?.fullName} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />

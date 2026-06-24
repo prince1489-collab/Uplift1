@@ -730,7 +730,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, localHearted = false }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, localHearted = false }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -829,9 +829,10 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         deleteDoc(myReactionRef).catch(() => {});
       } else {
         const reactedAt = Date.now();
+        const myName = (reactorName || "").trim().split(" ")[0] || "Someone";
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt,
+          emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
         // Write outgoingReactions then immediately check if this reactor already sent
@@ -1769,9 +1770,10 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         deleteDoc(myReactionRef).catch(() => {});
       } else {
         const reactedAt = Date.now();
+        const myName = (profile?.fullName || "").trim().split(" ")[0] || "Someone";
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactedAt,
+          emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
         const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
