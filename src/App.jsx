@@ -567,13 +567,14 @@ function NotificationBell({ streak, db, currentUser }) {
     if (!db || !currentUser) return;
     const q = query(
       collection(db, "users", currentUser.uid, "reactionsReceived"),
-      orderBy("reactedAt", "desc"),
-      limit(15)
+      limit(20)
     );
     return onSnapshot(q, async (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((r) => (r.emoji || "❤️") === "❤️" && r.reactorUid && r.reactorUid !== currentUser.uid);
+        .filter((r) => (r.emoji || "❤️") === "❤️" && r.reactorUid && r.reactorUid !== currentUser.uid)
+        .sort((a, b) => (b.reactedAt || 0) - (a.reactedAt || 0))
+        .slice(0, 15);
       const resolved = await Promise.all(rows.map(async (r) => {
         let name = (r.reactorName || "").trim();
         let country = r.country || "";
