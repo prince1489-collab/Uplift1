@@ -64,6 +64,7 @@ import {
 } from "firebase/firestore";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -79,6 +80,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
+const messaging = (() => { try { return getMessaging(app); } catch { return null; } })();
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
@@ -1065,6 +1067,28 @@ export default function App() {
     setShowInstallBanner(false);
     try { localStorage.setItem("seen-install-dismissed", "1"); } catch (_) {}
   };
+
+  // FCM push token — register when notification permission is granted
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
+  useEffect(() => {
+    if (!currentUser || notifPermission !== "granted" || !messaging) return;
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) return;
+    navigator.serviceWorker.ready.then((reg) => {
+      getToken(messaging, { vapidKey, serviceWorkerRegistration: reg })
+        .then((token) => {
+          if (token) setDoc(doc(db, "users", currentUser.uid), { fcmToken: token }, { merge: true }).catch(() => {});
+        })
+        .catch(() => {});
+    }).catch(() => {});
+  }, [currentUser, db, notifPermission]);
+  // Suppress foreground FCM messages — Firestore onSnapshot handles them in the bell
+  useEffect(() => {
+    if (!messaging) return;
+    return onMessage(messaging, () => {});
+  }, []);
 
   // Sync myCountry into a ref so the reactions listener closure always reads the latest value
   useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
@@ -2198,7 +2222,7 @@ export default function App() {
                   </div>
                   <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
                   <div className="space-y-1">
-                    <NotificationPermissionBanner />
+                    <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
                     {!isChatLive && chatError && (
                       <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
                         Chat offline ({chatError}).

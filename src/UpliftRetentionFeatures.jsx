@@ -835,6 +835,15 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
           emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
+        // Push notification to message owner (best-effort)
+        if (emoji === "❤️") {
+          fetch("/api/notify-like", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
+          }).catch(() => {});
+        }
+
         // Write outgoingReactions then immediately check if this reactor already sent
         // a greeting within the ripple window ("send → react" ordering). If yes,
         // credit the ripple to the original sender right now rather than waiting for
@@ -1547,7 +1556,7 @@ export function scheduleGreetingWindowNotification(profile) {
   return () => clearTimeout(id);
 }
 
-export function NotificationPermissionBanner() {
+export function NotificationPermissionBanner({ onPermissionChange } = {}) {
   const [status, setStatus] = useState(typeof Notification !== "undefined" ? Notification.permission : "denied");
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem("seen_notif_dismissed") === "1"; } catch { return false; }
@@ -1565,7 +1574,11 @@ export function NotificationPermissionBanner() {
       </div>
       <div className="flex items-center gap-2 shrink-0 mt-0.5">
         <button
-          onClick={async () => setStatus(await Notification.requestPermission())}
+          onClick={async () => {
+            const result = await Notification.requestPermission();
+            setStatus(result);
+            onPermissionChange?.();
+          }}
           className="rounded-xl bg-teal-500 px-3 py-1.5 text-[11px] text-white font-bold hover:bg-teal-600 transition-colors whitespace-nowrap">
           Enable
         </button>
@@ -1775,6 +1788,15 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
           emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
+
+        // Push notification to message owner (best-effort)
+        if (emoji === "❤️") {
+          fetch("/api/notify-like", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
+          }).catch(() => {});
+        }
 
         const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
         setDoc(myReactionRef, {

@@ -1,7 +1,29 @@
-// Seen — minimal service worker.
-// Goal: satisfy PWA installability (required to package as a Play Store TWA)
-// without ever serving a stale build. Strategy: network-first for everything,
-// with a cached shell fallback only when the device is offline.
+// Seen — service worker: offline shell cache + FCM background push handling.
+
+// ── Firebase Cloud Messaging (background messages when app is closed) ──────
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+  apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
+  authDomain: "uplift-6d9ea.firebaseapp.com",
+  projectId: "uplift-6d9ea",
+  storageBucket: "uplift-6d9ea.firebasestorage.app",
+  messagingSenderId: "821891105119",
+  appId: "1:821891105119:web:6245f2bc4c8c8ee96976ea",
+});
+
+const messaging = firebase.messaging();
+messaging.onBackgroundMessage((payload) => {
+  const { title, body, icon } = payload.notification ?? {};
+  self.registration.showNotification(title ?? "Seen", {
+    body: body ?? "",
+    icon: icon ?? "/icon-192.png",
+    badge: "/icon-192.png",
+  });
+});
+
+// ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
 const CACHE = "seen-shell-v1";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
