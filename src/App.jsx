@@ -597,7 +597,7 @@ function NotificationBell({ streak, db, currentUser }) {
       if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
         resolved.forEach((l) => {
           if (!prevLikeIdsRef.current.has(l.id) && l.at > likesSeenAtRef.current) {
-            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked you ❤️`, { icon: "/favicon.svg" });
+            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked your message ❤️`, { icon: "/favicon.svg" });
           }
         });
       }
@@ -695,7 +695,7 @@ function NotificationBell({ streak, db, currentUser }) {
                       <p className="flex-1 text-[11px] text-slate-700 min-w-0">
                         <span className="font-semibold">{l.name}</span>
                         {l.country ? <> from <span className="font-semibold">{l.country}</span></> : null}
-                        {" "}liked you
+                        {" "}liked your message ❤️
                       </p>
                       <button onClick={() => dismissLike(l.id)}
                         className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
