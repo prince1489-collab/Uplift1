@@ -110,11 +110,13 @@ function extractImage(itemXml) {
 }
 
 function cleanHtml(str) {
+  // Unescape entities before stripping tags so entity-encoded tags (e.g. &lt;script&gt;) are also removed
   return str
-    .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"').replace(/&#8230;/g, "…").replace(/&#8216;|&#8217;/g, "'")
-    .replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, " ").replace(/\s+/g, " ")
+    .replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
