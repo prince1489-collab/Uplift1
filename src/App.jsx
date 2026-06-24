@@ -1037,6 +1037,30 @@ export default function App() {
       setTimeout(() => setPremiumSuccess(false), 5000);
     }
   }, []);
+  // PWA install prompt
+  const deferredInstallRef = useRef(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(() => {
+    try { return !localStorage.getItem("seen-install-dismissed"); } catch { return false; }
+  });
+  useEffect(() => {
+    if (window.matchMedia("(display-mode: standalone)").matches) { setShowInstallBanner(false); return; }
+    const handler = (e) => { e.preventDefault(); deferredInstallRef.current = e; };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+  const handleInstall = async () => {
+    if (!deferredInstallRef.current) return;
+    deferredInstallRef.current.prompt();
+    await deferredInstallRef.current.userChoice;
+    deferredInstallRef.current = null;
+    setShowInstallBanner(false);
+    try { localStorage.setItem("seen-install-dismissed", "1"); } catch (_) {}
+  };
+  const dismissInstallBanner = () => {
+    setShowInstallBanner(false);
+    try { localStorage.setItem("seen-install-dismissed", "1"); } catch (_) {}
+  };
+
   // Sync myCountry into a ref so the reactions listener closure always reads the latest value
   useEffect(() => { myCountryRef.current = profile?.country ?? null; }, [profile]);
 
@@ -2181,6 +2205,28 @@ export default function App() {
             </header>
 
             <CircleInviteBanner db={db} currentUser={currentUser} />
+
+            {showInstallBanner && deferredInstallRef.current && (
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "8px 14px", background: "rgba(13,148,136,0.1)",
+                borderBottom: "1px solid rgba(13,148,136,0.15)", flexShrink: 0,
+              }}>
+                <span style={{ fontSize: 13, color: darkMode ? "rgba(255,255,255,0.8)" : "#0f172a" }}>
+                  Install Seen for the best experience
+                </span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={handleInstall} style={{
+                    fontSize: 12, fontWeight: 600, color: "#0d9488",
+                    background: "none", border: "none", cursor: "pointer", padding: "2px 0",
+                  }}>Install</button>
+                  <button onClick={dismissInstallBanner} style={{
+                    fontSize: 16, color: darkMode ? "rgba(255,255,255,0.4)" : "#94a3b8",
+                    background: "none", border: "none", cursor: "pointer", lineHeight: 1, padding: 0,
+                  }}>×</button>
+                </div>
+              </div>
+            )}
 
             {/* Tab bar */}
             <div className="flex border-b border-slate-100 bg-white flex-shrink-0">
