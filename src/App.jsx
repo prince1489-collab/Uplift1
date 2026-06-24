@@ -1044,6 +1044,11 @@ export default function App() {
   });
   useEffect(() => {
     if (window.matchMedia("(display-mode: standalone)").matches) { setShowInstallBanner(false); return; }
+    if ("getInstalledRelatedApps" in navigator) {
+      navigator.getInstalledRelatedApps().then((apps) => {
+        if (apps.some((a) => a.id === "app.seenapp.twa")) setShowInstallBanner(false);
+      }).catch(() => {});
+    }
     const handler = (e) => { e.preventDefault(); deferredInstallRef.current = e; };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);

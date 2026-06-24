@@ -10,6 +10,13 @@
   "background_color": "#0e1219",
   "theme_color": "#0d9488",
   "categories": ["social", "lifestyle"],
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "app.seenapp.twa"
+    }
+  ],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",
