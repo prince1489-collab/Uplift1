@@ -956,6 +956,9 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
+  // True only once a profile read has *positively* resolved (doc found or confirmed missing).
+  // Gates the onboarding screen so a transient read error never flashes it for an existing user.
+  const [profileChecked, setProfileChecked] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [messages, setMessages] = useState([]);
   const [isChatLive, setIsChatLive] = useState(false);
@@ -1398,29 +1401,55 @@ export default function App() {
 
   useEffect(() => {
     let unsubscribeProfile = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
-      setCurrentUser(user); setIsAuthLoading(false); setAuthError(""); setEmailLinkMessage("");
-      if (!user || user.isAnonymous) {
-        setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("entry");
-        setUnauthScreen("welcome"); setOnboardingError(""); setIsProfileLoading(false); return;
-      }
-      setIsProfileLoading(true);
+    let retryTimer = null;
+    let attempts = 0;
+
+    const subscribeProfile = (user) => {
       unsubscribeProfile = onSnapshot(userProfileRef(user.uid),
         (snap) => {
           const nextProfile = snap.exists() ? snap.data() : null;
           setProfile(nextProfile);
           const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
           setHasCompletedOnboarding(done); setOnboardingStep(done ? "done" : "details");
-          setProfileLoadError(""); setIsProfileLoading(false);
+          attempts = 0;
+          setProfileLoadError(""); setProfileChecked(true); setIsProfileLoading(false);
         },
         (error) => {
-          setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("details");
-          setProfileLoadError(error?.code || "unknown"); setIsProfileLoading(false);
+          // A profile read can transiently fail on cold start (e.g. auth token not yet
+          // attached). Do NOT flash the onboarding screen — keep the loader up and retry
+          // with backoff so an already-onboarded user goes straight to the feed.
+          if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
+          attempts += 1;
+          if (attempts <= 4 && auth.currentUser) {
+            retryTimer = setTimeout(() => {
+              if (auth.currentUser) subscribeProfile(auth.currentUser);
+            }, Math.min(8000, 1000 * 2 ** (attempts - 1)));
+          } else {
+            // Exhausted retries: surface a recoverable error instead of hanging forever.
+            setProfileLoadError(error?.code || "unknown"); setIsProfileLoading(false);
+          }
         }
       );
+    };
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      attempts = 0;
+      setCurrentUser(user); setIsAuthLoading(false); setAuthError(""); setEmailLinkMessage("");
+      if (!user || user.isAnonymous) {
+        setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("entry");
+        setUnauthScreen("welcome"); setOnboardingError("");
+        setProfileChecked(true); setIsProfileLoading(false); return;
+      }
+      setProfileChecked(false); setProfileLoadError(""); setIsProfileLoading(true);
+      subscribeProfile(user);
     });
-    return () => { if (unsubscribeProfile) unsubscribeProfile(); unsubscribeAuth(); };
+    return () => {
+      if (unsubscribeProfile) unsubscribeProfile();
+      if (retryTimer) clearTimeout(retryTimer);
+      unsubscribeAuth();
+    };
   }, []);
 
   // Persist referral code and clean URL
@@ -2008,8 +2037,24 @@ export default function App() {
     } catch (err) { console.error("Dismiss report failed:", err); }
   };
 
-  if (isAuthLoading || (isRealSignedInUser && isProfileLoading)) {
-    return <div className="grid h-screen place-items-center bg-slate-50"><Loader2 className="animate-spin text-teal-600" /></div>;
+  // Hold the loader until the profile read positively resolves, so an already-onboarded
+  // user is never shown the onboarding screen during a transient cold-start read error.
+  if (isAuthLoading || (isRealSignedInUser && !profileChecked)) {
+    return (
+      <div className="grid h-screen place-items-center bg-slate-50">
+        {profileLoadError ? (
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <p className="text-sm text-slate-600">Having trouble loading your profile.</p>
+            <button onClick={() => window.location.reload()}
+              className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white">
+              Reload
+            </button>
+          </div>
+        ) : (
+          <Loader2 className="animate-spin text-teal-600" />
+        )}
+      </div>
+    );
   }
 
   if (!isRealSignedInUser) {
