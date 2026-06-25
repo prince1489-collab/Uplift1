@@ -53,7 +53,10 @@ export default async function handler(req, res) {
 
     // Group by message (morning vs evening) then multicast each group.
     const groups = { 9: [], 21: [] };
-    for (const e of entries) groups[e.hour].push(e);
+    for (const e of entries) {
+      const key = e.hour >= 15 ? 21 : 9;
+      groups[key].push(e);
+    }
 
     let sent = 0;
     const errors = [];
