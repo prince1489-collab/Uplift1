@@ -25,7 +25,7 @@ messaging.onBackgroundMessage((payload) => {
 
 // ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
-const CACHE = "seen-shell-v1";
+const CACHE = "seen-shell-v2";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

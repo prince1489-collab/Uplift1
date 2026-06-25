@@ -82,6 +82,10 @@ const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 const messaging = (() => { try { return getMessaging(app); } catch { return null; } })();
 
+// localStorage that never throws (private mode / disabled storage / SSR).
+const safeLocalGet = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+const safeLocalSet = (key, value) => { try { localStorage.setItem(key, value); } catch { /* ignore */ } };
+
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
@@ -959,6 +963,9 @@ export default function App() {
   // True only once a profile read has *positively* resolved (doc found or confirmed missing).
   // Gates the onboarding screen so a transient read error never flashes it for an existing user.
   const [profileChecked, setProfileChecked] = useState(false);
+  // True when this device has recorded a completed onboarding for the signed-in user —
+  // a timing-independent backstop against the onboarding screen flashing on reopen.
+  const [knownOnboarded, setKnownOnboarded] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [messages, setMessages] = useState([]);
   const [isChatLive, setIsChatLive] = useState(false);
@@ -1405,12 +1412,20 @@ export default function App() {
     let attempts = 0;
 
     const subscribeProfile = (user) => {
+      const onboardedKey = "seen_onboarded_" + user.uid;
       unsubscribeProfile = onSnapshot(userProfileRef(user.uid),
         (snap) => {
+          // Ignore a transient "no document" served from the local cache before the
+          // server has responded — without this it briefly looks like the user has no
+          // profile and the onboarding screen flashes for an already-onboarded user.
+          if (!snap.exists() && snap.metadata?.fromCache) return;
           const nextProfile = snap.exists() ? snap.data() : null;
-          setProfile(nextProfile);
           const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
+          setProfile(nextProfile);
           setHasCompletedOnboarding(done); setOnboardingStep(done ? "done" : "details");
+          // Remember on this device that onboarding is done, so a future cold start never
+          // flashes the onboarding screen even if the profile read is momentarily empty.
+          if (done) safeLocalSet(onboardedKey, "1");
           attempts = 0;
           setProfileLoadError(""); setProfileChecked(true); setIsProfileLoading(false);
         },
@@ -1440,8 +1455,10 @@ export default function App() {
       if (!user || user.isAnonymous) {
         setProfile(null); setHasCompletedOnboarding(false); setOnboardingStep("entry");
         setUnauthScreen("welcome"); setOnboardingError("");
+        setKnownOnboarded(false);
         setProfileChecked(true); setIsProfileLoading(false); return;
       }
+      setKnownOnboarded(safeLocalGet("seen_onboarded_" + user.uid) === "1");
       setProfileChecked(false); setProfileLoadError(""); setIsProfileLoading(true);
       subscribeProfile(user);
     });
@@ -2147,23 +2164,40 @@ export default function App() {
         )}
 
         {!hasCompletedOnboarding || !profile ? (
-          <>
-            {profileLoadError && (
-              <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Couldn't read your profile ({profileLoadError}).
-              </p>
-            )}
-            {onboardingStep === "entry" ? (
-              <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
-                onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
-                loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
-                emailLinkMessage={emailLinkMessage} authError={authError} />
-            ) : (
-              <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
-                loading={isSavingProfile} initialData={pendingProfileData}
-                initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
-            )}
-          </>
+          knownOnboarded ? (
+            // This device has already completed onboarding for this user; the profile is
+            // just still syncing. Never show the onboarding form here — show a recoverable
+            // loader instead so an existing user is never asked to re-onboard.
+            <div className="grid flex-1 place-items-center bg-slate-50">
+              {profileLoadError ? (
+                <div className="flex flex-col items-center gap-3 px-6 text-center">
+                  <p className="text-sm text-slate-600">Having trouble loading your profile.</p>
+                  <button onClick={() => window.location.reload()}
+                    className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white">Reload</button>
+                </div>
+              ) : (
+                <Loader2 className="animate-spin text-teal-600" />
+              )}
+            </div>
+          ) : (
+            <>
+              {profileLoadError && (
+                <p className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Couldn't read your profile ({profileLoadError}).
+                </p>
+              )}
+              {onboardingStep === "entry" ? (
+                <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
+                  onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
+                  loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
+                  emailLinkMessage={emailLinkMessage} authError={authError} />
+              ) : (
+                <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
+                  loading={isSavingProfile} initialData={pendingProfileData}
+                  initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
+              )}
+            </>
+          )
         ) : (
           <>
             {/* ── COLLAPSIBLE HEADER ── */}
