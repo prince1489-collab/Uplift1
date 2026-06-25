@@ -15,13 +15,15 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
-  const n = payload.notification ?? {};
-  const w = payload.webpush?.notification ?? {};
-  self.registration.showNotification(n.title ?? w.title ?? "Seen", {
-    body: n.body ?? w.body ?? "",
-    icon: w.icon ?? n.icon ?? "/icon-192.png",
+  // Messages are sent as data-only (no notification field) so this is the single
+  // display path — the compat SDK won't auto-show a duplicate.
+  const { title = "Seen", body = "" } = payload.data ?? {};
+  const link = payload.webpush?.fcmOptions?.link ?? "/";
+  self.registration.showNotification(title, {
+    body,
+    icon: "/icon-192.png",
     badge: "/icon-192.png",
-    data: { link: payload.webpush?.fcmOptions?.link ?? payload.fcmOptions?.link ?? "/" },
+    data: { link },
   });
 });
 
@@ -41,7 +43,7 @@ self.addEventListener("notificationclick", (event) => {
 
 // ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
-const CACHE = "seen-shell-v3";
+const CACHE = "seen-shell-v4";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

@@ -28,18 +28,16 @@ export default async function handler(req, res) {
       ? `${name} from ${country} liked your message ❤️`
       : `${name} liked your message ❤️`;
 
+    // Data-only message so the compat SDK doesn't auto-show a duplicate.
+    // The sw.js onBackgroundMessage handler reads payload.data and calls showNotification().
     const messageId = await getMessaging().send({
       token,
-      notification: { title: "Seen", body },
-      webpush: {
-        notification: { title: "Seen", body, icon: `${APP_URL}/icon-192.png`, badge: `${APP_URL}/icon-192.png` },
-        fcmOptions: { link: APP_URL },
-      },
+      data: { title: "Seen", body },
+      webpush: { fcmOptions: { link: APP_URL } },
     });
     return res.status(200).json({ ok: true, messageId });
   } catch (err) {
     console.error("[notify-like]", err?.code, err?.message);
-    // Clean up tokens FCM has permanently rejected so we stop retrying them.
     if (err?.code === "messaging/registration-token-not-registered") {
       try {
         await getFirestore().collection("users").doc(ownerUid).update({ fcmToken: "" });

@@ -1,8 +1,6 @@
 {
   "crons": [
-    { "path": "/api/send-reminder", "schedule": "0 9 * * *" },
-    { "path": "/api/send-reminder", "schedule": "0 15 * * *" },
-    { "path": "/api/send-reminder", "schedule": "0 21 * * *" }
+    { "path": "/api/send-reminder", "schedule": "0 * * * *" }
   ],
   "rewrites": [
     { "source": "/privacy", "destination": "/privacy.html" },

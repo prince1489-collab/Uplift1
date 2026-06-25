@@ -1089,7 +1089,10 @@ export default function App() {
     navigator.serviceWorker.ready.then((reg) => {
       getToken(messaging, { vapidKey, serviceWorkerRegistration: reg })
         .then((token) => {
-          if (token) setDoc(doc(db, "users", currentUser.uid), { fcmToken: token }, { merge: true }).catch(() => {});
+          if (token) {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            setDoc(doc(db, "users", currentUser.uid), { fcmToken: token, timezone: tz }, { merge: true }).catch(() => {});
+          }
         })
         .catch(() => {});
     }).catch(() => {});
