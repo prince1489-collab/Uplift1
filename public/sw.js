@@ -22,7 +22,7 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(title, {
     body,
     icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    badge: "/badge-96.png",
     data: { link },
   });
 });
@@ -43,8 +43,8 @@ self.addEventListener("notificationclick", (event) => {
 
 // ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
-const CACHE = "seen-shell-v4";
-const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+const CACHE = "seen-shell-v5";
+const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/badge-96.png"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

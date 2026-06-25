@@ -544,7 +544,7 @@ function NotificationBell({ streak, db, currentUser }) {
       if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
         newWaves.forEach((w) => {
           if (!prevWaveIdsRef.current.has(w.id)) {
-            new Notification("Someone waved at you 👋", { body: "Open Seen to wave back", icon: "/favicon.svg" });
+            new Notification("Someone waved at you 👋", { body: "Open Seen to wave back", icon: "/icon-192.png", badge: "/badge-96.png" });
           }
         });
       }
@@ -603,7 +603,7 @@ function NotificationBell({ streak, db, currentUser }) {
       if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
         resolved.forEach((l) => {
           if (!prevLikeIdsRef.current.has(l.id) && l.at > likesSeenAtRef.current) {
-            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked your message ❤️`, { icon: "/favicon.svg" });
+            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked your message ❤️`, { icon: "/icon-192.png", badge: "/badge-96.png" });
           }
         });
       }
@@ -1609,7 +1609,7 @@ export default function App() {
       target.setDate(target.getDate() + 1);
       target.setHours(9, 0, 0, 0);
       const msg = MESSAGES[new Date().getDay() % MESSAGES.length];
-      retryTimer = setTimeout(() => new Notification(msg.title, { body: msg.body, icon: "/favicon.svg" }), target.getTime() - now.getTime());
+      retryTimer = setTimeout(() => new Notification(msg.title, { body: msg.body, icon: "/icon-192.png", badge: "/badge-96.png" }), target.getTime() - now.getTime());
     };
     const onVisibilityChange = () => {
       if (document.hidden) scheduleReEngagement();

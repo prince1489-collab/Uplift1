@@ -1551,7 +1551,7 @@ export function scheduleGreetingWindowNotification(profile) {
   const msUntil = target.getTime() - now.getTime();
   if (msUntil > 23 * 60 * 60 * 1000) return;
   const id = setTimeout(() => {
-    new Notification("Seen 🌟", { body: "Your daily greeting window is open — spread some kindness!", icon: "/icons/icon-192.png" });
+    new Notification("Seen 🌟", { body: "Your daily greeting window is open — spread some kindness!", icon: "/icon-192.png", badge: "/badge-96.png" });
   }, msUntil);
   return () => clearTimeout(id);
 }
