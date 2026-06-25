@@ -48,7 +48,8 @@ export default function TourGuide({ steps, onDone }) {
     if (!el) { setRect(null); return; }
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) { setRect(null); return; }
-    setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    const extraTop = step.extraPadTop ?? 0;
+    setRect({ top: r.top, left: r.left, width: r.width, height: r.height, extraTop });
   }
 
   // Keep the spotlight aligned if the layout shifts under it.
@@ -71,11 +72,13 @@ export default function TourGuide({ steps, onDone }) {
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   let cardStyle;
   if (rect) {
-    const below = rect.top + rect.height + PAD + 12;
-    const placeBelow = below < vh - 200;
+    const extraTop = rect.extraTop ?? 0;
+    const spotTop = rect.top - PAD - extraTop;
+    const spotBottom = rect.top + rect.height + PAD;
+    const placeBelow = spotBottom < vh - 200;
     cardStyle = placeBelow
-      ? { top: rect.top + rect.height + PAD + 10, left: 12, right: 12 }
-      : { bottom: vh - rect.top + PAD + 10, left: 12, right: 12 };
+      ? { top: spotBottom + 10, left: 12, right: 12 }
+      : { bottom: vh - spotTop + 10, left: 12, right: 12 };
   } else {
     cardStyle = { top: "50%", left: 12, right: 12, transform: "translateY(-50%)" };
   }
@@ -90,10 +93,10 @@ export default function TourGuide({ steps, onDone }) {
         <div
           className="absolute rounded-2xl"
           style={{
-            top: rect.top - PAD,
+            top: rect.top - PAD - (rect.extraTop ?? 0),
             left: rect.left - PAD,
             width: rect.width + PAD * 2,
-            height: rect.height + PAD * 2,
+            height: rect.height + PAD + PAD + (rect.extraTop ?? 0),
             boxShadow: "0 0 0 9999px rgba(2,6,23,0.72)",
             transition: "all 220ms cubic-bezier(0.34,1.2,0.64,1)",
             pointerEvents: "none",

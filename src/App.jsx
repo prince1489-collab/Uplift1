@@ -1556,6 +1556,7 @@ export default function App() {
     {
       key: "connect",
       target: '[data-tour="connect"]',
+      extraPadTop: 70,
       title: "Press & hold any message",
       body: "Long-press a message to send a ❤️, add that person to your Circle 👥, or invite them to a private chat 💬.",
       before: () => {
@@ -1567,6 +1568,13 @@ export default function App() {
           setReactionBarId(other.id);
         }
       },
+    },
+    {
+      key: "tabs",
+      target: '[data-tour="tab-nav"]',
+      title: "Explore the app",
+      body: "💡 Life Hacks — daily tips for mind, body & life.  💚 Support — resources when you need them.  🌍 Impact — your world map & kindness stats.",
+      before: () => { setReactionBarId(null); setPickerOpen(false); setHeaderOpen(false); },
     },
     {
       key: "journey",
@@ -2419,7 +2427,7 @@ export default function App() {
             )}
 
             {/* Tab bar */}
-            <div className="flex border-b border-slate-100 bg-white flex-shrink-0">
+            <div data-tour="tab-nav" className="flex border-b border-slate-100 bg-white flex-shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
                 className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
@@ -2628,7 +2636,7 @@ export default function App() {
                                     {reactionBarId === m.id && (
                                       <>
                                         <div className="seen-qrb-backdrop" onClick={(e) => { e.stopPropagation(); setReactionBarId(null); }} />
-                                        <div data-tour="connect" className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
+                                        <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
                                           style={{ bottom: "calc(100% + 8px)" }}>
                                           <QuickReactBar
                                             db={db} messageId={m.id} senderUid={m.uid} senderName={group.sender}
@@ -2650,6 +2658,7 @@ export default function App() {
 
                                     {/* Bubble — tap for timestamp, long-press for reaction bar */}
                                     <div
+                                      data-tour={(!mine && reactionBarId === m.id) ? "connect" : undefined}
                                       className="relative select-none"
                                       onContextMenu={(e) => e.preventDefault()}
                                       onMouseDown={() => {
