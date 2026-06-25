@@ -27,12 +27,9 @@ function localHour(timezone, now) {
 export default async function handler(req, res) {
   // Vercel cron injects Authorization: Bearer <CRON_SECRET> automatically
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers["authorization"] !== `Bearer ${secret}` && req.query?.secret !== secret) {
+  if (secret && req.headers["authorization"] !== `Bearer ${secret}`) {
     return res.status(401).end();
   }
-
-  // ?force=1 bypasses the hour filter for manual testing.
-  const force = req.query?.force === "1";
 
   try {
     initAdmin();
@@ -42,12 +39,11 @@ export default async function handler(req, res) {
     const snap = await db.collection("users").where("fcmToken", "!=", "").get();
 
     // Only send to users whose local time is 9am or 9pm, and who have a stored timezone.
-    // When force=1, include everyone (users without timezone get the morning message).
     const entries = snap.docs
       .map((d) => ({ uid: d.id, token: d.data().fcmToken, timezone: d.data().timezone }))
-      .filter((e) => e.token && (e.timezone || force))
-      .map((e) => ({ ...e, hour: e.timezone ? localHour(e.timezone, now) : 9 }))
-      .filter((e) => force || e.hour === 9 || e.hour === 21);
+      .filter((e) => e.token && e.timezone)
+      .map((e) => ({ ...e, hour: localHour(e.timezone, now) }))
+      .filter((e) => e.hour === 9 || e.hour === 21);
 
     if (!entries.length) return res.status(200).json({ sent: 0, total: snap.size, matched: 0 });
 
