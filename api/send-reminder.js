@@ -15,9 +15,9 @@ const MESSAGES = [
 ];
 
 export default async function handler(req, res) {
-  // Protect against public access; Vercel cron sends this header automatically
+  // Vercel cron injects Authorization: Bearer <CRON_SECRET> automatically
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers["x-cron-secret"] !== secret) {
+  if (secret && req.headers["authorization"] !== `Bearer ${secret}`) {
     return res.status(401).end();
   }
 
