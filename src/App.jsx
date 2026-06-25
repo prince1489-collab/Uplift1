@@ -1507,22 +1507,28 @@ export default function App() {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
   }, [isRealSignedInUser, hasCompletedOnboarding]);
 
-  // First-time guided spotlight tour — show once, after onboarding, on the feed.
+  // First-time guided spotlight tour — show once per account, after onboarding, on the feed.
+  // Gated on the user's Firestore profile (tourCompletedAt) so it's per-account, not per-browser.
+  const tourScheduledRef = useRef(false);
   useEffect(() => {
+    if (tourScheduledRef.current) return;
     if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
-    if (activeTab !== "feed" || showWelcomeMoment) return;
-    try { if (localStorage.getItem("seen_journey_v1")) return; } catch { return; }
-    const t = setTimeout(() => setTourActive(true), 600);
+    if (showWelcomeMoment || activeTab !== "feed") return;
+    if (profile.tourCompletedAt) { tourScheduledRef.current = true; return; }
+    tourScheduledRef.current = true;
+    const t = setTimeout(() => setTourActive(true), 700);
     return () => clearTimeout(t);
-  }, [isRealSignedInUser, hasCompletedOnboarding, profile, activeTab, showWelcomeMoment]);
+  }, [isRealSignedInUser, hasCompletedOnboarding, profile, showWelcomeMoment, activeTab]);
 
   const finishTour = useCallback(() => {
     setHeaderOpen(false);
     setPickerOpen(false);
     setReactionBarId(null);
-    try { localStorage.setItem("seen_journey_v1", "1"); } catch { /* ignore */ }
     setTourActive(false);
-  }, []);
+    if (currentUser?.uid) {
+      setDoc(doc(db, "users", currentUser.uid), { tourCompletedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+    }
+  }, [currentUser]);
 
   const tourSteps = useMemo(() => [
     {
