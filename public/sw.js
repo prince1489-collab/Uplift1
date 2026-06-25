@@ -15,17 +15,33 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
-  const { title, body, icon } = payload.notification ?? {};
-  self.registration.showNotification(title ?? "Seen", {
-    body: body ?? "",
-    icon: icon ?? "/icon-192.png",
+  const n = payload.notification ?? {};
+  const w = payload.webpush?.notification ?? {};
+  self.registration.showNotification(n.title ?? w.title ?? "Seen", {
+    body: n.body ?? w.body ?? "",
+    icon: w.icon ?? n.icon ?? "/icon-192.png",
     badge: "/icon-192.png",
+    data: { link: payload.webpush?.fcmOptions?.link ?? payload.fcmOptions?.link ?? "/" },
   });
+});
+
+// Open (or focus) the app when a push notification is tapped.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const link = event.notification.data?.link || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(link);
+    })
+  );
 });
 
 // ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
-const CACHE = "seen-shell-v2";
+const CACHE = "seen-shell-v3";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

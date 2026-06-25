@@ -8,6 +8,8 @@ function initAdmin() {
   }
 }
 
+const APP_URL = "https://www.seenapp.app";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -26,13 +28,23 @@ export default async function handler(req, res) {
       ? `${name} from ${country} liked your message ❤️`
       : `${name} liked your message ❤️`;
 
-    await getMessaging().send({
+    const messageId = await getMessaging().send({
       token,
-      notification: { title: "Seen", body, icon: "/icon-192.png" },
+      notification: { title: "Seen", body },
+      webpush: {
+        notification: { title: "Seen", body, icon: `${APP_URL}/icon-192.png`, badge: `${APP_URL}/icon-192.png` },
+        fcmOptions: { link: APP_URL },
+      },
     });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, messageId });
   } catch (err) {
-    console.error("[notify-like]", err?.message);
-    return res.status(500).json({ error: "internal" });
+    console.error("[notify-like]", err?.code, err?.message);
+    // Clean up tokens FCM has permanently rejected so we stop retrying them.
+    if (err?.code === "messaging/registration-token-not-registered") {
+      try {
+        await getFirestore().collection("users").doc(ownerUid).update({ fcmToken: "" });
+      } catch { /* ignore */ }
+    }
+    return res.status(500).json({ error: err?.code || "internal", message: err?.message });
   }
 }

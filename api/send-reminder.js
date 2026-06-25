@@ -8,6 +8,8 @@ function initAdmin() {
   }
 }
 
+const APP_URL = "https://www.seenapp.app";
+
 const MESSAGES = [
   { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." },
   { title: "Afternoon check-in 💛", body: "How's your day going? Spread some kindness." },
@@ -28,25 +30,46 @@ export default async function handler(req, res) {
     const msg = hour < 12 ? MESSAGES[0] : hour < 18 ? MESSAGES[1] : MESSAGES[2];
 
     const snap = await db.collection("users").where("fcmToken", "!=", "").get();
-    const tokens = snap.docs.map((d) => d.data().fcmToken).filter(Boolean);
-    if (!tokens.length) return res.status(200).json({ sent: 0 });
+    const entries = snap.docs
+      .map((d) => ({ uid: d.id, token: d.data().fcmToken }))
+      .filter((e) => e.token);
+    if (!entries.length) return res.status(200).json({ sent: 0, total: 0 });
 
     // FCM batch limit is 500 tokens per multicast call
     const chunks = [];
-    for (let i = 0; i < tokens.length; i += 500) chunks.push(tokens.slice(i, i + 500));
+    for (let i = 0; i < entries.length; i += 500) chunks.push(entries.slice(i, i + 500));
 
     let sent = 0;
+    const errors = [];
+    const staleUids = [];
     for (const chunk of chunks) {
       const result = await getMessaging().sendEachForMulticast({
-        tokens: chunk,
-        notification: { title: msg.title, body: msg.body, icon: "/icon-192.png" },
+        tokens: chunk.map((e) => e.token),
+        notification: { title: msg.title, body: msg.body },
+        webpush: {
+          notification: { title: msg.title, body: msg.body, icon: `${APP_URL}/icon-192.png`, badge: `${APP_URL}/icon-192.png` },
+          fcmOptions: { link: APP_URL },
+        },
       });
       sent += result.successCount;
+      result.responses.forEach((r, i) => {
+        if (!r.success) {
+          errors.push(r.error?.code || "unknown");
+          if (r.error?.code === "messaging/registration-token-not-registered") {
+            staleUids.push(chunk[i].uid);
+          }
+        }
+      });
     }
 
-    return res.status(200).json({ sent, total: tokens.length });
+    // Best-effort cleanup of permanently dead tokens.
+    await Promise.all(
+      staleUids.map((uid) => db.collection("users").doc(uid).update({ fcmToken: "" }).catch(() => {}))
+    );
+
+    return res.status(200).json({ sent, total: entries.length, errors });
   } catch (err) {
-    console.error("[send-reminder]", err?.message);
-    return res.status(500).json({ error: "internal" });
+    console.error("[send-reminder]", err?.code, err?.message);
+    return res.status(500).json({ error: err?.code || "internal", message: err?.message });
   }
 }
