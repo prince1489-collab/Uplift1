@@ -1413,7 +1413,9 @@ export default function App() {
 
     const subscribeProfile = (user) => {
       const onboardedKey = "seen_onboarded_" + user.uid;
-      unsubscribeProfile = onSnapshot(userProfileRef(user.uid),
+      // includeMetadataChanges so the server's confirmation fires even when the cached
+      // "no document" matches it — otherwise a brand-new user could hang on the loader.
+      unsubscribeProfile = onSnapshot(userProfileRef(user.uid), { includeMetadataChanges: true },
         (snap) => {
           // Ignore a transient "no document" served from the local cache before the
           // server has responded — without this it briefly looks like the user has no
