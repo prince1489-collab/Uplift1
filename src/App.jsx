@@ -12,6 +12,7 @@ import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
   ReactionBurstLayer, useReactionBurst, FLAG_MAP } from "./MicroAnimations";
 
+import TourGuide from "./TourGuide";
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
@@ -870,7 +871,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           <ChevronDown size={16} className="text-slate-500" />
         </button>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+      <div data-tour="categories" className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         {allCategories.map((cat) => {
           const locked = cat.isPremium && !isPremium;
           return (
@@ -968,6 +969,7 @@ export default function App() {
   // True when this device has recorded a completed onboarding for the signed-in user —
   // a timing-independent backstop against the onboarding screen flashing on reopen.
   const [knownOnboarded, setKnownOnboarded] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [messages, setMessages] = useState(_feedCache);
   const [isChatLive, setIsChatLive] = useState(false);
@@ -1504,6 +1506,76 @@ export default function App() {
   useEffect(() => {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
   }, [isRealSignedInUser, hasCompletedOnboarding]);
+
+  // First-time guided spotlight tour — show once, after onboarding, on the feed.
+  useEffect(() => {
+    if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
+    if (activeTab !== "feed" || showWelcomeMoment) return;
+    try { if (localStorage.getItem("seen_journey_v1")) return; } catch { return; }
+    const t = setTimeout(() => setTourActive(true), 600);
+    return () => clearTimeout(t);
+  }, [isRealSignedInUser, hasCompletedOnboarding, profile, activeTab, showWelcomeMoment]);
+
+  const finishTour = useCallback(() => {
+    setHeaderOpen(false);
+    setPickerOpen(false);
+    setReactionBarId(null);
+    try { localStorage.setItem("seen_journey_v1", "1"); } catch { /* ignore */ }
+    setTourActive(false);
+  }, []);
+
+  const tourSteps = useMemo(() => [
+    {
+      key: "send",
+      target: '[data-tour="send"]',
+      title: "Welcome to Seen 👋",
+      body: "Send a kind greeting to a real stranger somewhere in the world. They'll feel seen — and so will you.",
+      before: () => { setHeaderOpen(false); setPickerOpen(false); setReactionBarId(null); },
+    },
+    {
+      key: "mood",
+      target: '[data-tour="mood"]',
+      title: "Set your mood",
+      body: "Tell us how you're feeling. It personalises your feed — and if you're struggling, we'll gently surface support.",
+      before: () => { setPickerOpen(false); setHeaderOpen(true); },
+    },
+    {
+      key: "sparks",
+      target: '[data-tour="sparks"]',
+      title: "Earn Sparks ✨",
+      body: "Every greeting you send earns Sparks. Keep a daily streak to multiply them and climb the kindness ranks.",
+      before: () => { setHeaderOpen(true); },
+    },
+    {
+      key: "categories",
+      target: '[data-tour="categories"]',
+      title: "Choose the right words",
+      body: "Greetings, Warmth & Calm are free. Unlock Strength, Celebrate & World Moments as you grow.",
+      before: () => { setHeaderOpen(false); setPickerOpen(true); },
+    },
+    {
+      key: "connect",
+      target: '[data-tour="connect"]',
+      title: "Press & hold any message",
+      body: "Long-press a message to send a ❤️, add that person to your Circle 👥, or invite them to a private chat 💬.",
+      before: () => {
+        setPickerOpen(false);
+        const other = messages.find((m) => m.uid && m.uid !== currentUser?.uid);
+        if (other) {
+          const el = document.querySelector(`[data-msg-id="${other.id}"]`);
+          if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+          setReactionBarId(other.id);
+        }
+      },
+    },
+    {
+      key: "journey",
+      target: null,
+      title: "That's your journey",
+      body: "Send kindness daily, keep your streak alive, grow your Circles, and watch your impact light up the world map. Ready?",
+      before: () => { setReactionBarId(null); },
+    },
+  ], [messages, currentUser]);
 
   // Re-engagement: when user leaves the app, schedule a "come back" push for 9 AM tomorrow
   useEffect(() => {
@@ -2293,7 +2365,7 @@ export default function App() {
                 className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                  <div data-tour="sparks" className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
                     <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} initial={firstName?.[0]?.toUpperCase() ?? "✨"} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
@@ -2307,7 +2379,9 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
+                  <div data-tour="mood">
+                    <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
+                  </div>
                   <div className="space-y-1">
                     <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
                     {!isChatLive && chatError && (
@@ -2549,12 +2623,12 @@ export default function App() {
                                 const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} className="relative pb-2">
+                                  <div key={m.id} data-msg-id={m.id} className="relative pb-2">
                                     {/* WhatsApp-style reaction bar — floats above bubble on long press */}
                                     {reactionBarId === m.id && (
                                       <>
                                         <div className="seen-qrb-backdrop" onClick={(e) => { e.stopPropagation(); setReactionBarId(null); }} />
-                                        <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
+                                        <div data-tour="connect" className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
                                           style={{ bottom: "calc(100% + 8px)" }}>
                                           <QuickReactBar
                                             db={db} messageId={m.id} senderUid={m.uid} senderName={group.sender}
@@ -2696,6 +2770,7 @@ export default function App() {
                     <p className="mb-2 text-center text-xs font-semibold text-red-500">{sendError}</p>
                   )}
                   <button
+                    data-tour="send"
                     onClick={() => setPickerOpen(true)}
                     disabled={isSending}
                     className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
@@ -2765,6 +2840,9 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* ── First-time guided spotlight tour ── */}
+            {tourActive && <TourGuide steps={tourSteps} onDone={finishTour} />}
 
             {/* ── Admin: confirm clear-feed modal ── */}
             {adminConfirm && (
