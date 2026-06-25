@@ -1567,7 +1567,8 @@ export default function App() {
       body: "Long-press a message to send a ❤️, add that person to your Circle 👥, or invite them to a private chat 💬.",
       before: () => {
         setPickerOpen(false);
-        const other = messages.find((m) => m.uid && m.uid !== currentUser?.uid);
+        const others = messages.filter((m) => m.uid && m.uid !== currentUser?.uid);
+        const other = others[Math.floor(others.length * 0.65)] ?? others[0];
         if (other) {
           const el = document.querySelector(`[data-msg-id="${other.id}"]`);
           if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
