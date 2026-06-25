@@ -1,6 +1,6 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
@@ -19,10 +19,9 @@ import IntroStep from "./IntroStep";
 
 import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
-import GoodNews from "./GoodNews";
-import LifeHacks from "./LifeHacks";
-import Support from "./Support";
-import MyImpact from "./MyImpact";
+const LifeHacks = React.lazy(() => import("./LifeHacks"));
+const Support   = React.lazy(() => import("./Support"));
+const MyImpact  = React.lazy(() => import("./MyImpact"));
 
 import {
   useStreak, computeSparkReward,
@@ -947,6 +946,9 @@ function SparkRing({ value, max, percent, initial = "✨" }) {
   );
 }
 
+let _feedCache = [];
+try { _feedCache = JSON.parse(localStorage.getItem("seen_feed_cache") || "[]"); } catch {}
+
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try { const v = localStorage.getItem("seen-theme"); return v !== null ? v === "dark" : true; }
@@ -967,7 +969,7 @@ export default function App() {
   // a timing-independent backstop against the onboarding screen flashing on reopen.
   const [knownOnboarded, setKnownOnboarded] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(_feedCache);
   const [isChatLive, setIsChatLive] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastLiveAt, setLastLiveAt] = useState(null);
@@ -1653,6 +1655,7 @@ export default function App() {
         });
         prevMessagesRef.current = finalMessages;
         setMessages(finalMessages);
+        try { localStorage.setItem("seen_feed_cache", JSON.stringify(finalMessages.slice(0, 30))); } catch {}
         setIsChatLive(true); setChatError(""); setLastLiveAt(new Date());
       },
       (error) => {
@@ -2382,11 +2385,17 @@ export default function App() {
             </div>
 
             {activeTab === "hacks" ? (
-              <LifeHacks db={db} currentUser={currentUser} />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
+                <LifeHacks db={db} currentUser={currentUser} />
+              </Suspense>
             ) : activeTab === "support" ? (
-              <Support country={profile?.country} />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
+                <Support country={profile?.country} />
+              </Suspense>
             ) : activeTab === "impact" ? (
-              <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
+                <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
+              </Suspense>
             ) : (
             <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
               onClick={() => { setActiveMessageId(null); }}>

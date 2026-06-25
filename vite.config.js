@@ -13,6 +13,15 @@ export default defineConfig({
     rollupOptions: {
       // stripe + firebase-admin are server-only (Vercel API routes) — never bundle into the client
       external: ["stripe", "firebase-admin", "firebase-admin/app", "firebase-admin/firestore"],
+      output: {
+        manualChunks: {
+          "vendor-firebase": [
+            "firebase/app", "firebase/auth", "firebase/firestore",
+            "firebase/storage", "firebase/messaging",
+          ],
+          "vendor-react": ["react", "react-dom"],
+        },
+      },
     },
   },
 })
