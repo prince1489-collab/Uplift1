@@ -65,7 +65,7 @@ import {
 
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, getFirestore,
-  limit, limitToLast, onSnapshot, orderBy, query,
+  limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
@@ -1434,7 +1434,6 @@ export default function App() {
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
 
-  const endRef = useRef(null);
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
@@ -1770,7 +1769,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
-    const q = query(publicMessagesRef, orderBy("timestamp", "asc"), limitToLast(100));
+    const q = query(publicMessagesRef, orderBy("timestamp", "desc"), limit(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -1803,7 +1802,6 @@ export default function App() {
     return () => { if (retryTimer) clearTimeout(retryTimer); unsubscribe(); };
   }, [currentUser, chatRetryCount]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const isPremium = true; // all features free — grow the user base
   const circles = useCircles(db, currentUser);
@@ -2863,7 +2861,6 @@ export default function App() {
                 });
               })()}
               <SendingIndicator visible={isSending} />
-              <div ref={endRef} />
             </main>
             )} {/* end activeTab === "feed" */}
 
