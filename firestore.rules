@@ -34,8 +34,14 @@ service cloud.firestore {
     // ── User profiles ──
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null
+      allow create: if request.auth != null
           && request.auth.uid == userId;
+      // Owner can update freely. Another authenticated user may update only the
+      // sparkBalance field (powers spark gifts + community-greeting author rewards).
+      allow update: if request.auth != null && (
+          request.auth.uid == userId
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sparkBalance'])
+      );
       allow delete: if isAdmin();
 
       // Denormalized live heart feed — written by the reactor, read by the owner
@@ -122,6 +128,24 @@ service cloud.firestore {
           && (resource.data.fromUid == request.auth.uid
            || resource.data.toUid  == request.auth.uid)
           || isAdmin();
+    }
+
+    // ── Community greeting submissions ──
+    match /greetingSubmissions/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.status == "pending"
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 120;
+      // Admin moderates (status/approval). Anyone else may only touch the
+      // vote / report / sent counters — never status or text.
+      allow update: if request.auth != null && (
+          isAdmin()
+          || request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['upvotes','voters','reportCount','reporters','sentCount'])
+      );
+      allow delete: if isAdmin();
     }
 
     // ── Chat requests ──

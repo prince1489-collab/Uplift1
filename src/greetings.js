@@ -35,6 +35,7 @@ export const GREETING_CATEGORIES = [
   { id: "cultural",  label: "World moments", emoji: "🌍",  isPremium: true  },
   { id: "themed",    label: "This Month",    emoji: "🗓️",  isPremium: true  },
   { id: "local",     label: "Local",         emoji: "🗣️",  isPremium: true  },
+  { id: "community", label: "Community",     emoji: "🌱",  isPremium: false },
 ];
 
 // Maps a user's country (as stored in profile.country, matching COUNTRY_OPTIONS) to a

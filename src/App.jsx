@@ -48,6 +48,11 @@ import {
 
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources } from "./SupportData.js";
+import {
+  useApprovedCommunityGreetings, useCommunitySubmissionCount,
+  SubmitGreetingModal, CommunityLeaderboard, CommunityGreetingRow,
+  recordCommunitySend, approveSubmission, rejectSubmission, REPORT_THRESHOLD,
+} from "./CommunityGreetings";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -830,10 +835,11 @@ function MysteryGiftModal({ open, reward, onClose }) {
   );
 }
 
-function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday }) {
+function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday, db, currentUser, communityGreetings = [] }) {
   const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
+  const [showSubmit, setShowSubmit] = useState(false);
 
   // Local greetings filtered to the user's language; fall back to global phrases if no match.
   const userLang = LANGUAGE_MAP[profile?.country] ?? null;
@@ -842,7 +848,10 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
     : LOCAL_GREETINGS.filter((g) => g.language === "global");
   const hasLocalGreetings = localGreetings.length > 0;
 
-  const activeGreetings = activeCategory === "local"
+  const isCommunity = activeCategory === "community";
+  const activeGreetings = isCommunity
+    ? communityGreetings
+    : activeCategory === "local"
     ? localGreetings
     : categories.find((c) => c.id === activeCategory)?.greetings ?? [];
   const theme = getCurrentMonthTheme();
@@ -855,6 +864,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
     { id: "cultural",  label: "World",            emoji: "🌍",  isPremium: true  },
     { id: "themed",    label: theme?.name ?? "This Month", emoji: theme?.emoji ?? "🗓️", isPremium: true },
     ...(hasLocalGreetings ? [{ id: "local", label: "Local", emoji: "🗣️", isPremium: true }] : []),
+    { id: "community", label: "Community", emoji: "🌱", isPremium: false },
   ];
 
   return (
@@ -895,20 +905,52 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
         })}
       </div>
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
-        {activeGreetings.map((greeting) => (
-          <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
-            disabled={isSending}
-            className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-              isSending ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed" : "border-slate-200 bg-white text-slate-800 hover:border-teal-400 hover:bg-teal-50"
-            }`}>
-            <span>{greeting.text}</span>
-            <span className="ml-2 text-xs text-teal-600">
-              +{computeSparkReward(greeting.sparkReward, streak)} sparks
-              {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
-            </span>
-          </button>
-        ))}
+        {isCommunity ? (
+          <>
+            <button
+              onClick={() => setShowSubmit(true)}
+              className="w-full rounded-xl border border-dashed border-teal-300 bg-teal-50/50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors flex items-center justify-center gap-1.5">
+              ✍️ Suggest a greeting
+            </button>
+            <CommunityLeaderboard greetings={communityGreetings} />
+            {activeGreetings.length === 0 ? (
+              <p className="text-center text-xs text-slate-400 py-4 leading-relaxed">
+                No community greetings yet.<br />Be the first to suggest one! 🌱
+              </p>
+            ) : (
+              activeGreetings.map((greeting) => (
+                <CommunityGreetingRow
+                  key={greeting.id}
+                  greeting={greeting}
+                  streak={streak}
+                  computeSparkReward={computeSparkReward}
+                  currentUser={currentUser}
+                  db={db}
+                  isSending={isSending}
+                  onSelect={onSelect}
+                />
+              ))
+            )}
+          </>
+        ) : (
+          activeGreetings.map((greeting) => (
+            <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
+              disabled={isSending}
+              className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                isSending ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed" : "border-slate-200 bg-white text-slate-800 hover:border-teal-400 hover:bg-teal-50"
+              }`}>
+              <span>{greeting.text}</span>
+              <span className="ml-2 text-xs text-teal-600">
+                +{computeSparkReward(greeting.sparkReward, streak)} sparks
+                {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
+              </span>
+            </button>
+          ))
+        )}
       </div>
+      {showSubmit && (
+        <SubmitGreetingModal db={db} currentUser={currentUser} profile={profile} onClose={() => setShowSubmit(false)} />
+      )}
     </div>
   );
 }
@@ -1404,6 +1446,11 @@ export default function App() {
   const [adminReports, setAdminReports] = useState(null); // null = not loaded
   const [adminReportsLoading, setAdminReportsLoading] = useState(false);
   const [showResolvedReports, setShowResolvedReports] = useState(false);
+  // Community greetings: live approved pool (for the picker) + pending count (admin badge)
+  const communityGreetings = useApprovedCommunityGreetings(db);
+  const pendingSubmissionCount = useCommunitySubmissionCount(db, isAdmin);
+  const [adminSubmissions, setAdminSubmissions] = useState(null); // null = not loaded
+  const [adminSubmissionsLoading, setAdminSubmissionsLoading] = useState(false);
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
@@ -1982,6 +2029,12 @@ export default function App() {
       // their kindness "rippled" to me. Credit each original sender once.
       recordRipples();
 
+      // Community greeting credit — bump sentCount + award the author a small spark
+      // bonus (self-sends excluded). Best-effort; never affects the sender's flow.
+      if (greeting.submissionId) {
+        recordCommunitySend(db, greeting, currentUser.uid);
+      }
+
     } catch (err) {
       console.error("Send failed:", err);
       setSendError("Couldn't send — please try again.");
@@ -2150,6 +2203,46 @@ export default function App() {
       await updateDoc(doc(db, "reports", report.id), { resolved: true });
       setAdminReports((prev) => prev.map((r) => r.id === report.id ? { ...r, resolved: true } : r));
     } catch (err) { console.error("Dismiss report failed:", err); }
+  };
+
+  // ── Community greeting moderation ──
+  const loadSubmissions = async () => {
+    if (!isAdmin) return;
+    setAdminSubmissions([]); // open the panel immediately
+    setAdminSubmissionsLoading(true);
+    try {
+      // Pending queue + approved-but-flagged (auto-hidden) items needing review.
+      const [pendingSnap, approvedSnap] = await Promise.all([
+        getDocs(query(collection(db, "greetingSubmissions"), where("status", "==", "pending"))),
+        getDocs(query(collection(db, "greetingSubmissions"), where("status", "==", "approved"))),
+      ]);
+      const pending = pendingSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const flagged = approvedSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((s) => (s.reportCount ?? 0) >= REPORT_THRESHOLD);
+      const all = [...flagged, ...pending].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      setAdminSubmissions(all);
+    } catch (err) {
+      console.error("Failed to load submissions:", err);
+    } finally {
+      setAdminSubmissionsLoading(false);
+    }
+  };
+
+  const handleApproveSubmission = async (submission) => {
+    if (!isAdmin) return;
+    try {
+      await approveSubmission(db, submission);
+      setAdminSubmissions((prev) => prev.filter((s) => s.id !== submission.id));
+    } catch (err) { console.error("Approve failed:", err); }
+  };
+
+  const handleRejectSubmission = async (submission) => {
+    if (!isAdmin) return;
+    try {
+      await rejectSubmission(db, submission);
+      setAdminSubmissions((prev) => prev.filter((s) => s.id !== submission.id));
+    } catch (err) { console.error("Reject failed:", err); }
   };
 
   // Hold the loader until the profile read positively resolves, so an already-onboarded
@@ -2832,6 +2925,18 @@ export default function App() {
                     <Shield size={11} />
                     Private chat reports
                   </button>
+                  <button
+                    onClick={() => { loadSubmissions(); }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-teal-600 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <Shield size={11} />
+                    Community greetings
+                    {pendingSubmissionCount > 0 && (
+                      <span className="ml-0.5 rounded-full bg-teal-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        {pendingSubmissionCount}
+                      </span>
+                    )}
+                  </button>
                 </div>
               )}
             </footer>
@@ -2857,6 +2962,9 @@ export default function App() {
                     onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
                     isSending={isSending}
                     remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
+                    db={db}
+                    currentUser={currentUser}
+                    communityGreetings={communityGreetings}
                   />
                 </div>
               </div>
@@ -2949,6 +3057,59 @@ export default function App() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Admin: community greeting moderation queue ── */}
+            {adminSubmissions !== null && (
+              <div className="absolute inset-0 z-50 flex flex-col bg-white">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+                  <button onClick={() => setAdminSubmissions(null)} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+                    <ArrowLeft size={18} className="text-slate-600" />
+                  </button>
+                  <h2 className="text-sm font-bold text-slate-800 flex-1">Community Greetings</h2>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {adminSubmissionsLoading && (
+                    <div className="flex justify-center pt-10"><Loader2 size={22} className="animate-spin text-slate-300" /></div>
+                  )}
+                  {!adminSubmissionsLoading && adminSubmissions.length === 0 && (
+                    <div className="flex flex-col items-center justify-center pt-20 gap-2 text-center">
+                      <Sparkles size={36} className="text-slate-200" />
+                      <p className="text-sm text-slate-400">Nothing to review 🌱</p>
+                    </div>
+                  )}
+                  {adminSubmissions.map((sub) => {
+                    const flagged = (sub.reportCount ?? 0) >= REPORT_THRESHOLD;
+                    return (
+                      <div key={sub.id} className={`rounded-2xl border px-4 py-3 space-y-2 ${flagged ? "border-red-100 bg-red-50" : "border-teal-100 bg-teal-50/50"}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${flagged ? "bg-red-200 text-red-700" : "bg-teal-200 text-teal-700"}`}>
+                            {flagged ? `⚐ Flagged ×${sub.reportCount}` : "Pending"}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{new Date(sub.createdAt ?? 0).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <p className="text-sm text-slate-800 bg-white rounded-xl px-3 py-2 border border-slate-100 leading-relaxed font-semibold">{sub.text}</p>
+                        <div className="flex justify-between text-[10px] text-slate-500">
+                          <span>By: <strong>{sub.authorName}</strong>{sub.authorCountry ? ` · ${sub.authorCountry}` : ""}</span>
+                          {!flagged && <span>👍 {sub.upvotes ?? 0}</span>}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          {!flagged && (
+                            <button onClick={() => handleApproveSubmission(sub)}
+                              className="flex-1 rounded-xl bg-teal-600 py-2 text-xs font-bold text-white hover:bg-teal-700 transition-colors">
+                              Approve
+                            </button>
+                          )}
+                          <button onClick={() => handleRejectSubmission(sub)}
+                            className="flex-1 rounded-xl border border-slate-200 py-2 text-xs text-slate-600 hover:bg-slate-100 transition-colors">
+                            {flagged ? "Remove" : "Reject"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
