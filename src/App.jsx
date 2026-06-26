@@ -520,6 +520,7 @@ function SupportPanel({ country, onClose }) {
 
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
 function NotificationBell({ streak, db, currentUser }) {
@@ -1246,6 +1247,7 @@ export default function App() {
               const toastKey = `${msgId}|${uid}|${emoji}`;
               if (reactObservedRef.current.has(toastKey)) return;
               reactObservedRef.current.add(toastKey);
+              if (Date.now() - at > TOAST_AGE_LIMIT_MS) return; // stale reaction — mark seen but skip toast
               if (reactReadyRef.current) {
                 if (country === myCountryRef.current && myCountryRef.current) {
                   // Same-country reaction — hometown toast + globe ripple
@@ -1315,6 +1317,7 @@ export default function App() {
         const toastKey = `${messageId}|${reactorUid}|${emoji}`;
         if (reactObservedRef.current.has(toastKey)) return;
         reactObservedRef.current.add(toastKey);
+        if (Date.now() - at > TOAST_AGE_LIMIT_MS) return; // stale reaction — mark seen but skip toast
         if (reactReadyRef.current && data.country) {
           if (data.country === myCountryRef.current && myCountryRef.current) {
             setHometownToast({ id: Date.now(), emoji });
