@@ -150,6 +150,21 @@ function fmtTime(ts) {
   return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatDayLabel(ts) {
+  if (!ts) return "";
+  const ms = typeof ts === "number" ? ts : ts?.toMillis ? ts.toMillis() : Number(ts);
+  const d = new Date(ms);
+  const now = new Date();
+  const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((todayDate - dDate) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return d.toLocaleDateString([], { weekday: "long" });
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString([], { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+}
+
 function startOfToday() {
   const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
 }
@@ -1433,6 +1448,10 @@ export default function App() {
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
+  const feedRef = useRef(null);
+  const scrollHideTimer = useRef(null);
+  const [feedDateLabel, setFeedDateLabel] = useState("Today");
+  const [feedDateVisible, setFeedDateVisible] = useState(false);
 
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
@@ -1958,6 +1977,21 @@ export default function App() {
     } catch (err) {
       console.error("[recordRipples]", err?.code, err?.message);
     }
+  };
+
+  const handleFeedScroll = (e) => {
+    const container = e.currentTarget;
+    setFeedDateVisible(true);
+    const containerTop = container.getBoundingClientRect().top;
+    let label = "Today";
+    container.querySelectorAll("[data-daylabel]").forEach((el) => {
+      if (el.getBoundingClientRect().top <= containerTop + 48) {
+        label = el.dataset.daylabel;
+      }
+    });
+    setFeedDateLabel(label);
+    clearTimeout(scrollHideTimer.current);
+    scrollHideTimer.current = setTimeout(() => setFeedDateVisible(false), 1500);
   };
 
   const handleSendMessage = async (greeting) => {
@@ -2582,8 +2616,26 @@ export default function App() {
                 <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
               </Suspense>
             ) : (
-            <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
-              onClick={() => { setActiveMessageId(null); }}>
+            <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
+              onClick={() => { setActiveMessageId(null); }}
+              onScroll={handleFeedScroll}>
+              {/* Floating date pill — appears while scrolling, fades out when idle */}
+              <div className="pointer-events-none" style={{ position: "sticky", top: 10, zIndex: 20, textAlign: "center" }}>
+                <span style={{
+                  display: "inline-block",
+                  opacity: feedDateVisible ? 1 : 0,
+                  transition: "opacity 0.25s",
+                  background: "rgba(0,0,0,0.42)",
+                  color: "#fff",
+                  borderRadius: 20,
+                  padding: "3px 14px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: "0.01em",
+                }}>
+                  {feedDateLabel}
+                </span>
+              </div>
               {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
                 <div
@@ -2692,8 +2744,17 @@ export default function App() {
                 const grouped = [];
                 messages.forEach((m) => {
                   const last = grouped[grouped.length - 1];
-                  if (last && last.uid === m.uid) { last.items.push(m); }
-                  else { grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m] }); }
+                  const tsMs = typeof m.timestamp === "number" ? m.timestamp : Number(m.timestamp);
+                  const mDay = m.timestamp ? new Date(tsMs).toDateString() : null;
+                  const lastTsMs = last?.items[0]?.timestamp ? (typeof last.items[0].timestamp === "number" ? last.items[0].timestamp : Number(last.items[0].timestamp)) : null;
+                  const lastDay = lastTsMs ? new Date(lastTsMs).toDateString() : null;
+                  const sameDay = mDay === lastDay;
+                  const sameSender = last?.uid === m.uid;
+                  if (sameSender && sameDay) {
+                    last.items.push(m);
+                  } else {
+                    grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
+                  }
                 });
                 return grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
@@ -2701,7 +2762,15 @@ export default function App() {
                   const firstId = group.items[0].id;
                   const isNewGroup = newMessageIds.has(firstId);
                   return (
-                    <MessageSlideIn key={firstId} mine={mine} isNew={isNewGroup}>
+                    <React.Fragment key={firstId}>
+                    {group.showDaySep && (
+                      <div data-daylabel={group.dayLabel} className="flex items-center gap-3 my-3 select-none pointer-events-none">
+                        <div className="flex-1 h-px bg-slate-200" />
+                        <span className="text-[11px] font-medium text-slate-400 px-1">{group.dayLabel}</span>
+                        <div className="flex-1 h-px bg-slate-200" />
+                      </div>
+                    )}
+                    <MessageSlideIn mine={mine} isNew={isNewGroup}>
                       <div className="mb-3">
                         <div className="w-full group">
                           <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-semibold text-slate-400">
@@ -2857,6 +2926,7 @@ export default function App() {
                         </div>
                       </div>
                     </MessageSlideIn>
+                    </React.Fragment>
                   );
                 });
               })()}
