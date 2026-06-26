@@ -17,6 +17,33 @@ function localiseFinanceTips(tips, userRegion) {
   return [...base, ...local, ...global];
 }
 
+// Approximate GBP → local currency conversion for tip body text.
+// Handles single amounts (£10), ranges (£30–60), and thousands (£1,000).
+const CURRENCY_CONVERT = {
+  US: { symbol: "$",    rate: 1.27 },
+  AU: { symbol: "AU$",  rate: 1.95 },
+  CA: { symbol: "CA$",  rate: 1.73 },
+  IN: { symbol: "₹",   rate: 106  },
+  EU: { symbol: "€",   rate: 1.18 },
+};
+
+function localiseHackText(text, userRegion) {
+  if (!text || userRegion === "UK" || !CURRENCY_CONVERT[userRegion]) return text;
+  const { symbol, rate } = CURRENCY_CONVERT[userRegion];
+  const cvt = (pounds) => {
+    const v = Math.round(parseFloat(pounds.replace(/,/g, "")) * rate);
+    if (v >= 10000) return symbol + Math.round(v / 1000) + "k";
+    if (v >= 1000)  return symbol + (v / 1000).toFixed(1) + "k";
+    return symbol + v;
+  };
+  // Ranges first: £30–60 → ₹3,180–₹6,360
+  let out = text.replace(/£([\d,]+(?:\.\d+)?)([–—-])([\d,]+(?:\.\d+)?)/g,
+    (_, a, sep, b) => `${cvt(a)}${sep}${cvt(b)}`);
+  // Single amounts
+  out = out.replace(/£([\d,]+(?:\.\d+)?)/g, (_, n) => cvt(n));
+  return out;
+}
+
 // Area metadata (emoji + styles) — keyed by area name
 const AREA_META = {
   Mind:               { emoji: "🧠" },
@@ -215,8 +242,11 @@ function PreviewCard({ hack, onTap }) {
 
 // ── Expanded overlay card ─────────────────────────────────────────────────────
 
-function ExpandedCard({ hack, onClose, db, currentUser }) {
+function ExpandedCard({ hack, onClose, db, currentUser, userRegion }) {
   const s = AREA_STYLES[hack.area] || DEFAULT_STYLE;
+  const localTitle = localiseHackText(hack.title, userRegion);
+  const localHack  = localiseHackText(hack.hack,  userRegion);
+  const localWhy   = localiseHackText(hack.why,   userRegion);
   const [flipped, setFlipped]         = useState(false);
   const [showSparkles, setShowSparkles] = useState(false);
   const [votes, setVotes] = useState(null); // { up, down, voters: { uid: "up"|"down" } }
@@ -268,10 +298,10 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
   };
 
   const handleShare = async () => {
-    const text = `💡 ${hack.title}\n\n${hack.hack}\n\nWhy it works: ${hack.why}\n\n— from Seen, daily kindness & life hacks → https://seenapp.app`;
+    const text = `💡 ${localTitle}\n\n${localHack}\n\nWhy it works: ${localWhy}\n\n— from Seen, daily kindness & life hacks → https://seenapp.app`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: `Life Hack: ${hack.title}`, text });
+        await navigator.share({ title: `Life Hack: ${localTitle}`, text });
       } else {
         await navigator.clipboard.writeText(text);
         setShareCopied(true);
@@ -355,18 +385,18 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
               </span>
 
               <p className={`text-[15px] font-extrabold leading-snug ${s.title}`}>
-                {hack.title}
+                {localTitle}
               </p>
 
               <p className="text-sm text-slate-600 leading-relaxed flex-1">
-                {hack.hack}
+                {localHack}
               </p>
 
               <div className={`rounded-2xl border p-3 flex-shrink-0 ${s.well}`}>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                   💡 Why it works
                 </p>
-                <p className="text-xs text-slate-500 leading-relaxed">{hack.why}</p>
+                <p className="text-xs text-slate-500 leading-relaxed">{localWhy}</p>
               </div>
 
               {/* Useful? vote + share row */}
@@ -420,6 +450,7 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LifeHacks({ db, currentUser, profile }) {
+  const userRegion = COUNTRY_REGION[profile?.country] ?? "GLOBAL";
   const [hacks, setHacks]         = useState(null);
   const [loading, setLoading]     = useState(true);
   const [activeHack, setActive]   = useState(null);
@@ -433,7 +464,6 @@ export default function LifeHacks({ db, currentUser, profile }) {
   useEffect(() => {
     const today = localDateString();
     const build = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
-    const userRegion = COUNTRY_REGION[profile?.country] ?? "GLOBAL";
     const todayKey = `lhacks5_${build}_${today}_${userRegion}`;
 
     // Fast path: serve today's cached selection if it exists.
@@ -514,7 +544,7 @@ export default function LifeHacks({ db, currentUser, profile }) {
 
       {/* Expanded card overlay */}
       {activeHack && (
-        <ExpandedCard hack={activeHack} onClose={() => setActive(null)} db={db} currentUser={currentUser} />
+        <ExpandedCard hack={activeHack} onClose={() => setActive(null)} db={db} currentUser={currentUser} userRegion={userRegion} />
       )}
     </div>
   );
