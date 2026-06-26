@@ -46,7 +46,7 @@ import {
   usePrivateUnreadCount,
 } from "./PrivateChat";
 
-import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES } from "./greetings";
+import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -842,7 +842,16 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
 
-  const activeGreetings = categories.find((c) => c.id === activeCategory)?.greetings ?? [];
+  // Local greetings filtered to the user's language; fall back to global phrases if no match.
+  const userLang = LANGUAGE_MAP[profile?.country] ?? null;
+  const localGreetings = userLang
+    ? LOCAL_GREETINGS.filter((g) => g.language === userLang)
+    : LOCAL_GREETINGS.filter((g) => g.language === "global");
+  const hasLocalGreetings = localGreetings.length > 0;
+
+  const activeGreetings = activeCategory === "local"
+    ? localGreetings
+    : categories.find((c) => c.id === activeCategory)?.greetings ?? [];
   const theme = getCurrentMonthTheme();
   const allCategories = [
     { id: "core",      label: "Greetings",       emoji: "☀️",  isPremium: false },
@@ -852,6 +861,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
     { id: "celebrate", label: "Celebrate",        emoji: "🎉",  isPremium: true  },
     { id: "cultural",  label: "World",            emoji: "🌍",  isPremium: true  },
     { id: "themed",    label: theme?.name ?? "This Month", emoji: theme?.emoji ?? "🗓️", isPremium: true },
+    ...(hasLocalGreetings ? [{ id: "local", label: "Local", emoji: "🗣️", isPremium: true }] : []),
   ];
 
   return (
@@ -2475,7 +2485,7 @@ export default function App() {
 
             {activeTab === "hacks" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
-                <LifeHacks db={db} currentUser={currentUser} />
+                <LifeHacks db={db} currentUser={currentUser} profile={profile} />
               </Suspense>
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>

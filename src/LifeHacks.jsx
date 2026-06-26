@@ -4,6 +4,18 @@
 import React, { useEffect, useState } from "react";
 import { doc, onSnapshot, runTransaction } from "firebase/firestore";
 import { HACK_LIBRARY } from "./LifeHackLibrary.js";
+import { FINANCE_LOCAL, COUNTRY_REGION } from "./FinanceLocalTips.js";
+
+// Return a localised Finance tip array for the user's region:
+// - UK users see all tips (including region:"UK" ones)
+// - other regions: strip UK-only tips, append their local supplement + the global fallback set
+function localiseFinanceTips(tips, userRegion) {
+  if (userRegion === "UK") return tips;
+  const base = tips.filter((t) => !t.region || t.region === userRegion);
+  const local = FINANCE_LOCAL[userRegion] ?? [];
+  const global = FINANCE_LOCAL.GLOBAL ?? [];
+  return [...base, ...local, ...global];
+}
 
 // Area metadata (emoji + styles) — keyed by area name
 const AREA_META = {
@@ -407,7 +419,7 @@ function ExpandedCard({ hack, onClose, db, currentUser }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function LifeHacks({ db, currentUser }) {
+export default function LifeHacks({ db, currentUser, profile }) {
   const [hacks, setHacks]         = useState(null);
   const [loading, setLoading]     = useState(true);
   const [activeHack, setActive]   = useState(null);
@@ -421,7 +433,8 @@ export default function LifeHacks({ db, currentUser }) {
   useEffect(() => {
     const today = localDateString();
     const build = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
-    const todayKey = `lhacks5_${build}_${today}`;
+    const userRegion = COUNTRY_REGION[profile?.country] ?? "GLOBAL";
+    const todayKey = `lhacks5_${build}_${today}_${userRegion}`;
 
     // Fast path: serve today's cached selection if it exists.
     // The cache is optional — correctness never depends on it surviving.
@@ -439,9 +452,11 @@ export default function LifeHacks({ db, currentUser }) {
     // localStorage is evicted, cleared, or unavailable (iOS/Safari/private mode).
     const day = localDayNumber();
     const offset = seedFromUid(currentUser?.uid);
-    const selected = Object.entries(HACK_LIBRARY).map(([area, hacks]) => {
-      const idx = (((day + offset) % hacks.length) + hacks.length) % hacks.length;
-      return { ...hacks[idx], area, areaEmoji: AREA_META[area]?.emoji ?? "✨" };
+    const selected = Object.entries(HACK_LIBRARY).map(([area, tips]) => {
+      // Finance tips are localised per user region; all other categories are global.
+      const pool = area === "Finance" ? localiseFinanceTips(tips, userRegion) : tips;
+      const idx = (((day + offset) % pool.length) + pool.length) % pool.length;
+      return { ...pool[idx], area, areaEmoji: AREA_META[area]?.emoji ?? "✨" };
     });
 
     setHacks(selected);
@@ -457,7 +472,7 @@ export default function LifeHacks({ db, currentUser }) {
         .filter((k) => k.startsWith("lhacks4_") || k === "lhacks_history_v1")
         .forEach((k) => localStorage.removeItem(k));
     } catch (_) {}
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, profile?.country]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
