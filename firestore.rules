@@ -114,13 +114,13 @@ service cloud.firestore {
     // ── Circle invites ──
     match /circleInvites/{inviteId} {
       allow read: if request.auth != null
-          && (resource.data.inviterUid == request.auth.uid
-           || resource.data.inviteeEmail == request.auth.token.email);
+          && (resource.data.fromUid == request.auth.uid
+           || resource.data.toUid  == request.auth.uid);
       allow create: if request.auth != null
-          && request.resource.data.inviterUid == request.auth.uid;
+          && request.resource.data.fromUid == request.auth.uid;
       allow update, delete: if request.auth != null
-          && (resource.data.inviterUid == request.auth.uid
-           || resource.data.inviteeEmail == request.auth.token.email)
+          && (resource.data.fromUid == request.auth.uid
+           || resource.data.toUid  == request.auth.uid)
           || isAdmin();
     }
 

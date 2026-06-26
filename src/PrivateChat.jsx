@@ -271,14 +271,14 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
 
-        {/* Pending invite requests */}
-        {requests.length > 0 && (
+        {/* Pending invite requests — excludes anyone already in an active chat */}
+        {requests.filter((r) => !chats.some((c) => (c.participants ?? []).includes(r.fromUid))).length > 0 && (
           <section>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">
               Invite requests
             </p>
             <div className="space-y-2">
-              {requests.map((req) => {
+              {requests.filter((r) => !chats.some((c) => (c.participants ?? []).includes(r.fromUid))).map((req) => {
                 const sender = senderMeta[req.fromUid];
                 const name = sender?.fullName ?? req.fromName ?? "Someone";
                 return (
