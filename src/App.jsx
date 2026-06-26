@@ -47,6 +47,7 @@ import {
 } from "./PrivateChat";
 
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
+import { getResources } from "./SupportData.js";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -426,50 +427,8 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   );
 }
 
-const SUPPORT_RESOURCES = [
-  {
-    name: "Samaritans",
-    desc: "Free, 24/7 listening support",
-    contact: "Call 116 123",
-    href: "https://www.samaritans.org",
-    color: "bg-green-50 border-green-200",
-    text: "text-green-800",
-  },
-  {
-    name: "Mind",
-    desc: "Mental health information & support",
-    contact: "mind.org.uk",
-    href: "https://www.mind.org.uk",
-    color: "bg-blue-50 border-blue-200",
-    text: "text-blue-800",
-  },
-  {
-    name: "Shout",
-    desc: "Free crisis text line, 24/7",
-    contact: "Text SHOUT to 85258",
-    href: "https://www.giveusashout.org",
-    color: "bg-violet-50 border-violet-200",
-    text: "text-violet-800",
-  },
-  {
-    name: "Papyrus",
-    desc: "Support for under-35s",
-    contact: "Call 0800 068 4141",
-    href: "https://www.papyrus-uk.org",
-    color: "bg-amber-50 border-amber-200",
-    text: "text-amber-800",
-  },
-  {
-    name: "International",
-    desc: "Crisis centres worldwide",
-    contact: "findahelpline.com",
-    href: "https://findahelpline.com",
-    color: "bg-teal-50 border-teal-200",
-    text: "text-teal-800",
-  },
-];
-
-function SupportPanel({ onClose }) {
+function SupportPanel({ country, onClose }) {
+  const resources = getResources(country);
   return createPortal(
     <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
@@ -484,17 +443,51 @@ function SupportPanel({ onClose }) {
           It's okay to not be okay. These services are free, confidential, and here whenever you need them.
         </p>
 
-        {SUPPORT_RESOURCES.map((r) => (
-          <a key={r.name} href={r.href} target="_blank" rel="noopener noreferrer"
-            className={`flex items-start gap-3 rounded-2xl border ${r.color} px-4 py-3.5 transition-opacity active:opacity-70`}>
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm font-bold ${r.text}`}>{r.name}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
-              <p className={`text-[11px] font-semibold mt-1.5 ${r.text}`}>{r.contact}</p>
-            </div>
-            <ArrowRight size={14} className="text-slate-300 flex-shrink-0 mt-1" />
-          </a>
-        ))}
+        {resources.crisis?.length > 0 && (
+          <>
+            <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide pt-1">Crisis support</p>
+            {resources.crisis.map((r) => (
+              <a key={r.name}
+                href={r.phone ? `tel:${r.phone.replace(/\s/g, "")}` : r.url}
+                target={r.phone ? undefined : "_blank"}
+                rel="noopener noreferrer"
+                className="flex items-start gap-3 rounded-2xl border bg-red-50 border-red-200 px-4 py-3.5 transition-opacity active:opacity-70">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-red-700">{r.name}</p>
+                  {r.phone && <p className="text-[11px] font-semibold text-red-500 mt-1">{r.phone}</p>}
+                  {r.free && <span className="text-[10px] font-bold text-emerald-600">Free · 24/7</span>}
+                </div>
+                <ArrowRight size={14} className="text-red-300 flex-shrink-0 mt-1" />
+              </a>
+            ))}
+          </>
+        )}
+
+        {resources.mental?.length > 0 && (
+          <>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide pt-2">Mental health support{country ? ` in ${country}` : ""}</p>
+            {resources.mental.map((r) => (
+              <a key={r.name} href={r.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-start gap-3 rounded-2xl border bg-teal-50 border-teal-200 px-4 py-3.5 transition-opacity active:opacity-70">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-teal-700">{r.name}</p>
+                  {r.phone && <p className="text-[11px] font-semibold text-teal-500 mt-1">{r.phone}</p>}
+                </div>
+                <ArrowRight size={14} className="text-teal-300 flex-shrink-0 mt-1" />
+              </a>
+            ))}
+          </>
+        )}
+
+        <a href="https://findahelpline.com" target="_blank" rel="noopener noreferrer"
+          className="flex items-start gap-3 rounded-2xl border bg-slate-50 border-slate-200 px-4 py-3.5 transition-opacity active:opacity-70">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-slate-700">International</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Crisis centres worldwide</p>
+            <p className="text-[11px] font-semibold text-slate-500 mt-1">findahelpline.com</p>
+          </div>
+          <ArrowRight size={14} className="text-slate-300 flex-shrink-0 mt-1" />
+        </a>
 
         <p className="text-center text-xs text-slate-300 pt-3 pb-1">
           You don't have to face it alone.
@@ -2229,7 +2222,9 @@ export default function App() {
         )}
 
 
-        {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
+        {showSupport && <SupportPanel country={profile?.country} onClose={() => setShowSupport(false)} />}
+
+        {showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
         {showWelcomeMoment && (
           <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"

@@ -1200,7 +1200,32 @@ export function MoodSelector({ db, uid, currentMood }) {
 // GAP 4 FIX — PREMIUM UPGRADE PROMPT
 // ─────────────────────────────────────────────────────────────────
 
-export function PremiumUpgradePrompt({ onClose, currentUser }) {
+const PRICE_DISPLAY = {
+  "United Kingdom": "£3.19/mo",
+  "Ireland": "€3.69/mo",
+  "Germany": "€3.69/mo",
+  "France": "€3.69/mo",
+  "Spain": "€3.69/mo",
+  "Italy": "€3.69/mo",
+  "Netherlands": "€3.69/mo",
+  "Belgium": "€3.69/mo",
+  "Portugal": "€3.69/mo",
+  "Austria": "€3.69/mo",
+  "Sweden": "€3.69/mo",
+  "Denmark": "€3.69/mo",
+  "Finland": "€3.69/mo",
+  "Poland": "€3.69/mo",
+  "Australia": "AU$5.99/mo",
+  "New Zealand": "NZ$6.49/mo",
+  "Canada": "CA$5.49/mo",
+  "India": "₹329/mo",
+  "Japan": "¥599/mo",
+  "South Korea": "₩4,900/mo",
+  "Brazil": "R$19.90/mo",
+};
+
+export function PremiumUpgradePrompt({ onClose, currentUser, country }) {
+  const displayPrice = PRICE_DISPLAY[country] ?? "$3.99/mo";
   const BENEFITS = [
     { icon: "📅", title: "25 greetings per day",       sub: "Free plan: 10/day" },
     { icon: "⭕", title: "6 Circles · 25 members each", sub: "Free plan: 3 circles · 10 members" },
@@ -1227,7 +1252,7 @@ export function PremiumUpgradePrompt({ onClose, currentUser }) {
               <X size={14} className="text-white" />
             </button>
           </div>
-          <p className="text-white/80 text-xs">Everything you unlock for $3.99/month</p>
+          <p className="text-white/80 text-xs">Everything you unlock for {displayPrice}</p>
         </div>
 
         {/* Benefits list */}
@@ -1249,9 +1274,9 @@ export function PremiumUpgradePrompt({ onClose, currentUser }) {
           <button
             onClick={() => startCheckout(currentUser)}
             className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white hover:opacity-90 transition-opacity">
-            Upgrade — $3.99/mo
+            Upgrade — {displayPrice}
           </button>
-          <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime · No ads, ever</p>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Cancel anytime · No ads, ever{PRICE_DISPLAY[country] ? " · Billed in USD" : ""}</p>
         </div>
       </div>
     </div>

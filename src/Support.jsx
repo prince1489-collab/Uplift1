@@ -63,7 +63,7 @@ function LandingScreen({ onSelect }) {
 }
 
 // ── Assessment ────────────────────────────────────────────────────────────────
-function AssessmentScreen({ condition, onDone, onBack }) {
+function AssessmentScreen({ condition, onDone, onBack, country }) {
   const qKey = condition.questionnaire;
   const q = QUESTIONNAIRES[qKey];
   const [answers, setAnswers] = useState(Array(q.questions.length).fill(null));
@@ -98,6 +98,7 @@ function AssessmentScreen({ condition, onDone, onBack }) {
   };
 
   if (showCrisisAlert) {
+    const crisisResources = getResources(country).crisis ?? [];
     return (
       <div className="flex flex-col h-full px-4 py-8 items-center justify-center text-center">
         <span className="text-5xl mb-4">🆘</span>
@@ -106,34 +107,31 @@ function AssessmentScreen({ condition, onDone, onBack }) {
           If you're having thoughts of harming yourself, please reach out right now. You matter, and help is available.
         </p>
         <div className="w-full space-y-3 mb-6">
+          {crisisResources.map((r, i) => (
+            <a
+              key={i}
+              href={r.phone ? `tel:${r.phone.replace(/\s/g, "")}` : r.url}
+              target={r.phone ? undefined : "_blank"}
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3 w-full"
+            >
+              <span className="text-xl">{r.phone ? "📞" : "🌐"}</span>
+              <div className="text-left">
+                <p className="font-bold text-red-700 text-sm">{r.name}</p>
+                {r.phone && <p className="text-xs text-red-500">{r.phone} — free, 24/7</p>}
+              </div>
+            </a>
+          ))}
           <a
-            href="tel:116123"
+            href="https://findahelpline.com"
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3 w-full"
           >
-            <span className="text-xl">📞</span>
+            <span className="text-xl">🌍</span>
             <div className="text-left">
-              <p className="font-bold text-red-700 text-sm">Call Samaritans (UK)</p>
-              <p className="text-xs text-red-500">116 123 — free, 24/7</p>
-            </div>
-          </a>
-          <a
-            href="sms:85258?body=SHOUT"
-            className="flex items-center gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3 w-full"
-          >
-            <span className="text-xl">💬</span>
-            <div className="text-left">
-              <p className="font-bold text-red-700 text-sm">Text SHOUT to 85258 (UK)</p>
-              <p className="text-xs text-red-500">Free crisis text line, 24/7</p>
-            </div>
-          </a>
-          <a
-            href="tel:988"
-            className="flex items-center gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3 w-full"
-          >
-            <span className="text-xl">📞</span>
-            <div className="text-left">
-              <p className="font-bold text-red-700 text-sm">Call 988 (US)</p>
-              <p className="text-xs text-red-500">Suicide & Crisis Lifeline, 24/7</p>
+              <p className="font-bold text-red-700 text-sm">Find a helpline near you</p>
+              <p className="text-xs text-red-500">findahelpline.com — worldwide</p>
             </div>
           </a>
         </div>
@@ -427,6 +425,7 @@ export default function Support({ country }) {
           condition={selectedCondition}
           onDone={handleAssessmentDone}
           onBack={() => setScreen("landing")}
+          country={country}
         />
       )}
       {screen === "results" && selectedCondition && assessmentAnswers && (
