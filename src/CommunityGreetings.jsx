@@ -543,9 +543,9 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
           <div className="space-y-1">
             {featured.filter((g) => !removedIds[g.submissionId]).map((g) => (
               <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-2.5 py-1.5">
-                <div className="flex items-center gap-2">
-                  <p className="text-[13px] font-semibold text-slate-800 truncate flex-1 min-w-0">{g.text}</p>
-                  <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-start gap-2">
+                  <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug flex-1 min-w-0">{g.text}</p>
+                  <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0 mt-0.5">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
                   </span>
                   {isAdmin && (
@@ -583,19 +583,19 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
               const hasReported = reportedIds[g.submissionId];
               return (
                 <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 text-center text-[12px] font-bold text-slate-400 flex-shrink-0">
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 text-center text-[12px] font-bold text-slate-400 flex-shrink-0 mt-0.5">
                       {rank + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-slate-800 truncate">{g.text}</p>
+                      <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug">{g.text}</p>
                       <span className="text-[9px] text-slate-400 truncate">by {g.authorName}</span>
                     </div>
                     <button
                       onClick={() => toggleVote(g)}
                       disabled={isMine}
                       title={isMine ? "Your greeting" : g._voted ? "Tap to remove your vote" : "Upvote"}
-                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors flex-shrink-0 ${
+                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors flex-shrink-0 mt-0.5 ${
                         g._voted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
                       } disabled:opacity-60`}>
                       <ThumbsUp size={11} /> {g._votes}
@@ -604,7 +604,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                       <button
                         onClick={() => handleAdminRemove(g)}
                         title="Remove greeting (admin)"
-                        className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
+                        className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 mt-1">
                         <Trash2 size={12} />
                       </button>
                     ) : !isMine && (
@@ -612,7 +612,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                         onClick={() => handleReport(g)}
                         disabled={hasReported}
                         title={hasReported ? "Reported" : "Report"}
-                        className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-60 flex-shrink-0">
+                        className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-60 flex-shrink-0 mt-1">
                         <Flag size={10} />
                       </button>
                     )}
