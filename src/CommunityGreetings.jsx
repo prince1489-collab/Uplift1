@@ -73,28 +73,20 @@ export function useApprovedCommunityGreetings(db) {
 }
 
 // ── Champions — the weekly Top-5, sendable in the picker for 7 days ───────────────
-// status == "champion" and still inside their spotlight window. Sorted by their winning
-// vote score. Falls back to top approved (pre-first-rotation) so the category is never empty.
+// status == "champion" and still inside their spotlight window, sorted by winning vote score.
+// Nothing surfaces in the picker until the admin promotes (no approved-greeting fallback).
 export function useChampionGreetings(db) {
   const [greetings, setGreetings] = useState([]);
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "greetingSubmissions"), where("status", "in", ["champion", "approved"]));
+    const q = query(collection(db, "greetingSubmissions"), where("status", "==", "champion"));
     return onSnapshot(q, (snap) => {
-      const all = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((s) => (s.reportCount ?? 0) < REPORT_THRESHOLD);
       const now = Date.now();
-      const champions = all
-        .filter((s) => s.status === "champion" && (s.championUntil ?? 0) > now)
+      const champions = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((s) => (s.reportCount ?? 0) < REPORT_THRESHOLD && (s.championUntil ?? 0) > now)
         .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0));
-      const source = champions.length
-        ? champions
-        : all // fallback before the first rotation: best-voted approved
-            .filter((s) => s.status === "approved")
-            .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0))
-            .slice(0, CHAMPION_COUNT);
-      setGreetings(source.map(toGreeting));
+      setGreetings(champions.map(toGreeting));
     }, () => {});
   }, [db]);
   return greetings;

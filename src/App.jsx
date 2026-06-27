@@ -858,7 +858,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
             </p>
             {activeGreetings.length === 0 ? (
               <p className="text-center text-xs text-slate-400 py-4 leading-relaxed">
-                No community greetings yet.<br />Suggest one in the Community tab! 🌱
+                This week's winners appear here after voting.<br />Vote in the 🌱 Community tab!
               </p>
             ) : (
               activeGreetings.map((greeting) => (
@@ -2519,10 +2519,10 @@ export default function App() {
             )}
 
             {/* Tab bar */}
-            <div data-tour="tab-nav" className="flex border-b border-slate-100 bg-white flex-shrink-0">
+            <div data-tour="tab-nav" className="flex items-center justify-evenly border-b border-slate-100 bg-white flex-shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
-                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "feed"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
@@ -2530,17 +2530,8 @@ export default function App() {
                 💬 Feed
               </button>
               <button
-                onClick={() => setActiveTab("hacks")}
-                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "hacks"
-                    ? "border-teal-500 text-teal-600"
-                    : "border-transparent text-slate-400 hover:text-slate-600"
-                }`}>
-                💡 Life Hacks
-              </button>
-              <button
                 onClick={() => setActiveTab("community")}
-                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "community"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
@@ -2549,12 +2540,21 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab("impact")}
-                className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
+                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "impact"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
                 🌍 Impact
+              </button>
+              <button
+                onClick={() => setActiveTab("hacks")}
+                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "hacks"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💡 Life Hacks
               </button>
             </div>
 
