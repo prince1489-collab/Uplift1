@@ -453,77 +453,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   );
 }
 
-function SupportPanel({ country, onClose }) {
-  const resources = getResources(country);
-  return createPortal(
-    <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
-        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
-          <ArrowLeft size={18} className="text-slate-600" />
-        </button>
-        <h2 className="text-sm font-bold text-slate-800">If you're struggling</h2>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
-        <p className="text-[13px] text-slate-500 leading-relaxed pb-1">
-          It's okay to not be okay. These services are free, confidential, and here whenever you need them.
-        </p>
-
-        {resources.crisis?.length > 0 && (
-          <>
-            <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide pt-1">Crisis support</p>
-            {resources.crisis.map((r) => (
-              <a key={r.name}
-                href={r.phone ? `tel:${r.phone.replace(/\s/g, "")}` : r.url}
-                target={r.phone ? undefined : "_blank"}
-                rel="noopener noreferrer"
-                className="flex items-start gap-3 rounded-2xl border bg-red-50 border-red-200 px-4 py-3.5 transition-opacity active:opacity-70">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-red-700">{r.name}</p>
-                  {r.phone && <p className="text-[11px] font-semibold text-red-500 mt-1">{r.phone}</p>}
-                  {r.free && <span className="text-[10px] font-bold text-emerald-600">Free · 24/7</span>}
-                </div>
-                <ArrowRight size={14} className="text-red-300 flex-shrink-0 mt-1" />
-              </a>
-            ))}
-          </>
-        )}
-
-        {resources.mental?.length > 0 && (
-          <>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide pt-2">Mental health support{country ? ` in ${country}` : ""}</p>
-            {resources.mental.map((r) => (
-              <a key={r.name} href={r.url} target="_blank" rel="noopener noreferrer"
-                className="flex items-start gap-3 rounded-2xl border bg-teal-50 border-teal-200 px-4 py-3.5 transition-opacity active:opacity-70">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-teal-700">{r.name}</p>
-                  {r.phone && <p className="text-[11px] font-semibold text-teal-500 mt-1">{r.phone}</p>}
-                </div>
-                <ArrowRight size={14} className="text-teal-300 flex-shrink-0 mt-1" />
-              </a>
-            ))}
-          </>
-        )}
-
-        <a href="https://findahelpline.com" target="_blank" rel="noopener noreferrer"
-          className="flex items-start gap-3 rounded-2xl border bg-slate-50 border-slate-200 px-4 py-3.5 transition-opacity active:opacity-70">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-700">International</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Crisis centres worldwide</p>
-            <p className="text-[11px] font-semibold text-slate-500 mt-1">findahelpline.com</p>
-          </div>
-          <ArrowRight size={14} className="text-slate-300 flex-shrink-0 mt-1" />
-        </a>
-
-        <p className="text-center text-xs text-slate-300 pt-3 pb-1">
-          You don't have to face it alone.
-        </p>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
@@ -1064,7 +993,6 @@ export default function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
-  const [showSupport, setShowSupport] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
@@ -2381,8 +2309,6 @@ export default function App() {
         )}
 
 
-        {showSupport && <SupportPanel country={profile?.country} onClose={() => setShowSupport(false)} />}
-
         {showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
         {showWelcomeMoment && (
@@ -2509,7 +2435,7 @@ export default function App() {
                       onImpact={() => setActiveTab("impact")}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
-                      onSupport={() => setShowSupport(true)}
+                      onSupport={() => setActiveTab("support")}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
                         if (!cid) { alert("No subscription found."); return; }
