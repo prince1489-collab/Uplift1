@@ -20,6 +20,10 @@ export const REPORT_THRESHOLD = 3;          // auto-hide approved greeting once 
 export const MIN_LEN = 10;
 export const MAX_LEN = 120;
 export const DAILY_SUBMISSION_LIMIT = 5;
+// ── Weekly champions ──
+export const CHAMPION_COUNT = 5;                          // top-N promoted each week
+export const CHAMPION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // spotlight length (7 days)
+export const CHAMPION_BONUS = 100;                        // sparks to author on promotion
 
 const startOfTodayMs = () => {
   const d = new Date();
@@ -42,6 +46,8 @@ function toGreeting(s) {
     upvotes: s.upvotes ?? 0,
     voters: s.voters ?? {},
     sentCount: s.sentCount ?? 0,
+    isFeatured: s.status === "champion",
+    championUntil: s.championUntil ?? null,
   };
 }
 
@@ -64,6 +70,53 @@ export function useApprovedCommunityGreetings(db) {
     }, () => {});
   }, [db]);
   return greetings;
+}
+
+// ── Champions — the weekly Top-5, sendable in the picker for 7 days ───────────────
+// status == "champion" and still inside their spotlight window. Sorted by their winning
+// vote score. Falls back to top approved (pre-first-rotation) so the category is never empty.
+export function useChampionGreetings(db) {
+  const [greetings, setGreetings] = useState([]);
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "greetingSubmissions"), where("status", "in", ["champion", "approved"]));
+    return onSnapshot(q, (snap) => {
+      const all = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((s) => (s.reportCount ?? 0) < REPORT_THRESHOLD);
+      const now = Date.now();
+      const champions = all
+        .filter((s) => s.status === "champion" && (s.championUntil ?? 0) > now)
+        .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0));
+      const source = champions.length
+        ? champions
+        : all // fallback before the first rotation: best-voted approved
+            .filter((s) => s.status === "approved")
+            .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0))
+            .slice(0, CHAMPION_COUNT);
+      setGreetings(source.map(toGreeting));
+    }, () => {});
+  }, [db]);
+  return greetings;
+}
+
+// ── Leaderboard candidates — the voting arena (status == "approved") ──────────────
+export function useLeaderboardCandidates(db) {
+  const [candidates, setCandidates] = useState([]);
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "greetingSubmissions"), where("status", "==", "approved"));
+    return onSnapshot(q, (snap) => {
+      const items = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((s) => (s.reportCount ?? 0) < REPORT_THRESHOLD)
+        .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0) || (a.createdAt ?? 0) - (b.createdAt ?? 0))
+        .slice(0, 50)
+        .map(toGreeting);
+      setCandidates(items);
+    }, () => {});
+  }, [db]);
+  return candidates;
 }
 
 // Count of pending submissions — drives the admin badge.
@@ -364,5 +417,161 @@ export function CommunityGreetingRow({ greeting, streak, computeSparkReward, cur
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Countdown to the next weekly promotion (Mondays 00:00 UTC) ───────────────────
+function nextMondayMs() {
+  const now = new Date();
+  const day = now.getUTCDay();                  // 0 Sun … 1 Mon
+  const daysUntilMon = (8 - day) % 7 || 7;      // always 1–7 days ahead
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMon, 0, 0, 0, 0));
+  return next.getTime();
+}
+
+function PromotionCountdown() {
+  const [remaining, setRemaining] = useState(nextMondayMs() - Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setRemaining(nextMondayMs() - Date.now()), 60000);
+    return () => clearInterval(iv);
+  }, []);
+  const totalMin = Math.max(0, Math.floor(remaining / 60000));
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  const label = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return (
+    <span className="text-[11px] font-semibold text-amber-700">⏳ New Top 5 in {label}</span>
+  );
+}
+
+// ── Community arena — the voting leaderboard (a top-level tab) ─────────────────────
+// Candidates (approved) compete here; each week the Top-5 graduate into the Send-Greetings
+// "Community" category for 7 days, then retire permanently. Champions show in a header strip.
+export function CommunityArena({ db, currentUser, profile, candidates = [], champions = [] }) {
+  const [showSubmit, setShowSubmit] = useState(false);
+  const [votedIds, setVotedIds] = useState({});   // optimistic local echo
+  const [reportedIds, setReportedIds] = useState({});
+  const uid = currentUser?.uid;
+
+  const featured = champions.filter((c) => c.isFeatured); // true champions only (not the fallback)
+
+  const handleVote = (g) => {
+    if (g.authorUid === uid || votedIds[g.submissionId] || g.voters?.[uid]) return;
+    setVotedIds((p) => ({ ...p, [g.submissionId]: true }));
+    voteGreeting(db, g.submissionId, uid);
+  };
+  const handleReport = (g) => {
+    if (g.authorUid === uid || reportedIds[g.submissionId]) return;
+    setReportedIds((p) => ({ ...p, [g.submissionId]: true }));
+    reportGreeting(db, g.submissionId, uid);
+  };
+
+  const medals = ["🥇", "🥈", "🥉"];
+
+  return (
+    <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5 space-y-4">
+      {/* Intro */}
+      <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3.5">
+        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          🌱 Community Greetings
+        </h2>
+        <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+          Vote for your favourite greetings. Every week the <strong>Top 5</strong> become sendable in
+          the greeting picker for 7 days — then they retire and fresh ones take their place. Write your
+          own to join the board!
+        </p>
+        <div className="flex items-center justify-between mt-2">
+          <PromotionCountdown />
+          <button
+            onClick={() => setShowSubmit(true)}
+            className="rounded-full bg-teal-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-teal-700 transition-colors flex items-center gap-1">
+            <Sparkles size={11} /> Suggest
+          </button>
+        </div>
+      </div>
+
+      {/* This week's champions */}
+      {featured.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide flex items-center gap-1 mb-1.5">
+            <Trophy size={11} /> This week's champions
+          </p>
+          <div className="space-y-1.5">
+            {featured.map((g) => (
+              <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                <p className="text-sm font-semibold text-slate-800">{g.text}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[10px] text-amber-700 font-semibold truncate">⭐ Featured · by {g.authorName}</span>
+                  <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0">
+                    <ThumbsUp size={10} /> {g.upvotes ?? 0}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Leaderboard */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+          Leaderboard · vote for next week
+        </p>
+        {candidates.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-6 text-center">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              No greetings in the running yet.<br />Be the first to suggest one! 🌱
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {candidates.map((g, i) => {
+              const isMine = g.authorUid === uid;
+              const hasVoted = votedIds[g.submissionId] || (uid && g.voters?.[uid]);
+              const hasReported = reportedIds[g.submissionId];
+              const displayVotes = (g.upvotes ?? 0) + (votedIds[g.submissionId] && !g.voters?.[uid] ? 1 : 0);
+              return (
+                <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 text-center text-sm font-bold text-slate-400 flex-shrink-0 pt-0.5">
+                      {medals[i] ?? i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800">{g.text}</p>
+                      <span className="text-[10px] text-slate-400 truncate">by {g.authorName}</span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleVote(g)}
+                        disabled={isMine || hasVoted}
+                        title={isMine ? "Your greeting" : hasVoted ? "Voted" : "Upvote"}
+                        className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                          hasVoted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
+                        } disabled:opacity-60`}>
+                        <ThumbsUp size={11} /> {displayVotes}
+                      </button>
+                      {!isMine && (
+                        <button
+                          onClick={() => handleReport(g)}
+                          disabled={hasReported}
+                          title={hasReported ? "Reported" : "Report"}
+                          className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-60">
+                          <Flag size={10} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showSubmit && (
+        <SubmitGreetingModal db={db} currentUser={currentUser} profile={profile} onClose={() => setShowSubmit(false)} />
+      )}
+    </main>
   );
 }

@@ -49,8 +49,8 @@ import {
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources } from "./SupportData.js";
 import {
-  useApprovedCommunityGreetings, useCommunitySubmissionCount,
-  SubmitGreetingModal, CommunityLeaderboard, CommunityGreetingRow,
+  useChampionGreetings, useLeaderboardCandidates, useCommunitySubmissionCount,
+  CommunityArena,
   recordCommunitySend, approveSubmission, rejectSubmission, REPORT_THRESHOLD,
 } from "./CommunityGreetings";
 
@@ -345,6 +345,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
                   label="My Profile"
                   sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
+                />
+                <Row
+                  onClick={() => { onSupport(); close(); }}
+                  icon={<IconBox className="bg-emerald-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
+                  label="Support"
+                  sub="Wellbeing tools & crisis help"
                 />
 
                 {/* Circles row — expands inline */}
@@ -855,7 +861,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
   const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
-  const [showSubmit, setShowSubmit] = useState(false);
 
   // Local greetings filtered to the user's language; fall back to global phrases if no match.
   const userLang = LANGUAGE_MAP[profile?.country] ?? null;
@@ -923,28 +928,32 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {isCommunity ? (
           <>
-            <button
-              onClick={() => setShowSubmit(true)}
-              className="w-full rounded-xl border border-dashed border-teal-300 bg-teal-50/50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-colors flex items-center justify-center gap-1.5">
-              ✍️ Suggest a greeting
-            </button>
-            <CommunityLeaderboard greetings={communityGreetings} />
+            <p className="text-center text-[11px] text-slate-400 leading-relaxed px-2 py-1">
+              ⭐ This week's winners — voted in by the community. Vote for next week in the
+              <strong className="text-teal-600"> 🌱 Community</strong> tab.
+            </p>
             {activeGreetings.length === 0 ? (
               <p className="text-center text-xs text-slate-400 py-4 leading-relaxed">
-                No community greetings yet.<br />Be the first to suggest one! 🌱
+                No community greetings yet.<br />Suggest one in the Community tab! 🌱
               </p>
             ) : (
               activeGreetings.map((greeting) => (
-                <CommunityGreetingRow
-                  key={greeting.id}
-                  greeting={greeting}
-                  streak={streak}
-                  computeSparkReward={computeSparkReward}
-                  currentUser={currentUser}
-                  db={db}
-                  isSending={isSending}
-                  onSelect={onSelect}
-                />
+                <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
+                  disabled={isSending}
+                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    isSending ? "border-slate-100 bg-slate-50 cursor-not-allowed" : "border-amber-200 bg-amber-50/40 hover:border-amber-300 hover:bg-amber-50"
+                  }`}>
+                  <div>
+                    <span className={`text-sm font-semibold ${isSending ? "text-slate-400" : "text-slate-800"}`}>{greeting.text}</span>
+                    <span className="ml-2 text-xs text-teal-600">
+                      +{computeSparkReward(greeting.sparkReward, streak)} sparks
+                      {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-amber-700 font-semibold">
+                    {greeting.isFeatured ? "⭐ Featured · " : ""}by {greeting.authorName}
+                  </span>
+                </button>
               ))
             )}
           </>
@@ -964,9 +973,6 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           ))
         )}
       </div>
-      {showSubmit && (
-        <SubmitGreetingModal db={db} currentUser={currentUser} profile={profile} onClose={() => setShowSubmit(false)} />
-      )}
     </div>
   );
 }
@@ -1468,7 +1474,8 @@ export default function App() {
   const [adminReportsLoading, setAdminReportsLoading] = useState(false);
   const [showResolvedReports, setShowResolvedReports] = useState(false);
   // Community greetings: live approved pool (for the picker) + pending count (admin badge)
-  const communityGreetings = useApprovedCommunityGreetings(db);
+  const champions = useChampionGreetings(db);            // weekly Top-5 → sendable in picker
+  const candidates = useLeaderboardCandidates(db);        // approved pool → voting arena
   const pendingSubmissionCount = useCommunitySubmissionCount(db, isAdmin);
   const [adminSubmissions, setAdminSubmissions] = useState(null); // null = not loaded
   const [adminSubmissionsLoading, setAdminSubmissionsLoading] = useState(false);
@@ -2280,6 +2287,30 @@ export default function App() {
     } catch (err) { console.error("Reject failed:", err); }
   };
 
+  const [promoting, setPromoting] = useState(false);
+  const handlePromoteChampions = async () => {
+    if (!isAdmin || promoting) return;
+    if (!window.confirm("Retire this week's champions and promote the current Top 5? This is normally automatic each Monday.")) return;
+    setPromoting(true);
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch("/api/rotate-champions?force=1", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        window.alert(`Promoted ${data.promoted ?? 0} champion(s) for ${data.weekId ?? "this week"}.`);
+      } else {
+        window.alert(`Promotion failed: ${data.error ?? res.status}`);
+      }
+    } catch (err) {
+      window.alert(`Promotion failed: ${err?.message ?? "network error"}`);
+    } finally {
+      setPromoting(false);
+    }
+  };
+
   // Hold the loader until the profile read positively resolves, so an already-onboarded
   // user is never shown the onboarding screen during a transient cold-start read error.
   if (isAuthLoading || (isRealSignedInUser && !profileChecked)) {
@@ -2587,13 +2618,13 @@ export default function App() {
                 💡 Life Hacks
               </button>
               <button
-                onClick={() => setActiveTab("support")}
+                onClick={() => setActiveTab("community")}
                 className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "support"
+                  activeTab === "community"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                💚 Support
+                🌱 Community
               </button>
               <button
                 onClick={() => setActiveTab("impact")}
@@ -2614,6 +2645,8 @@ export default function App() {
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
               </Suspense>
+            ) : activeTab === "community" ? (
+              <CommunityArena db={db} currentUser={currentUser} profile={profile} candidates={candidates} champions={champions} />
             ) : activeTab === "impact" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
@@ -3007,6 +3040,14 @@ export default function App() {
                       </span>
                     )}
                   </button>
+                  <button
+                    onClick={handlePromoteChampions}
+                    disabled={promoting}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-amber-600 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-40"
+                  >
+                    <Shield size={11} />
+                    {promoting ? "Promoting…" : "🏆 Promote Top 5 now"}
+                  </button>
                 </div>
               )}
             </footer>
@@ -3034,7 +3075,7 @@ export default function App() {
                     remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
                     db={db}
                     currentUser={currentUser}
-                    communityGreetings={communityGreetings}
+                    communityGreetings={champions}
                   />
                 </div>
               </div>
