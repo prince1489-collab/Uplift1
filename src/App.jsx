@@ -2572,7 +2572,7 @@ export default function App() {
                 <Support country={profile?.country} />
               </Suspense>
             ) : activeTab === "community" ? (
-              <CommunityArena db={db} currentUser={currentUser} profile={profile} candidates={candidates} champions={champions} />
+              <CommunityArena db={db} currentUser={currentUser} profile={profile} isAdmin={isAdmin} candidates={candidates} champions={champions} />
             ) : activeTab === "impact" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />

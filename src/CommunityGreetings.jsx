@@ -10,7 +10,7 @@ import {
   addDoc, collection, doc, getDocs, onSnapshot, query,
   runTransaction, updateDoc, where,
 } from "firebase/firestore";
-import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 export const COMMUNITY_SPARK_REWARD = 12;  // sender earns this (scaled by streak)
@@ -131,7 +131,8 @@ export function useCommunitySubmissionCount(db, enabled) {
 }
 
 // ── Vote / report (transactional, single-action-per-user) ───────────────────────
-export async function voteGreeting(db, submissionId, uid) {
+// Idempotent toggle: shouldVote=true adds the vote, false removes it. Self-votes blocked.
+export async function voteGreeting(db, submissionId, uid, shouldVote = true) {
   if (!db || !uid || !submissionId) return;
   const ref = doc(db, "greetingSubmissions", submissionId);
   await runTransaction(db, async (tx) => {
@@ -140,9 +141,14 @@ export async function voteGreeting(db, submissionId, uid) {
     const data = snap.data();
     if (data.authorUid === uid) return;            // no self-voting
     const voters = { ...(data.voters ?? {}) };
-    if (voters[uid]) return;                        // already voted
-    voters[uid] = true;
-    tx.update(ref, { voters, upvotes: (data.upvotes ?? 0) + 1 });
+    const has = !!voters[uid];
+    if (shouldVote && !has) {
+      voters[uid] = true;
+      tx.update(ref, { voters, upvotes: (data.upvotes ?? 0) + 1 });
+    } else if (!shouldVote && has) {
+      delete voters[uid];
+      tx.update(ref, { voters, upvotes: Math.max(0, (data.upvotes ?? 0) - 1) });
+    }
   }).catch(() => {});
 }
 
@@ -450,32 +456,51 @@ function PromotionCountdown() {
 // "Community" category for 7 days, then retire permanently. Champions show in a header strip.
 const PAGE_SIZE = 10;
 
-export function CommunityArena({ db, currentUser, profile, candidates = [], champions = [] }) {
+export function CommunityArena({ db, currentUser, profile, isAdmin = false, candidates = [], champions = [] }) {
   const [showSubmit, setShowSubmit] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [page, setPage] = useState(0);
-  const [votedIds, setVotedIds] = useState({});   // optimistic local echo
+  const [pendingVotes, setPendingVotes] = useState({}); // submissionId → desired voted bool (optimistic)
   const [reportedIds, setReportedIds] = useState({});
+  const [removedIds, setRemovedIds] = useState({});     // admin-removed, hidden instantly
   const uid = currentUser?.uid;
 
   const featured = champions.filter((c) => c.isFeatured); // true champions only (not the fallback)
 
-  const totalPages = Math.max(1, Math.ceil(candidates.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);       // clamp if the live list shrank
-  const pageItems = candidates.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  // Apply optimistic vote state, then re-sort by effective votes so the voter sees an
+  // instant re-rank (the live Firestore snapshot reconciles a moment later for everyone).
+  const ranked = candidates
+    .filter((g) => !removedIds[g.submissionId])
+    .map((g) => {
+      const serverVoted = !!(uid && g.voters?.[uid]);
+      const desired = pendingVotes[g.submissionId];
+      const voted = desired !== undefined ? desired : serverVoted;
+      const delta = voted === serverVoted ? 0 : (voted ? 1 : -1);
+      return { ...g, _voted: voted, _votes: Math.max(0, (g.upvotes ?? 0) + delta) };
+    })
+    .sort((a, b) => b._votes - a._votes);
 
-  const handleVote = (g) => {
-    if (g.authorUid === uid || votedIds[g.submissionId] || g.voters?.[uid]) return;
-    setVotedIds((p) => ({ ...p, [g.submissionId]: true }));
-    voteGreeting(db, g.submissionId, uid);
+  const totalPages = Math.max(1, Math.ceil(ranked.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);       // clamp if the live list shrank
+  const pageItems = ranked.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  const toggleVote = (g) => {
+    if (g.authorUid === uid) return;                      // no self-voting
+    const next = !g._voted;
+    setPendingVotes((p) => ({ ...p, [g.submissionId]: next }));
+    voteGreeting(db, g.submissionId, uid, next);
   };
   const handleReport = (g) => {
     if (g.authorUid === uid || reportedIds[g.submissionId]) return;
     setReportedIds((p) => ({ ...p, [g.submissionId]: true }));
     reportGreeting(db, g.submissionId, uid);
   };
-
-  const medals = ["🥇", "🥈", "🥉"];
+  const handleAdminRemove = (g) => {
+    if (!isAdmin) return;
+    if (!window.confirm(`Remove this greeting from the board?\n\n"${g.text}"`)) return;
+    setRemovedIds((p) => ({ ...p, [g.submissionId]: true }));
+    rejectSubmission(db, { id: g.submissionId });
+  };
 
   return (
     <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4 space-y-3">
@@ -516,13 +541,21 @@ export function CommunityArena({ db, currentUser, profile, candidates = [], cham
             <Trophy size={11} /> This week's champions
           </p>
           <div className="space-y-1">
-            {featured.map((g) => (
+            {featured.filter((g) => !removedIds[g.submissionId]).map((g) => (
               <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-2.5 py-1.5">
                 <div className="flex items-center gap-2">
                   <p className="text-[13px] font-semibold text-slate-800 truncate flex-1 min-w-0">{g.text}</p>
                   <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
                   </span>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleAdminRemove(g)}
+                      title="Remove greeting (admin)"
+                      className="text-amber-400 hover:text-red-500 transition-colors flex-shrink-0">
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
                 <span className="text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}</span>
               </div>
@@ -547,29 +580,34 @@ export function CommunityArena({ db, currentUser, profile, candidates = [], cham
             {pageItems.map((g, i) => {
               const rank = safePage * PAGE_SIZE + i;     // global rank across pages
               const isMine = g.authorUid === uid;
-              const hasVoted = votedIds[g.submissionId] || (uid && g.voters?.[uid]);
               const hasReported = reportedIds[g.submissionId];
-              const displayVotes = (g.upvotes ?? 0) + (votedIds[g.submissionId] && !g.voters?.[uid] ? 1 : 0);
               return (
                 <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-4 text-center text-[13px] font-bold text-slate-400 flex-shrink-0">
-                      {medals[rank] ?? rank + 1}
+                    <span className="w-5 text-center text-[12px] font-bold text-slate-400 flex-shrink-0">
+                      {rank + 1}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-slate-800 truncate">{g.text}</p>
                       <span className="text-[9px] text-slate-400 truncate">by {g.authorName}</span>
                     </div>
                     <button
-                      onClick={() => handleVote(g)}
-                      disabled={isMine || hasVoted}
-                      title={isMine ? "Your greeting" : hasVoted ? "Voted" : "Upvote"}
+                      onClick={() => toggleVote(g)}
+                      disabled={isMine}
+                      title={isMine ? "Your greeting" : g._voted ? "Tap to remove your vote" : "Upvote"}
                       className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors flex-shrink-0 ${
-                        hasVoted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
+                        g._voted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
                       } disabled:opacity-60`}>
-                      <ThumbsUp size={11} /> {displayVotes}
+                      <ThumbsUp size={11} /> {g._votes}
                     </button>
-                    {!isMine && (
+                    {isAdmin ? (
+                      <button
+                        onClick={() => handleAdminRemove(g)}
+                        title="Remove greeting (admin)"
+                        className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
+                        <Trash2 size={12} />
+                      </button>
+                    ) : !isMine && (
                       <button
                         onClick={() => handleReport(g)}
                         disabled={hasReported}
