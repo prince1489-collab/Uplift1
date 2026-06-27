@@ -49,6 +49,7 @@ import {
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources } from "./SupportData.js";
 import JournalPanel from "./Journal";
+import UserGlimpse from "./UserGlimpse";
 import {
   useChampionGreetings, useLeaderboardCandidates, useCommunitySubmissionCount,
   CommunityArena,
@@ -620,7 +621,7 @@ function NotificationBell({ streak, db, currentUser }) {
 }
 
 function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
-  const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "" });
+  const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "", mostDays: "", anotherLife: "" });
 
   useEffect(() => {
     const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
@@ -630,10 +631,12 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
       fullName: initialData?.fullName || "",
       email: initialEmail || initialData?.email || "",
       dobMonth, dobDay, dobYear,
+      mostDays: initialData?.mostDays || "",
+      anotherLife: initialData?.anotherLife || "",
     }));
   }, [initialData, initialEmail]);
 
-  const valid = Boolean(form.country) && Boolean(form.email);
+  const valid = Boolean(form.country) && Boolean(form.email) && Boolean(form.mostDays.trim()) && Boolean(form.anotherLife.trim());
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -692,6 +695,25 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
+            <Sparkles size={13} /><span>A little about you</span>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">💛 Most days, I'm…</label>
+            <input name="mostDays" value={form.mostDays} onChange={onChange} maxLength={80}
+              placeholder="a tired but hopeful nurse"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">✨ In another life, I'd be…</label>
+            <input name="anotherLife" value={form.anotherLife} onChange={onChange} maxLength={80}
+              placeholder="a jazz pianist in Lisbon"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">Keep it light — no personal details. This is the little glimpse others see.</p>
         </div>
 
         <button type="submit" disabled={!valid}
@@ -1315,6 +1337,7 @@ export default function App() {
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
   const [showMap, setShowMap] = useState(false);
+  const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
@@ -1746,6 +1769,7 @@ export default function App() {
       }
       await setDoc(userProfileRef(user.uid), {
         fullName: data.fullName, email: normalizedEmail, country: data.country, dob: data.dob,
+        mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
         profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
@@ -2241,6 +2265,10 @@ export default function App() {
           <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser} />
         )}
 
+        {glimpse && (
+          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} onClose={() => setGlimpse(null)} />
+        )}
+
 
         {showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
@@ -2669,7 +2697,15 @@ export default function App() {
                         <div className="w-full group">
                           <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-semibold text-slate-400">
                             <span className="flex items-center gap-1">
-                              {mine ? "You" : group.sender}
+                              {mine ? (
+                                "You"
+                              ) : (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null }); }}
+                                  className="font-semibold text-slate-500 underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-teal-600 active:text-teal-700 transition-colors">
+                                  {group.sender}
+                                </button>
+                              )}
                               {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
                                 <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
                               )}

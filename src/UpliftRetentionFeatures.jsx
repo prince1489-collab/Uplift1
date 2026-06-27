@@ -1306,6 +1306,8 @@ function getLevelForBalance(balance) {
 function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
   const [name, setName] = useState(profile?.fullName ?? "");
   const [country, setCountry] = useState(profile?.country ?? "");
+  const [mostDays, setMostDays] = useState(profile?.mostDays ?? "");
+  const [anotherLife, setAnotherLife] = useState(profile?.anotherLife ?? "");
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(profile?.profilePhotoUrl ?? "");
   const [saving, setSaving] = useState(false);
@@ -1335,9 +1337,11 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
       await updateDoc(doc(db, "users", currentUser.uid), {
         fullName: name.trim(),
         country,
+        mostDays: mostDays.trim(),
+        anotherLife: anotherLife.trim(),
         profilePhotoUrl,
       });
-      onSaved?.({ fullName: name.trim(), country, profilePhotoUrl });
+      onSaved?.({ fullName: name.trim(), country, mostDays: mostDays.trim(), anotherLife: anotherLife.trim(), profilePhotoUrl });
       onClose();
     } catch (err) {
       console.error("Profile update error:", err);
@@ -1420,6 +1424,34 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
                 {COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+          </div>
+
+          {/* Your glimpse — what others see when they tap your name */}
+          <div className="space-y-3">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
+              Your glimpse
+            </label>
+            <div>
+              <p className="text-sm font-medium text-slate-600 mb-1">💛 Most days, I'm…</p>
+              <input
+                value={mostDays}
+                onChange={e => setMostDays(e.target.value)}
+                maxLength={80}
+                placeholder="a tired but hopeful nurse"
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-600 mb-1">✨ In another life, I'd be…</p>
+              <input
+                value={anotherLife}
+                onChange={e => setAnotherLife(e.target.value)}
+                maxLength={80}
+                placeholder="a jazz pianist in Lisbon"
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">Keep it light — no personal details. This is the little glimpse others see.</p>
           </div>
 
           {error && <p className="text-xs text-red-500 text-center">{error}</p>}
