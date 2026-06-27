@@ -875,7 +875,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
                     </span>
                   </div>
                   <span className="text-[10px] text-amber-700 font-semibold">
-                    {greeting.isFeatured ? "⭐ Featured · " : ""}by {greeting.authorName}
+                    {greeting.isFeatured ? "⭐ Featured · " : ""}by {greeting.authorName}{greeting.authorCountry && FLAG_MAP[greeting.authorCountry] ? ` ${FLAG_MAP[greeting.authorCountry]}` : ""}
                   </span>
                 </button>
               ))

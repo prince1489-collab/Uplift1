@@ -11,6 +11,7 @@ import {
   runTransaction, updateDoc, where,
 } from "firebase/firestore";
 import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { FLAG_MAP } from "./MicroAnimations";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 export const COMMUNITY_SPARK_REWARD = 12;  // sender earns this (scaled by streak)
@@ -43,6 +44,7 @@ function toGreeting(s) {
     isPremium: false,
     authorUid: s.authorUid,
     authorName: s.authorName ?? "Someone",
+    authorCountry: s.authorCountry ?? null,
     upvotes: s.upvotes ?? 0,
     voters: s.voters ?? {},
     sentCount: s.sentCount ?? 0,
@@ -549,7 +551,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                     </button>
                   )}
                 </div>
-                <span className="text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}</span>
+                <span className="text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
               </div>
             ))}
           </div>
@@ -581,7 +583,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug">{g.text}</p>
-                      <span className="text-[9px] text-slate-400 truncate">by {g.authorName}</span>
+                      <span className="text-[9px] text-slate-400 truncate">by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
                     </div>
                     <button
                       onClick={() => toggleVote(g)}
