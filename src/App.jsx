@@ -789,7 +789,7 @@ function MysteryGiftModal({ open, reward, onClose }) {
 function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday, db, currentUser, communityGreetings = [] }) {
   const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
-  const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "core");
+  const [activeCategory, setActiveCategory] = useState("community");
 
   // Local greetings filtered to the user's language; fall back to global phrases if no match.
   const userLang = LANGUAGE_MAP[profile?.country] ?? null;
@@ -804,17 +804,12 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
     : activeCategory === "local"
     ? localGreetings
     : categories.find((c) => c.id === activeCategory)?.greetings ?? [];
-  const theme = getCurrentMonthTheme();
   const allCategories = [
-    { id: "core",      label: "Greetings",       emoji: "☀️",  isPremium: false },
-    { id: "warmth",    label: "Warmth",           emoji: "💛",  isPremium: false },
-    { id: "calm",      label: "Calm",             emoji: "🌿",  isPremium: false },
-    { id: "strength",  label: "Strength",         emoji: "💪",  isPremium: true  },
-    { id: "celebrate", label: "Celebrate",        emoji: "🎉",  isPremium: true  },
-    { id: "cultural",  label: "World",            emoji: "🌍",  isPremium: true  },
-    { id: "themed",    label: theme?.name ?? "This Month", emoji: theme?.emoji ?? "🗓️", isPremium: true },
-    ...(hasLocalGreetings ? [{ id: "local", label: "Local", emoji: "🗣️", isPremium: true }] : []),
     { id: "community", label: "Community", emoji: "🌱", isPremium: false },
+    { id: "core",      label: "Greetings", emoji: "☀️", isPremium: false },
+    { id: "warmth",    label: "Warmth",    emoji: "💛", isPremium: false },
+    { id: "calm",      label: "Calm",      emoji: "🌿", isPremium: false },
+    ...(hasLocalGreetings ? [{ id: "local", label: "Local", emoji: "🗣️", isPremium: true }] : []),
   ];
 
   return (
