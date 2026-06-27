@@ -10,7 +10,7 @@ import {
   addDoc, collection, doc, getDocs, onSnapshot, query,
   runTransaction, updateDoc, where,
 } from "firebase/firestore";
-import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send } from "lucide-react";
+import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 export const COMMUNITY_SPARK_REWARD = 12;  // sender earns this (scaled by streak)
@@ -18,7 +18,7 @@ export const APPROVAL_REWARD = 50;          // author earns on approval
 export const AUTHOR_SEND_BONUS = 2;         // author earns each time it's sent (self-sends excluded)
 export const REPORT_THRESHOLD = 3;          // auto-hide approved greeting once flagged this many times
 export const MIN_LEN = 10;
-export const MAX_LEN = 120;
+export const MAX_LEN = 40;   // keep greetings to one line in the leaderboard
 export const DAILY_SUBMISSION_LIMIT = 5;
 // ── Weekly champions ──
 export const CHAMPION_COUNT = 5;                          // top-N promoted each week
@@ -448,13 +448,21 @@ function PromotionCountdown() {
 // ── Community arena — the voting leaderboard (a top-level tab) ─────────────────────
 // Candidates (approved) compete here; each week the Top-5 graduate into the Send-Greetings
 // "Community" category for 7 days, then retire permanently. Champions show in a header strip.
+const PAGE_SIZE = 10;
+
 export function CommunityArena({ db, currentUser, profile, candidates = [], champions = [] }) {
   const [showSubmit, setShowSubmit] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [page, setPage] = useState(0);
   const [votedIds, setVotedIds] = useState({});   // optimistic local echo
   const [reportedIds, setReportedIds] = useState({});
   const uid = currentUser?.uid;
 
   const featured = champions.filter((c) => c.isFeatured); // true champions only (not the fallback)
+
+  const totalPages = Math.max(1, Math.ceil(candidates.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);       // clamp if the live list shrank
+  const pageItems = candidates.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   const handleVote = (g) => {
     if (g.authorUid === uid || votedIds[g.submissionId] || g.voters?.[uid]) return;
@@ -470,43 +478,53 @@ export function CommunityArena({ db, currentUser, profile, candidates = [], cham
   const medals = ["🥇", "🥈", "🥉"];
 
   return (
-    <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5 space-y-4">
-      {/* Intro */}
-      <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3.5">
-        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-          🌱 Community Greetings
-        </h2>
-        <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-          Vote for your favourite greetings. Every week the <strong>Top 5</strong> become sendable in
-          the greeting picker for 7 days — then they retire and fresh ones take their place. Write your
-          own to join the board!
-        </p>
-        <div className="flex items-center justify-between mt-2">
-          <PromotionCountdown />
+    <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4 space-y-3">
+      {/* Compact header — explanation tucked behind the ⓘ toggle */}
+      <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-50 px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1 flex-1 min-w-0">
+            🌱 Community Greetings
+            <button
+              onClick={() => setShowInfo((v) => !v)}
+              aria-label="How it works"
+              className={`rounded-full p-0.5 transition-colors ${showInfo ? "text-teal-600" : "text-slate-400 hover:text-teal-600"}`}>
+              <Info size={14} />
+            </button>
+          </h2>
           <button
             onClick={() => setShowSubmit(true)}
-            className="rounded-full bg-teal-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-teal-700 transition-colors flex items-center gap-1">
+            className="rounded-full bg-teal-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-teal-700 transition-colors flex items-center gap-1 flex-shrink-0">
             <Sparkles size={11} /> Suggest
           </button>
         </div>
+        <div className="flex items-center justify-between mt-1.5">
+          <PromotionCountdown />
+        </div>
+        {showInfo && (
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-2 border-t border-teal-100 pt-2">
+            Vote for your favourite greetings. Every week the <strong>Top 5</strong> become sendable in
+            the greeting picker for 7 days — then they retire and fresh ones take their place. Write your
+            own to join the board!
+          </p>
+        )}
       </div>
 
       {/* This week's champions */}
       {featured.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide flex items-center gap-1 mb-1.5">
+          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide flex items-center gap-1 mb-1">
             <Trophy size={11} /> This week's champions
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {featured.map((g) => (
-              <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
-                <p className="text-sm font-semibold text-slate-800">{g.text}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-[10px] text-amber-700 font-semibold truncate">⭐ Featured · by {g.authorName}</span>
+              <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-2.5 py-1.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-[13px] font-semibold text-slate-800 truncate flex-1 min-w-0">{g.text}</p>
                   <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
                   </span>
                 </div>
+                <span className="text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}</span>
               </div>
             ))}
           </div>
@@ -515,7 +533,7 @@ export function CommunityArena({ db, currentUser, profile, candidates = [], cham
 
       {/* Leaderboard */}
       <div>
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
           Leaderboard · vote for next week
         </p>
         {candidates.length === 0 ? (
@@ -525,46 +543,66 @@ export function CommunityArena({ db, currentUser, profile, candidates = [], cham
             </p>
           </div>
         ) : (
-          <div className="space-y-1.5">
-            {candidates.map((g, i) => {
+          <div className="space-y-1">
+            {pageItems.map((g, i) => {
+              const rank = safePage * PAGE_SIZE + i;     // global rank across pages
               const isMine = g.authorUid === uid;
               const hasVoted = votedIds[g.submissionId] || (uid && g.voters?.[uid]);
               const hasReported = reportedIds[g.submissionId];
               const displayVotes = (g.upvotes ?? 0) + (votedIds[g.submissionId] && !g.voters?.[uid] ? 1 : 0);
               return (
-                <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 text-center text-sm font-bold text-slate-400 flex-shrink-0 pt-0.5">
-                      {medals[i] ?? i + 1}
+                <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 text-center text-[13px] font-bold text-slate-400 flex-shrink-0">
+                      {medals[rank] ?? rank + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-800">{g.text}</p>
-                      <span className="text-[10px] text-slate-400 truncate">by {g.authorName}</span>
+                      <p className="text-[13px] font-semibold text-slate-800 truncate">{g.text}</p>
+                      <span className="text-[9px] text-slate-400 truncate">by {g.authorName}</span>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => handleVote(g)}
+                      disabled={isMine || hasVoted}
+                      title={isMine ? "Your greeting" : hasVoted ? "Voted" : "Upvote"}
+                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors flex-shrink-0 ${
+                        hasVoted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
+                      } disabled:opacity-60`}>
+                      <ThumbsUp size={11} /> {displayVotes}
+                    </button>
+                    {!isMine && (
                       <button
-                        onClick={() => handleVote(g)}
-                        disabled={isMine || hasVoted}
-                        title={isMine ? "Your greeting" : hasVoted ? "Voted" : "Upvote"}
-                        className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                          hasVoted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
-                        } disabled:opacity-60`}>
-                        <ThumbsUp size={11} /> {displayVotes}
+                        onClick={() => handleReport(g)}
+                        disabled={hasReported}
+                        title={hasReported ? "Reported" : "Report"}
+                        className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-60 flex-shrink-0">
+                        <Flag size={10} />
                       </button>
-                      {!isMine && (
-                        <button
-                          onClick={() => handleReport(g)}
-                          disabled={hasReported}
-                          title={hasReported ? "Reported" : "Report"}
-                          className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-60">
-                          <Flag size={10} />
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               );
             })}
+
+            {/* Pagination */}
+            {candidates.length > PAGE_SIZE && (
+              <div className="flex items-center justify-center gap-4 pt-2">
+                <button
+                  onClick={() => setPage(Math.max(0, safePage - 1))}
+                  disabled={safePage === 0}
+                  className="flex items-center gap-0.5 text-[11px] font-semibold text-slate-500 disabled:opacity-30 hover:text-teal-600 transition-colors">
+                  <ChevronLeft size={13} /> Prev
+                </button>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  Page {safePage + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(Math.min(totalPages - 1, safePage + 1))}
+                  disabled={safePage >= totalPages - 1}
+                  className="flex items-center gap-0.5 text-[11px] font-semibold text-slate-500 disabled:opacity-30 hover:text-teal-600 transition-colors">
+                  Next <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
