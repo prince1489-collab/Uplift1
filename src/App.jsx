@@ -48,6 +48,7 @@ import {
 
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources } from "./SupportData.js";
+import JournalPanel from "./Journal";
 import {
   useChampionGreetings, useLeaderboardCandidates, useCommunitySubmissionCount,
   CommunityArena,
@@ -216,30 +217,10 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, onImpact }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
   const [open, setOpen] = useState(false);
   const [showCircles, setShowCircles] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
-
-  const inviteLink = `https://seenapp.app/?ref=${currentUser?.uid || ""}`;
-  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-
-  const handleCopyInvite = async () => {
-    try { await navigator.clipboard.writeText(inviteLink); } catch (_) {}
-    setInviteCopied(true);
-    setTimeout(() => setInviteCopied(false), 2500);
-  };
-
-  const handleShareInvite = async () => {
-    try {
-      await navigator.share({
-        title: "Join me on Seen",
-        text: "Someone out there needs to hear from you 💌 — join Seen, the kindness app. We both get +50 Sparks when you sign up!",
-        url: inviteLink,
-      });
-    } catch (_) {}
-  };
+  const [showJournal, setShowJournal] = useState(false);
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -335,16 +316,16 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   sub="See who's spreading kindness"
                 />
                 <Row
-                  onClick={() => { onImpact(); close(); }}
-                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🌍</span></IconBox>}
-                  label="My Kindness Footprint"
-                  sub="Your reach · countries · reactions"
-                />
-                <Row
                   onClick={() => { onShare(); close(); }}
                   icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
-                  label="My Profile"
+                  label="Person behind the Kindness"
                   sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
+                />
+                <Row
+                  onClick={() => { setShowJournal(true); close(); }}
+                  icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📓</span></IconBox>}
+                  label="Journal"
+                  sub="Your gratitude & kindness log"
                 />
                 <Row
                   onClick={() => { onSupport(); close(); }}
@@ -375,52 +356,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 
               </div>
 
-              {/* Invite a Friend */}
-              <div className="mx-4 border-t border-slate-100 mt-1" />
-              <div className="px-3 py-2 space-y-0.5">
-                <button
-                  onClick={() => setShowInvite(v => !v)}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
-                  <IconBox className="bg-emerald-50">
-                    <UserPlus size={16} className="text-emerald-500" />
-                  </IconBox>
-                  <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-medium text-slate-700">Invite a Friend</p>
-                    <p className="text-[11px] text-slate-400">You both earn +50 Sparks ✨</p>
-                  </div>
-                  <ChevronDown size={15} className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showInvite ? "rotate-180" : ""}`} />
-                </button>
-                {showInvite && (
-                  <div className="mx-1 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 space-y-2">
-                    <p className="text-[11px] font-semibold text-emerald-800">Your invite link:</p>
-                    <div className="flex items-center rounded-xl border border-emerald-200 bg-white px-3 py-2">
-                      <p className="flex-1 text-[10px] text-slate-500 truncate font-mono">{inviteLink}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleCopyInvite}
-                        className={`flex-1 rounded-xl py-2 text-[11px] font-bold transition-all border ${
-                          inviteCopied
-                            ? "bg-emerald-500 border-emerald-500 text-white"
-                            : "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-                        }`}>
-                        {inviteCopied ? "Copied ✓" : "Copy link"}
-                      </button>
-                      {canShare && (
-                        <button
-                          onClick={handleShareInvite}
-                          className="flex-1 rounded-xl py-2 text-[11px] font-bold bg-emerald-500 text-white border border-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1">
-                          <Share2 size={11} /> Share
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-emerald-600 text-center">
-                      Friend signs up → you both get +50 Sparks automatically
-                    </p>
-                  </div>
-                )}
-              </div>
-
               <div className="mx-4 border-t border-slate-100" />
 
               {/* Sign out */}
@@ -448,6 +383,9 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
           </div>
         </div>,
         document.body
+      )}
+      {showJournal && (
+        <JournalPanel db={db} currentUser={currentUser} onClose={() => setShowJournal(false)} />
       )}
     </>
   );
@@ -2427,7 +2365,6 @@ export default function App() {
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
                       onWorld={() => setShowMap(true)}
-                      onImpact={() => setActiveTab("impact")}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
                       onSupport={() => setActiveTab("support")}
