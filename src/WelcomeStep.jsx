@@ -383,7 +383,7 @@ function WelcomeStep({ onStartJourney, db, auth }) {
 
         {/* Brand */}
         <h1 className="welcome-step__title">Seen</h1>
-        <p className="welcome-step__tagline">You matter</p>
+        <p className="welcome-step__tagline">Kindness is Addictive</p>
 
         {/* Animated globe — the hook before sign-up */}
         <GlobePreview />
