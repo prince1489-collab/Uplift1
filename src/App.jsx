@@ -219,8 +219,10 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance }) {
-  const [open, setOpen] = useState(false);
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange }) {
+  const [openInternal, setOpenInternal] = useState(false);
+  const open = openProp !== undefined ? openProp : openInternal;
+  const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
   const [showCircles, setShowCircles] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
   const [showWellbeing, setShowWellbeing] = useState(false);
@@ -241,8 +243,9 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
     </div>
   );
 
-  const Row = ({ onClick, icon, label, sub, danger = false }) => (
+  const Row = ({ onClick, icon, label, sub, danger = false, tourId }) => (
     <button
+      data-tour={tourId}
       onClick={onClick}
       className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors ${danger ? "hover:bg-red-50" : "hover:bg-slate-50"}`}>
       {icon}
@@ -256,6 +259,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   return (
     <>
       <button
+        data-tour="menu"
         onClick={() => setOpen(true)}
         className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
         aria-label="More options">
@@ -313,30 +317,35 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
               <div className="px-3 py-2 space-y-0.5">
 
                 <Row
+                  tourId="m-world"
                   onClick={() => { onWorld(); close(); }}
                   icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
                   label="World Map"
                   sub="See who's spreading kindness"
                 />
                 <Row
+                  tourId="m-profile"
                   onClick={() => { onShare(); close(); }}
                   icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
                   label="Person behind the Kindness"
                   sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
                 />
                 <Row
+                  tourId="m-journal"
                   onClick={() => { setShowJournal(true); close(); }}
                   icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📓</span></IconBox>}
                   label="Journal"
                   sub="Your gratitude & kindness log"
                 />
                 <Row
+                  tourId="m-wellbeing"
                   onClick={() => { setShowWellbeing(true); close(); }}
                   icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📊</span></IconBox>}
                   label="Wellbeing Score"
                   sub="Track how you're doing over time"
                 />
                 <Row
+                  tourId="m-support"
                   onClick={() => { onSupport(); close(); }}
                   icon={<IconBox className="bg-emerald-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
                   label="Support"
@@ -345,6 +354,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 
                 {/* Circles row — expands inline */}
                 <button
+                  data-tour="m-circles"
                   onClick={() => setShowCircles(v => !v)}
                   className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
                   <IconBox><Users size={16} className="text-slate-500" /></IconBox>
@@ -406,6 +416,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
+const TOUR_VERSION = 2; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
 function NotificationBell({ streak, db, currentUser }) {
@@ -1352,6 +1363,7 @@ export default function App() {
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
   const [showMap, setShowMap] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
@@ -1491,7 +1503,7 @@ export default function App() {
     if (tourScheduledRef.current) return;
     if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
     if (showWelcomeMoment || activeTab !== "feed") return;
-    if (profile.tourCompletedAt) { tourScheduledRef.current = true; return; }
+    if (profile.tourCompletedVersion === TOUR_VERSION) { tourScheduledRef.current = true; return; }
     tourScheduledRef.current = true;
     const t = setTimeout(() => setTourActive(true), 700);
     return () => clearTimeout(t);
@@ -1501,9 +1513,10 @@ export default function App() {
     setHeaderOpen(false);
     setPickerOpen(false);
     setReactionBarId(null);
+    setMenuOpen(false);
     setTourActive(false);
     if (currentUser?.uid) {
-      setDoc(doc(db, "users", currentUser.uid), { tourCompletedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+      setDoc(doc(db, "users", currentUser.uid), { tourCompletedVersion: TOUR_VERSION, tourCompletedAt: serverTimestamp() }, { merge: true }).catch(() => {});
     }
   }, [currentUser]);
 
@@ -1533,15 +1546,15 @@ export default function App() {
       key: "categories",
       target: '[data-tour="categories"]',
       title: "Choose the right words",
-      body: "Greetings, Warmth & Calm are free. Unlock Strength, Celebrate & World Moments as you grow.",
-      before: () => { setHeaderOpen(false); setPickerOpen(true); },
+      body: "Community, Greetings, Warmth, Calm & Local — send a winning community greeting or a phrase in your own language.",
+      before: () => { setMenuOpen(false); setHeaderOpen(false); setPickerOpen(true); },
     },
     {
       key: "connect",
       target: '[data-tour="connect"]',
       extraPadTop: 70,
       title: "Press & hold any message",
-      body: "Long-press a message to send a ❤️, add that person to your Circle 👥, or invite them to a private chat 💬.",
+      body: "Long-press a message to send a ❤️, add them to a Circle 👥, or start a private chat 💬 — and tap anyone's name to see a little glimpse of who they are.",
       before: () => {
         setPickerOpen(false);
         const others = messages.filter((m) => m.uid && m.uid !== currentUser?.uid);
@@ -1557,15 +1570,64 @@ export default function App() {
       key: "tabs",
       target: '[data-tour="tab-nav"]',
       title: "Explore the app",
-      body: "💡 Life Hacks — daily tips for mind, body & life.  💚 Support — resources when you need them.  🌍 Impact — your world map & kindness stats.",
-      before: () => { setReactionBarId(null); setPickerOpen(false); setHeaderOpen(false); },
+      body: "🌱 Community — vote greetings into the weekly Top 5.  🌍 Impact — your world map & kindness stats.  💡 Life Hacks — daily tips for mind & body.",
+      before: () => { setReactionBarId(null); setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
+    },
+    {
+      key: "menu-intro",
+      target: '[data-tour="menu"]',
+      title: "There's more in here",
+      body: "Tap ⋯ anytime for everything else — let's take a quick look.",
+      before: () => { setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
+    },
+    {
+      key: "menu-world",
+      target: '[data-tour="m-world"]',
+      title: "🌍 World Map",
+      body: "Watch kindness light up across the globe in real time.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-world"]')?.scrollIntoView({ block: "center" }), 80); },
+    },
+    {
+      key: "menu-profile",
+      target: '[data-tour="m-profile"]',
+      title: "Person behind the Kindness",
+      body: "Your profile, sparks and level — and the little 'glimpse' others see.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-profile"]')?.scrollIntoView({ block: "center" }), 80); },
+    },
+    {
+      key: "menu-journal",
+      target: '[data-tour="m-journal"]',
+      title: "📓 Journal",
+      body: "Log what you're grateful for and acts of kindness — and build a streak.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-journal"]')?.scrollIntoView({ block: "center" }), 80); },
+    },
+    {
+      key: "menu-wellbeing",
+      target: '[data-tour="m-wellbeing"]',
+      title: "📊 Wellbeing Score",
+      body: "Check in weekly and watch your wellbeing trend as you use the app.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-wellbeing"]')?.scrollIntoView({ block: "center" }), 80); },
+    },
+    {
+      key: "menu-circles",
+      target: '[data-tour="m-circles"]',
+      title: "👥 Circles",
+      body: "Create private kindness groups with the people who matter to you.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-circles"]')?.scrollIntoView({ block: "center" }), 80); },
+    },
+    {
+      key: "menu-support",
+      target: '[data-tour="m-support"]',
+      title: "💚 Support",
+      body: "A wellbeing check-in and crisis resources, whenever you need them.",
+      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-support"]')?.scrollIntoView({ block: "center" }), 80); },
     },
     {
       key: "journey",
       target: null,
       title: "That's your journey",
       body: "Send kindness daily, keep your streak alive, grow your Circles, and watch your impact light up the world map. Ready?",
-      before: () => { setReactionBarId(null); },
+      before: () => { setReactionBarId(null); setMenuOpen(false); },
     },
   ], [messages, currentUser]);
 
@@ -2427,6 +2489,8 @@ export default function App() {
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
+                      open={menuOpen}
+                      onOpenChange={setMenuOpen}
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
