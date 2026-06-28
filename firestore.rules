@@ -80,6 +80,11 @@ service cloud.firestore {
       match /journal/{entryId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // Wellbeing check-ins — private to the owner only
+      match /wellbeing/{id} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // ── Presence (ephemeral heartbeat) ──

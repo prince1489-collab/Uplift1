@@ -50,6 +50,7 @@ import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, M
 import { getResources } from "./SupportData.js";
 import JournalPanel from "./Journal";
 import UserGlimpse from "./UserGlimpse";
+import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
 import {
   useChampionGreetings, useLeaderboardCandidates, useCommunitySubmissionCount,
   CommunityArena,
@@ -222,6 +223,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   const [open, setOpen] = useState(false);
   const [showCircles, setShowCircles] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
+  const [showWellbeing, setShowWellbeing] = useState(false);
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -329,6 +331,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   sub="Your gratitude & kindness log"
                 />
                 <Row
+                  onClick={() => { setShowWellbeing(true); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📊</span></IconBox>}
+                  label="Wellbeing Score"
+                  sub="Track how you're doing over time"
+                />
+                <Row
                   onClick={() => { onSupport(); close(); }}
                   icon={<IconBox className="bg-emerald-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
                   label="Support"
@@ -387,6 +395,9 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
       )}
       {showJournal && (
         <JournalPanel db={db} currentUser={currentUser} onClose={() => setShowJournal(false)} />
+      )}
+      {showWellbeing && (
+        <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} />
       )}
     </>
   );
@@ -949,6 +960,7 @@ export default function App() {
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
+  const [pendingOnboardingDetails, setPendingOnboardingDetails] = useState(null); // details awaiting wellbeing baseline step
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
@@ -1774,6 +1786,11 @@ export default function App() {
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
 
+      // Wellbeing baseline — recorded from the onboarding check-in step
+      if (data.wellbeing) {
+        try { await saveCheckin(db, user.uid, data.wellbeing); } catch (_) {}
+      }
+
       // Referral reward — award +50 Sparks to both users
       const pendingRef = localStorage.getItem("seen_ref");
       if (pendingRef && pendingRef !== user.uid) {
@@ -1797,7 +1814,7 @@ export default function App() {
         } catch (err) { console.error("Referral award error:", err); }
       }
 
-      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
+      setPendingProfileData(null); setPendingOnboardingDetails(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
@@ -2337,8 +2354,23 @@ export default function App() {
                   onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
+              ) : pendingOnboardingDetails ? (
+                <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
+                  <div className="mx-auto w-full max-w-sm">
+                    <div className="flex justify-center pb-3">
+                      <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md"><Sparkles size={24} /></div>
+                    </div>
+                    <h1 className="font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em] text-slate-800">A quick wellbeing check-in</h1>
+                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">This sets your baseline. We'll check in weekly so you can see how you're doing over time.</p>
+                    <WellbeingCheckin
+                      submitLabel="Finish & enter Seen"
+                      onComplete={async (scores) => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails, wellbeing: scores }); }}
+                    />
+                    {onboardingError && <p className="px-1 mt-2 text-center text-sm text-rose-600">{onboardingError}</p>}
+                  </div>
+                </div>
               ) : (
-                <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
+                <Onboarding onContinue={(data) => { setOnboardingError(""); setPendingOnboardingDetails(data); }}
                   loading={isSavingProfile} initialData={pendingProfileData}
                   initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
               )}
