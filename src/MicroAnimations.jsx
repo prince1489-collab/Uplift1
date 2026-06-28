@@ -251,6 +251,18 @@ const KEYFRAMES = `
     0%   { opacity: 0; }
     100% { opacity: 1; }
   }
+
+  /* Glossy shimmer sweep (champion cards) */
+  @keyframes seenShimmer {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(220%); }
+  }
+
+  /* Gentle fade-up (list card entrance) */
+  @keyframes seenFadeUp {
+    0%   { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0);   opacity: 1; }
+  }
 `;
 
 let _keyframesInjected = false;

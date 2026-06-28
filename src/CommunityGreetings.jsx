@@ -4,7 +4,7 @@
 // upvote (sort/promote) and report (auto-hide past a threshold). Authors earn sparks on
 // approval and a small bonus each time their greeting is sent.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   addDoc, collection, doc, getDocs, onSnapshot, query,
@@ -478,10 +478,35 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
   const safePage = Math.min(page, totalPages - 1);       // clamp if the live list shrank
   const pageItems = ranked.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
+  // FLIP: slide rows to their new position when votes change the order.
+  const rowRefs = useRef(new Map());
+  const prevRects = useRef(new Map());
+  useLayoutEffect(() => {
+    const next = new Map();
+    rowRefs.current.forEach((el, id) => { if (el) next.set(id, el.getBoundingClientRect().top); });
+    prevRects.current.forEach((prevTop, id) => {
+      const el = rowRefs.current.get(id);
+      const newTop = next.get(id);
+      if (!el || newTop == null) return;
+      const delta = prevTop - newTop;
+      if (Math.abs(delta) < 1) return;
+      el.style.transition = "transform 0s";
+      el.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = "transform .35s cubic-bezier(0.2,0.7,0.3,1)";
+        el.style.transform = "";
+      });
+    });
+    prevRects.current = next;
+  });
+
+  const [popId, setPopId] = useState(null); // submissionId whose vote chip is popping
   const toggleVote = (g) => {
     if (g.authorUid === uid) return;                      // no self-voting
     const next = !g._voted;
     setPendingVotes((p) => ({ ...p, [g.submissionId]: next }));
+    setPopId(g.submissionId);
+    setTimeout(() => setPopId((cur) => (cur === g.submissionId ? null : cur)), 400);
     voteGreeting(db, g.submissionId, uid, next);
   };
   const handleReport = (g) => {
@@ -536,8 +561,12 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
           </p>
           <div className="space-y-1">
             {featured.filter((g) => !removedIds[g.submissionId]).map((g) => (
-              <div key={g.id} className="rounded-xl border border-amber-200 bg-amber-50/70 px-2.5 py-1.5">
-                <div className="flex items-start gap-2">
+              <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-300 px-2.5 py-1.5"
+                style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", boxShadow: "0 1px 8px rgba(245,158,11,0.18)" }}>
+                {/* shimmer sweep */}
+                <span aria-hidden className="absolute inset-0 pointer-events-none"
+                  style={{ background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.65) 50%, transparent 65%)", animation: "seenShimmer 3.2s ease-in-out infinite" }} />
+                <div className="relative flex items-start gap-2">
                   <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug flex-1 min-w-0">{g.text}</p>
                   <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0 mt-0.5">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
@@ -551,7 +580,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                     </button>
                   )}
                 </div>
-                <span className="text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
+                <span className="relative text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
               </div>
             ))}
           </div>
@@ -576,7 +605,9 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
               const isMine = g.authorUid === uid;
               const hasReported = reportedIds[g.submissionId];
               return (
-                <div key={g.id} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                <div key={g.id}
+                  ref={(el) => { if (el) rowRefs.current.set(g.submissionId, el); else rowRefs.current.delete(g.submissionId); }}
+                  className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 will-change-transform">
                   <div className="flex items-start gap-2">
                     <span className="w-5 text-center text-[12px] font-bold text-slate-400 flex-shrink-0 mt-0.5">
                       {rank + 1}
@@ -589,10 +620,11 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                       onClick={() => toggleVote(g)}
                       disabled={isMine}
                       title={isMine ? "Your greeting" : g._voted ? "Tap to remove your vote" : "Upvote"}
+                      style={popId === g.submissionId ? { animation: "seenReactionPop 0.4s ease" } : undefined}
                       className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors flex-shrink-0 mt-0.5 ${
                         g._voted ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500 hover:bg-teal-50 hover:text-teal-600"
                       } disabled:opacity-60`}>
-                      <ThumbsUp size={11} /> {g._votes}
+                      <ThumbsUp size={11} /> <span key={g._votes} style={{ display: "inline-block", animation: popId === g.submissionId ? "seenLiveTick 0.4s ease" : undefined }}>{g._votes}</span>
                     </button>
                     {isAdmin ? (
                       <button

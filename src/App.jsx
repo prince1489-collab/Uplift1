@@ -835,17 +835,20 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
               activeGreetings.map((greeting) => (
                 <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
                   disabled={isSending}
-                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                    isSending ? "border-slate-100 bg-slate-50 cursor-not-allowed" : "border-amber-200 bg-amber-50/40 hover:border-amber-300 hover:bg-amber-50"
-                  }`}>
-                  <div>
+                  className="relative overflow-hidden w-full rounded-xl border border-amber-300 px-3 py-2.5 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed"
+                  style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", boxShadow: "0 1px 8px rgba(245,158,11,0.18)" }}>
+                  {!isSending && (
+                    <span aria-hidden className="absolute inset-0 pointer-events-none"
+                      style={{ background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.6) 50%, transparent 65%)", animation: "seenShimmer 3.2s ease-in-out infinite" }} />
+                  )}
+                  <div className="relative">
                     <span className={`text-sm font-semibold ${isSending ? "text-slate-400" : "text-slate-800"}`}>{greeting.text}</span>
                     <span className="ml-2 text-xs text-teal-600">
                       +{computeSparkReward(greeting.sparkReward, streak)} sparks
                       {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
                     </span>
                   </div>
-                  <span className="text-[10px] text-amber-700 font-semibold">
+                  <span className="relative text-[10px] text-amber-700 font-semibold">
                     {greeting.isFeatured ? "⭐ Featured · " : ""}by {greeting.authorName}{greeting.authorCountry && FLAG_MAP[greeting.authorCountry] ? ` ${FLAG_MAP[greeting.authorCountry]}` : ""}
                   </span>
                 </button>
