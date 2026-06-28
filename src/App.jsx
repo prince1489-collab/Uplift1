@@ -2637,7 +2637,7 @@ export default function App() {
                 <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
               </Suspense>
             ) : (
-            <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5"
+            <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 py-4"
               onClick={() => { setActiveMessageId(null); }}
               onScroll={handleFeedScroll}>
               {/* Floating date pill — appears while scrolling, fades out when idle */}
@@ -2792,9 +2792,9 @@ export default function App() {
                       </div>
                     )}
                     <MessageSlideIn mine={mine} isNew={isNewGroup}>
-                      <div className="mb-3">
+                      <div className="mb-2">
                         <div className="w-full group">
-                          <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-semibold text-slate-400">
+                          <div className="flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400">
                             <span className="flex items-center gap-1">
                               {mine ? (
                                 "You"
@@ -2832,7 +2832,7 @@ export default function App() {
                                 const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} data-msg-id={m.id} className="relative pb-2">
+                                  <div key={m.id} data-msg-id={m.id} className="relative pb-1.5">
                                     {/* WhatsApp-style reaction bar — floats above bubble on long press */}
                                     {reactionBarId === m.id && (
                                       <>
@@ -2901,7 +2901,7 @@ export default function App() {
                                           const hasMood = Boolean(moodStyle);
                                           return (
                                             <div
-                                              className={`border px-4 py-3.5 text-base font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                              className={`border px-3.5 py-2.5 text-[15px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
                                                 mine
                                                   ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
                                                   : isUnwrapped
