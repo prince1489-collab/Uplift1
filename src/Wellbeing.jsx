@@ -31,13 +31,21 @@ export async function saveCheckin(db, uid, scores) {
   });
 }
 
+// Normalise to the 0–10 scale. Recompute from the raw answers when available
+// (always correct); otherwise down-convert any legacy 0–100 score (>10 → ÷10).
+function normaliseScore(data) {
+  if (data?.scores) return computeScore(data.scores);
+  const s = Number(data?.score) || 0;
+  return s > 10 ? Math.round((s / 10) * 10) / 10 : s;
+}
+
 export function useWellbeingHistory(db, uid) {
   const [history, setHistory] = useState([]);
   useEffect(() => {
     if (!db || !uid) return;
     const q = query(collection(db, "users", uid, "wellbeing"), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snap) => {
-      setHistory(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setHistory(snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, score: normaliseScore(data) }; }));
     }, () => {});
   }, [db, uid]);
   return history;
