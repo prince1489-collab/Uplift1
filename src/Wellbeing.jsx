@@ -18,10 +18,10 @@ export const WELLBEING_QUESTIONS = [
 export const RECHECK_DAYS = 7;
 const WEEK_MS = RECHECK_DAYS * 24 * 60 * 60 * 1000;
 
-// Overall score 0–100 from the five 0–10 answers.
+// Overall score = average of the five 0–10 answers, out of 10 (one decimal).
 export function computeScore(scores) {
   const sum = WELLBEING_QUESTIONS.reduce((acc, q) => acc + (Number(scores?.[q.key]) || 0), 0);
-  return Math.round((sum / (WELLBEING_QUESTIONS.length * 10)) * 100);
+  return Math.round((sum / WELLBEING_QUESTIONS.length) * 10) / 10;
 }
 
 export async function saveCheckin(db, uid, scores) {
@@ -44,9 +44,9 @@ export function useWellbeingHistory(db, uid) {
 }
 
 function scoreColour(score) {
-  if (score >= 75) return "#10b981";
-  if (score >= 50) return "#14b8a6";
-  if (score >= 30) return "#f59e0b";
+  if (score >= 7.5) return "#10b981";
+  if (score >= 5) return "#14b8a6";
+  if (score >= 3) return "#f59e0b";
   return "#fb7185";
 }
 
@@ -89,7 +89,7 @@ export function WellbeingCheckin({ onComplete, intro, submitLabel = "See my scor
       ))}
       <div className="flex items-center justify-between rounded-2xl bg-teal-50 border border-teal-100 px-4 py-2.5">
         <span className="text-xs font-semibold text-teal-700">Your score</span>
-        <span className="text-lg font-extrabold tabular-nums" style={{ color: scoreColour(preview) }}>{preview}<span className="text-xs text-slate-400">/100</span></span>
+        <span className="text-lg font-extrabold tabular-nums" style={{ color: scoreColour(preview) }}>{preview}<span className="text-xs text-slate-400">/10</span></span>
       </div>
       <button
         onClick={handleSubmit}
@@ -108,10 +108,10 @@ function TrendBars({ history }) {
   return (
     <div className="flex items-end gap-1 h-16">
       {recent.map((h, i) => {
-        const pct = Math.max(4, h.score ?? 0);
+        const pct = Math.max(4, (h.score ?? 0) * 10);
         const last = i === recent.length - 1;
         return (
-          <div key={h.id} className="flex-1 rounded-t" title={`${h.score}/100`}
+          <div key={h.id} className="flex-1 rounded-t" title={`${h.score}/10`}
             style={{
               height: `${pct}%`,
               background: last
@@ -133,7 +133,7 @@ export function WellbeingPanel({ db, currentUser, onClose }) {
   const baseline = history[0] ?? null;
   const latest = history[history.length - 1] ?? null;
   const current = latest?.score ?? null;
-  const delta = baseline && latest ? latest.score - baseline.score : null;
+  const delta = baseline && latest ? Math.round((latest.score - baseline.score) * 10) / 10 : null;
   const lastAt = latest?.createdAt ?? 0;
   const msSince = Date.now() - lastAt;
   const canRecheck = !latest || msSince >= WEEK_MS;
@@ -167,7 +167,7 @@ export function WellbeingPanel({ db, currentUser, onClose }) {
             {/* Current score */}
             <div className="rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-5 py-5 text-center">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Your wellbeing score</p>
-              <p className="text-5xl font-extrabold tabular-nums" style={{ color: scoreColour(current) }}>{current}<span className="text-lg text-slate-300">/100</span></p>
+              <p className="text-5xl font-extrabold tabular-nums" style={{ color: scoreColour(current) }}>{current}<span className="text-lg text-slate-300">/10</span></p>
               {delta !== null && history.length > 1 && (
                 <p className={`text-xs font-semibold mt-1 ${delta > 0 ? "text-emerald-600" : delta < 0 ? "text-rose-500" : "text-slate-400"}`}>
                   {delta > 0 ? `▲ +${delta}` : delta < 0 ? `▼ ${delta}` : "no change"} since your baseline ({baseline.score})
