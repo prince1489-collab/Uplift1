@@ -59,7 +59,7 @@ import {
 
 import { initializeApp } from "firebase/app";
 import {
-  GoogleAuthProvider, getAuth, onAuthStateChanged, signOut,
+  GoogleAuthProvider, OAuthProvider, getAuth, onAuthStateChanged, signOut,
   signInWithPopup, signInWithRedirect, getRedirectResult, sendSignInLinkToEmail,
   setPersistence, indexedDBLocalPersistence,
   isSignInWithEmailLink, signInWithEmailLink,
@@ -75,6 +75,8 @@ import {
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { Capacitor } from "@capacitor/core";
+import { registerNativePush, isNativeIOS } from "./nativePush";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -1071,7 +1073,18 @@ export default function App() {
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
   useEffect(() => {
-    if (!currentUser || notifPermission !== "granted" || !messaging) return;
+    if (!currentUser) return;
+    // Native iOS: register for push via the Firebase Messaging Capacitor plugin (APNs→FCM token,
+    // stored in the same users/{uid}.fcmToken field). Skip the web service-worker token path.
+    if (isNativeIOS()) {
+      registerNativePush({
+        db,
+        uid: currentUser.uid,
+        onOpenLink: () => { try { window.location.assign("/"); } catch { /* ignore */ } },
+      });
+      return;
+    }
+    if (notifPermission !== "granted" || !messaging) return;
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     if (!vapidKey) return;
     navigator.serviceWorker.ready.then((reg) => {
@@ -1758,6 +1771,26 @@ export default function App() {
     } finally { setIsGoogleSigningIn(false); }
   };
 
+  // Sign in with Apple — required by App Store Guideline 4.8 since we offer Google sign-in.
+  const signInWithApple = async () => {
+    setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
+    try {
+      const appleProvider = new OAuthProvider("apple.com");
+      appleProvider.addScope("email");
+      appleProvider.addScope("name");
+      await signInWithPopup(auth, appleProvider);
+    } catch (error) {
+      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+        const appleProvider = new OAuthProvider("apple.com");
+        appleProvider.addScope("email"); appleProvider.addScope("name");
+        await signInWithRedirect(auth, appleProvider); return;
+      }
+      if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
+      else if (error?.code === "auth/cancelled-popup-request" || error?.code === "auth/user-cancelled") { /* user closed it */ }
+      else setAuthError("Apple sign-in failed. Please try again.");
+    } finally { setIsGoogleSigningIn(false); }
+  };
+
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
@@ -2310,7 +2343,7 @@ export default function App() {
           {unauthScreen === "welcome"
             ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
             : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
-                onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
+                onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle} onAppleSignIn={isNativeIOS() ? signInWithApple : undefined}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                 emailLinkMessage={emailLinkMessage} authError={authError} />}
         </div>
@@ -2354,7 +2387,7 @@ export default function App() {
         )}
 
 
-        {showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
+        {!isNativeIOS() && showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
         {showWelcomeMoment && (
           <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
@@ -2418,7 +2451,7 @@ export default function App() {
               )}
               {onboardingStep === "entry" ? (
                 <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
-                  onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle}
+                  onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle} onAppleSignIn={isNativeIOS() ? signInWithApple : undefined}
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
               ) : pendingOnboardingDetails ? (
@@ -2498,7 +2531,7 @@ export default function App() {
                       onOpenChange={handleMenuOpenChange}
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
-                      onUpgrade={() => setShowUpgrade(true)}
+                      onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
@@ -2856,7 +2889,7 @@ export default function App() {
                                               haptic([5]);
                                               if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
-                                            onUpgrade={() => setShowUpgrade(true)}
+                                            onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />
                                         </div>

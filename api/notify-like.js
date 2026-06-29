@@ -32,8 +32,11 @@ export default async function handler(req, res) {
     // The sw.js onBackgroundMessage handler reads payload.data and calls showNotification().
     const messageId = await getMessaging().send({
       token,
-      data: { title: "Seen", body },
+      // link in data lets native iOS deep-link via notification.data.link.
+      data: { title: "Seen", body, link: APP_URL },
       webpush: { fcmOptions: { link: APP_URL } },
+      // apns applies only to iOS tokens (web ignores it); aps.alert makes iOS display the alert.
+      apns: { payload: { aps: { alert: { title: "Seen", body }, sound: "default" } } },
     });
     return res.status(200).json({ ok: true, messageId });
   } catch (err) {

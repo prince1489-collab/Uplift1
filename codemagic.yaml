@@ -1,0 +1,52 @@
+## Codemagic CI/CD — build & sign the iOS app (Capacitor) and upload to TestFlight.
+## Runs on a Codemagic Mac build machine, so no local Mac/Xcode is needed.
+##
+## One-time setup in the Codemagic UI (see the iOS plan, Part 2/3):
+##  1. Connect this GitHub repo and pick the branch.
+##  2. Team → Integrations → App Store Connect: add your App Store Connect API key (.p8 + Key ID + Issuer ID).
+##  3. Reference that integration below as `app_store_connect: <integration-name>` and set BUNDLE_ID.
+##  4. Make sure GoogleService-Info.plist is committed at ios/App/App/GoogleService-Info.plist
+##     (or injected via an encrypted env var / Codemagic file).
+
+workflows:
+  ios-capacitor:
+    name: Seen iOS (Capacitor)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: CodemagicASCKey   # <-- name of your App Store Connect API key integration
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.seenapp.ios
+      vars:
+        BUNDLE_ID: "app.seenapp.ios"
+        APP_STORE_APPLE_ID: ""             # <-- App Store Connect numeric Apple ID of the app record
+      node: 20
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install npm dependencies
+        script: npm ci --legacy-peer-deps
+      - name: Build the web app (dist/)
+        script: npm run build
+      - name: Add iOS platform if missing, then sync
+        script: |
+          if [ ! -d "ios" ]; then npx cap add ios; fi
+          npx cap sync ios
+      - name: Set up code signing (automatic, via App Store Connect API key)
+        script: |
+          xcode-project use-profiles
+      - name: Build & archive IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "ios/App/App.xcworkspace" \
+            --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # submit_to_app_store: false   # flip to true (with a release type) when ready to ship publicly

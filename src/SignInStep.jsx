@@ -16,6 +16,7 @@ export default function SignInStep({
   onPasswordSignUp,
   onForgotPassword,
   onGoogleSignIn,
+  onAppleSignIn,
   loading,
   googleLoading,
   googleError,
@@ -87,6 +88,13 @@ export default function SignInStep({
           className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70">
           {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
         </button>
+
+        {onAppleSignIn ? (
+          <button type="button" onClick={onAppleSignIn} disabled={googleLoading}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-black bg-black py-3 text-base font-semibold text-white transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-70">
+            {googleLoading ? <Loader2 className="animate-spin" size={18} /> : <span className="leading-none">Continue with Apple</span>}
+          </button>
+        ) : null}
 
         {googleError ? <p className="mb-3 text-sm text-rose-600">{googleError}</p> : null}
 

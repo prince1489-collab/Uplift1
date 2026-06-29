@@ -75,8 +75,12 @@ export default async function handler(req, res) {
         // Data-only so the compat SDK doesn't auto-show a duplicate notification.
         const result = await getMessaging().sendEachForMulticast({
           tokens: chunk.map((e) => e.token),
-          data: { title: msg.title, body: msg.body },
+          // link is carried in data so native iOS can deep-link via notification.data.link.
+          data: { title: msg.title, body: msg.body, link: APP_URL },
           webpush: { fcmOptions: { link: APP_URL } },
+          // apns is applied only to APNs-backed (iOS) tokens; web tokens ignore it. The aps.alert
+          // makes iOS display the notification (data-only would be delivered silently).
+          apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
         });
         sent += result.successCount;
         result.responses.forEach((r, idx) => {

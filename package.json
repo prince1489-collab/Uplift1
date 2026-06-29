@@ -7,10 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ios:sync": "vite build && cap sync ios"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
+    "@capacitor-firebase/messaging": "^7.5.0",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.7",
+    "@capacitor/core": "^7.6.7",
+    "@capacitor/ios": "^7.6.7",
     "d3-geo": "^3.1.1",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.8.0",
