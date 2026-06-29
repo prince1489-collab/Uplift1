@@ -2637,11 +2637,12 @@ export default function App() {
                 <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
               </Suspense>
             ) : (
-            <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 py-4"
+            <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 pt-2 pb-4"
               onClick={() => { setActiveMessageId(null); }}
               onScroll={handleFeedScroll}>
-              {/* Floating date pill — appears while scrolling, fades out when idle */}
-              <div className="pointer-events-none" style={{ position: "sticky", top: 10, zIndex: 20, textAlign: "center" }}>
+              {/* Floating date pill — appears while scrolling, fades out when idle.
+                  height:0 so it overlays the feed instead of reserving vertical space. */}
+              <div className="pointer-events-none" style={{ position: "sticky", top: 10, zIndex: 20, height: 0, textAlign: "center" }}>
                 <span style={{
                   display: "inline-block",
                   opacity: feedDateVisible ? 1 : 0,
