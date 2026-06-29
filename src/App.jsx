@@ -1537,6 +1537,17 @@ export default function App() {
   // interferes with the user opening the menu manually.
   useEffect(() => { if (!tourActive) setMenuOpen(false); }, [tourActive]);
 
+  // Defensive: the very first time a signed-in user lands on the feed, force the ⋯ menu closed.
+  // Ref-guarded so it runs once and never blocks the user opening the menu themselves afterwards.
+  const menuLandingRef = useRef(false);
+  useEffect(() => {
+    if (menuLandingRef.current) return;
+    if (isRealSignedInUser && hasCompletedOnboarding && activeTab === "feed") {
+      menuLandingRef.current = true;
+      setMenuOpen(false);
+    }
+  }, [isRealSignedInUser, hasCompletedOnboarding, activeTab]);
+
   const tourSteps = useMemo(() => [
     {
       key: "send",
@@ -2433,7 +2444,10 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <LiveGreeterCount db={db} currentUser={currentUser} compact />
+                  <div className="flex items-center gap-1.5">
+                    <LiveGreeterCount db={db} currentUser={currentUser} compact />
+                    <span className="text-[9px] text-slate-300 tabular-nums">b{__BUILD_ID__}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
