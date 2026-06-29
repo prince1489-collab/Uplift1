@@ -60,7 +60,8 @@ import {
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider, getAuth, onAuthStateChanged, signOut,
-  signInWithPopup, signInWithRedirect, sendSignInLinkToEmail,
+  signInWithPopup, signInWithRedirect, getRedirectResult, sendSignInLinkToEmail,
+  setPersistence, indexedDBLocalPersistence,
   isSignInWithEmailLink, signInWithEmailLink,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
   sendPasswordResetEmail, updateProfile as updateAuthProfile,
@@ -86,6 +87,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+// Keep the session in IndexedDB — survives best in installed/standalone PWAs (TWA, home-screen),
+// so a returning user is restored on launch instead of seeing the sign-in screen again.
+setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
@@ -1406,6 +1410,10 @@ export default function App() {
     let unsubscribeProfile = null;
     let retryTimer = null;
     let attempts = 0;
+
+    // Consume any pending Google redirect sign-in so the session is established on load
+    // (the installed-app fallback uses signInWithRedirect). onAuthStateChanged then fires with the user.
+    getRedirectResult(auth).catch(() => {});
 
     const subscribeProfile = (user) => {
       const onboardedKey = "seen_onboarded_" + user.uid;
