@@ -2506,10 +2506,7 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <LiveGreeterCount db={db} currentUser={currentUser} compact />
-                    <span className="text-[9px] text-slate-300 tabular-nums">b{__BUILD_ID__}</span>
-                  </div>
+                  <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
