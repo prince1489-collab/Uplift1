@@ -27,6 +27,8 @@
     { "path": "/api/rotate-champions", "schedule": "0 0 * * 1" }
   ],
   "rewrites": [
+    { "source": "/__/auth/:path*", "destination": "https://uplift-6d9ea.firebaseapp.com/__/auth/:path*" },
+    { "source": "/__/firebase/:path*", "destination": "https://uplift-6d9ea.firebaseapp.com/__/firebase/:path*" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/delete-account", "destination": "/delete-account.html" },
     { "source": "/child-safety", "destination": "/child-safety.html" }

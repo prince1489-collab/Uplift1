@@ -78,7 +78,11 @@ import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
-  authDomain: "uplift-6d9ea.firebaseapp.com",
+  // On production (seenapp.app) serve the OAuth handler first-party so the Google sign-in screen shows
+  // our own domain and the redirect session persists; previews/dev keep the default Firebase domain.
+  authDomain: (typeof window !== "undefined" && window.location.hostname.endsWith("seenapp.app"))
+    ? window.location.hostname
+    : "uplift-6d9ea.firebaseapp.com",
   projectId: "uplift-6d9ea",
   storageBucket: "uplift-6d9ea.firebasestorage.app",
   messagingSenderId: "821891105119",
