@@ -24,7 +24,7 @@
     { "path": "/api/send-reminder", "schedule": "0 21 * * *" },
     { "path": "/api/send-reminder", "schedule": "0 22 * * *" },
     { "path": "/api/send-reminder", "schedule": "0 23 * * *" },
-    { "path": "/api/rotate-champions", "schedule": "0 0 * * 1" }
+    { "path": "/api/rotate-champions", "schedule": "0 0 * * 0" }
   ],
   "rewrites": [
     { "source": "/__/auth/:path*", "destination": "https://uplift-6d9ea.firebaseapp.com/__/auth/:path*" },

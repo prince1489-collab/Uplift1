@@ -420,19 +420,19 @@ export function CommunityGreetingRow({ greeting, streak, computeSparkReward, cur
   );
 }
 
-// ── Countdown to the next weekly promotion (Mondays 00:00 UTC) ───────────────────
-function nextMondayMs() {
+// ── Countdown to the next weekly promotion (Sundays 00:00 UTC) ───────────────────
+function nextSundayMs() {
   const now = new Date();
-  const day = now.getUTCDay();                  // 0 Sun … 1 Mon
-  const daysUntilMon = (8 - day) % 7 || 7;      // always 1–7 days ahead
-  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMon, 0, 0, 0, 0));
+  const day = now.getUTCDay();                  // 0 Sun … 6 Sat
+  const daysUntilSun = (7 - day) % 7 || 7;      // always 1–7 days ahead
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilSun, 0, 0, 0, 0));
   return next.getTime();
 }
 
 function PromotionCountdown() {
-  const [remaining, setRemaining] = useState(nextMondayMs() - Date.now());
+  const [remaining, setRemaining] = useState(nextSundayMs() - Date.now());
   useEffect(() => {
-    const iv = setInterval(() => setRemaining(nextMondayMs() - Date.now()), 60000);
+    const iv = setInterval(() => setRemaining(nextSundayMs() - Date.now()), 60000);
     return () => clearInterval(iv);
   }, []);
   const totalMin = Math.max(0, Math.floor(remaining / 60000));

@@ -9,6 +9,7 @@
 // cutout — so the tour can never get stuck on a missing element.
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 const SETTLE_MS = 360; // wait for header/sheet open + scroll animations before measuring
@@ -83,7 +84,7 @@ export default function TourGuide({ steps, onDone }) {
     cardStyle = { top: "50%", left: 12, right: 12, transform: "translateY(-50%)" };
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[400]" style={{ touchAction: "none" }}>
       {/* Click-catcher: swallows taps on the real UI so the user follows the guided path. */}
       <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
@@ -150,6 +151,7 @@ export default function TourGuide({ steps, onDone }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

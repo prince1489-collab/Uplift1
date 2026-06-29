@@ -10,9 +10,12 @@ function initAdmin() {
 
 const APP_URL = "https://www.seenapp.app";
 
-const MESSAGES = {
-  9:  { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." },
-  21: { title: "Evening wind-down 🌙", body: "End the day with kindness — someone needs it." },
+// One morning push per day. On Sundays we replace the daily kindness nudge with a
+// combined weekly check-in (vote community greetings + journal + update wellbeing).
+const DAILY_MESSAGE  = { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." };
+const WEEKLY_MESSAGE = {
+  title: "Your weekly check-in 🌱",
+  body: "Vote for this week's community greetings, add a journal note, and update your Wellbeing score.",
 };
 
 function localHour(timezone, now) {
@@ -22,6 +25,12 @@ function localHour(timezone, now) {
       10
     );
   } catch { return -1; }
+}
+
+function localDay(timezone, now) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(now); // "Sun"…"Sat"
+  } catch { return ""; }
 }
 
 export default async function handler(req, res) {
@@ -38,29 +47,28 @@ export default async function handler(req, res) {
 
     const snap = await db.collection("users").where("fcmToken", "!=", "").get();
 
-    // Only send to users whose local time is 9am or 9pm, and who have a stored timezone.
+    // Only send to users whose local time is 9am, and who have a stored timezone.
     const entries = snap.docs
       .map((d) => ({ uid: d.id, token: d.data().fcmToken, timezone: d.data().timezone }))
       .filter((e) => e.token && e.timezone)
-      .map((e) => ({ ...e, hour: localHour(e.timezone, now) }))
-      .filter((e) => e.hour === 9 || e.hour === 21);
+      .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }))
+      .filter((e) => e.hour === 9);
 
     if (!entries.length) return res.status(200).json({ sent: 0, total: snap.size, matched: 0 });
 
-    // Group by message (morning vs evening) then multicast each group.
-    const groups = { 9: [], 21: [] };
+    // One morning push per user: Sundays get the combined weekly check-in, other days the daily nudge.
+    const groups = { daily: [], weekly: [] };
     for (const e of entries) {
-      const key = e.hour >= 15 ? 21 : 9;
-      groups[key].push(e);
+      (e.day === "Sun" ? groups.weekly : groups.daily).push(e);
     }
 
     let sent = 0;
     const errors = [];
     const staleUids = [];
 
-    for (const [hourStr, group] of Object.entries(groups)) {
+    for (const [key, group] of Object.entries(groups)) {
       if (!group.length) continue;
-      const msg = MESSAGES[parseInt(hourStr, 10)];
+      const msg = key === "weekly" ? WEEKLY_MESSAGE : DAILY_MESSAGE;
       // FCM batch limit is 500 tokens per multicast call
       for (let i = 0; i < group.length; i += 500) {
         const chunk = group.slice(i, i + 500);
