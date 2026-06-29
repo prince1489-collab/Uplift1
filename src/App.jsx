@@ -1515,7 +1515,9 @@ export default function App() {
     if (tourScheduledRef.current) return;
     if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
     if (showWelcomeMoment || activeTab !== "feed") return;
-    if (profile.tourCompletedVersion === TOUR_VERSION) { tourScheduledRef.current = true; return; }
+    // Only auto-run for genuinely new users. Anyone who has completed any prior tour
+    // (tourCompletedAt set) or this version is never auto-toured again on sign-in.
+    if (profile.tourCompletedVersion === TOUR_VERSION || profile.tourCompletedAt) { tourScheduledRef.current = true; return; }
     tourScheduledRef.current = true;
     const t = setTimeout(() => setTourActive(true), 700);
     return () => clearTimeout(t);
@@ -1537,16 +1539,26 @@ export default function App() {
   // interferes with the user opening the menu manually.
   useEffect(() => { if (!tourActive) setMenuOpen(false); }, [tourActive]);
 
-  // Defensive: the very first time a signed-in user lands on the feed, force the ⋯ menu closed.
-  // Ref-guarded so it runs once and never blocks the user opening the menu themselves afterwards.
+  // Defensive: the very first time a signed-in user lands on the feed, force the ⋯ menu closed
+  // and arm a short "open lock" — any attempt to open the menu within the next ~2s (whatever the
+  // source) is ignored, guaranteeing the landing view is the feed. The user can still open the
+  // menu themselves a moment later. Ref-guarded so it only arms once per session.
   const menuLandingRef = useRef(false);
+  const menuOpenLockUntilRef = useRef(0);
   useEffect(() => {
     if (menuLandingRef.current) return;
     if (isRealSignedInUser && hasCompletedOnboarding && activeTab === "feed") {
       menuLandingRef.current = true;
+      menuOpenLockUntilRef.current = Date.now() + 2000;
       setMenuOpen(false);
     }
   }, [isRealSignedInUser, hasCompletedOnboarding, activeTab]);
+
+  // Guarded menu open/close — swallows an "open" that fires during the landing lock window.
+  const handleMenuOpenChange = useCallback((v) => {
+    if (v && Date.now() < menuOpenLockUntilRef.current) return;
+    setMenuOpen(v);
+  }, []);
 
   const tourSteps = useMemo(() => [
     {
@@ -2480,7 +2492,7 @@ export default function App() {
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
                       open={menuOpen}
-                      onOpenChange={setMenuOpen}
+                      onOpenChange={handleMenuOpenChange}
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => setShowUpgrade(true)}
