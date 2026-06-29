@@ -1539,24 +1539,27 @@ export default function App() {
   // interferes with the user opening the menu manually.
   useEffect(() => { if (!tourActive) setMenuOpen(false); }, [tourActive]);
 
-  // Defensive: the very first time a signed-in user lands on the feed, force the ⋯ menu closed
-  // and arm a short "open lock" — any attempt to open the menu within the next ~2s (whatever the
-  // source) is ignored, guaranteeing the landing view is the feed. The user can still open the
-  // menu themselves a moment later. Ref-guarded so it only arms once per session.
-  const menuLandingRef = useRef(false);
+  // Arm a menu "open lock" the moment auth completes — covers BOTH the Google and the
+  // email/password sign-in paths. While the lock is active (a few seconds after sign-in) OR
+  // while the guided tour is running, any attempt to open the ⋯ menu is ignored, so sign-in
+  // always lands on the feed. (A stray tap/ghost-click on the ⋯ button right after sign-in was
+  // popping the menu open; closing is always allowed, only opening is gated.)
   const menuOpenLockUntilRef = useRef(0);
+  const tourActiveRef = useRef(false);
+  tourActiveRef.current = tourActive;
+  const signedInLockRef = useRef(false);
   useEffect(() => {
-    if (menuLandingRef.current) return;
-    if (isRealSignedInUser && hasCompletedOnboarding && activeTab === "feed") {
-      menuLandingRef.current = true;
-      menuOpenLockUntilRef.current = Date.now() + 2000;
+    if (isRealSignedInUser && !signedInLockRef.current) {
+      signedInLockRef.current = true;
+      menuOpenLockUntilRef.current = Date.now() + 3000;
       setMenuOpen(false);
     }
-  }, [isRealSignedInUser, hasCompletedOnboarding, activeTab]);
+    if (!isRealSignedInUser) signedInLockRef.current = false;
+  }, [isRealSignedInUser]);
 
-  // Guarded menu open/close — swallows an "open" that fires during the landing lock window.
+  // Guarded menu open — swallows an "open" fired during the lock window or while the tour runs.
   const handleMenuOpenChange = useCallback((v) => {
-    if (v && Date.now() < menuOpenLockUntilRef.current) return;
+    if (v && (tourActiveRef.current || Date.now() < menuOpenLockUntilRef.current)) return;
     setMenuOpen(v);
   }, []);
 
