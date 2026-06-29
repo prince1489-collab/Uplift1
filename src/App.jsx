@@ -60,7 +60,7 @@ import {
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider, OAuthProvider, getAuth, onAuthStateChanged, signOut,
-  signInWithPopup, signInWithRedirect, getRedirectResult, sendSignInLinkToEmail,
+  signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult, sendSignInLinkToEmail,
   setPersistence, indexedDBLocalPersistence,
   isSignInWithEmailLink, signInWithEmailLink,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -1772,9 +1772,23 @@ export default function App() {
   };
 
   // Sign in with Apple — required by App Store Guideline 4.8 since we offer Google sign-in.
+  // Native iOS uses the real Apple sheet (ASAuthorization) via the Firebase Authentication
+  // Capacitor plugin, then signs the JS SDK in with the returned credential so onAuthStateChanged
+  // fires as usual. Web/dev falls back to the Firebase popup/redirect OAuth flow.
   const signInWithApple = async () => {
     setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
+      if (isNativeIOS()) {
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
+        const idToken = result?.credential?.idToken;
+        const rawNonce = result?.credential?.nonce;
+        if (!idToken) throw new Error("apple-no-credential");
+        const provider = new OAuthProvider("apple.com");
+        const credential = provider.credential({ idToken, rawNonce });
+        await signInWithCredential(auth, credential);
+        return;
+      }
       const appleProvider = new OAuthProvider("apple.com");
       appleProvider.addScope("email");
       appleProvider.addScope("name");
@@ -1786,7 +1800,7 @@ export default function App() {
         await signInWithRedirect(auth, appleProvider); return;
       }
       if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
-      else if (error?.code === "auth/cancelled-popup-request" || error?.code === "auth/user-cancelled") { /* user closed it */ }
+      else if (error?.code === "auth/user-cancelled" || error?.message === "apple-no-credential") { /* user cancelled */ }
       else setAuthError("Apple sign-in failed. Please try again.");
     } finally { setIsGoogleSigningIn(false); }
   };

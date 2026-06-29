@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
+    "@capacitor-firebase/authentication": "^7.5.0",
     "@capacitor-firebase/messaging": "^7.5.0",
     "@capacitor/app": "^7.1.2",
     "@capacitor/cli": "^7.6.7",
