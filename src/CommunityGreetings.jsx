@@ -571,14 +571,6 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                   <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0 mt-0.5">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
                   </span>
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleAdminRemove(g)}
-                      title="Remove greeting (admin)"
-                      className="text-amber-400 hover:text-red-500 transition-colors flex-shrink-0">
-                      <Trash2 size={12} />
-                    </button>
-                  )}
                 </div>
                 <span className="relative text-[9px] text-amber-700 font-semibold">⭐ Featured · by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
               </div>
