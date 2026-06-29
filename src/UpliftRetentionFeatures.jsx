@@ -627,6 +627,19 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
 
 const REACTION_EMOJIS = ["❤️"];
 
+// Throttle the like push-notification per message so rapid like/unlike/like (or double-taps)
+// can't spam the recipient. The Firestore reaction write still happens every time — only the
+// push is rate-limited. Keyed by messageId → last-notified timestamp (in-memory, per session).
+const LIKE_NOTIFY_COOLDOWN_MS = 60 * 1000;
+const lastLikeNotifyAt = new Map();
+function shouldNotifyLike(messageId) {
+  const now = Date.now();
+  const last = lastLikeNotifyAt.get(messageId) ?? 0;
+  if (now - last < LIKE_NOTIFY_COOLDOWN_MS) return false;
+  lastLikeNotifyAt.set(messageId, now);
+  return true;
+}
+
 // ── + button to open tray, per-emoji full-screen animation callbacks ──────────
 export function MessageReactions({ db, messageId, currentUser, onReact }) {
   const [reactions, setReactions] = useState({});
@@ -730,7 +743,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, localHearted = false }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -753,6 +766,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
 
   const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
+    if (senderUid && senderUid === currentUser.uid) return; // can't react to your own message
     const EMOJIS_ALL = ["❤️"];
     const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
     const isSame = currentEmoji === emoji;
@@ -813,9 +827,10 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
       } else {
+        const dup = uids.includes(currentUser.uid);
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+        tx.set(rRef, { count: dup ? uids.length : uids.length + 1, uids: dup ? uids : [...uids, currentUser.uid], countries, reactedAt });
       }
     }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
 
@@ -835,8 +850,9 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
           emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
-        // Push notification to message owner (best-effort)
-        if (emoji === "❤️") {
+        // Push notification to message owner (best-effort; throttled per message so rapid
+        // like/unlike/like can't spam the recipient).
+        if (emoji === "❤️" && shouldNotifyLike(messageId)) {
           fetch("/api/notify-like", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -854,9 +870,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         }).then(async () => {
           try {
             const cutoff = reactedAt - RIPPLE_WINDOW_MS;
-            // Read own profile for lastGreetingAt — avoids a composite index on publicMessages.
-            const myProfileSnap = await getDoc(doc(db, "users", currentUser.uid));
-            const lastGreetingAt = myProfileSnap.data()?.lastGreetingAt ?? 0;
+            // lastGreetingAt is passed in from the cached profile — avoids a per-like profile read.
             if (lastGreetingAt >= cutoff) {
               // Reactor already sent within the window — credit the ripple now.
               await Promise.all([
@@ -1786,6 +1800,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
 
   const handleEmoji = (emoji) => {
     if (!db || !currentUser || !messageId) return;
+    if (senderUid && senderUid === currentUser.uid) { onClose?.(); return; } // can't react to your own message
     const isSame = myEmoji === emoji;
     const prevEmoji = myEmoji;
 
@@ -1829,9 +1844,10 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         delete reactedAt[currentUser.uid];
         tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
       } else {
+        const dup = uids.includes(currentUser.uid);
         countries[currentUser.uid] = myCountry;
         reactedAt[currentUser.uid] = Date.now();
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+        tx.set(rRef, { count: dup ? uids.length : uids.length + 1, uids: dup ? uids : [...uids, currentUser.uid], countries, reactedAt });
       }
     }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
 
@@ -1849,8 +1865,9 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           emoji, country: myCountry, reactorName: myName, reactedAt,
         }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
-        // Push notification to message owner (best-effort)
-        if (emoji === "❤️") {
+        // Push notification to message owner (best-effort; throttled per message so rapid
+        // like/unlike/like can't spam the recipient).
+        if (emoji === "❤️" && shouldNotifyLike(messageId)) {
           fetch("/api/notify-like", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

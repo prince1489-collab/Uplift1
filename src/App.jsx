@@ -1532,6 +1532,11 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Safety net: whenever the tour deactivates, force the ⋯ menu closed so a tour can never
+  // strand the user on an open menu. Fires only on the tourActive transition, so it never
+  // interferes with the user opening the menu manually.
+  useEffect(() => { if (!tourActive) setMenuOpen(false); }, [tourActive]);
+
   const tourSteps = useMemo(() => [
     {
       key: "send",
@@ -1589,50 +1594,9 @@ export default function App() {
       key: "menu-intro",
       target: '[data-tour="menu"]',
       title: "There's more in here",
-      body: "Tap ⋯ anytime for everything else — let's take a quick look.",
+      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing Score, Circles and Support.",
+      // Never opens the menu — keeping the tour off the live menu state guarantees you land on the feed.
       before: () => { setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
-    },
-    {
-      key: "menu-world",
-      target: '[data-tour="m-world"]',
-      title: "🌍 World Map",
-      body: "Watch kindness light up across the globe in real time.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-world"]')?.scrollIntoView({ block: "center" }), 80); },
-    },
-    {
-      key: "menu-profile",
-      target: '[data-tour="m-profile"]',
-      title: "Person behind the Kindness",
-      body: "Your profile, sparks and level — and the little 'glimpse' others see.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-profile"]')?.scrollIntoView({ block: "center" }), 80); },
-    },
-    {
-      key: "menu-journal",
-      target: '[data-tour="m-journal"]',
-      title: "📓 Journal",
-      body: "Log what you're grateful for and acts of kindness — and build a streak.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-journal"]')?.scrollIntoView({ block: "center" }), 80); },
-    },
-    {
-      key: "menu-wellbeing",
-      target: '[data-tour="m-wellbeing"]',
-      title: "📊 Wellbeing Score",
-      body: "Check in weekly and watch your wellbeing trend as you use the app.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-wellbeing"]')?.scrollIntoView({ block: "center" }), 80); },
-    },
-    {
-      key: "menu-circles",
-      target: '[data-tour="m-circles"]',
-      title: "👥 Circles",
-      body: "Create private kindness groups with the people who matter to you.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-circles"]')?.scrollIntoView({ block: "center" }), 80); },
-    },
-    {
-      key: "menu-support",
-      target: '[data-tour="m-support"]',
-      title: "💚 Support",
-      body: "A wellbeing check-in and crisis resources, whenever you need them.",
-      before: () => { setMenuOpen(true); setTimeout(() => document.querySelector('[data-tour="m-support"]')?.scrollIntoView({ block: "center" }), 80); },
     },
     {
       key: "journey",
@@ -2947,7 +2911,7 @@ export default function App() {
                                             </div>
                                           );
                                         })()}
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} reactorName={profile?.fullName} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
