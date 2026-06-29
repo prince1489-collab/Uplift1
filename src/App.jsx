@@ -2786,14 +2786,14 @@ export default function App() {
                   return (
                     <React.Fragment key={firstId}>
                     {group.showDaySep && (
-                      <div data-daylabel={group.dayLabel} className="flex items-center gap-3 my-3 select-none pointer-events-none">
+                      <div data-daylabel={group.dayLabel} className="flex items-center gap-3 my-1.5 select-none pointer-events-none">
                         <div className="flex-1 h-px bg-slate-200" />
                         <span className="text-[11px] font-medium text-slate-400 px-1">{group.dayLabel}</span>
                         <div className="flex-1 h-px bg-slate-200" />
                       </div>
                     )}
                     <MessageSlideIn mine={mine} isNew={isNewGroup}>
-                      <div className="mb-2">
+                      <div className="mb-0.5">
                         <div className="w-full group">
                           <div className="flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400">
                             <span className="flex items-center gap-1">
@@ -2833,7 +2833,7 @@ export default function App() {
                                 const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} data-msg-id={m.id} className="relative pb-1.5">
+                                  <div key={m.id} data-msg-id={m.id} className="relative pb-0.5">
                                     {/* WhatsApp-style reaction bar — floats above bubble on long press */}
                                     {reactionBarId === m.id && (
                                       <>
