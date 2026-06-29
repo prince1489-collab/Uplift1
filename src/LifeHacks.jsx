@@ -25,6 +25,14 @@ const CURRENCY_CONVERT = {
   CA: { symbol: "CA$",  rate: 1.73 },
   IN: { symbol: "₹",   rate: 106  },
   EU: { symbol: "€",   rate: 1.18 },
+  CH: { symbol: "CHF ", rate: 1.13 },
+  NZ: { symbol: "NZ$",  rate: 2.15 },
+  SG: { symbol: "S$",   rate: 1.71 },
+  HK: { symbol: "HK$",  rate: 9.9  },
+  JP: { symbol: "¥",   rate: 190  },
+  KR: { symbol: "₩",   rate: 1700 },
+  TW: { symbol: "NT$",  rate: 41   },
+  IL: { symbol: "₪",   rate: 4.7  },
 };
 
 function localiseHackText(text, userRegion) {
