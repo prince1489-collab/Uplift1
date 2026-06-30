@@ -990,6 +990,14 @@ export default function App() {
       return (bubbleTop - feedTop) < 120; // ~bar height + gap
     } catch { return false; }
   };
+  // Suppress the native text-selection toolbar (Copy / Share / Select all) on message bubbles —
+  // long-press should only open our reaction bar. CSS user-select:none isn't enough on some
+  // Android browsers, so also cancel the selection at its source.
+  useEffect(() => {
+    const prevent = (e) => { if (e.target?.closest?.(".seen-noselect")) e.preventDefault(); };
+    document.addEventListener("selectstart", prevent);
+    return () => document.removeEventListener("selectstart", prevent);
+  }, []);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
@@ -2920,7 +2928,7 @@ export default function App() {
                                     {/* Bubble — tap for timestamp, long-press for reaction bar */}
                                     <div
                                       data-tour={(!mine && reactionBarId === m.id) ? "connect" : undefined}
-                                      className="relative select-none"
+                                      className="relative select-none seen-noselect"
                                       onContextMenu={(e) => e.preventDefault()}
                                       onMouseDown={(e) => {
                                         longPressTriggered.current = false;

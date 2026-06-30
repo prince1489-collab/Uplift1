@@ -286,8 +286,12 @@ body {
 
 /* Overlay backdrop that closes the bar on outside tap */
 /* Prevent native text-selection menu on message bubbles */
-.select-none {
+.select-none,
+.seen-noselect,
+.seen-noselect * {
   -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
