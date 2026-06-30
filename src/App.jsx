@@ -977,9 +977,19 @@ export default function App() {
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [reactionBarId, setReactionBarId] = useState(null);
+  const [reactionBarFlip, setReactionBarFlip] = useState(false); // render bar below bubble when no room above (top of feed)
   const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
   const longPressTimer = useRef(null);
   const longPressTriggered = useRef(false);
+  // Decide whether the long-press reaction bar should flip below the bubble — it normally floats
+  // above, but for the newest message (top of the feed) there isn't room and it gets clipped.
+  const computeReactionFlip = (el) => {
+    try {
+      const feedTop = feedRef.current?.getBoundingClientRect().top ?? 0;
+      const bubbleTop = el?.getBoundingClientRect().top ?? 9999;
+      return (bubbleTop - feedTop) < 120; // ~bar height + gap
+    } catch { return false; }
+  };
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
@@ -2888,7 +2898,7 @@ export default function App() {
                                       <>
                                         <div className="seen-qrb-backdrop" onClick={(e) => { e.stopPropagation(); setReactionBarId(null); }} />
                                         <div className={`absolute z-30 ${mine ? "right-0" : "left-0"}`}
-                                          style={{ bottom: "calc(100% + 8px)" }}>
+                                          style={reactionBarFlip ? { top: "calc(100% + 8px)" } : { bottom: "calc(100% + 8px)" }}>
                                           <QuickReactBar
                                             db={db} messageId={m.id} senderUid={m.uid} senderName={group.sender}
                                             currentUser={currentUser} profile={profile} mine={mine} isPremium={isPremium}
@@ -2912,10 +2922,12 @@ export default function App() {
                                       data-tour={(!mine && reactionBarId === m.id) ? "connect" : undefined}
                                       className="relative select-none"
                                       onContextMenu={(e) => e.preventDefault()}
-                                      onMouseDown={() => {
+                                      onMouseDown={(e) => {
                                         longPressTriggered.current = false;
+                                        const el = e.currentTarget;
                                         longPressTimer.current = setTimeout(() => {
                                           longPressTriggered.current = true;
+                                          setReactionBarFlip(computeReactionFlip(el));
                                           setReactionBarId(m.id);
                                           setActiveMessageId(null);
                                           haptic([6, 30, 6]);
@@ -2924,8 +2936,9 @@ export default function App() {
                                       onMouseUp={() => clearTimeout(longPressTimer.current)}
                                       onMouseLeave={() => { clearTimeout(longPressTimer.current); longPressTriggered.current = false; }}
                                       onTouchStart={(e) => {
-                                        const touch = e.touches[0];
+                                        const el = e.currentTarget;
                                         longPressTimer.current = setTimeout(() => {
+                                          setReactionBarFlip(computeReactionFlip(el));
                                           setReactionBarId(m.id);
                                           setActiveMessageId(null);
                                           haptic([6, 30, 6]);
