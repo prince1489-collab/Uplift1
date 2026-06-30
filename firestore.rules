@@ -81,9 +81,16 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
-      // Wellbeing check-ins — private to the owner only
+      // Wellbeing check-ins — private to the owner only. Create validates the WHO-5 shape
+      // (raw score 0–25) so stored data stays exportable for research/efficacy claims.
       match /wellbeing/{id} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+            && request.resource.data.scores is map
+            && request.resource.data.who5Raw is number
+            && request.resource.data.who5Raw >= 0
+            && request.resource.data.who5Raw <= 25;
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
       }
     }
 

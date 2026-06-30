@@ -10,12 +10,18 @@ function initAdmin() {
 
 const APP_URL = "https://www.seenapp.app";
 
-// One morning push per day. On Sundays we replace the daily kindness nudge with a
-// combined weekly check-in (vote community greetings + journal + update wellbeing).
+// One morning push per day. On Sundays we replace the daily kindness nudge with a combined
+// weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
+// prompt the wellbeing part on ALTERNATE Sundays — nudging it weekly would ask for a check-in
+// that isn't due yet. Off-weeks keep the community-vote + journal prompts.
 const DAILY_MESSAGE  = { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." };
-const WEEKLY_MESSAGE = {
-  title: "Your weekly check-in 🌱",
+const WEEKLY_MESSAGE_WELLBEING = {
+  title: "Your fortnightly check-in 🌱",
   body: "Vote for this week's community greetings, add a journal note, and update your Wellbeing score.",
+};
+const WEEKLY_MESSAGE_LITE = {
+  title: "Your weekly check-in 🌱",
+  body: "Vote for this week's community greetings and add a journal note.",
 };
 
 function localHour(timezone, now) {
@@ -57,6 +63,8 @@ export default async function handler(req, res) {
     if (!entries.length) return res.status(200).json({ sent: 0, total: snap.size, matched: 0 });
 
     // One morning push per user: Sundays get the combined weekly check-in, other days the daily nudge.
+    // Fortnightly parity (UTC week index) decides whether this Sunday includes the wellbeing prompt.
+    const wellbeingWeek = Math.floor(now.getTime() / (7 * 24 * 60 * 60 * 1000)) % 2 === 0;
     const groups = { daily: [], weekly: [] };
     for (const e of entries) {
       (e.day === "Sun" ? groups.weekly : groups.daily).push(e);
@@ -68,7 +76,7 @@ export default async function handler(req, res) {
 
     for (const [key, group] of Object.entries(groups)) {
       if (!group.length) continue;
-      const msg = key === "weekly" ? WEEKLY_MESSAGE : DAILY_MESSAGE;
+      const msg = key === "weekly" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : DAILY_MESSAGE;
       // FCM batch limit is 500 tokens per multicast call
       for (let i = 0; i < group.length; i += 500) {
         const chunk = group.slice(i, i + 500);

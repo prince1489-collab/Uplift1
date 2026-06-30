@@ -417,7 +417,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
         <JournalPanel db={db} currentUser={currentUser} onClose={() => setShowJournal(false)} />
       )}
       {showWellbeing && (
-        <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} />
+        <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} onSupport={() => { setShowWellbeing(false); onSupport(); }} />
       )}
     </>
   );
@@ -2475,7 +2475,7 @@ export default function App() {
                       <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md"><Sparkles size={24} /></div>
                     </div>
                     <h1 className="font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em] text-slate-800">A quick wellbeing check-in</h1>
-                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">This sets your baseline. We'll check in weekly so you can see how you're doing over time.</p>
+                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">A quick, validated check-in (it asks about the past two weeks). This sets your baseline — we'll check in every couple of weeks so you can see how you're doing over time.</p>
                     <WellbeingCheckin
                       submitLabel="Finish & enter Seen"
                       onComplete={async (scores) => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails, wellbeing: scores }); }}
