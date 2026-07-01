@@ -19,6 +19,8 @@ workflows:
       # Signing is done explicitly in the "Set up code signing" step below (fetch-signing-files
       # --create), which creates the certificate + App Store profile for a fresh App ID. Using the
       # ios_signing shorthand here did NOT auto-create them ("No matching profiles found").
+      groups:
+        - ios_signing   # Codemagic env-var group holding the (secure) IOS_DIST_CERT_KEY for cert reuse
       vars:
         BUNDLE_ID: "app.seenapp.ios"
         APP_STORE_APPLE_ID: "6786136562"   # App Store Connect numeric Apple ID of the "Seen" app record
