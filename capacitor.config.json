@@ -1,0 +1,13 @@
+{
+  "appId": "app.seenapp.ios",
+  "appName": "Seen",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "always"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["alert", "sound", "badge"]
+    }
+  }
+}
