@@ -41,6 +41,12 @@ const already = Object.keys(refs).some(
 if (already) {
   console.log("[inject-google-plist] plist already referenced — nothing to do.");
 } else {
+  // The xcode lib's addResourceFile() calls correctForResourcesPath(), which crashes with
+  // "Cannot read properties of null (reading 'path')" when the project has no PBXGroup named
+  // "Resources" — Capacitor projects don't have one. Create an empty one so the lookup succeeds.
+  if (!proj.pbxGroupByName("Resources")) {
+    proj.addPbxGroup([], "Resources", "Resources");
+  }
   const groupKey = proj.findPBXGroupKey({ name: "App" }); // Capacitor app-sources group (maps to ios/App/App)
   proj.addResourceFile(
     "GoogleService-Info.plist",
