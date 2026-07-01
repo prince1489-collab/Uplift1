@@ -21,7 +21,7 @@ workflows:
         bundle_identifier: app.seenapp.ios
       vars:
         BUNDLE_ID: "app.seenapp.ios"
-        APP_STORE_APPLE_ID: ""             # <-- App Store Connect numeric Apple ID of the app record
+        APP_STORE_APPLE_ID: "6786136562"   # App Store Connect numeric Apple ID of the "Seen" app record
       node: 20
       xcode: latest
       cocoapods: default
