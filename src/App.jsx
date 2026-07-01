@@ -994,7 +994,13 @@ export default function App() {
   // long-press should only open our reaction bar. CSS user-select:none isn't enough on some
   // Android browsers, so also cancel the selection at its source.
   useEffect(() => {
-    const prevent = (e) => { if (e.target?.closest?.(".seen-noselect")) e.preventDefault(); };
+    const prevent = (e) => {
+      const t = e.target;
+      const el = t && t.nodeType === 3 ? t.parentElement : t; // text node → its element
+      // Allow selection only inside real input fields; block it everywhere else (native-app feel).
+      if (el?.closest?.("input, textarea, [contenteditable='true'], [contenteditable='']")) return;
+      e.preventDefault();
+    };
     document.addEventListener("selectstart", prevent);
     return () => document.removeEventListener("selectstart", prevent);
   }, []);
