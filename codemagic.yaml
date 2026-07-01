@@ -59,6 +59,12 @@ workflows:
             --create
           keychain add-certificates
           xcode-project use-profiles
+      - name: Set a unique, incrementing build number
+        script: |
+          # App Store Connect rejects a CFBundleVersion that isn't higher than a previously uploaded
+          # one. Codemagic's $BUILD_NUMBER auto-increments per build, so use it as the iOS build number.
+          cd ios/App
+          agvtool new-version -all "${BUILD_NUMBER:-$(date +%s)}"
       - name: Build & archive IPA
         script: |
           xcode-project build-ipa \
