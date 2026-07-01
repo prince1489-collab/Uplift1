@@ -2889,7 +2889,7 @@ export default function App() {
                               ) : (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null }); }}
-                                  className="font-semibold text-slate-500 underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-teal-600 active:text-teal-700 transition-colors">
+                                  className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
                                   {group.sender}
                                 </button>
                               )}
