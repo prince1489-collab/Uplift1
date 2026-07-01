@@ -59,7 +59,7 @@ import {
 
 import { initializeApp } from "firebase/app";
 import {
-  GoogleAuthProvider, OAuthProvider, getAuth, onAuthStateChanged, signOut,
+  GoogleAuthProvider, OAuthProvider, getAuth, initializeAuth, onAuthStateChanged, signOut,
   signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult, sendSignInLinkToEmail,
   setPersistence, indexedDBLocalPersistence,
   isSignInWithEmailLink, signInWithEmailLink,
@@ -92,10 +92,18 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// On native iOS (Capacitor WKWebView) initialise auth WITHOUT the web popup/redirect resolver:
+// getAuth + getRedirectResult force Firebase to load a cross-origin auth iframe from authDomain, which
+// can't load in the native webview and stalls auth init — so onAuthStateChanged never fires and the app
+// hangs on the loading spinner. Native sign-in uses signInWithCredential, which doesn't need the resolver.
+// On web keep getAuth (+ setPersistence) so the PWA/TWA popup→redirect flow still works.
+const auth = isNativeIOS()
+  ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+  : getAuth(app);
 // Keep the session in IndexedDB — survives best in installed/standalone PWAs (TWA, home-screen),
 // so a returning user is restored on launch instead of seeing the sign-in screen again.
-setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
+// (initializeAuth already sets persistence natively, so only the web branch needs this.)
+if (!isNativeIOS()) setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
@@ -1454,7 +1462,13 @@ export default function App() {
 
     // Consume any pending Google redirect sign-in so the session is established on load
     // (the installed-app fallback uses signInWithRedirect). onAuthStateChanged then fires with the user.
-    getRedirectResult(auth).catch(() => {});
+    // Skip on native iOS: there's no web redirect to consume there (native uses signInWithCredential),
+    // and calling it forces the web redirect resolver/iframe that hangs in the WKWebView.
+    if (!isNativeIOS()) getRedirectResult(auth).catch(() => {});
+
+    // Failsafe: if auth init ever stalls (e.g. a webview quirk) and onAuthStateChanged never fires,
+    // don't trap the user on an infinite loading spinner — degrade to the sign-in screen after 6s.
+    const authFailsafe = setTimeout(() => setIsAuthLoading(false), 6000);
 
     const subscribeProfile = (user) => {
       const onboardedKey = "seen_onboarded_" + user.uid;
@@ -1495,6 +1509,7 @@ export default function App() {
     };
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      clearTimeout(authFailsafe);
       if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       attempts = 0;
@@ -1510,6 +1525,7 @@ export default function App() {
       subscribeProfile(user);
     });
     return () => {
+      clearTimeout(authFailsafe);
       if (unsubscribeProfile) unsubscribeProfile();
       if (retryTimer) clearTimeout(retryTimer);
       unsubscribeAuth();
