@@ -305,6 +305,7 @@ export function AddToCircleButton({ db, currentUser, targetUid, targetName, isPr
 
 function CircleInviteInbox({ db, currentUser, onClose }) {
   const [invites, setInvites] = useState([]);
+  const [joinError, setJoinError] = useState("");
 
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -320,14 +321,16 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
 
   const handleAccept = async (inv) => {
     if (!db) return;
+    setJoinError("");
     try {
-      // FIX: write to top-level circles collection, not the owner's subcollection
+      // Write to top-level circles collection (rules let an invitee add only themselves).
       await updateDoc(doc(db, "circles", inv.circleId), {
         members: arrayUnion(currentUser.uid),
       });
       await updateDoc(doc(db, "circleInvites", inv.id), { status: "accepted" });
     } catch (err) {
       console.error("Failed to accept circle invite:", err);
+      setJoinError("Couldn't join — please try again.");
     }
   };
 
@@ -344,6 +347,9 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
         <h2 className="text-sm font-bold text-slate-800">Circle Invites</h2>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {joinError && (
+          <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{joinError}</p>
+        )}
         {invites.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-20 gap-3 text-center">
             <Users size={40} className="text-slate-200" />
