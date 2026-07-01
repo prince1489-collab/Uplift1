@@ -48,9 +48,12 @@ workflows:
       - name: Set up code signing (create cert + profile via App Store Connect API key)
         script: |
           keychain initialize
-          # Creates the iOS Distribution certificate + App Store provisioning profile for the
-          # bundle id if they don't exist yet (uses the CodemagicASCKey integration). This is the
-          # fix for "No matching profiles found for bundle identifier ... app_store".
+          # A brand-new App ID has no iOS Distribution certificate, and fetch-signing-files cannot
+          # create one on its own ("Cannot save Signing Certificates without certificate private
+          # key"). So create the distribution certificate first — this generates a new private key
+          # and saves the .p12 locally. (|| true so re-runs don't fail when a cert already exists.)
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save || true
+          # Now build/reuse the App Store provisioning profile (pairs the cert saved above).
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
