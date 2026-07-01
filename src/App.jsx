@@ -3166,7 +3166,9 @@ export default function App() {
             )}
 
             {/* ── First-time guided spotlight tour ── */}
-            {tourActive && <TourGuide steps={tourSteps} onDone={finishTour} />}
+            {/* Never render over the post-onboarding "Let's go" welcome overlay — otherwise the
+                tour spotlight targets feed elements that are hidden behind it (out of sync). */}
+            {tourActive && !showWelcomeMoment && <TourGuide steps={tourSteps} onDone={finishTour} />}
 
             {/* ── Admin: confirm clear-feed modal ── */}
             {adminConfirm && (
