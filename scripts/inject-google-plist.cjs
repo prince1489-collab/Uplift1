@@ -13,8 +13,11 @@ const path = require("path");
 
 const SRC = "ios-config/GoogleService-Info.plist";
 const APP_DIR = "ios/App/App";
-const DEST = path.join(APP_DIR, "GoogleService-Info.plist");
 const PROJ = "ios/App/App.xcodeproj/project.pbxproj";
+// The pbxproj file reference (added below) resolves relative to the group it lands in — observed to
+// be ios/App/GoogleService-Info.plist. Copy the plist to BOTH the conventional App source folder and
+// the project root so the build finds it wherever the reference points (bulletproof).
+const DESTS = ["ios/App/App/GoogleService-Info.plist", "ios/App/GoogleService-Info.plist"];
 
 if (!fs.existsSync(SRC)) {
   console.error(`[inject-google-plist] missing ${SRC}`);
@@ -25,8 +28,10 @@ if (!fs.existsSync(APP_DIR)) {
   process.exit(1);
 }
 
-fs.copyFileSync(SRC, DEST);
-console.log(`[inject-google-plist] copied plist → ${DEST}`);
+for (const dest of DESTS) {
+  fs.copyFileSync(SRC, dest);
+  console.log(`[inject-google-plist] copied plist → ${dest}`);
+}
 
 const xcode = require("xcode");
 const proj = xcode.project(PROJ);
