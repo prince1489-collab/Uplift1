@@ -16,9 +16,9 @@ workflows:
     integrations:
       app_store_connect: CodemagicASCKey   # <-- name of your App Store Connect API key integration
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: app.seenapp.ios
+      # Signing is done explicitly in the "Set up code signing" step below (fetch-signing-files
+      # --create), which creates the certificate + App Store profile for a fresh App ID. Using the
+      # ios_signing shorthand here did NOT auto-create them ("No matching profiles found").
       vars:
         BUNDLE_ID: "app.seenapp.ios"
         APP_STORE_APPLE_ID: "6786136562"   # App Store Connect numeric Apple ID of the "Seen" app record
@@ -45,8 +45,16 @@ workflows:
           # Expands assets/icon.png (+ optional assets/splash*.png) into the iOS asset catalog.
           # Non-fatal: a missing/low-res source just falls back to the default icon.
           if [ -f "assets/icon.png" ]; then npx @capacitor/assets generate --ios || true; fi
-      - name: Set up code signing (automatic, via App Store Connect API key)
+      - name: Set up code signing (create cert + profile via App Store Connect API key)
         script: |
+          keychain initialize
+          # Creates the iOS Distribution certificate + App Store provisioning profile for the
+          # bundle id if they don't exist yet (uses the CodemagicASCKey integration). This is the
+          # fix for "No matching profiles found for bundle identifier ... app_store".
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
       - name: Build & archive IPA
         script: |
