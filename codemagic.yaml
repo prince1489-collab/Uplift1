@@ -48,14 +48,14 @@ workflows:
       - name: Set up code signing (create cert + profile via App Store Connect API key)
         script: |
           keychain initialize
-          # A brand-new App ID has no iOS Distribution certificate, and fetch-signing-files cannot
-          # create one on its own ("Cannot save Signing Certificates without certificate private
-          # key"). So create the distribution certificate first — this generates a new private key
-          # and saves the .p12 locally. (|| true so re-runs don't fail when a cert already exists.)
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save || true
-          # Now build/reuse the App Store provisioning profile (pairs the cert saved above).
+          # A brand-new App ID has no iOS Distribution certificate, and the App Store Connect CLI
+          # cannot create one without a private key ("Cannot create resource without certificate
+          # private key"). Generate an RSA key, then let fetch-signing-files create the distribution
+          # certificate (from that key) AND the App Store provisioning profile in one step.
+          openssl genrsa -out /tmp/cert_key.pem 2048
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --certificate-key @file:/tmp/cert_key.pem \
             --create
           keychain add-certificates
           xcode-project use-profiles
