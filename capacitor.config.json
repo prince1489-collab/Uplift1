@@ -8,6 +8,10 @@
   "plugins": {
     "PushNotifications": {
       "presentationOptions": ["alert", "sound", "badge"]
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": ["google.com", "apple.com"]
     }
   }
 }

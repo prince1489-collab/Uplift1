@@ -61,3 +61,42 @@ if (already) {
   fs.writeFileSync(PROJ, proj.writeSync());
   console.log("[inject-google-plist] registered plist in the Xcode project (App target resources).");
 }
+
+// ── Entitlements: push (aps-environment) + Sign in with Apple ──────────────────────
+// The App ID (and provisioning profile) enable Push Notifications and Sign in with Apple, so the
+// app binary must declare the matching entitlements — otherwise push won't deliver on iOS and the
+// native Apple sheet errors. Write App.entitlements and point CODE_SIGN_ENTITLEMENTS at it (App
+// target build configs only, so the Pods project is untouched).
+const ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>aps-environment</key>
+\t<string>production</string>
+\t<key>com.apple.developer.applesignin</key>
+\t<array>
+\t\t<string>Default</string>
+\t</array>
+</dict>
+</plist>
+`;
+fs.writeFileSync(path.join(APP_DIR, "App.entitlements"), ENTITLEMENTS);
+console.log("[inject-google-plist] wrote App.entitlements (push + Sign in with Apple).");
+
+// Set CODE_SIGN_ENTITLEMENTS on the App target's build configurations only.
+const proj2 = xcode.project(PROJ);
+proj2.parseSync();
+const firstTarget = proj2.getFirstTarget().firstTarget; // { buildConfigurationList, ... }
+const cfgListKey = firstTarget.buildConfigurationList;
+const cfgList = proj2.hash.project.objects.XCConfigurationList[cfgListKey];
+const buildCfgs = proj2.hash.project.objects.XCBuildConfiguration;
+let patched = 0;
+for (const ref of cfgList.buildConfigurations) {
+  const cfg = buildCfgs[ref.value];
+  if (cfg && cfg.buildSettings) {
+    cfg.buildSettings.CODE_SIGN_ENTITLEMENTS = '"App/App.entitlements"';
+    patched++;
+  }
+}
+fs.writeFileSync(PROJ, proj2.writeSync());
+console.log(`[inject-google-plist] set CODE_SIGN_ENTITLEMENTS on ${patched} App build config(s).`);

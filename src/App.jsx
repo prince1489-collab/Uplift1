@@ -1784,12 +1784,26 @@ export default function App() {
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
+      // Native iOS: Google blocks its OAuth flow inside app web-views, so use the real native
+      // Google sheet via the Firebase Authentication Capacitor plugin, then sign the JS SDK in
+      // with the returned credential. Web/dev uses the Firebase popup/redirect flow.
+      if (isNativeIOS()) {
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        const idToken = result?.credential?.idToken;
+        const accessToken = result?.credential?.accessToken;
+        if (!idToken && !accessToken) throw new Error("google-no-credential");
+        const credential = GoogleAuthProvider.credential(idToken, accessToken);
+        await signInWithCredential(auth, credential);
+        return;
+      }
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+      if (error?.message === "google-no-credential" || error?.code === "auth/user-cancelled") { /* user cancelled */ }
+      else if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
         await signInWithRedirect(auth, googleProvider); return;
       }
-      if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
+      else if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
       else if (error?.code === "auth/operation-not-allowed") setAuthError("Google sign-in is not enabled.");
       else setAuthError("Google sign-in failed. Please try again.");
     } finally { setIsGoogleSigningIn(false); }

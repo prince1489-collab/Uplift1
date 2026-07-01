@@ -33,13 +33,36 @@ workflows:
       - name: Add iOS platform if missing, then sync
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
+          # Enable the GoogleSignIn pod for @capacitor-firebase/authentication so native Google
+          # sign-in works on iOS (Google blocks its OAuth flow inside app web-views). Must be set
+          # before pod install (which cap sync runs).
+          PODFILE=ios/App/Podfile
+          if ! grep -q "FirebaseAuthenticationGoogleAuthEnabled" "$PODFILE"; then
+            { echo '$FirebaseAuthenticationGoogleAuthEnabled = true'; cat "$PODFILE"; } > "$PODFILE.tmp" && mv "$PODFILE.tmp" "$PODFILE"
+          fi
           npx cap sync ios
-      - name: Inject GoogleService-Info.plist into the iOS project
+      - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
-          # Copies the committed plist into ios/App/App/ and registers it in the Xcode project
-          # so the native Firebase SDK (push + auth) initialises. See scripts/inject-google-plist.cjs.
+          # Copies the committed plist into ios/App/App/, registers it in the Xcode project, and adds
+          # the push + Sign in with Apple entitlements. See scripts/inject-google-plist.cjs.
           npm i xcode --no-save
           node scripts/inject-google-plist.cjs
+      - name: Configure Info.plist (Google URL scheme, push, export compliance)
+        script: |
+          PLIST=ios/App/App/Info.plist
+          PB=/usr/libexec/PlistBuddy
+          # Export compliance: app uses only standard HTTPS encryption (removes the TestFlight prompt).
+          $PB -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || $PB -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
+          # Background mode so push can wake the app.
+          $PB -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
+          ($PB -c "Print :UIBackgroundModes" "$PLIST" 2>/dev/null | grep -q remote-notification) || $PB -c "Add :UIBackgroundModes: string remote-notification" "$PLIST"
+          # Google sign-in callback URL scheme (REVERSED_CLIENT_ID from GoogleService-Info.plist).
+          REV="com.googleusercontent.apps.821891105119-f979aesocj9dc2edl9f5ci14d0tsjce7"
+          $PB -c "Add :CFBundleURLTypes array" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :CFBundleURLTypes:0 dict" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REV" "$PLIST" 2>/dev/null || $PB -c "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 $REV" "$PLIST"
+          echo "Info.plist configured."
       - name: Generate app icon & splash from assets/ (non-fatal)
         script: |
           # Expands assets/icon.png (+ optional assets/splash*.png) into the iOS asset catalog.
@@ -48,11 +71,17 @@ workflows:
       - name: Set up code signing (create cert + profile via App Store Connect API key)
         script: |
           keychain initialize
-          # A brand-new App ID has no iOS Distribution certificate, and the App Store Connect CLI
-          # cannot create one without a private key ("Cannot create resource without certificate
-          # private key"). Generate an RSA key, then let fetch-signing-files create the distribution
-          # certificate (from that key) AND the App Store provisioning profile in one step.
-          openssl genrsa -out /tmp/cert_key.pem 2048
+          # Distribution certificate private key. If IOS_DIST_CERT_KEY (base64 of an RSA PEM) is set
+          # as an encrypted env var, reuse it every build so ONE certificate is created and reused
+          # (Apple caps distribution certs at 2). Otherwise fall back to an ephemeral key (which
+          # creates a new certificate each build — fine short-term, but revoke + set the env var).
+          if [ -n "$IOS_DIST_CERT_KEY" ]; then
+            echo "$IOS_DIST_CERT_KEY" | base64 --decode > /tmp/cert_key.pem
+            echo "Using persistent distribution key (certificate is reused)."
+          else
+            openssl genrsa -out /tmp/cert_key.pem 2048
+            echo "NOTE: IOS_DIST_CERT_KEY not set — created an ephemeral key (new cert this build)."
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key @file:/tmp/cert_key.pem \
