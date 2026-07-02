@@ -19,7 +19,7 @@ export const APPROVAL_REWARD = 50;          // author earns on approval
 export const AUTHOR_SEND_BONUS = 2;         // author earns each time it's sent (self-sends excluded)
 export const REPORT_THRESHOLD = 3;          // auto-hide approved greeting once flagged this many times
 export const MIN_LEN = 10;
-export const MAX_LEN = 40;   // keep greetings to one line in the leaderboard
+export const MAX_LEN = 80;   // fits ~3 compact lines in the leaderboard rows
 export const DAILY_SUBMISSION_LIMIT = 5;
 // ── Weekly champions ──
 export const CHAMPION_COUNT = 5;                          // top-N promoted each week
@@ -567,7 +567,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                 <span aria-hidden className="absolute inset-0 pointer-events-none"
                   style={{ background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.65) 50%, transparent 65%)", animation: "seenShimmer 3.2s ease-in-out infinite" }} />
                 <div className="relative flex items-start gap-2">
-                  <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug flex-1 min-w-0">{g.text}</p>
+                  <p className="text-[13px] font-semibold text-slate-800 line-clamp-3 leading-snug flex-1 min-w-0">{g.text}</p>
                   <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1 flex-shrink-0 mt-0.5">
                     <ThumbsUp size={10} /> {g.upvotes ?? 0}
                   </span>
@@ -605,7 +605,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
                       {rank + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-slate-800 line-clamp-2 leading-snug">{g.text}</p>
+                      <p className="text-[13px] font-semibold text-slate-800 line-clamp-3 leading-snug">{g.text}</p>
                       <span className="text-[9px] text-slate-400 truncate">by {g.authorName}{g.authorCountry && FLAG_MAP[g.authorCountry] ? ` ${FLAG_MAP[g.authorCountry]}` : ""}</span>
                     </div>
                     <button

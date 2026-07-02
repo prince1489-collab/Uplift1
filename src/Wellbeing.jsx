@@ -8,15 +8,19 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
-import { ArrowLeft, Loader2, TrendingUp, LifeBuoy } from "lucide-react";
+import { ArrowLeft, Loader2, TrendingUp, LifeBuoy, Info } from "lucide-react";
 
 // WHO-5: five statements, each rated 0–5 for how true it's been over the past two weeks.
+// Display order follows a deliberate arc from stillness to energy — how at-peace you've felt
+// (calm → rested), rising through mood (cheerful) and engagement (interested) to how alive you've
+// felt (active & vigorous). The score is a plain sum, so order never affects the result, and the
+// stored keys are unchanged.
 export const WELLBEING_QUESTIONS = [
-  { key: "cheer",    emoji: "☀️", metric: "Good spirits", q: "I have felt cheerful and in good spirits" },
   { key: "calm",     emoji: "🌿", metric: "Calm",         q: "I have felt calm and relaxed" },
-  { key: "energy",   emoji: "⚡", metric: "Energy",       q: "I have felt active and vigorous" },
   { key: "rest",     emoji: "🛌", metric: "Rest",         q: "I woke up feeling fresh and rested" },
+  { key: "cheer",    emoji: "☀️", metric: "Good spirits", q: "I have felt cheerful and in good spirits" },
   { key: "interest", emoji: "🌻", metric: "Interest",     q: "My daily life has been filled with things that interest me" },
+  { key: "energy",   emoji: "⚡", metric: "Energy",       q: "I have felt active and vigorous" },
 ];
 
 // WHO-5 response options (0–5) for the past two weeks.
@@ -97,6 +101,33 @@ function scoreColour(score) {
   return "#fb7185";
 }
 
+// ── Small ⓘ toggle explaining how the scoring works (used in the form + panel) ──
+function ScoringInfo({ label = null, center = false }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div className={`flex items-center gap-2 ${center ? "justify-center" : ""}`}>
+        {label}
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+          aria-label="How is this scored?"
+          className={`inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-colors ${open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:bg-slate-100"}`}>
+          <Info size={11} />
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-left">
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Each statement is scored from <b>0</b> (at no time) to <b>5</b> (all of the time) for the past
+            two weeks. Your five answers add up to 0–25, then multiply by 4 to give a score out of{" "}
+            <b>100</b> — higher means better wellbeing. A score of 50 or below is a gentle sign that some
+            extra support could help. This is the WHO-5 Well-Being Index, a validated measure used worldwide.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── The WHO-5 check-in form (reused by onboarding + the panel) ───────────────────
 export function WellbeingCheckin({ onComplete, intro, submitLabel = "See my score" }) {
   const [scores, setScores] = useState(() =>
@@ -117,7 +148,7 @@ export function WellbeingCheckin({ onComplete, intro, submitLabel = "See my scor
   return (
     <div className="space-y-4">
       {intro && <p className="text-[13px] text-slate-500 leading-relaxed">{intro}</p>}
-      <p className="text-[12px] font-bold uppercase tracking-wide text-teal-600">Over the past two weeks…</p>
+      <ScoringInfo label={<p className="text-[12px] font-bold uppercase tracking-wide text-teal-600">Over the past two weeks…</p>} />
       {WELLBEING_QUESTIONS.map((q) => (
         <div key={q.key} className="rounded-2xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
           <p className="text-sm text-slate-700 leading-snug mb-2">{q.emoji} {q.q}</p>
@@ -239,6 +270,9 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
               ) : (
                 <p className="text-xs text-slate-400 mt-1">Baseline recorded — your trend builds from here. 🌱</p>
               )}
+              <div className="mt-2">
+                <ScoringInfo center label={<span className="text-[10px] font-semibold text-slate-400">How is this scored?</span>} />
+              </div>
             </div>
 
             {/* Low-wellbeing safeguarding */}
