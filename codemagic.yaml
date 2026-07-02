@@ -46,6 +46,12 @@ workflows:
           # re-run pod install so the change takes effect.
           node scripts/enable-google-signin.cjs
           echo "── Podfile ──"; cat ios/App/Podfile
+          # cap sync's first pod install (default Podfile, no GoogleSignIn) locked GTMSessionFetcher to
+          # 4.5.0. GoogleSignIn 7.1 needs GTMSessionFetcher ~> 3.3, so the second install conflicts with
+          # that lock. Delete Podfile.lock so pod install re-resolves from scratch and picks 3.5.0,
+          # which satisfies BOTH Firebase (>= 3.4) and GoogleSignIn (~> 3.3) — the same resolution the
+          # /Google subspec produced in a single install.
+          rm -f ios/App/Podfile.lock
           ( cd ios/App && pod install )
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
