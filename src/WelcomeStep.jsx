@@ -240,10 +240,15 @@ function GlobePreview() {
     let lon = -20;
     let rafId;
     const t0 = performance.now();
+    let prevNow = t0;
 
     function frame(now) {
       const t = (now - t0) / 1000;
-      lon -= 0.04;
+      // Time-based rotation (2.4°/s ≈ the old 0.04°/frame at 60 fps) so the speed is the
+      // same on every device regardless of refresh rate; clamp gaps from throttled tabs.
+      const dt = Math.min(100, now - prevNow);
+      prevNow = now;
+      lon -= 2.4 * (dt / 1000);
       proj.rotate([lon, -25, 0]);
 
       ctx.clearRect(0, 0, CSS, CSS);

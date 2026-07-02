@@ -1,6 +1,7 @@
-// UserGlimpse.jsx — a minimal "glimpse" card shown when you tap someone's name in the feed.
-// Deliberately low-exposure: only their location and two self-described lines
-// (💛 Most days, I'm… / ✨ In another life, I'd be…). No name, photo, mood, or stats.
+// UserGlimpse.jsx — the "glimpse" card shown when you tap someone's name in the feed.
+// Low-exposure by design: their location, current mood, and two self-described lines
+// (💛 Most days, I'm… / ✨ In another life, I'd be…). No photo or stats. The feed itself
+// stays uncluttered — mood and country live HERE, not next to the name.
 // Fetches the author's profile on open (any authenticated user may read user docs).
 
 import React, { useState, useEffect } from "react";
@@ -8,8 +9,9 @@ import { createPortal } from "react-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { X, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { MoodPill } from "./UpliftRetentionFeatures";
 
-export default function UserGlimpse({ db, uid, country, onClose }) {
+export default function UserGlimpse({ db, uid, country, name, moodTag, onClose }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
 
@@ -24,9 +26,13 @@ export default function UserGlimpse({ db, uid, country, onClose }) {
 
   const land = country ?? data?.country ?? null;
   const flag = land ? FLAG_MAP[land] : null;
+  // Prefer their live mood from the profile; fall back to the mood on the tapped message.
+  const mood = data?.moodTag ?? moodTag ?? null;
   const mostDays = (data?.mostDays || "").trim();
   const anotherLife = (data?.anotherLife || "").trim();
   const hasGlimpse = mostDays || anotherLife;
+  const firstName = String(name ?? data?.fullName ?? "").trim().split(/\s+/)[0] || "";
+  const heading = firstName ? `✨ A glimpse into ${firstName}'s life` : "✨ A glimpse";
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[260] flex items-center justify-center p-4"
@@ -35,9 +41,9 @@ export default function UserGlimpse({ db, uid, country, onClose }) {
       <div className="w-full max-w-xs rounded-3xl bg-white p-5 shadow-2xl"
         style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.56,0.64,1) both" }}
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-teal-500">✨ a glimpse</span>
-          <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-teal-500 leading-relaxed">{heading}</span>
+          <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors flex-shrink-0">
             <X size={15} className="text-slate-400" />
           </button>
         </div>
@@ -48,10 +54,15 @@ export default function UserGlimpse({ db, uid, country, onClose }) {
           </div>
         ) : (
           <>
-            {land && (
-              <p className="text-sm font-semibold text-slate-700 mb-3">
-                {flag ? `${flag} ` : "🌍 "}{land}
-              </p>
+            {(land || mood) && (
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                {land && (
+                  <p className="text-sm font-semibold text-slate-700">
+                    {flag ? `${flag} ` : "🌍 "}{land}
+                  </p>
+                )}
+                {mood && <MoodPill mood={mood} />}
+              </div>
             )}
             {hasGlimpse ? (
               <div className="space-y-3">

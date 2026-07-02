@@ -1455,6 +1455,30 @@ export default function App() {
   const unreadMsgCount = usePrivateUnreadCount(db, isRealSignedInUser ? currentUser : null);
   const chatBadgeCount = pendingChatCount + unreadMsgCount;
 
+  // Messenger-style unread count on the Feed tab: greetings from others newer than the last
+  // time this user viewed the feed (users/{uid}.lastFeedSeenAt). First-ever session (field
+  // unset) shows no badge — it initialises on the first feed view.
+  const feedUnreadCount = useMemo(() => {
+    const seen = profile?.lastFeedSeenAt;
+    if (seen == null || !currentUser) return 0;
+    return messages.filter(
+      (m) => m.uid !== currentUser.uid && m.uid !== "system" && typeof m.timestamp === "number" && m.timestamp > seen
+    ).length;
+  }, [messages, profile?.lastFeedSeenAt, currentUser]);
+
+  // Mark the feed as seen while the user is actually looking at it. The short delay lets a
+  // returning user notice the badge before it clears (it clears once they've been on the
+  // feed for a moment, like a read receipt).
+  useEffect(() => {
+    if (!currentUser || currentUser.isAnonymous || !profile || activeTab !== "feed" || !messages.length) return;
+    const newest = messages.reduce((a, m) => (typeof m.timestamp === "number" && m.timestamp > a ? m.timestamp : a), 0);
+    if (!newest || newest <= (profile.lastFeedSeenAt ?? 0)) return;
+    const t = setTimeout(() => {
+      setDoc(userProfileRef(currentUser.uid), { lastFeedSeenAt: newest }, { merge: true }).catch(() => {});
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [currentUser, profile, activeTab, messages]);
+
   useEffect(() => {
     let unsubscribeProfile = null;
     let retryTimer = null;
@@ -1862,7 +1886,10 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
-    const q = query(publicMessagesRef, orderBy("timestamp", "desc"), limit(100));
+    // Only the last 7 days — nobody scrolls further back, and it keeps the feed light.
+    // timestamp is written as a number (nowMs()), so a plain numeric cutoff works.
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const q = query(publicMessagesRef, where("timestamp", ">", cutoff), orderBy("timestamp", "desc"), limit(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
         const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -2406,8 +2433,8 @@ export default function App() {
       return <IntroStep onDone={() => setUnauthScreen("welcome")} />;
     }
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
-        <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh]">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-0 sm:p-6">
+        <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-none border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh] sm:rounded-3xl">
           {unauthScreen === "welcome"
             ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
             : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
@@ -2422,7 +2449,7 @@ export default function App() {
   const firstName = profile?.fullName?.trim()?.split(" ")?.[0] || currentUser?.displayName?.split(" ")?.[0] || "there";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-2 sm:p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 p-0 sm:p-6">
       {/* Keyframe for action bar spring-in */}
       <style>{`
         @keyframes seenActionBarIn {
@@ -2442,7 +2469,9 @@ export default function App() {
         </div>
       )}
 
-      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl sm:h-[90vh]" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
+      {/* p-0 on mobile: the shell is EXACTLY 100dvh, so the page itself has nothing to scroll —
+          this is what stopped the whole "app box" being draggable on Android/iOS. */}
+      <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-none sm:h-[90vh] sm:rounded-3xl" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
@@ -2451,7 +2480,7 @@ export default function App() {
         )}
 
         {glimpse && (
-          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} onClose={() => setGlimpse(null)} />
+          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} moodTag={glimpse.moodTag} onClose={() => setGlimpse(null)} />
         )}
 
 
@@ -2689,12 +2718,17 @@ export default function App() {
             <div data-tour="tab-nav" className="flex items-center justify-evenly border-b border-slate-100 bg-white flex-shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
-                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
+                className={`relative py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "feed"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
                 💬 Feed
+                {feedUnreadCount > 0 && (
+                  <span className="absolute top-0.5 -right-3 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-500 px-1 text-[8px] font-bold text-white">
+                    {feedUnreadCount > 99 ? "99+" : feedUnreadCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab("community")}
@@ -2898,32 +2932,17 @@ export default function App() {
                     <MessageSlideIn mine={mine} isNew={isNewGroup}>
                       <div className="mb-0.5">
                         <div className="w-full group">
+                          {/* Uncluttered header: name only — mood + country live in the glimpse card (tap the name). */}
                           <div className="flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400">
-                            <span className="flex items-center gap-1">
-                              {mine ? (
-                                "You"
-                              ) : (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null }); }}
-                                  className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
-                                  {group.sender}
-                                </button>
-                              )}
-                              {group.moodTag && MOOD_TAGLINES[group.moodTag] && (
-                                <span className="font-light italic text-[9px] text-slate-400">· {MOOD_TAGLINES[group.moodTag]}</span>
-                              )}
-                            </span>
-                            {(() => {
-                              const country = group.items[0].country ?? (mine ? profile?.country : null);
-                              if (!country) return null;
-                              const flag = FLAG_MAP[country];
-                              return (
-                                <span className="font-normal text-slate-400">
-                                  · {flag ? `${flag} ` : ''}{country}
-                                </span>
-                              );
-                            })()}
-                            {group.moodTag && <MoodPill mood={group.moodTag} tiny />}
+                            {mine ? (
+                              "You"
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null, name: group.sender, moodTag: group.moodTag ?? null }); }}
+                                className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
+                                {group.sender}
+                              </button>
+                            )}
                           </div>
                           <div className="relative">
                             <div className="space-y-0.5">
@@ -3008,7 +3027,7 @@ export default function App() {
                                           const hasMood = Boolean(moodStyle);
                                           return (
                                             <div
-                                              className={`border px-3.5 py-2.5 text-[15px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                              className={`border px-3.5 py-2.5 text-[14px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
                                                 mine
                                                   ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
                                                   : isUnwrapped

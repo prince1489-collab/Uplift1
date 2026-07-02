@@ -77,7 +77,10 @@ function approxKm([lon1, lat1], [lon2, lat2]) {
 }
 
 const ACTIVE_TTL_MS = 10 * 60 * 1000;
-const AUTO_ROTATE_SPEED = 0.195;
+// Degrees per SECOND (time-based, not per-frame): a per-frame increment spins at whatever the
+// device's refresh/rAF rate is (60 Hz Android vs throttled/120 Hz iOS webviews), so the globe
+// rotated at different speeds per platform. 11.7°/s ≈ the old 0.195°/frame at 60 fps.
+const AUTO_ROTATE_DEG_PER_SEC = 11.7;
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
@@ -652,7 +655,11 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       }
     };
 
-    const tick = () => {
+    let lastTickTs = null; // rAF timestamp of the previous frame — drives time-based rotation
+    const tick = (ts) => {
+      // Elapsed real time since the last frame, clamped so a background-tab gap doesn't lurch.
+      const dt = lastTickTs == null ? 1000 / 60 : Math.min(100, ts - lastTickTs);
+      lastTickTs = ts;
       if (flyToTargetRef.current) {
         const elapsed = Date.now() - flyToStartTimeRef.current;
         const t = Math.min(1, elapsed / 900);
@@ -666,7 +673,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
         rotationRef.current = [sx + dx * ease, sy + (ty - sy) * ease, 0];
         if (t >= 1) { rotationRef.current = [tx, ty, 0]; flyToTargetRef.current = null; }
       } else if (autoRotateRef.current && !isDraggingRef.current) {
-        rotationRef.current = [rotationRef.current[0] + AUTO_ROTATE_SPEED, rotationRef.current[1], 0];
+        rotationRef.current = [rotationRef.current[0] + AUTO_ROTATE_DEG_PER_SEC * (dt / 1000), rotationRef.current[1], 0];
       }
       draw();
       animFrameRef.current = requestAnimationFrame(tick);

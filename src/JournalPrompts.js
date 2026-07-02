@@ -74,8 +74,11 @@ export const JOURNAL_PROMPTS = {
   ],
 };
 
+// Local calendar day number (increments at LOCAL midnight) — same rotation clock as Life
+// Hacks, so the prompt refreshes exactly once a day, at the user's own midnight (not UTC).
 function dayNumber() {
-  return Math.floor(Date.now() / 86400000);
+  const d = new Date();
+  return Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
 }
 
 function seedFromUid(uid) {

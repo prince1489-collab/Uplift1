@@ -3,7 +3,8 @@
   "appName": "Seen",
   "webDir": "dist",
   "ios": {
-    "contentInset": "always"
+    "contentInset": "always",
+    "scrollEnabled": false
   },
   "plugins": {
     "PushNotifications": {
