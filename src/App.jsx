@@ -479,17 +479,6 @@ const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never 
 const TOUR_VERSION = 2; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
-// Temporary diagnostic appended to native sign-in errors: shows the platform and whether Capacitor
-// considers the native FirebaseAuthentication plugin registered. fbAuth=false → the native plugin
-// isn't linked/loaded (build/linking issue); fbAuth=true → the plugin is there but the call failed.
-function nativeAuthDiag() {
-  try {
-    // fbAuth/msg = the two Firebase (static-framework) plugins; app = @capacitor/app (non-Firebase).
-    // If app=true but fbAuth=false, the Firebase plugin classes are being dead-stripped specifically.
-    return ` [plat=${Capacitor.getPlatform()}, fbAuth=${Capacitor.isPluginAvailable("FirebaseAuthentication")}, msg=${Capacitor.isPluginAvailable("FirebaseMessaging")}, app=${Capacitor.isPluginAvailable("App")}]`;
-  } catch { return ""; }
-}
-
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
@@ -1882,12 +1871,10 @@ export default function App() {
       // with the returned credential. Web/dev uses the Firebase popup/redirect flow.
       if (isNativeIOS()) {
         const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
-        // Guard against a hang: if the native Google flow doesn't resolve (e.g. the plugin's Google
-        // support isn't compiled into this build), fail after 20s instead of spinning forever.
-        const result = await Promise.race([
-          FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("google-timeout")), 20000)),
-        ]);
+        // Native Google sheet → returns the credential → sign the JS SDK in. No artificial timeout:
+        // the flow is interactive (system prompt + account chooser can take longer than any short
+        // timeout), and it resolves on completion or rejects on cancel/error on its own.
+        const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
         const idToken = result?.credential?.idToken;
         const accessToken = result?.credential?.accessToken;
         if (!idToken && !accessToken) throw new Error("google-no-credential");
@@ -1903,7 +1890,7 @@ export default function App() {
       }
       else if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
       else if (error?.code === "auth/operation-not-allowed") setAuthError("Google sign-in is not enabled.");
-      else setAuthError(`Google sign-in failed (${error?.code || error?.message || "unknown"})${nativeAuthDiag()}. Please try again.`);
+      else setAuthError("Google sign-in failed. Please try again.");
     } finally { setIsGoogleSigningIn(false); }
   };
 
@@ -1937,7 +1924,7 @@ export default function App() {
       }
       if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
       else if (error?.code === "auth/user-cancelled" || error?.message === "apple-no-credential") { /* user cancelled */ }
-      else setAuthError(`Apple sign-in failed (${error?.code || error?.message || "unknown"})${nativeAuthDiag()}. Please try again.`);
+      else setAuthError("Apple sign-in failed. Please try again.");
     } finally { setIsGoogleSigningIn(false); }
   };
 
