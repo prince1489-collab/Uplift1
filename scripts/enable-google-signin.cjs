@@ -1,49 +1,46 @@
 /**
- * Enables native Google sign-in for @capacitor-firebase/authentication on iOS WITHOUT switching the
- * pod to its `/Google` subspec.
+ * Enables native Google sign-in for @capacitor-firebase/authentication on iOS by patching the
+ * plugin's PODSPEC (run once, right after `npm ci`, before `npx cap add/sync ios`).
  *
- * Why not the subspec: on-device diagnostics proved that
+ * Why this and not the /Google subspec: on-device diagnostics proved that using
  *   pod 'CapacitorFirebaseAuthentication/Google'
  * stops the plugin class from registering with Capacitor (isPluginAvailable() === false → native
- * calls return UNIMPLEMENTED), while the plain `pod 'CapacitorFirebaseAuthentication'` line registers
- * fine (like the untouched FirebaseMessaging plugin). So we keep the default pod line and instead:
- *   1. add the GoogleSignIn pod (so `import GoogleSignIn` resolves), and
- *   2. define RGCFA_INCLUDE_GOOGLE on the plugin's pod target so its Google sign-in code
- *      (guarded by `#if RGCFA_INCLUDE_GOOGLE`) compiles in.
- * This is exactly what the /Google subspec does (GoogleSignIn dependency + the -D flag) — applied to
- * the registering default pod instead.
+ * calls return UNIMPLEMENTED). The plain default pod line registers fine (Apple sign-in works). But
+ * the default build omits Google (its code is behind `#if RGCFA_INCLUDE_GOOGLE` and needs the
+ * GoogleSignIn module), so `import GoogleSignIn` fails to compile.
  *
- * Run in CI after `npx cap sync ios`, then re-run `pod install`.
+ * So we add Google's two ingredients to the ROOT spec — which the DEFAULT pod inherits — so the
+ * registering default build also compiles Google in, resolved together with Firebase in ONE pod
+ * install pass:
+ *   1. s.dependency 'GoogleSignIn' — makes the module importable BY THE PLUGIN'S OWN pod target.
+ *   2. -DRGCFA_INCLUDE_GOOGLE on the pod target — turns on the plugin's #if-guarded Google code.
  */
 const fs = require("fs");
 
-const PODFILE = "ios/App/Podfile";
-let src = fs.readFileSync(PODFILE, "utf8");
+const PODSPEC = "node_modules/@capacitor-firebase/authentication/CapacitorFirebaseAuthentication.podspec";
+// Unique marker — NOT "RGCFA_INCLUDE_GOOGLE" (that already exists inside the unused Google subspec,
+// so guarding on it would skip the patch and silently do nothing).
+const MARKER = "SEEN_GOOGLE_ROOT_ENABLED";
 
-// 1. Add the GoogleSignIn pod inside the App target (right after the capacitor_pods call).
-if (!src.includes("pod 'GoogleSignIn'")) {
-  src = src.replace(/(target 'App' do\r?\n\s*capacitor_pods)/, (m) => `${m}\n  pod 'GoogleSignIn', '~> 7.1'`);
-}
+let src = fs.readFileSync(PODSPEC, "utf8");
 
-// 2. Turn on RGCFA_INCLUDE_GOOGLE for the auth plugin's pod target inside the existing post_install
-//    (injected right after the assertDeploymentTarget(installer) line so we don't add a 2nd hook).
-if (!src.includes("RGCFA_INCLUDE_GOOGLE")) {
+if (!src.includes(MARKER)) {
+  if (!/s\.static_framework\s*=\s*true/.test(src)) {
+    console.error("[enable-google-signin] anchor 's.static_framework = true' not found in podspec");
+    process.exit(1);
+  }
   src = src.replace(
-    /(post_install do \|installer\|\r?\n\s*assertDeploymentTarget\(installer\))/,
+    /(s\.static_framework\s*=\s*true)/,
     (m) =>
-      `${m}
-  installer.pods_project.targets.each do |t|
-    if t.name == 'CapacitorFirebaseAuthentication'
-      t.build_configurations.each do |c|
-        c.build_settings['OTHER_SWIFT_FLAGS'] = '$(inherited) -DRGCFA_INCLUDE_GOOGLE'
-      end
-    end
-  end`
+      `${m}\n` +
+      `  # ${MARKER}\n` +
+      `  s.dependency 'GoogleSignIn', '7.1.0'\n` +
+      `  s.pod_target_xcconfig = { 'OTHER_SWIFT_FLAGS' => '$(inherited) -DRGCFA_INCLUDE_GOOGLE' }`
   );
+  fs.writeFileSync(PODSPEC, src);
 }
 
-fs.writeFileSync(PODFILE, src);
-const okPod = src.includes("pod 'GoogleSignIn'");
-const okFlag = src.includes("RGCFA_INCLUDE_GOOGLE");
-console.log(`[enable-google-signin] GoogleSignIn pod: ${okPod ? "added" : "MISSING"}; RGCFA_INCLUDE_GOOGLE flag: ${okFlag ? "added" : "MISSING"}.`);
-if (!okPod || !okFlag) process.exit(1);
+const out = fs.readFileSync(PODSPEC, "utf8");
+const ok = out.includes(MARKER);
+console.log(`[enable-google-signin] root GoogleSignIn dep + RGCFA_INCLUDE_GOOGLE flag: ${ok ? "added" : "MISSING"}.`);
+if (!ok) process.exit(1);

@@ -30,29 +30,22 @@ workflows:
     scripts:
       - name: Install npm dependencies
         script: npm ci --legacy-peer-deps
+      - name: Enable native Google sign-in (patch the auth plugin podspec)
+        script: |
+          # Patch @capacitor-firebase/authentication's podspec so its DEFAULT build (which registers
+          # the plugin → Apple sign-in works) also compiles native Google in: adds a GoogleSignIn
+          # dependency to the plugin's own pod target (so `import GoogleSignIn` resolves) + the
+          # RGCFA_INCLUDE_GOOGLE flag. Must run BEFORE cap sync so its single pod install resolves
+          # GoogleSignIn together with Firebase (no lockfile conflict). Do NOT use the plugin's
+          # /Google subspec pod line — on device it stops the plugin registering (calls → UNIMPLEMENTED).
+          node scripts/enable-google-signin.cjs
       - name: Build the web app (dist/)
         script: npm run build
-      - name: Add iOS platform if missing, then sync (+ enable native Google sign-in)
+      - name: Add iOS platform if missing, then sync
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
-          # cap sync generates the Podfile with the plugin's DEFAULT pod line — which is what makes the
-          # plugin register (proven on device: fbAuth=true → Apple sign-in works). Do NOT switch to the
-          # /Google subspec (`pod '...Authentication/Google'`): on-device diagnostics showed that stops
-          # the plugin from registering (native calls → UNIMPLEMENTED).
           npx cap sync ios
-          # Enable native Google sign-in the safe way: keep the default (registering) pod, add the
-          # GoogleSignIn pod, and define RGCFA_INCLUDE_GOOGLE on the plugin's pod target so its Google
-          # code compiles in. (Same effect as the subspec, without breaking registration.) Then
-          # re-run pod install so the change takes effect.
-          node scripts/enable-google-signin.cjs
           echo "── Podfile ──"; cat ios/App/Podfile
-          # cap sync's first pod install (default Podfile, no GoogleSignIn) locked GTMSessionFetcher to
-          # 4.5.0. GoogleSignIn 7.1 needs GTMSessionFetcher ~> 3.3, so the second install conflicts with
-          # that lock. Delete Podfile.lock so pod install re-resolves from scratch and picks 3.5.0,
-          # which satisfies BOTH Firebase (>= 3.4) and GoogleSignIn (~> 3.3) — the same resolution the
-          # /Google subspec produced in a single install.
-          rm -f ios/App/Podfile.lock
-          ( cd ios/App && pod install )
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
           # Copies the committed plist into ios/App/App/, registers it in the Xcode project, and adds
