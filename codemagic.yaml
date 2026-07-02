@@ -35,13 +35,17 @@ workflows:
       - name: Add iOS platform if missing, then sync
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
-          # Enable the GoogleSignIn pod for @capacitor-firebase/authentication so native Google
-          # sign-in works on iOS (Google blocks its OAuth flow inside app web-views). Must be set
-          # before pod install (which cap sync runs).
+          # Native Google sign-in: @capacitor-firebase/authentication installs its "Lite" subspec by
+          # default (NO GoogleSignIn). Google support is the optional /Google subspec, which sets the
+          # RGCFA_INCLUDE_GOOGLE compile flag — without it signInWithGoogle compiles to an EMPTY
+          # native function that never resolves, so the button spinner hangs forever. Enable it by
+          # requiring the subspec pod inside the App target (per the plugin's setup-google docs).
+          # Must happen before pod install (which cap sync runs).
           PODFILE=ios/App/Podfile
-          if ! grep -q "FirebaseAuthenticationGoogleAuthEnabled" "$PODFILE"; then
-            { echo '$FirebaseAuthenticationGoogleAuthEnabled = true'; cat "$PODFILE"; } > "$PODFILE.tmp" && mv "$PODFILE.tmp" "$PODFILE"
+          if ! grep -q "CapacitorFirebaseAuthentication/Google" "$PODFILE"; then
+            ruby -i -pe "\$_ += \"  pod 'CapacitorFirebaseAuthentication/Google', :path => '../../node_modules/@capacitor-firebase/authentication'\n\" if \$_ =~ /target 'App' do/" "$PODFILE"
           fi
+          echo "── Podfile after Google subspec injection ──"; cat "$PODFILE"
           npx cap sync ios
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
