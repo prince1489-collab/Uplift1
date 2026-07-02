@@ -219,35 +219,27 @@ function Sparkles({ sparks }) {
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
-  return <div className="rounded-2xl bg-slate-200 animate-pulse h-28" />;
+  return <div className="rounded-2xl bg-slate-200 animate-pulse h-24" />;
 }
 
-// ── Compact hack card (single-column list — the hack itself is visible, no tap-to-reveal) ──
+// ── Compact preview tile (tap to reveal the hack) — sized so all 8 fit one screen ──
 
-function CompactHackCard({ hack, onTap, userRegion }) {
+function PreviewCard({ hack, onTap }) {
   const s = AREA_STYLES[hack.area] || DEFAULT_STYLE;
-  const localTitle = localiseHackText(hack.title, userRegion);
-  const localHack  = localiseHackText(hack.hack,  userRegion);
   return (
     <button
-      className="w-full text-left rounded-2xl bg-white border border-slate-100 shadow-sm px-3.5 py-3 select-none active:scale-[0.99] transition-transform duration-150"
+      className="h-24 w-full rounded-2xl relative overflow-hidden flex flex-col items-center justify-center gap-1 select-none active:scale-95 transition-transform duration-150"
+      style={{ background: s.gradient, boxShadow: s.shadow }}
       onClick={onTap}
       aria-label={`Open ${hack.area} life hack`}
     >
-      <div className="flex items-center gap-2 mb-1.5">
-        <span
-          className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-xl text-[15px]"
-          style={{ background: s.gradient }}>
-          {hack.areaEmoji}
-        </span>
-        <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">{hack.area}</span>
-        <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold truncate max-w-[45%] ${s.badge}`}>
-          {hack.subAreaEmoji} {hack.subArea}
-        </span>
-      </div>
-      <p className={`text-[13px] font-extrabold leading-snug ${s.title}`}>{localTitle}</p>
-      <p className="text-[12px] text-slate-600 leading-snug mt-0.5">{localHack}</p>
-      <p className="text-[9px] text-slate-300 mt-1.5">Tap for why it works · vote · share</p>
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{ backgroundImage: "radial-gradient(circle at 70% 20%, rgba(255,255,255,0.6) 0%, transparent 60%)" }}
+      />
+      <span className="text-[28px] leading-none drop-shadow-sm">{hack.areaEmoji}</span>
+      <p className="text-[13px] font-extrabold text-white tracking-wide leading-tight text-center px-1">{hack.area}</p>
+      <p className="text-[8px] text-white/60">tap to reveal</p>
     </button>
   );
 }
@@ -533,24 +525,18 @@ export default function LifeHacks({ db, currentUser, profile }) {
         </div>
       </div>
 
-      {/* All of today's hacks in one scrollable column — content visible, no tap-to-reveal */}
-      <div className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4">
+      {/* All 8 categories as compact tap-to-reveal tiles — sized to fit one screen, no scroll */}
+      <div className="flex-1 overflow-y-auto bg-slate-50/60 px-3 py-3">
         {loading ? (
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2">
             {Array.from({ length: 8 }, (_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2">
             {hacks?.map((hack) => (
-              <CompactHackCard key={hack.area} hack={hack} onTap={() => setActive(hack)} userRegion={userRegion} />
+              <PreviewCard key={hack.area} hack={hack} onTap={() => setActive(hack)} />
             ))}
           </div>
-        )}
-
-        {!loading && (
-          <p className="text-center text-[10px] text-slate-300 pt-4 pb-2">
-            Fresh hacks every day at midnight
-          </p>
         )}
       </div>
 

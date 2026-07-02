@@ -237,7 +237,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, pendingSubmissionCount = 0, promoting = false, onAdminClearFeed, onAdminFullReset, onAdminReports, onAdminSubmissions, onAdminPromote }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -392,6 +392,48 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                 )}
 
               </div>
+
+              {/* Admin tools — only for the admin account */}
+              {isAdmin && (
+                <>
+                  <div className="mx-4 border-t border-slate-100" />
+                  <div className="px-3 py-2 space-y-0.5">
+                    <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
+                    <Row
+                      onClick={() => { onAdminSubmissions?.(); close(); }}
+                      icon={<IconBox className="bg-teal-50"><Shield size={15} className="text-teal-600" /></IconBox>}
+                      label="Community greetings"
+                      sub={pendingSubmissionCount > 0 ? `${pendingSubmissionCount} pending review` : "Moderate submissions"}
+                    />
+                    <Row
+                      onClick={() => { onAdminPromote?.(); }}
+                      icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🏆</span></IconBox>}
+                      label={promoting ? "Promoting…" : "Promote Top 5 now"}
+                      sub="Rotate this week's champions"
+                    />
+                    <Row
+                      onClick={() => { onAdminReports?.(); close(); }}
+                      icon={<IconBox className="bg-orange-50"><Shield size={15} className="text-orange-500" /></IconBox>}
+                      label="Private chat reports"
+                      sub="Review reported chats"
+                    />
+                    <Row
+                      onClick={() => { onAdminClearFeed?.(); close(); }}
+                      danger
+                      icon={<IconBox className="bg-red-50"><Shield size={15} className="text-red-400" /></IconBox>}
+                      label="Clear feed"
+                      sub="Delete all public messages"
+                    />
+                    <Row
+                      onClick={() => { onAdminFullReset?.(); close(); }}
+                      danger
+                      icon={<IconBox className="bg-red-50"><Shield size={15} className="text-red-600" /></IconBox>}
+                      label="Full reset"
+                      sub="Wipe feed + reset everyone"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="mx-4 border-t border-slate-100" />
 
@@ -1845,7 +1887,7 @@ export default function App() {
       }
       else if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
       else if (error?.code === "auth/operation-not-allowed") setAuthError("Google sign-in is not enabled.");
-      else setAuthError("Google sign-in failed. Please try again.");
+      else setAuthError(`Google sign-in failed (${error?.code || error?.message || "unknown"}). Please try again.`);
     } finally { setIsGoogleSigningIn(false); }
   };
 
@@ -1879,7 +1921,7 @@ export default function App() {
       }
       if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
       else if (error?.code === "auth/user-cancelled" || error?.message === "apple-no-credential") { /* user cancelled */ }
-      else setAuthError("Apple sign-in failed. Please try again.");
+      else setAuthError(`Apple sign-in failed (${error?.code || error?.message || "unknown"}). Please try again.`);
     } finally { setIsGoogleSigningIn(false); }
   };
 
@@ -2652,6 +2694,14 @@ export default function App() {
                       isPremium={isPremium}
                       streak={streak}
                       sparkBalance={sparkBalance}
+                      isAdmin={isAdmin}
+                      pendingSubmissionCount={pendingSubmissionCount}
+                      promoting={promoting}
+                      onAdminClearFeed={() => setAdminConfirm(true)}
+                      onAdminFullReset={() => setAdminResetConfirm(true)}
+                      onAdminReports={loadAdminReports}
+                      onAdminSubmissions={loadSubmissions}
+                      onAdminPromote={handlePromoteChampions}
                     />
                   </div>
                 </div>
@@ -3091,7 +3141,7 @@ export default function App() {
 
             {/* FAB-style footer — only on feed tab */}
             {activeTab === "feed" && (
-            <footer className="border-t border-slate-100 bg-white px-4 pt-2.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+            <footer className="border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
                   <span className="text-lg">🌙</span>
@@ -3131,53 +3181,6 @@ export default function App() {
                   </button>
                 </>
               ) : null}
-              {isAdmin && (
-                <div className="mt-2 flex flex-col gap-1.5">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setAdminConfirm(true)}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-400 opacity-60 hover:opacity-100 transition-opacity"
-                    >
-                      <Shield size={11} />
-                      Clear feed
-                    </button>
-                    <button
-                      onClick={() => setAdminResetConfirm(true)}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-red-600 opacity-60 hover:opacity-100 transition-opacity"
-                    >
-                      <Shield size={11} />
-                      Full reset
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => { loadAdminReports(); }}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-orange-500 opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    <Shield size={11} />
-                    Private chat reports
-                  </button>
-                  <button
-                    onClick={() => { loadSubmissions(); }}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-teal-600 opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    <Shield size={11} />
-                    Community greetings
-                    {pendingSubmissionCount > 0 && (
-                      <span className="ml-0.5 rounded-full bg-teal-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                        {pendingSubmissionCount}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={handlePromoteChampions}
-                    disabled={promoting}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-semibold text-amber-600 opacity-60 hover:opacity-100 transition-opacity disabled:opacity-40"
-                  >
-                    <Shield size={11} />
-                    {promoting ? "Promoting…" : "🏆 Promote Top 5 now"}
-                  </button>
-                </div>
-              )}
             </footer>
             )} {/* end activeTab === "feed" footer */}
 
