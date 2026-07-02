@@ -32,24 +32,18 @@ workflows:
         script: npm ci --legacy-peer-deps
       - name: Build the web app (dist/)
         script: npm run build
-      - name: Add iOS platform if missing, then sync (+ Firebase static linkage + Google subspec)
+      - name: Add iOS platform if missing, then sync
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
-          # cap sync generates the Podfile + runs pod install. Do it first so the Podfile exists.
+          # Use the plugin's DEFAULT pod line — do NOT switch to the /Google subspec. On-device
+          # diagnostics proved that `pod 'CapacitorFirebaseAuthentication/Google'` stops the plugin
+          # class from registering (Capacitor.isPluginAvailable("FirebaseAuthentication") == false →
+          # native calls return UNIMPLEMENTED), while the untouched FirebaseMessaging plugin registers
+          # fine. Keeping the default line makes the plugin register → Apple sign-in works. (Native
+          # Google, which needs the plugin's Google subspec, is handled as a follow-up now that we
+          # know the naive subspec switch breaks registration.)
           npx cap sync ios
-          PODFILE=ios/App/Podfile
-          # (1) Static linkage — the canonical Capacitor + Firebase combo. Paired with the -ObjC flag
-          #     set in scripts/inject-google-plist.cjs, this makes the @capacitor-firebase plugin
-          #     classes (Firebase requires static frameworks) survive linking and register at runtime.
-          #     -ObjC on the default DYNAMIC use_frameworks! (build 17) did NOT register them; static
-          #     linkage + -ObjC together is the documented working setup.
-          perl -i -pe 's{^use_frameworks!.*$}{use_frameworks! :linkage => :static}' "$PODFILE"
-          # (2) Native Google sign-in needs the optional /Google subspec (sets RGCFA_INCLUDE_GOOGLE).
-          #     SWITCH the existing pod line (single declaration — a second line for the same pod makes
-          #     CocoaPods fail with a duplicate-dependency error).
-          perl -i -pe "s{'CapacitorFirebaseAuthentication'}{'CapacitorFirebaseAuthentication/Google'}g" "$PODFILE"
-          echo "── Final Podfile ──"; cat "$PODFILE"
-          ( cd ios/App && pod install )
+          echo "── Podfile ──"; cat ios/App/Podfile
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
           # Copies the committed plist into ios/App/App/, registers it in the Xcode project, and adds

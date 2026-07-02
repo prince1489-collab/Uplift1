@@ -95,15 +95,8 @@ for (const ref of cfgList.buildConfigurations) {
   const cfg = buildCfgs[ref.value];
   if (cfg && cfg.buildSettings) {
     cfg.buildSettings.CODE_SIGN_ENTITLEMENTS = '"App/App.entitlements"';
-    // -ObjC: the @capacitor-firebase plugins ship as STATIC frameworks (static_framework = true,
-    // required by the Firebase iOS SDK). Their @objc plugin classes are only discovered by Capacitor
-    // at runtime via the ObjC runtime — nothing references them at link time, so without -ObjC the
-    // linker dead-strips them from the static archive and Capacitor.isPluginAvailable(...) is false
-    // (native sign-in fails with UNIMPLEMENTED). -ObjC forces all ObjC/@objc classes from static libs
-    // to be loaded, so the plugins register.
-    cfg.buildSettings.OTHER_LDFLAGS = '"$(inherited) -ObjC"';
     patched++;
   }
 }
 fs.writeFileSync(PROJ, proj2.writeSync());
-console.log(`[inject-google-plist] set CODE_SIGN_ENTITLEMENTS + OTHER_LDFLAGS(-ObjC) on ${patched} App build config(s).`);
+console.log(`[inject-google-plist] set CODE_SIGN_ENTITLEMENTS on ${patched} App build config(s).`);

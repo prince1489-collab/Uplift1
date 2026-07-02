@@ -1882,7 +1882,12 @@ export default function App() {
       // with the returned credential. Web/dev uses the Firebase popup/redirect flow.
       if (isNativeIOS()) {
         const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
-        const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        // Guard against a hang: if the native Google flow doesn't resolve (e.g. the plugin's Google
+        // support isn't compiled into this build), fail after 20s instead of spinning forever.
+        const result = await Promise.race([
+          FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("google-timeout")), 20000)),
+        ]);
         const idToken = result?.credential?.idToken;
         const accessToken = result?.credential?.accessToken;
         if (!idToken && !accessToken) throw new Error("google-no-credential");
