@@ -479,6 +479,15 @@ const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never 
 const TOUR_VERSION = 2; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
+// Temporary diagnostic appended to native sign-in errors: shows the platform and whether Capacitor
+// considers the native FirebaseAuthentication plugin registered. fbAuth=false → the native plugin
+// isn't linked/loaded (build/linking issue); fbAuth=true → the plugin is there but the call failed.
+function nativeAuthDiag() {
+  try {
+    return ` [plat=${Capacitor.getPlatform()}, fbAuth=${Capacitor.isPluginAvailable("FirebaseAuthentication")}]`;
+  } catch { return ""; }
+}
+
 function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
@@ -1887,7 +1896,7 @@ export default function App() {
       }
       else if (error?.code === "auth/unauthorized-domain") setAuthError(`This domain is not in Firebase Authorized domains.`);
       else if (error?.code === "auth/operation-not-allowed") setAuthError("Google sign-in is not enabled.");
-      else setAuthError(`Google sign-in failed (${error?.code || error?.message || "unknown"}). Please try again.`);
+      else setAuthError(`Google sign-in failed (${error?.code || error?.message || "unknown"})${nativeAuthDiag()}. Please try again.`);
     } finally { setIsGoogleSigningIn(false); }
   };
 
@@ -1921,7 +1930,7 @@ export default function App() {
       }
       if (error?.code === "auth/operation-not-allowed") setAuthError("Apple sign-in is not enabled.");
       else if (error?.code === "auth/user-cancelled" || error?.message === "apple-no-credential") { /* user cancelled */ }
-      else setAuthError(`Apple sign-in failed (${error?.code || error?.message || "unknown"}). Please try again.`);
+      else setAuthError(`Apple sign-in failed (${error?.code || error?.message || "unknown"})${nativeAuthDiag()}. Please try again.`);
     } finally { setIsGoogleSigningIn(false); }
   };
 

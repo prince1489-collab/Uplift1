@@ -32,24 +32,25 @@ workflows:
         script: npm ci --legacy-peer-deps
       - name: Build the web app (dist/)
         script: npm run build
-      - name: Add iOS platform if missing, then sync (+ enable Google sign-in subspec)
+      - name: Add iOS platform if missing, then sync (+ Firebase static linkage + Google subspec)
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
-          # cap sync generates the Podfile + runs pod install with the plugin's default "Lite"
-          # subspec (NO GoogleSignIn). Do this first so it succeeds untouched.
+          # cap sync generates the Podfile + runs pod install. Do it first so the Podfile exists.
           npx cap sync ios
-          # Native Google sign-in needs the optional /Google subspec (sets RGCFA_INCLUDE_GOOGLE; with
-          # Lite, signInWithGoogle compiles to an empty no-op → the button spinner hangs). SWITCH the
-          # existing pod line to the /Google subspec — a single declaration. (Adding a SECOND
-          # `pod 'CapacitorFirebaseAuthentication/...'` line makes CocoaPods fail with a
-          # duplicate-dependency error, which is what broke the previous build.) Then re-run pod
-          # install so the final Pods project includes GoogleSignIn.
           PODFILE=ios/App/Podfile
-          if grep -q "'CapacitorFirebaseAuthentication'" "$PODFILE"; then
-            perl -i -pe "s{'CapacitorFirebaseAuthentication'}{'CapacitorFirebaseAuthentication/Google'}g" "$PODFILE"
-            echo "── Podfile after Google subspec switch ──"; cat "$PODFILE"
-            ( cd ios/App && pod install )
-          fi
+          # (1) Firebase iOS SDK requires STATIC linkage. Capacitor's default Podfile uses plain
+          #     `use_frameworks!` (dynamic) — with that, the @capacitor-firebase plugins compile but
+          #     their Swift classes are NOT loaded/registered at runtime, so every native call returns
+          #     UNIMPLEMENTED (both Google and Apple sign-in fail). Forcing static linkage is Firebase's
+          #     documented requirement and makes the plugin classes discoverable by Capacitor.
+          perl -i -pe 's{^use_frameworks!.*$}{use_frameworks! :linkage => :static}' "$PODFILE"
+          # (2) Native Google sign-in needs the optional /Google subspec (sets RGCFA_INCLUDE_GOOGLE).
+          #     SWITCH the existing pod line (single declaration — adding a second line for the same
+          #     pod makes CocoaPods fail with a duplicate-dependency error).
+          perl -i -pe "s{'CapacitorFirebaseAuthentication'}{'CapacitorFirebaseAuthentication/Google'}g" "$PODFILE"
+          echo "── Final Podfile ──"; cat "$PODFILE"
+          # Re-install so the Pods project reflects static linkage + GoogleSignIn.
+          ( cd ios/App && pod install )
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
           # Copies the committed plist into ios/App/App/, registers it in the Xcode project, and adds
