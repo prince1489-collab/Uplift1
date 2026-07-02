@@ -32,18 +32,21 @@ workflows:
         script: npm ci --legacy-peer-deps
       - name: Build the web app (dist/)
         script: npm run build
-      - name: Add iOS platform if missing, then sync
+      - name: Add iOS platform if missing, then sync (+ enable native Google sign-in)
         script: |
           if [ ! -d "ios" ]; then npx cap add ios; fi
-          # Use the plugin's DEFAULT pod line — do NOT switch to the /Google subspec. On-device
-          # diagnostics proved that `pod 'CapacitorFirebaseAuthentication/Google'` stops the plugin
-          # class from registering (Capacitor.isPluginAvailable("FirebaseAuthentication") == false →
-          # native calls return UNIMPLEMENTED), while the untouched FirebaseMessaging plugin registers
-          # fine. Keeping the default line makes the plugin register → Apple sign-in works. (Native
-          # Google, which needs the plugin's Google subspec, is handled as a follow-up now that we
-          # know the naive subspec switch breaks registration.)
+          # cap sync generates the Podfile with the plugin's DEFAULT pod line — which is what makes the
+          # plugin register (proven on device: fbAuth=true → Apple sign-in works). Do NOT switch to the
+          # /Google subspec (`pod '...Authentication/Google'`): on-device diagnostics showed that stops
+          # the plugin from registering (native calls → UNIMPLEMENTED).
           npx cap sync ios
+          # Enable native Google sign-in the safe way: keep the default (registering) pod, add the
+          # GoogleSignIn pod, and define RGCFA_INCLUDE_GOOGLE on the plugin's pod target so its Google
+          # code compiles in. (Same effect as the subspec, without breaking registration.) Then
+          # re-run pod install so the change takes effect.
+          node scripts/enable-google-signin.cjs
           echo "── Podfile ──"; cat ios/App/Podfile
+          ( cd ios/App && pod install )
       - name: Inject GoogleService-Info.plist + entitlements into the iOS project
         script: |
           # Copies the committed plist into ios/App/App/, registers it in the Xcode project, and adds
