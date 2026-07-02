@@ -3109,14 +3109,23 @@ export default function App() {
                     data-tour="send"
                     onClick={() => setPickerOpen(true)}
                     disabled={isSending}
-                    className="w-full rounded-2xl py-4 text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
-                    style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 4px 20px rgba(20,184,166,0.4)" }}>
+                    className="w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+                    style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 3px 14px rgba(20,184,166,0.35)" }}>
                     {isSending
-                      ? <Loader2 size={18} className="text-white animate-spin" />
+                      ? <Loader2 size={16} className="text-white animate-spin" />
                       : <>
-                          ✨ Send kindness
-                          {todayMessageCount > 0 && (
-                            <span className="text-sm opacity-70 font-normal">· {DAILY_GREETING_LIMIT - todayMessageCount} left</span>
+                          <span>✨ Send kindness</span>
+                          {(streak >= 3 || todayMessageCount > 0) && (
+                            <span className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold opacity-90">
+                              {streak >= 3 && (
+                                <span className="rounded-full bg-white/20 px-2 py-0.5">
+                                  🔥 +{streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}%
+                                </span>
+                              )}
+                              {todayMessageCount > 0 && (
+                                <span className="rounded-full bg-white/20 px-2 py-0.5">{DAILY_GREETING_LIMIT - todayMessageCount} left</span>
+                              )}
+                            </span>
                           )}
                         </>}
                   </button>

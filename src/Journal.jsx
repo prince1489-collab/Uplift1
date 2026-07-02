@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
-import { ArrowLeft, Trash2, BookOpen, Sprout, RefreshCw, History } from "lucide-react";
+import { ArrowLeft, Trash2, BookOpen, Sprout, History, ChevronRight, Folder } from "lucide-react";
 import { useSparkCounter } from "./MicroAnimations";
 import { pickDailyPrompt } from "./JournalPrompts";
 
@@ -84,6 +84,59 @@ function pickOnThisDay(entries) {
   return { entry: older[0], label: "A while back" };
 }
 
+// ── Folder grouping: Year → Month → "Week N" (week-of-month = ceil(day/7)) ───────
+function entryDateObj(e) {
+  if (e.date && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
+    const [y, m, d] = e.date.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  return e.createdAt ? new Date(e.createdAt) : null;
+}
+function monthName(mo) { return new Date(2000, mo, 1).toLocaleDateString([], { month: "long" }); }
+// entries arrive already sorted newest-first; the nested arrays stay in that order.
+function buildFolders(entries) {
+  const years = new Map(); // year → Map(monthIdx → Map(weekOfMonth → entries[]))
+  for (const e of entries) {
+    const d = entryDateObj(e);
+    if (!d) continue;
+    const y = d.getFullYear(), mo = d.getMonth(), wk = Math.ceil(d.getDate() / 7);
+    if (!years.has(y)) years.set(y, new Map());
+    const months = years.get(y);
+    if (!months.has(mo)) months.set(mo, new Map());
+    const weeks = months.get(mo);
+    if (!weeks.has(wk)) weeks.set(wk, []);
+    weeks.get(wk).push(e);
+  }
+  const sumWeeks = (weeks) => [...weeks.values()].reduce((a, arr) => a + arr.length, 0);
+  return [...years.keys()].sort((a, b) => b - a).map((y) => {
+    const months = years.get(y);
+    return {
+      key: `y${y}`, label: String(y),
+      count: [...months.values()].reduce((a, w) => a + sumWeeks(w), 0),
+      months: [...months.keys()].sort((a, b) => b - a).map((mo) => {
+        const weeks = months.get(mo);
+        return {
+          key: `y${y}-m${mo}`, label: monthName(mo), count: sumWeeks(weeks),
+          weeks: [...weeks.keys()].sort((a, b) => b - a).map((wk) => ({
+            key: `y${y}-m${mo}-w${wk}`, label: `Week ${wk}`, entries: weeks.get(wk),
+          })),
+        };
+      }),
+    };
+  });
+}
+function FolderRow({ open, onClick, label, count }) {
+  return (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-1.5 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-colors">
+      <ChevronRight size={13} className={`text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+      <Folder size={13} className="text-amber-400" />
+      <span className="text-[12px] font-semibold text-slate-700">{label}</span>
+      <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-400 tabular-nums">{count}</span>
+    </button>
+  );
+}
+
 // ── Celebration confetti (reuses the global seenConfettiFall keyframe) ───────────
 function Confetti() {
   const colors = ["#f59e0b", "#10b981", "#14b8a6", "#fb7185", "#a78bfa", "#fbbf24"];
@@ -155,8 +208,8 @@ export default function JournalPanel({ db, currentUser, onClose }) {
   const [saving, setSaving] = useState(false);
   const [entries, setEntries] = useState([]);
   const [celebrate, setCelebrate] = useState(false);
-  const [promptOffset, setPromptOffset] = useState(0);
   const [expandPast, setExpandPast] = useState(false);
+  const [openFolders, setOpenFolders] = useState(null); // Set of open folder keys (null → init to newest)
   const prevWeekly = useRef(null);
   const prevWeeks = useRef(null);
 
@@ -169,7 +222,8 @@ export default function JournalPanel({ db, currentUser, onClose }) {
   }, [db, uid]);
 
   const activeType = TYPES.find((t) => t.id === type) ?? TYPES[0];
-  const prompt = pickDailyPrompt(uid, type, promptOffset);
+  // Prompt rotates automatically once every 24h (local-midnight day number in JournalPrompts).
+  const prompt = pickDailyPrompt(uid, type, 0);
 
   // Derived stats
   const counts = {};
@@ -190,6 +244,42 @@ export default function JournalPanel({ db, currentUser, onClose }) {
   const reflectionsThisWeek = entries.filter((e) => e.date && weekKeyFromStr(e.date) === curWeek).length;
   const onThisDay = pickOnThisDay(entries);
   const { displayed: totalDisp } = useSparkCounter(entries.length);
+
+  // Folder tree (Year → Month → Week). Default-open the path to the newest entry.
+  const folders = buildFolders(entries);
+  const effectiveOpen = openFolders ?? (() => {
+    const s = new Set();
+    const y = folders[0];
+    if (y) { s.add(y.key); const m = y.months[0]; if (m) { s.add(m.key); if (m.weeks[0]) s.add(m.weeks[0].key); } }
+    return s;
+  })();
+  const toggleFolder = (key) => setOpenFolders((prev) => {
+    const next = new Set(prev ?? effectiveOpen);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+
+  const renderEntry = (e) => {
+    const t = TYPES.find((x) => x.id === e.type) ?? TYPES[0];
+    return (
+      <div key={e.id} className="rounded-2xl border border-slate-100 bg-white shadow-sm px-3.5 py-3 relative overflow-hidden"
+        style={{ animation: "seenFadeUp 300ms ease both" }}>
+        <span aria-hidden className="absolute -right-2 -bottom-3 text-5xl opacity-[0.06] select-none">{t.emoji}</span>
+        <div className="flex items-center justify-between mb-1 relative">
+          <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ background: `${t.color}18`, color: t.color }}>
+            {t.emoji} {t.label}
+          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-[10px] text-slate-400">{fmtDate(e.date)}</span>
+            <button onClick={() => handleDelete(e.id)} title="Delete" className="text-slate-300 hover:text-red-400 transition-colors">
+              <Trash2 size={12} />
+            </button>
+          </div>
+        </div>
+        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed relative">{e.text}</p>
+      </div>
+    );
+  };
 
   const fireCelebrate = () => {
     setCelebrate(true);
@@ -318,16 +408,9 @@ export default function JournalPanel({ db, currentUser, onClose }) {
             ))}
           </div>
 
-          {/* Today's rotating prompt */}
+          {/* Today's prompt — refreshes automatically once a day */}
           <div className="rounded-xl bg-white border border-slate-200 px-3 py-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's prompt</p>
-              <button
-                onClick={() => setPromptOffset((o) => o + 1)}
-                className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-teal-600 transition-colors">
-                <RefreshCw size={11} /> Try another
-              </button>
-            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's prompt</p>
             <p className="text-sm text-slate-700 mt-1 leading-snug">{prompt}</p>
           </div>
 
@@ -353,7 +436,7 @@ export default function JournalPanel({ db, currentUser, onClose }) {
           </button>
         </div>
 
-        {/* Log */}
+        {/* Log — tidied into Year → Month → Week folders */}
         <div>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Your entries</p>
           {entries.length === 0 ? (
@@ -361,28 +444,35 @@ export default function JournalPanel({ db, currentUser, onClose }) {
               No reflections yet.<br />A line or two, a few times a week, is all it takes. 🌱
             </p>
           ) : (
-            <div className="space-y-2">
-              {entries.map((e) => {
-                const t = TYPES.find((x) => x.id === e.type) ?? TYPES[0];
-                return (
-                  <div key={e.id} className="rounded-2xl border border-slate-100 bg-white shadow-sm px-3.5 py-3 relative overflow-hidden"
-                    style={{ animation: "seenFadeUp 300ms ease both" }}>
-                    <span aria-hidden className="absolute -right-2 -bottom-3 text-5xl opacity-[0.06] select-none">{t.emoji}</span>
-                    <div className="flex items-center justify-between mb-1 relative">
-                      <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ background: `${t.color}18`, color: t.color }}>
-                        {t.emoji} {t.label}
-                      </span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[10px] text-slate-400">{fmtDate(e.date)}</span>
-                        <button onClick={() => handleDelete(e.id)} title="Delete" className="text-slate-300 hover:text-red-400 transition-colors">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+            <div className="space-y-1">
+              {folders.map((yr) => (
+                <div key={yr.key}>
+                  <FolderRow open={effectiveOpen.has(yr.key)} onClick={() => toggleFolder(yr.key)} label={yr.label} count={yr.count} />
+                  {effectiveOpen.has(yr.key) && (
+                    <div className="ml-3 border-l border-slate-100 pl-1.5 space-y-0.5">
+                      {yr.months.map((mo) => (
+                        <div key={mo.key}>
+                          <FolderRow open={effectiveOpen.has(mo.key)} onClick={() => toggleFolder(mo.key)} label={mo.label} count={mo.count} />
+                          {effectiveOpen.has(mo.key) && (
+                            <div className="ml-3 border-l border-slate-100 pl-1.5 space-y-0.5">
+                              {mo.weeks.map((wk) => (
+                                <div key={wk.key}>
+                                  <FolderRow open={effectiveOpen.has(wk.key)} onClick={() => toggleFolder(wk.key)} label={wk.label} count={wk.entries.length} />
+                                  {effectiveOpen.has(wk.key) && (
+                                    <div className="ml-3 mt-1 mb-2 space-y-2">
+                                      {wk.entries.map(renderEntry)}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed relative">{e.text}</p>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
