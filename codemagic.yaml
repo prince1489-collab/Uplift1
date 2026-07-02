@@ -38,11 +38,15 @@ workflows:
           # cap sync generates the Podfile + runs pod install. Do it first so the Podfile exists.
           npx cap sync ios
           PODFILE=ios/App/Podfile
-          # Native Google sign-in needs the optional /Google subspec (sets RGCFA_INCLUDE_GOOGLE).
-          # SWITCH the existing pod line (single declaration — adding a second line for the same pod
-          # makes CocoaPods fail with a duplicate-dependency error). The plugin classes are kept from
-          # being dead-stripped by the -ObjC linker flag set in scripts/inject-google-plist.cjs (the
-          # @capacitor-firebase pods are static frameworks discovered only at runtime).
+          # (1) Static linkage — the canonical Capacitor + Firebase combo. Paired with the -ObjC flag
+          #     set in scripts/inject-google-plist.cjs, this makes the @capacitor-firebase plugin
+          #     classes (Firebase requires static frameworks) survive linking and register at runtime.
+          #     -ObjC on the default DYNAMIC use_frameworks! (build 17) did NOT register them; static
+          #     linkage + -ObjC together is the documented working setup.
+          perl -i -pe 's{^use_frameworks!.*$}{use_frameworks! :linkage => :static}' "$PODFILE"
+          # (2) Native Google sign-in needs the optional /Google subspec (sets RGCFA_INCLUDE_GOOGLE).
+          #     SWITCH the existing pod line (single declaration — a second line for the same pod makes
+          #     CocoaPods fail with a duplicate-dependency error).
           perl -i -pe "s{'CapacitorFirebaseAuthentication'}{'CapacitorFirebaseAuthentication/Google'}g" "$PODFILE"
           echo "── Final Podfile ──"; cat "$PODFILE"
           ( cd ios/App && pod install )

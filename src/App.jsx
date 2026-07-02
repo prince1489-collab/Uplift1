@@ -484,7 +484,9 @@ const ADMIN_EMAIL = "prince1489@googlemail.com";
 // isn't linked/loaded (build/linking issue); fbAuth=true → the plugin is there but the call failed.
 function nativeAuthDiag() {
   try {
-    return ` [plat=${Capacitor.getPlatform()}, fbAuth=${Capacitor.isPluginAvailable("FirebaseAuthentication")}]`;
+    // fbAuth/msg = the two Firebase (static-framework) plugins; app = @capacitor/app (non-Firebase).
+    // If app=true but fbAuth=false, the Firebase plugin classes are being dead-stripped specifically.
+    return ` [plat=${Capacitor.getPlatform()}, fbAuth=${Capacitor.isPluginAvailable("FirebaseAuthentication")}, msg=${Capacitor.isPluginAvailable("FirebaseMessaging")}, app=${Capacitor.isPluginAvailable("App")}]`;
   } catch { return ""; }
 }
 
