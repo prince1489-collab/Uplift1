@@ -77,6 +77,8 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
+import { KindnessStoryCard, PulseStrip } from "./KindnessStory";
+import DailyMissionCard from "./DailyMission";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -489,6 +491,10 @@ function NotificationBell({ streak, db, currentUser }) {
   const [likesSeenAt, setLikesSeenAt] = useState(() => {
     try { return Number(localStorage.getItem("seen-likes-at")) || 0; } catch { return 0; }
   });
+  const [rippleRows, setRippleRows] = useState([]);
+  const [ripplesSeenAt, setRipplesSeenAt] = useState(() => {
+    try { return Number(localStorage.getItem("seen-ripples-at")) || 0; } catch { return 0; }
+  });
   const prevWaveIdsRef = useRef(new Set());
   const prevLikeIdsRef = useRef(new Set());
   const likeNameCacheRef = useRef({});
@@ -590,6 +596,23 @@ function NotificationBell({ streak, db, currentUser }) {
     try { localStorage.setItem("seen-likes-at", String(newest)); } catch (_) {}
   }, [open, likes]);
 
+  // Kindness chains — people this user reached who went on to greet someone else.
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(collection(db, "users", currentUser.uid, "ripples"), orderBy("createdAt", "desc"), limit(5));
+    return onSnapshot(q, (snap) => {
+      setRippleRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, () => {});
+  }, [db, currentUser]);
+
+  // Mark ripples as seen once the panel is opened → clears their part of the badge.
+  useEffect(() => {
+    if (!open || rippleRows.length === 0) return;
+    const newest = rippleRows.reduce((m, r) => Math.max(m, r.createdAt ?? 0), ripplesSeenAt);
+    setRipplesSeenAt(newest);
+    try { localStorage.setItem("seen-ripples-at", String(newest)); } catch (_) {}
+  }, [open, rippleRows]);
+
   const dismissWave = async (id) => {
     if (!db) return;
     await setDoc(doc(db, "waves", id), { read: true }, { merge: true }).catch(() => {});
@@ -601,7 +624,8 @@ function NotificationBell({ streak, db, currentUser }) {
   const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id));
   const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
-  const totalUnread = waves.length + newLikesCount + visibleInvites.length;
+  const newRipplesCount = rippleRows.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
+  const totalUnread = waves.length + newLikesCount + visibleInvites.length + newRipplesCount;
   const hot = streak >= 7;
 
   return (
@@ -629,7 +653,7 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 ? (
+            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 && rippleRows.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
@@ -677,6 +701,22 @@ function NotificationBell({ streak, db, currentUser }) {
                         className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
                         <X size={12} />
                       </button>
+                    </div>
+                  );
+                })}
+                {(waves.length > 0 || visibleLikes.length > 0 || visibleInvites.length > 0) && rippleRows.length > 0 && (
+                  <div className="mx-4 my-1 border-t border-slate-100" />
+                )}
+                {rippleRows.map((r) => {
+                  const fresh = (r.createdAt ?? 0) > ripplesSeenAt;
+                  return (
+                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-emerald-50/60" : ""} hover:bg-emerald-50`}>
+                      <span className="text-base flex-shrink-0">🌱</span>
+                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                        Kindness chain — someone you reached
+                        {r.responderCountry ? <> in <span className="font-semibold">{r.responderCountry}</span></> : null}
+                        {" "}went on to greet others
+                      </p>
                     </div>
                   );
                 })}
@@ -1084,6 +1124,7 @@ export default function App() {
   });
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
   const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
+  const [rippleToast, setRippleToast] = useState(null); // { id, country } — a kindness chain just grew
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
   const reactObservedRef = useRef(new Set());
@@ -1363,8 +1404,14 @@ export default function App() {
         if (initialLoad) { initialLoad = false; return; } // skip initial snapshot
         snap.docChanges().forEach((chg) => {
           if (chg.type !== "added") return;
-          const country = chg.doc.data()?.responderCountry;
+          const data = chg.doc.data() ?? {};
+          const country = data.responderCountry;
           if (country && COUNTRY_COORDS[country]) setNewRippleCountry(country);
+          // The best event in the app deserves more than a globe arc nobody sees —
+          // pop a chain toast for FRESH ripples (stale ones surface in the story card).
+          if ((data.createdAt ?? 0) > Date.now() - TOAST_AGE_LIMIT_MS) {
+            setRippleToast({ id: chg.doc.id, country: country ?? null });
+          }
         });
       },
       () => {}
@@ -1454,6 +1501,13 @@ export default function App() {
     const t = setTimeout(() => setHometownToast(null), 7000);
     return () => clearTimeout(t);
   }, [hometownToast]);
+
+  // Auto-dismiss kindness-chain toast after 7s
+  useEffect(() => {
+    if (!rippleToast) return;
+    const t = setTimeout(() => setRippleToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [rippleToast]);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -2812,6 +2866,9 @@ export default function App() {
               </button>
             </div>
 
+            {/* Live pulse — one thin rotating line that shows kindness is happening right now */}
+            {activeTab === "feed" && <PulseStrip db={db} currentUser={currentUser} messages={messages} />}
+
             {activeTab === "hacks" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <LifeHacks db={db} currentUser={currentUser} profile={profile} />
@@ -2848,6 +2905,12 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
+              {/* "While you were away" impact story + Today's Mission — the welcome-back moment.
+                  Both are conditional/compact so the messages stay the hero of the feed. */}
+              <KindnessStoryCard db={db} currentUser={currentUser} profile={profile} messages={messages}
+                onOpenImpact={() => setActiveTab("impact")} />
+              <DailyMissionCard db={db} currentUser={currentUser} messages={messages}
+                todayMessageCount={todayMessageCount} />
               {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
                 <div
@@ -2917,6 +2980,29 @@ export default function App() {
                       onClick={(e) => { e.stopPropagation(); setHometownToast(null); }}
                       className="p-1 flex-shrink-0"
                       style={{ color: "rgba(128,232,160,0.5)" }}
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Kindness-chain toast — someone the user reached went on to greet others */}
+              {rippleToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRippleToast(null); setShowMap(true); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #042f2e, #0c4a42)", border: "1px solid rgba(45,212,191,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🌱</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color: "#5eead4" }}>
+                        Kindness chain! Someone you reached{rippleToast.country ? ` in ${rippleToast.country}` : ""} just greeted someone else.
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(94,234,212,0.7)" }}>Your kindness is multiplying — watch the ripple →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setRippleToast(null); }}
+                      className="p-1 flex-shrink-0"
+                      style={{ color: "rgba(94,234,212,0.5)" }}
                     >✕</span>
                   </button>
                 </div>
