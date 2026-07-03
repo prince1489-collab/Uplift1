@@ -158,7 +158,9 @@ export function PulseStrip({ db, currentUser, messages }) {
     if (today.length > 0) {
       out.push(`💬 ${today.length} ${today.length === 1 ? "greeting" : "greetings"} today${countries > 1 ? ` · from ${countries} countries` : ""}`);
     }
-    if (presenceCount >= 2) out.push(`🟢 ${presenceCount} people here today`);
+    // Distinct wording + emoji from the header's live "N online" (5-min presence) so a 24h count
+    // doesn't read as "online now": this is "who stopped by today".
+    if (presenceCount >= 2) out.push(`🌍 ${presenceCount} people stopped by today`);
     if (lastHeartCountry) {
       out.push(`💛 Your last heart came from ${FLAG_MAP[lastHeartCountry] ? `${FLAG_MAP[lastHeartCountry]} ` : ""}${lastHeartCountry}`);
     }
