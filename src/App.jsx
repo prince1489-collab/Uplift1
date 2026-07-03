@@ -3257,8 +3257,15 @@ export default function App() {
                     data-tour="send"
                     onClick={() => setPickerOpen(true)}
                     disabled={isSending}
-                    className="w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
-                    style={{ background: "linear-gradient(135deg, #14b8a6, #10b981)", boxShadow: "0 3px 14px rgba(20,184,166,0.35)" }}>
+                    className="w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70"
+                    style={{
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%)",
+                      border: "1px solid rgba(5,150,105,0.55)",
+                      boxShadow:
+                        "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(4,120,87,0.45), 0 4px 16px rgba(16,185,129,0.45)",
+                      textShadow: "0 1px 1px rgba(4,120,87,0.4)",
+                    }}>
                     {isSending
                       ? <Loader2 size={16} className="text-white animate-spin" />
                       : <>
