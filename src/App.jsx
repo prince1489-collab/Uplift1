@@ -1692,7 +1692,9 @@ export default function App() {
     // (tourCompletedAt set) or this version is never auto-toured again on sign-in.
     if (profile.tourCompletedVersion === TOUR_VERSION || profile.tourCompletedAt) { tourScheduledRef.current = true; return; }
     tourScheduledRef.current = true;
-    const t = setTimeout(() => setTourActive(true), 700);
+    // Start the tour promptly once the user lands on the feed (welcome moment dismissed). Short
+    // settle only so the feed has painted; TourGuide has its own ~360ms per-step measure delay.
+    const t = setTimeout(() => setTourActive(true), 250);
     return () => clearTimeout(t);
   }, [isRealSignedInUser, hasCompletedOnboarding, profile, showWelcomeMoment, activeTab]);
 
@@ -2066,6 +2068,12 @@ export default function App() {
       if (!user || user.isAnonymous) { setOnboardingError("Please sign in before continuing."); return; }
       const normalizedEmail = normalizeEmail(user.email || data.email);
       if (!normalizedEmail) { setOnboardingError("We could not verify your account email."); return; }
+      // Show the welcome moment IMMEDIATELY (before the profile write). Otherwise the profile
+      // onSnapshot fires the instant setDoc lands — flipping hasCompletedOnboarding true and
+      // rendering the feed underneath for a beat before this function reaches its end and sets
+      // the overlay. Setting it up-front means the "Let's go" welcome covers the feed the whole
+      // time it loads → welcome screen first, then feed (no flash). Reset on error below.
+      setShowWelcomeMoment(true);
       let profilePhotoUrl = profile?.profilePhotoUrl || "";
       if (data.profilePhoto instanceof File) {
         const ext = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -2110,6 +2118,7 @@ export default function App() {
 
       setPendingProfileData(null); setPendingOnboardingDetails(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
+      setShowWelcomeMoment(false); // save failed — drop the welcome overlay, show the form + error
       if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
       if (error?.code === "unavailable") { setOnboardingError("Firebase is temporarily unavailable."); return; }
