@@ -1694,8 +1694,13 @@ export default function App() {
     tourScheduledRef.current = true;
     // Start the tour promptly once the user lands on the feed (welcome moment dismissed). Short
     // settle only so the feed has painted; TourGuide has its own ~360ms per-step measure delay.
-    const t = setTimeout(() => setTourActive(true), 250);
-    return () => clearTimeout(t);
+    // NOTE: deliberately no clearTimeout cleanup. The profile listener uses
+    // includeMetadataChanges, so the `profile` reference changes several times right after
+    // onboarding (cache→server, pending-write flush). A cleanup that cleared this timer would
+    // cancel it on that churn and — because the one-shot ref above is already burned — never
+    // reschedule, so the tour would never start. That race lands inside the 250ms window
+    // reliably on iOS WKWebView (worked on Android only by luck of faster metadata settling).
+    setTimeout(() => setTourActive(true), 250);
   }, [isRealSignedInUser, hasCompletedOnboarding, profile, showWelcomeMoment, activeTab]);
 
   const finishTour = useCallback(() => {
