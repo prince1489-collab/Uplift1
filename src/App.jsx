@@ -765,7 +765,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-teal-600" /></div>;
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+    <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
       <form className="mx-auto w-full max-w-sm space-y-3"
         onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: (form.dobMonth && form.dobDay && form.dobYear) ? `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` : "" }); }}>
         <div className="flex justify-center pb-3">
