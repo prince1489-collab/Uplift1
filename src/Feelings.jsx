@@ -89,10 +89,12 @@ export function useActiveFeelings(db, currentUser) {
 }
 
 // ── the strip (feed, directly under the tabs) ────────────────────────────────────
-// One compact line: a "how are you feeling?" entry point (or your live status) on the left,
-// and a single ROTATING card of someone else's feeling on the right, cycling every 3s.
+// A single, full-width ROTATING card cycling every 3s through the feelings other people have
+// shared and could use encouragement on. Composing your own feeling now lives by the header name
+// and in the profile, so this strip is purely "someone needs you right now" — and it hides itself
+// entirely when nobody has shared, keeping the feed clean.
 
-export function FeelingsStrip({ myFeeling, others, onCompose, onEncourage, onOpenMine }) {
+export function FeelingsStrip({ others, onEncourage }) {
   const [idx, setIdx] = useState(0);
 
   // Rotate through others' feelings, one at a time, every 3 seconds.
@@ -102,46 +104,24 @@ export function FeelingsStrip({ myFeeling, others, onCompose, onEncourage, onOpe
     return () => clearInterval(t);
   }, [others.length]);
 
-  const current = others.length ? others[idx % others.length] : null;
-  const sent = current && (() => { try { return localStorage.getItem(repliedKey(current.uid, current.createdAt)) === "1"; } catch { return false; } })();
+  if (!others.length) return null;
+
+  const current = others[idx % others.length];
+  const sent = (() => { try { return localStorage.getItem(repliedKey(current.uid, current.createdAt)) === "1"; } catch { return false; } })();
 
   return (
-    <div className="border-b border-slate-100 bg-white px-3 py-1.5 flex items-stretch gap-2 flex-shrink-0">
-      {/* Left: compose entry point, or my live status with its private reply counter */}
-      {myFeeling ? (
-        <button onClick={() => onOpenMine(myFeeling)}
-          className="flex-shrink-0 max-w-[46%] rounded-xl px-2.5 py-1.5 text-left active:scale-[0.98] transition-transform"
-          style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4" }}>
-          <p className="text-[10px] font-semibold text-slate-600 leading-tight truncate">💭 “{myFeeling.text}”</p>
-          <p className={`text-[9px] font-bold leading-tight ${myFeeling.replyCount > 0 ? "text-amber-600" : "text-slate-400"}`}>
-            {myFeeling.replyCount > 0 ? `💛 ${myFeeling.replyCount} — tap to read` : "waiting for kind words…"}
-          </p>
-        </button>
-      ) : (
-        <button onClick={onCompose}
-          className="flex-shrink-0 rounded-xl border border-dashed border-slate-300 px-2.5 py-1.5 text-left active:scale-[0.98] transition-transform bg-slate-50/60 flex items-center">
-          <p className="text-[11px] font-semibold text-slate-500 leading-tight">💭 How are you feeling?</p>
-        </button>
-      )}
-
-      {/* Right: one rotating feeling from someone who could use encouragement */}
-      {current ? (
-        <button key={`${current.uid}_${current.createdAt}`} onClick={() => !sent && onEncourage(current)}
-          className="flex-1 min-w-0 rounded-xl px-2.5 py-1.5 text-left active:scale-[0.98] transition-transform flex items-center gap-2"
-          style={{ background: "linear-gradient(135deg, #fffbeb, #fef3f2)", border: "1px solid #fde68a", animation: "seenFadeUp 400ms ease both" }}>
-          <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 truncate">{feelingLabel(current)}</p>
-            <p className="text-[11px] font-semibold text-slate-700 leading-tight truncate">“{current.text}”</p>
-          </div>
-          <span className={`flex-shrink-0 text-[10px] font-bold ${sent ? "text-emerald-600" : "text-rose-500"}`}>
-            {sent ? "💛 Sent" : "💛 Encourage"}
-          </span>
-        </button>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-[10px] text-slate-300 italic">no feelings shared yet — be the first 💭</p>
+    <div className="border-b border-slate-100 bg-white px-3.5 py-1.5 flex-shrink-0">
+      <button key={`${current.uid}_${current.createdAt}`} onClick={() => !sent && onEncourage(current)}
+        className="w-full rounded-xl px-3 py-2 text-left active:scale-[0.99] transition-transform flex items-center gap-2"
+        style={{ background: "linear-gradient(135deg, #fffbeb, #fef3f2)", border: "1px solid #fde68a", animation: "seenFadeUp 400ms ease both" }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 truncate">{feelingLabel(current)}</p>
+          <p className="text-[12px] font-semibold text-slate-700 leading-tight truncate">“{current.text}”</p>
         </div>
-      )}
+        <span className={`flex-shrink-0 text-[11px] font-bold ${sent ? "text-emerald-600" : "text-rose-500"}`}>
+          {sent ? "💛 Sent" : "💛 Encourage"}
+        </span>
+      </button>
     </div>
   );
 }

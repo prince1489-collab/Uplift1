@@ -1194,7 +1194,7 @@ export default function App() {
   const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
   const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
   const [myFeelingPanel, setMyFeelingPanel] = useState(null); // snapshot of my feeling — stays mounted through ack + pass-forward
-  const [freplyToast, setFreplyToast] = useState(null); // { id, name } — encouragement arrived
+  const [feelPromptDismissed, setFeelPromptDismissed] = useState(false); // once-a-day "how are you feeling?" bubble
   const [echoToast, setEchoToast] = useState(null); // { id, name } — "your words helped"
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
@@ -1583,16 +1583,23 @@ export default function App() {
   // Kindness loop: live feelings (one shared listener → strip + pass-it-forward) and
   // fresh-event toasts (encouragement arrived / "your words helped" echo).
   const { myFeeling, others: otherFeelings } = useActiveFeelings(db, currentUser);
+  // Encouragement replies now surface only in the 🔔 bell (no feed banner). The "your words helped"
+  // echo still pops as a feed banner (a rewarding moment), so we keep that toast callback.
   useFeelingToasts(
     db, currentUser,
-    (r) => setFreplyToast({ id: `${r.responderUid}_${r.createdAt}`, name: (r.responderName || "Someone").split(" ")[0] }),
+    null,
     (e) => setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null })
   );
-  useEffect(() => {
-    if (!freplyToast) return;
-    const t = setTimeout(() => setFreplyToast(null), 7000);
-    return () => clearTimeout(t);
-  }, [freplyToast]);
+  // Once-a-day "how are you feeling?" nudge by the header name (only when nothing is shared yet today).
+  const feelPromptKey = currentUser?.uid
+    ? `seen_feelprompt_${currentUser.uid}_${(() => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; })()}`
+    : null;
+  const showFeelPrompt = !myFeeling && !feelPromptDismissed && !!feelPromptKey &&
+    (() => { try { return localStorage.getItem(feelPromptKey) !== "1"; } catch { return true; } })();
+  const dismissFeelPrompt = () => {
+    setFeelPromptDismissed(true);
+    try { if (feelPromptKey) localStorage.setItem(feelPromptKey, "1"); } catch { /* ignore */ }
+  };
   useEffect(() => {
     if (!echoToast) return;
     const t = setTimeout(() => setEchoToast(null), 7000);
@@ -2809,6 +2816,19 @@ export default function App() {
                     )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
+                  {showFeelPrompt && (
+                    <div onClick={(e) => e.stopPropagation()} className="mt-1.5 inline-flex items-center gap-1.5 rounded-full rounded-tl-sm pl-2.5 pr-1.5 py-1"
+                      style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4", animation: "seenFadeUp 400ms ease both" }}>
+                      <button onClick={() => { setFeelingComposerOpen(true); dismissFeelPrompt(); }}
+                        className="text-[11px] font-semibold text-teal-700 active:scale-95 transition-transform">
+                        💭 How are you feeling today?
+                      </button>
+                      <button onClick={dismissFeelPrompt} aria-label="Dismiss"
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-teal-400 hover:text-teal-600">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
@@ -2986,16 +3006,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* Kindness loop — "how are you feeling?" + a rotating feeling that needs encouragement,
-                sitting directly under the tabs (replaces the old presence pulse line) */}
+            {/* Kindness loop — a rotating card of someone who could use encouragement right now
+                (composing your own feeling lives by the header name + in your profile) */}
             {activeTab === "feed" && (
-              <FeelingsStrip
-                myFeeling={myFeeling}
-                others={otherFeelings}
-                onCompose={() => setFeelingComposerOpen(true)}
-                onEncourage={(f) => setEncourageFeeling(f)}
-                onOpenMine={(f) => setMyFeelingPanel(f)}
-              />
+              <FeelingsStrip others={otherFeelings} onEncourage={(f) => setEncourageFeeling(f)} />
             )}
 
             {activeTab === "hacks" ? (
@@ -3126,28 +3140,6 @@ export default function App() {
                       onClick={(e) => { e.stopPropagation(); setRippleToast(null); }}
                       className="p-1 flex-shrink-0"
                       style={{ color: "rgba(94,234,212,0.5)" }}
-                    >✕</span>
-                  </button>
-                </div>
-              )}
-              {/* Encouragement arrived — someone replied to my feeling status */}
-              {freplyToast && (
-                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setFreplyToast(null); if (myFeeling) setMyFeelingPanel(myFeeling); }}
-                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1px solid #fcd34d", boxShadow: "0 8px 24px rgba(245,158,11,0.18)", animation: "hackOverlayIn 0.4s ease" }}
-                  >
-                    <span className="text-2xl">💛</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-amber-800">
-                        {freplyToast.name} sent you encouragement
-                      </p>
-                      <p className="text-xs mt-0.5 text-amber-600">Tap to read your kind words →</p>
-                    </div>
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setFreplyToast(null); }}
-                      className="p-1 flex-shrink-0 text-amber-300"
                     >✕</span>
                   </button>
                 </div>

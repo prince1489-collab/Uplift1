@@ -35,6 +35,7 @@ import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat"
 import { startCheckout } from "./payments";
 import { AddToCircleButton } from "./Circles";
 import { StickerPicker } from "./StickerReactions";
+import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
 
 import {
   Bell,
@@ -1493,6 +1494,10 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
   const [copying, setCopying] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [localProfile, setLocalProfile] = useState(profile);
+  // Permanent "how are you feeling?" box — update your shared feeling anytime from here.
+  const { myFeeling, others: otherFeelings } = useActiveFeelings(db, currentUser);
+  const [showFeelingComposer, setShowFeelingComposer] = useState(false);
+  const [showFeelingReplies, setShowFeelingReplies] = useState(false);
 
   useEffect(() => { setLocalProfile(profile); }, [profile]);
 
@@ -1571,6 +1576,30 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
             </div>
           </div>
 
+          {/* Permanent feeling box — outside cardRef so it isn't baked into the shared image */}
+          {db && currentUser && (
+            <div className="mt-3 rounded-2xl bg-white px-4 py-3 shadow-lg">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">💭 How you're feeling</p>
+              {myFeeling ? (
+                <p className="text-[13px] font-semibold text-slate-700 leading-snug mt-0.5">“{myFeeling.text}”</p>
+              ) : (
+                <p className="text-[12px] text-slate-500 mt-0.5">You haven't shared today — let others send you a little warmth.</p>
+              )}
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setShowFeelingComposer(true)}
+                  className="flex-1 rounded-full bg-teal-600 py-1.5 text-[12px] font-semibold text-white hover:bg-teal-700 transition-colors">
+                  {myFeeling ? "Update" : "Share how you feel"}
+                </button>
+                {myFeeling && myFeeling.replyCount > 0 && (
+                  <button onClick={() => setShowFeelingReplies(true)}
+                    className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors">
+                    💛 {myFeeling.replyCount} · read
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="mt-3 flex gap-2">
             <button onClick={handleShare} disabled={copying}
@@ -1601,6 +1630,17 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
           onClose={() => setShowEdit(false)}
           onSaved={(updates) => setLocalProfile(p => ({ ...p, ...updates }))}
         />
+      )}
+
+      {showFeelingComposer && (
+        <FeelingComposer db={db} currentUser={currentUser} profile={localProfile}
+          onClose={() => setShowFeelingComposer(false)} />
+      )}
+      {showFeelingReplies && myFeeling && (
+        <MyFeelingPanel db={db} currentUser={currentUser} feeling={myFeeling}
+          othersFeelings={otherFeelings}
+          onClose={() => setShowFeelingReplies(false)}
+          onEncourage={() => setShowFeelingReplies(false)} />
       )}
     </>
   );

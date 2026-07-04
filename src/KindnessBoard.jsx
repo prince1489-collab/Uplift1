@@ -14,8 +14,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import {
-  DARK, LIGHT, kmBetween, LivesTouchedHero,
-  useReactionData, useRippleData, useOnwardReach,
+  DARK, LIGHT, kmBetween,
+  useReactionData, useRippleData,
 } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
@@ -153,49 +153,23 @@ function storyLine(ev) {
   }
 }
 
-// ── compact, collapsible impact journey (replaces the old boxy ripple row) ──────────
-// One tight line of connected nodes: You → hearts reached · countries → passed on → onward.
-// Absorbs "countries reached", so the old numbers section is fully redundant.
+// ── headline metric circle ──────────────────────────────────────────────────────────
+// A ringed number with a label under it; four of these sit in one row as the board's cover.
 
-function ImpactJourney({ reached, countries, passedOn, onward, dark }) {
+function StatCircle({ value, label, color, dark }) {
   const T = dark ? DARK : LIGHT;
-  const [open, setOpen] = useState(true);
-
-  const nodes = [
-    { key: "you", emoji: "🫶", label: "you" },
-    { key: "reached", n: reached, label: reached === 1 ? "heart reached" : "hearts reached" },
-    ...(countries > 0 ? [{ key: "countries", n: countries, label: countries === 1 ? "country" : "countries" }] : []),
-    ...(passedOn > 0 ? [{ key: "passed", n: passedOn, label: "passed it on", accent: true }] : []),
-    ...(onward > 0 ? [{ key: "onward", n: onward, label: "reached onward", accent: true }] : []),
-  ];
-  const caption = passedOn > 0
-    ? (onward > 0 ? `Your kindness rippled onward to ${onward} more ${onward === 1 ? "person" : "people"}.` : "Your kindness didn't stop with you.")
-    : reached > 0 ? "Your warmth is being felt across the world." : "Send a greeting — your ripple starts here.";
-
   return (
-    <div className="mt-3 rounded-2xl overflow-hidden" style={{ background: T.accentBg, border: `1px solid ${T.accentBorder}` }}>
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-3.5 py-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: T.accentLabel }}>🌊 Your ripple</span>
-        {open ? <ChevronDown size={14} style={{ color: T.accentMuted }} /> : <ChevronRight size={14} style={{ color: T.accentMuted }} />}
-      </button>
-      {open && (
-        <div className="px-3 pb-3.5">
-          <div className="flex items-stretch justify-center gap-1">
-            {nodes.map((nd, i) => (
-              <React.Fragment key={nd.key}>
-                {i > 0 && <span className="self-center text-[13px] pb-3.5" style={{ color: T.accentMuted }}>→</span>}
-                <div className="flex flex-col items-center justify-start gap-0.5 flex-1" style={{ minWidth: 44 }}>
-                  <span className="text-[17px] font-extrabold leading-none" style={{ color: nd.accent ? T.accent : T.text }}>
-                    {nd.emoji ?? nd.n}
-                  </span>
-                  <span className="text-[8px] font-bold uppercase tracking-wide text-center leading-tight" style={{ color: T.textDim }}>{nd.label}</span>
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
-          <p className="text-[11px] font-semibold text-center mt-2.5" style={{ color: passedOn > 0 ? T.accentDim : T.textDim }}>{caption}</p>
-        </div>
-      )}
+    <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+      <div className="flex items-center justify-center rounded-full"
+        style={{
+          width: 62, height: 62,
+          background: dark ? `${color}1f` : `${color}14`,
+          border: `2px solid ${color}`,
+          boxShadow: dark ? "none" : `0 3px 10px ${color}22`,
+        }}>
+        <span className="font-extrabold leading-none" style={{ color, fontSize: 20 }}>{value}</span>
+      </div>
+      <span className="text-[8.5px] font-bold uppercase tracking-wide text-center leading-tight" style={{ color: T.textDim }}>{label}</span>
     </div>
   );
 }
@@ -209,10 +183,9 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({});
 
-  // Existing aggregate hooks power the cover ripple (reached + countries + onward).
+  // Existing aggregate hooks power the cover metrics (reached, countries, ripple).
   const { data: reactData } = useReactionData(db, currentUser, "30d");
-  const { rippleCount, ripples: liveRipples } = useRippleData(db, currentUser);
-  const onwardReach = useOnwardReach(db, currentUser, liveRipples);
+  const { rippleCount } = useRippleData(db, currentUser);
 
   useEffect(() => {
     if (!db || !uid) return;
@@ -299,19 +272,17 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
 
   return (
     <main className="flex-1 overflow-y-auto px-4 py-5" style={{ background: T.pageBg }}>
-      {/* ── Cover ── */}
-      <div className="text-center mb-1">
+      {/* ── Cover: heading + 4 headline metrics ── */}
+      <div className="text-center mb-3">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: T.textDim }}>Your Kindness Story</p>
         {startedLabel && <p className="text-[10px] mt-0.5" style={{ color: T.textDim }}>began {startedLabel}</p>}
       </div>
-      <LivesTouchedHero sentCount={liveStats?.sent30d ?? 0} dark={darkMode} />
-      <ImpactJourney
-        reached={reactData?.uniqueReactorCount ?? 0}
-        countries={countriesCount}
-        passedOn={rippleCount}
-        onward={onwardReach}
-        dark={darkMode}
-      />
+      <div className="flex items-start justify-between gap-1.5">
+        <StatCircle value={raw?.sends?.length ?? 0} label="Messages sent" color="#14b8a6" dark={darkMode} />
+        <StatCircle value={reactData?.uniqueReactorCount ?? 0} label="Users reached" color="#f59e0b" dark={darkMode} />
+        <StatCircle value={countriesCount} label="Countries reached" color="#6366f1" dark={darkMode} />
+        <StatCircle value={rippleCount} label="Ripple effect" color="#10b981" dark={darkMode} />
+      </div>
 
       {/* ── Chapters: collapsible Year → Month → Week ── */}
       {!tree ? (
