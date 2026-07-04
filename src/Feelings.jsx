@@ -18,9 +18,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   collection, query, orderBy, limit, onSnapshot, doc, setDoc, updateDoc,
-  increment, runTransaction,
+  increment, runTransaction, arrayUnion,
 } from "firebase/firestore";
-import { X, Send, Heart, Loader2, PenLine } from "lucide-react";
+import { X, Send, Heart, Loader2, PenLine, Check } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 
 export const FEELING_MAX_LEN = 60;
@@ -79,7 +79,9 @@ export function useActiveFeelings(db, currentUser) {
 
   return useMemo(() => {
     const now = Date.now();
-    const live = all.filter((f) => f?.uid && (f.expiresAt ?? 0) > now && !f.ackAt);
+    // A feeling stays live until it expires (24h) or the poster overwrites it — acknowledging
+    // replies must NOT hide it, so anyone can keep encouraging the whole time.
+    const live = all.filter((f) => f?.uid && (f.expiresAt ?? 0) > now);
     return {
       myFeeling: live.find((f) => f.uid === uid) ?? null,
       others: live.filter((f) => f.uid !== uid),
@@ -169,6 +171,7 @@ export function FeelingComposer({ db, currentUser, profile, onClose }) {
         suggestions,
         replyCount: 0,
         ackAt: null,
+        ackedResponders: [], // uids the poster has thanked; reset each time the status changes
       });
       onClose();
     } catch (_) {
@@ -376,9 +379,11 @@ export function EncourageSheet({ db, currentUser, profile, feeling, onClose }) {
 
 export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClose, onEncourage }) {
   const [replies, setReplies] = useState([]);
-  const [acked, setAcked] = useState(false);
+  const [ackedResponders, setAckedResponders] = useState(feeling.ackedResponders ?? []);
   const [busy, setBusy] = useState(false);
+  const [showPassForward, setShowPassForward] = useState(false);
 
+  // Live replies to THIS feeling.
   useEffect(() => {
     if (!db || !currentUser?.uid) return;
     const q = query(collection(db, "users", currentUser.uid, "feelingReplies"), orderBy("createdAt", "desc"), limit(50));
@@ -387,14 +392,27 @@ export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClo
     }, () => {});
   }, [db, currentUser?.uid, feeling.createdAt]);
 
-  const acknowledge = async () => {
-    if (busy) return;
+  // Live feeling doc → keep the thanked-list fresh (survives panel reopen, other-device acks).
+  useEffect(() => {
+    if (!db || !currentUser?.uid) return;
+    return onSnapshot(doc(db, "feelings", currentUser.uid), (snap) => {
+      const d = snap.data();
+      if (d && d.createdAt === feeling.createdAt) setAckedResponders(d.ackedResponders ?? []);
+    }, () => {});
+  }, [db, currentUser?.uid, feeling.createdAt]);
+
+  const ackedSet = useMemo(() => new Set(ackedResponders), [ackedResponders]);
+  const pendingUids = useMemo(
+    () => [...new Set(replies.map((r) => r.responderUid).filter((u) => u && !ackedSet.has(u)))],
+    [replies, ackedSet]
+  );
+
+  const thankAll = async () => {
+    if (busy || !pendingUids.length) return;
     setBusy(true);
     try {
-      await updateDoc(doc(db, "feelings", currentUser.uid), { ackAt: Date.now() });
-      const responderUids = [...new Set(replies.map((r) => r.responderUid).filter(Boolean))];
-      // One echo per responder — "your words helped, right when they were needed".
-      await Promise.all(responderUids.map((rUid) =>
+      // One echo per newly-thanked responder — "your words helped, right when they were needed".
+      await Promise.all(pendingUids.map((rUid) =>
         setDoc(doc(db, "users", rUid, "kindnessEchoes", `${feeling.createdAt}_${currentUser.uid}`), {
           fromUid: currentUser.uid,
           ownerUid: rUid,
@@ -404,15 +422,19 @@ export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClo
           createdAt: Date.now(),
         }).catch(() => {})
       ));
-      if (responderUids.length) {
-        authedPost(currentUser, "/api/notify-feeling", { type: "ack", responderUids }).catch(() => {});
-      }
-      setAcked(true);
+      // Non-destructive: record who's been thanked; the feeling stays live for more encouragement.
+      await updateDoc(doc(db, "feelings", currentUser.uid), {
+        ackedResponders: arrayUnion(...pendingUids),
+        ackAt: Date.now(),
+      }).catch(() => {});
+      setAckedResponders((prev) => [...new Set([...prev, ...pendingUids])]);
+      authedPost(currentUser, "/api/notify-feeling", { type: "ack", responderUids: pendingUids }).catch(() => {});
+      setShowPassForward(true);
     } catch (_) { /* leave panel open; user can retry */ }
     setBusy(false);
   };
 
-  // Pass-it-forward: the oldest unanswered live feeling from someone else.
+  // Pass-it-forward: the oldest least-answered live feeling from someone else.
   const passTarget = useMemo(() => {
     const candidates = (othersFeelings || []).filter((f) => {
       try { return localStorage.getItem(repliedKey(f.uid, f.createdAt)) !== "1"; } catch { return true; }
@@ -420,44 +442,23 @@ export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClo
     return candidates.sort((a, b) => (a.replyCount ?? 0) - (b.replyCount ?? 0) || a.createdAt - b.createdAt)[0] ?? null;
   }, [othersFeelings]);
 
+  const thankedCount = replies.filter((r) => ackedSet.has(r.responderUid)).length;
+
   return createPortal(
     <div data-portal className="fixed inset-0 z-[260] flex items-end justify-center sm:items-center"
       style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} onClick={onClose}>
       <div className="w-full max-w-sm rounded-t-3xl sm:rounded-3xl bg-white p-5 shadow-2xl max-h-[85vh] overflow-y-auto"
         style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}
         onClick={(e) => e.stopPropagation()}>
-        {acked ? (
-          <>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-slate-800">🌱 Pass it forward?</h3>
-              <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100"><X size={16} className="text-slate-500" /></button>
-            </div>
-            <p className="text-[12px] text-slate-500 leading-relaxed mb-3">
-              Everyone who encouraged you just heard that it helped 🌟<br />
-              {passTarget ? "Someone else could use that same warmth right now:" : "Keep the warmth moving with a kind greeting."}
-            </p>
-            {passTarget ? (
-              <button onClick={() => { onClose(); onEncourage(passTarget); }}
-                className="w-full rounded-2xl px-3 py-3 text-left active:scale-[0.99] transition-transform"
-                style={{ background: "linear-gradient(135deg, #fffbeb, #fef3f2)", border: "1px solid #fde68a" }}>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600">{feelingLabel(passTarget)} · {timeAgo(passTarget.createdAt)}</p>
-                <p className="text-[13px] font-semibold text-slate-700 leading-snug mt-0.5">“{passTarget.text}”</p>
-                <p className="text-[11px] font-bold text-rose-500 mt-1">💛 Encourage them →</p>
-              </button>
-            ) : null}
-            <button onClick={onClose}
-              className="mt-3 w-full rounded-full border border-slate-200 py-2 text-[12px] font-semibold text-slate-500 hover:bg-slate-50">
-              Maybe later
-            </button>
-          </>
-        ) : (
           <>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-slate-800">💛 Kind words for you</h3>
               <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100"><X size={16} className="text-slate-500" /></button>
             </div>
             <div className="rounded-2xl bg-teal-50 border border-teal-100 px-3 py-2 mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">You shared · {timeAgo(feeling.createdAt)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
+                You shared · {timeAgo(feeling.createdAt)} · stays for 24h
+              </p>
               <p className="text-[13px] font-semibold text-slate-700 leading-snug">“{feeling.text}”</p>
             </div>
 
@@ -467,31 +468,59 @@ export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClo
               </p>
             ) : (
               <div className="space-y-2">
-                {replies.map((r) => (
-                  <div key={`${r.responderUid}_${r.createdAt}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                    style={{ animation: "seenFadeUp 300ms ease both" }}>
-                    <p className="text-[10px] font-bold text-slate-400">
-                      {(r.responderName || "Someone").split(" ")[0]} {flagOf(r.responderCountry)} · {timeAgo(r.createdAt)}
-                    </p>
-                    <p className="text-[13px] text-slate-700 leading-snug mt-0.5">{r.text}</p>
-                  </div>
-                ))}
+                {replies.map((r) => {
+                  const thanked = ackedSet.has(r.responderUid);
+                  return (
+                    <div key={`${r.responderUid}_${r.createdAt}`}
+                      className={`rounded-2xl border px-3 py-2.5 ${thanked ? "border-emerald-100 bg-emerald-50/60" : "border-slate-100 bg-slate-50/60"}`}
+                      style={{ animation: "seenFadeUp 300ms ease both" }}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-slate-400">
+                          {(r.responderName || "Someone").split(" ")[0]} {flagOf(r.responderCountry)} · {timeAgo(r.createdAt)}
+                        </p>
+                        {thanked && (
+                          <span className="flex items-center gap-0.5 text-[9px] font-bold text-emerald-600">
+                            <Check size={10} /> Thanked
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[13px] text-slate-700 leading-snug mt-0.5">{r.text}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {replies.length > 0 && (
               <>
-                <button onClick={acknowledge} disabled={busy}
-                  className="mt-4 w-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 py-2.5 text-sm font-bold text-white active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
-                  {busy ? <Loader2 size={15} className="animate-spin" /> : "💛"} This helped — thank them
-                </button>
+                {pendingUids.length > 0 ? (
+                  <button onClick={thankAll} disabled={busy}
+                    className="mt-4 w-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 py-2.5 text-sm font-bold text-white active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
+                    {busy ? <Loader2 size={15} className="animate-spin" /> : "💛"}
+                    {thankedCount > 0 ? `Thank ${pendingUids.length} new` : "This helped — thank them all"}
+                  </button>
+                ) : (
+                  <div className="mt-4 w-full rounded-full bg-emerald-50 border border-emerald-100 py-2.5 text-center text-sm font-bold text-emerald-600 flex items-center justify-center gap-1.5">
+                    <Check size={15} /> All thanked
+                  </div>
+                )}
                 <p className="mt-1.5 text-center text-[10px] text-slate-400">
-                  Everyone who wrote to you will know their words landed
+                  Everyone you thank hears their words landed · your status stays live for more kindness
                 </p>
               </>
             )}
+
+            {/* Optional, non-blocking: pass the warmth on after thanking */}
+            {showPassForward && passTarget && (
+              <button onClick={() => { onClose(); onEncourage(passTarget); }}
+                className="mt-3 w-full rounded-2xl px-3 py-2.5 text-left active:scale-[0.99] transition-transform"
+                style={{ background: "linear-gradient(135deg, #fffbeb, #fef3f2)", border: "1px solid #fde68a" }}>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600">🌱 Pass it forward · {feelingLabel(passTarget)}</p>
+                <p className="text-[12px] font-semibold text-slate-700 leading-snug mt-0.5 truncate">“{passTarget.text}”</p>
+                <p className="text-[11px] font-bold text-rose-500 mt-0.5">💛 Encourage them →</p>
+              </button>
+            )}
           </>
-        )}
       </div>
     </div>,
     document.body

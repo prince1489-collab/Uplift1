@@ -32,7 +32,7 @@ import {
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
   GiftOverlay,
-  MoodSelector, MoodPill,
+  MoodPill,
   PremiumUpgradePrompt,
   scheduleGreetingWindowNotification,
   NotificationPermissionBanner,
@@ -477,7 +477,9 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
-const TOUR_VERSION = 2; // bump to re-run the guided tour once for everyone after a release
+// If a user's shared feeling reads as distressed, gently surface the Support flow to them.
+const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t cope|exhaust|burn(t| ?ed)? out|worthless|suicid|self.?harm|breaking down|falling apart|so sad|really sad|give up|giving up)/i;
+const TOUR_VERSION = 3; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
 function NotificationBell({ streak, db, currentUser }) {
@@ -1785,9 +1787,9 @@ export default function App() {
     if (tourScheduledRef.current) return;
     if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
     if (showWelcomeMoment || activeTab !== "feed") return;
-    // Only auto-run for genuinely new users. Anyone who has completed any prior tour
-    // (tourCompletedAt set) or this version is never auto-toured again on sign-in.
-    if (profile.tourCompletedVersion === TOUR_VERSION || profile.tourCompletedAt) { tourScheduledRef.current = true; return; }
+    // Gate solely on the tour VERSION so a version bump re-runs the refreshed tour once for
+    // everyone (existing users included), then never again. finishTour writes the new version.
+    if (profile.tourCompletedVersion === TOUR_VERSION) { tourScheduledRef.current = true; return; }
     tourScheduledRef.current = true;
     // Start the tour promptly once the user lands on the feed (welcome moment dismissed). Short
     // settle only so the feed has painted; TourGuide has its own ~360ms per-step measure delay.
@@ -1849,11 +1851,11 @@ export default function App() {
       before: () => { setHeaderOpen(false); setPickerOpen(false); setReactionBarId(null); },
     },
     {
-      key: "mood",
-      target: '[data-tour="mood"]',
-      title: "Set your mood",
-      body: "Tell us how you're feeling. It personalises your feed — and if you're struggling, we'll gently surface support.",
-      before: () => { setPickerOpen(false); setHeaderOpen(true); },
+      key: "feeling",
+      target: '[data-tour="feeling"]',
+      title: "Share how you're feeling 💭",
+      body: "Tap “How are you feeling?” by your name to share a few words. Others send you encouragement — and you can thank each of them back. You can encourage them too, right from the feed.",
+      before: () => { setPickerOpen(false); setHeaderOpen(false); },
     },
     {
       key: "sparks",
@@ -2812,13 +2814,8 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
-                    {profile?.moodTag && (
-                      <span className="text-base leading-none flex-shrink-0">
-                        {{ grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" }[profile.moodTag]}
-                      </span>
-                    )}
                     {showFeelPrompt && (
-                      <span onClick={(e) => e.stopPropagation()}
+                      <span data-tour="feeling" onClick={(e) => e.stopPropagation()}
                         className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full pl-2 pr-1 py-0.5 whitespace-nowrap"
                         style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4", animation: "seenFadeUp 400ms ease both" }}>
                         <button onClick={() => { setFeelingComposerOpen(true); dismissFeelPrompt(); }}
@@ -2925,9 +2922,6 @@ export default function App() {
                           style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
                       </div>
                     </div>
-                  </div>
-                  <div data-tour="mood">
-                    <MoodSelector db={db} uid={currentUser.uid} currentMood={profile?.moodTag} />
                   </div>
                   <div className="space-y-1">
                     <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
@@ -3167,34 +3161,20 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {/* Mood-triggered support banner */}
-              {["struggling", "lonely", "tired"].includes(profile?.moodTag) && (
+              {/* Support banner — gently surfaced when your shared feeling reads as distressed */}
+              {DISTRESS_RE.test(myFeeling?.text || "") && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
                   className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
                   style={{
-                    background: profile?.moodTag === "struggling"
-                      ? "linear-gradient(135deg, #fce7f3, #fbcfe8)"
-                      : profile?.moodTag === "lonely"
-                      ? "linear-gradient(135deg, #ede9fe, #ddd6fe)"
-                      : "linear-gradient(135deg, #dbeafe, #bfdbfe)",
-                    border: "1px solid",
-                    borderColor: profile?.moodTag === "struggling" ? "#f9a8d4"
-                      : profile?.moodTag === "lonely" ? "#c4b5fd" : "#93c5fd",
+                    background: "linear-gradient(135deg, #fce7f3, #ede9fe)",
+                    border: "1px solid #f5c9e0",
                   }}
                 >
-                  <span className="text-2xl">
-                    {profile?.moodTag === "struggling" ? "🌧️" : profile?.moodTag === "lonely" ? "🫂" : "😴"}
-                  </span>
+                  <span className="text-2xl">🫂</span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800 text-sm">
-                      {profile?.moodTag === "struggling"
-                        ? "You said you're struggling — you're not alone"
-                        : profile?.moodTag === "lonely"
-                        ? "Feeling lonely? We have support for you"
-                        : "Feeling tired? Check out our wellbeing tools"}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">Tap for a free check-in &amp; resources →</p>
+                    <p className="font-semibold text-slate-800 text-sm">Sounds like a heavy moment — you're not alone</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Tap for a free check-in &amp; support resources →</p>
                   </div>
                 </button>
               )}

@@ -1167,49 +1167,8 @@ export function MoodPill({ mood, tiny = false }) {
   );
 }
 
-export function MoodSelector({ db, uid, currentMood }) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const current = MOOD_OPTIONS.find((m) => m.id === currentMood);
-
-  const selectMood = async (moodId) => {
-    if (!db || !uid) return;
-    setSaving(true);
-    try {
-      await setDoc(doc(db, "users", uid), { moodTag: moodId }, { merge: true });
-      setOpen(false);
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="mt-2">
-      <button onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 transition-colors">
-        <span className="flex items-center gap-2">
-          {current
-            ? <><span style={{ fontSize: "13px" }}>{current.emoji}</span><span className="font-medium">{current.label}</span></>
-            : <span className="text-slate-400">How are you feeling today?</span>}
-        </span>
-        <span className="text-slate-400 text-[10px]">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div className="mt-1 grid grid-cols-4 gap-1.5 rounded-2xl border border-slate-100 bg-white p-2">
-          {MOOD_OPTIONS.map((mood) => (
-            <button key={mood.id} onClick={() => selectMood(mood.id)} disabled={saving}
-              className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 text-[10px] transition-colors ${
-                currentMood === mood.id
-                  ? "border-teal-300 bg-teal-50 text-teal-700"
-                  : "border-slate-100 bg-slate-50 text-slate-600 hover:border-teal-200"
-              }`}>
-              <span style={{ fontSize: "16px" }}>{mood.emoji}</span>
-              <span>{mood.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// MoodSelector removed — the free-text "feeling status" (src/Feelings.jsx) is now the single
+// "how are you feeling?" surface. MOOD_OPTIONS / MoodPill are kept (buddy-list mood pills).
 
 // ─────────────────────────────────────────────────────────────────
 // GAP 4 FIX — PREMIUM UPGRADE PROMPT
