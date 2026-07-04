@@ -241,7 +241,7 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
           <ArrowLeft size={18} className="text-slate-600" />
         </button>

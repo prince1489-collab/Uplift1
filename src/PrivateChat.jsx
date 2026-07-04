@@ -261,7 +261,7 @@ export function PrivateChatInbox({ db, currentUser, profile, onOpenChat, onClose
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose}
           className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
           <ArrowLeft size={18} className="text-slate-600" />
@@ -602,7 +602,7 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
   if (blocked !== null && blocked) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-white">
-        <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
           <button onClick={onBack} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
             <ArrowLeft size={18} className="text-slate-600" />
           </button>
@@ -630,7 +630,7 @@ export function PrivateChatWindow({ db, currentUser, chatId, otherUid, otherName
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onBack}
           className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
           <ArrowLeft size={18} className="text-slate-600" />

@@ -3487,7 +3487,7 @@ export default function App() {
             {/* ── Admin: private chat reports panel ── */}
             {adminReports !== null && (
               <div className="absolute inset-0 z-50 flex flex-col bg-white">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+                <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
                   <button onClick={() => setAdminReports(null)} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
                     <ArrowLeft size={18} className="text-slate-600" />
                   </button>
@@ -3541,7 +3541,7 @@ export default function App() {
             {/* ── Admin: community greeting moderation queue ── */}
             {adminSubmissions !== null && (
               <div className="absolute inset-0 z-50 flex flex-col bg-white">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+                <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
                   <button onClick={() => setAdminSubmissions(null)} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
                     <ArrowLeft size={18} className="text-slate-600" />
                   </button>

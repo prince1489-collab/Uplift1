@@ -967,7 +967,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
 
         {/* ── FLOATING HEADER ── */}
         <div onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px", background: "linear-gradient(to bottom, rgba(6,14,16,0.92) 0%, transparent 100%)" }}>
+          style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "calc(14px + env(safe-area-inset-top)) 16px 14px", background: "linear-gradient(to bottom, rgba(6,14,16,0.92) 0%, transparent 100%)" }}>
           <div>
             <p style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: "white", letterSpacing: "-0.01em" }}>World of Seen</p>
             <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", margin: "2px 0 0" }}>Kindness crossing borders</p>

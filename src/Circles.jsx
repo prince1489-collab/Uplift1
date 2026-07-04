@@ -340,7 +340,7 @@ function CircleInviteInbox({ db, currentUser, onClose }) {
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
           <ArrowLeft size={18} className="text-slate-600" />
         </button>
@@ -457,7 +457,7 @@ function CircleGreetingPicker({ isPremium, onSelect, onClose }) {
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[220] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
           <X size={18} className="text-slate-600" />
         </button>
@@ -524,7 +524,7 @@ function CircleMembers({ db, currentUser, circle, circleId, isPremium, onClose }
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[210] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100">
           <ArrowLeft size={18} className="text-slate-600" />
         </button>
@@ -687,7 +687,7 @@ function CircleChat({ db, currentUser, circle, circleId, isPremium, onBack }) {
   return createPortal(
     <div data-portal className="fixed inset-0 z-[200] flex flex-col bg-white">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onBack} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
           <ArrowLeft size={18} className="text-slate-600" />
         </button>
