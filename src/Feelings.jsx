@@ -28,7 +28,9 @@ export const REPLY_MAX_LEN = 120;
 export const FEELING_TTL_MS = 24 * 60 * 60 * 1000;
 export const RESPONDER_REWARD = 10; // sparks for sending encouragement
 
-const repliedKey = (posterUid, createdAt) => `seen_freply_${posterUid}_${createdAt}`;
+// Keyed by the RESPONDER's uid too, so the "already sent" flag is per-account — switching
+// accounts on the same device/browser must not carry another account's sent state over.
+const repliedKey = (responderUid, posterUid, createdAt) => `seen_freply_${responderUid || "anon"}_${posterUid}_${createdAt}`;
 
 function timeAgo(ms) {
   const m = Math.max(1, Math.round((Date.now() - ms) / 60000));
@@ -96,7 +98,7 @@ export function useActiveFeelings(db, currentUser) {
 // and in the profile, so this strip is purely "someone needs you right now" — and it hides itself
 // entirely when nobody has shared, keeping the feed clean.
 
-export function FeelingsStrip({ others, onEncourage }) {
+export function FeelingsStrip({ others, onEncourage, myUid }) {
   const [idx, setIdx] = useState(0);
 
   // Rotate through others' feelings, one at a time, every 3 seconds.
@@ -109,7 +111,7 @@ export function FeelingsStrip({ others, onEncourage }) {
   if (!others.length) return null;
 
   const current = others[idx % others.length];
-  const sent = (() => { try { return localStorage.getItem(repliedKey(current.uid, current.createdAt)) === "1"; } catch { return false; } })();
+  const sent = (() => { try { return localStorage.getItem(repliedKey(myUid, current.uid, current.createdAt)) === "1"; } catch { return false; } })();
 
   return (
     <div className="border-b border-slate-100 bg-white px-3.5 py-1.5 flex-shrink-0">
@@ -278,7 +280,7 @@ export function EncourageSheet({ db, currentUser, profile, feeling, onClose }) {
         source,
         createdAt: Date.now(),
       });
-      try { localStorage.setItem(repliedKey(feeling.uid, feeling.createdAt), "1"); } catch { /* ignore */ }
+      try { localStorage.setItem(repliedKey(currentUser.uid, feeling.uid, feeling.createdAt), "1"); } catch { /* ignore */ }
       updateDoc(doc(db, "feelings", feeling.uid), { replyCount: increment(1) }).catch(() => {});
 
       // Spark reward for showing up in someone's hard moment.
@@ -437,7 +439,7 @@ export function MyFeelingPanel({ db, currentUser, feeling, othersFeelings, onClo
   // Pass-it-forward: the oldest least-answered live feeling from someone else.
   const passTarget = useMemo(() => {
     const candidates = (othersFeelings || []).filter((f) => {
-      try { return localStorage.getItem(repliedKey(f.uid, f.createdAt)) !== "1"; } catch { return true; }
+      try { return localStorage.getItem(repliedKey(currentUser?.uid, f.uid, f.createdAt)) !== "1"; } catch { return true; }
     });
     return candidates.sort((a, b) => (a.replyCount ?? 0) - (b.replyCount ?? 0) || a.createdAt - b.createdAt)[0] ?? null;
   }, [othersFeelings]);

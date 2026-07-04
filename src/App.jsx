@@ -3004,7 +3004,7 @@ export default function App() {
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}
             {activeTab === "feed" && (
-              <FeelingsStrip others={otherFeelings} onEncourage={(f) => setEncourageFeeling(f)} />
+              <FeelingsStrip others={otherFeelings} myUid={currentUser?.uid} onEncourage={(f) => setEncourageFeeling(f)} />
             )}
 
             {activeTab === "hacks" ? (
