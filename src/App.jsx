@@ -22,7 +22,7 @@ import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
 const LifeHacks = React.lazy(() => import("./LifeHacks"));
 const Support   = React.lazy(() => import("./Support"));
-const MyImpact  = React.lazy(() => import("./MyImpact"));
+const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
 import {
   useStreak, computeSparkReward,
@@ -79,6 +79,7 @@ import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
 import { KindnessStoryCard, PulseStrip } from "./KindnessStory";
 import DailyMissionCard from "./DailyMission";
+import { FeelingsStrip, FeelingComposer, EncourageSheet, MyFeelingPanel, useActiveFeelings, useFeelingToasts } from "./Feelings";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -495,6 +496,15 @@ function NotificationBell({ streak, db, currentUser }) {
   const [ripplesSeenAt, setRipplesSeenAt] = useState(() => {
     try { return Number(localStorage.getItem("seen-ripples-at")) || 0; } catch { return 0; }
   });
+  // Kindness-loop rows: encouragement replies to my feeling + "your words helped" echoes
+  const [freplyRows, setFreplyRows] = useState([]);
+  const [frepliesSeenAt, setFrepliesSeenAt] = useState(() => {
+    try { return Number(localStorage.getItem("seen-freplies-at")) || 0; } catch { return 0; }
+  });
+  const [echoRows, setEchoRows] = useState([]);
+  const [echoesSeenAt, setEchoesSeenAt] = useState(() => {
+    try { return Number(localStorage.getItem("seen-echoes-at")) || 0; } catch { return 0; }
+  });
   const prevWaveIdsRef = useRef(new Set());
   const prevLikeIdsRef = useRef(new Set());
   const likeNameCacheRef = useRef({});
@@ -613,6 +623,36 @@ function NotificationBell({ streak, db, currentUser }) {
     try { localStorage.setItem("seen-ripples-at", String(newest)); } catch (_) {}
   }, [open, rippleRows]);
 
+  // Encouragement replies to my feeling status (kindness loop, poster side).
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(collection(db, "users", currentUser.uid, "feelingReplies"), orderBy("createdAt", "desc"), limit(5));
+    return onSnapshot(q, (snap) => {
+      setFreplyRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, () => {});
+  }, [db, currentUser]);
+  useEffect(() => {
+    if (!open || freplyRows.length === 0) return;
+    const newest = freplyRows.reduce((m, r) => Math.max(m, r.createdAt ?? 0), frepliesSeenAt);
+    setFrepliesSeenAt(newest);
+    try { localStorage.setItem("seen-freplies-at", String(newest)); } catch (_) {}
+  }, [open, freplyRows]);
+
+  // Kindness echoes — the poster confirmed my encouragement helped (responder side).
+  useEffect(() => {
+    if (!db || !currentUser) return;
+    const q = query(collection(db, "users", currentUser.uid, "kindnessEchoes"), orderBy("createdAt", "desc"), limit(5));
+    return onSnapshot(q, (snap) => {
+      setEchoRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, () => {});
+  }, [db, currentUser]);
+  useEffect(() => {
+    if (!open || echoRows.length === 0) return;
+    const newest = echoRows.reduce((m, r) => Math.max(m, r.createdAt ?? 0), echoesSeenAt);
+    setEchoesSeenAt(newest);
+    try { localStorage.setItem("seen-echoes-at", String(newest)); } catch (_) {}
+  }, [open, echoRows]);
+
   const dismissWave = async (id) => {
     if (!db) return;
     await setDoc(doc(db, "waves", id), { read: true }, { merge: true }).catch(() => {});
@@ -625,7 +665,9 @@ function NotificationBell({ streak, db, currentUser }) {
   const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = rippleRows.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
-  const totalUnread = waves.length + newLikesCount + visibleInvites.length + newRipplesCount;
+  const newFreplyCount = freplyRows.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
+  const newEchoCount = echoRows.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
+  const totalUnread = waves.length + newLikesCount + visibleInvites.length + newRipplesCount + newFreplyCount + newEchoCount;
   const hot = streak >= 7;
 
   return (
@@ -653,7 +695,7 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 && rippleRows.length === 0 ? (
+            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
@@ -716,6 +758,31 @@ function NotificationBell({ streak, db, currentUser }) {
                         Kindness chain — someone you reached
                         {r.responderCountry ? <> in <span className="font-semibold">{r.responderCountry}</span></> : null}
                         {" "}went on to greet others
+                      </p>
+                    </div>
+                  );
+                })}
+                {freplyRows.map((r) => {
+                  const fresh = (r.createdAt ?? 0) > frepliesSeenAt;
+                  return (
+                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-amber-50/60" : ""} hover:bg-amber-50`}>
+                      <span className="text-base flex-shrink-0">💛</span>
+                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                        <span className="font-semibold">{(r.responderName || "Someone").split(" ")[0]}</span>
+                        {r.responderCountry ? <> from <span className="font-semibold">{r.responderCountry}</span></> : null}
+                        {" "}sent you encouragement — tap your 💭 card in the feed to read it
+                      </p>
+                    </div>
+                  );
+                })}
+                {echoRows.map((r) => {
+                  const fresh = (r.createdAt ?? 0) > echoesSeenAt;
+                  return (
+                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-violet-50/60" : ""} hover:bg-violet-50`}>
+                      <span className="text-base flex-shrink-0">🌟</span>
+                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                        {r.posterName ? <span className="font-semibold">{r.posterName.split(" ")[0]}</span> : "Someone"} said your
+                        encouragement <span className="font-semibold">helped</span> — right when it was needed
                       </p>
                     </div>
                   );
@@ -1125,6 +1192,12 @@ export default function App() {
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
   const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
   const [rippleToast, setRippleToast] = useState(null); // { id, country } — a kindness chain just grew
+  // Kindness loop (feeling statuses)
+  const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
+  const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
+  const [myFeelingPanel, setMyFeelingPanel] = useState(null); // snapshot of my feeling — stays mounted through ack + pass-forward
+  const [freplyToast, setFreplyToast] = useState(null); // { id, name } — encouragement arrived
+  const [echoToast, setEchoToast] = useState(null); // { id, name } — "your words helped"
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
   const reactObservedRef = useRef(new Set());
@@ -1508,6 +1581,25 @@ export default function App() {
     const t = setTimeout(() => setRippleToast(null), 7000);
     return () => clearTimeout(t);
   }, [rippleToast]);
+
+  // Kindness loop: live feelings (one shared listener → strip + pass-it-forward) and
+  // fresh-event toasts (encouragement arrived / "your words helped" echo).
+  const { myFeeling, others: otherFeelings } = useActiveFeelings(db, currentUser);
+  useFeelingToasts(
+    db, currentUser,
+    (r) => setFreplyToast({ id: `${r.responderUid}_${r.createdAt}`, name: (r.responderName || "Someone").split(" ")[0] }),
+    (e) => setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null })
+  );
+  useEffect(() => {
+    if (!freplyToast) return;
+    const t = setTimeout(() => setFreplyToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [freplyToast]);
+  useEffect(() => {
+    if (!echoToast) return;
+    const t = setTimeout(() => setEchoToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [echoToast]);
   // Private chat
   const [showChatInbox, setShowChatInbox] = useState(false);
   const [activeChat, setActiveChat] = useState(null); // { chatId, otherUid, otherName }
@@ -1793,7 +1885,7 @@ export default function App() {
       key: "tabs",
       target: '[data-tour="tab-nav"]',
       title: "Explore the app",
-      body: "🌱 Community — vote greetings into the weekly Top 5.  🌍 Impact — your world map & kindness stats.  💡 Life Hacks — daily tips for mind & body.",
+      body: "🌱 Community — vote greetings into the weekly Top 5.  📖 Board — your growing kindness story.  💡 Life Hacks — daily tips for mind & body.",
       before: () => { setReactionBarId(null); setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
     },
     {
@@ -2599,6 +2691,22 @@ export default function App() {
 
         {!isNativeIOS() && showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
+        {/* Kindness loop sheets */}
+        {feelingComposerOpen && (
+          <FeelingComposer db={db} currentUser={currentUser} profile={profile}
+            onClose={() => setFeelingComposerOpen(false)} />
+        )}
+        {encourageFeeling && (
+          <EncourageSheet db={db} currentUser={currentUser} profile={profile}
+            feeling={encourageFeeling} onClose={() => setEncourageFeeling(null)} />
+        )}
+        {myFeelingPanel && (
+          <MyFeelingPanel db={db} currentUser={currentUser} feeling={myFeelingPanel}
+            othersFeelings={otherFeelings}
+            onClose={() => setMyFeelingPanel(null)}
+            onEncourage={(f) => setEncourageFeeling(f)} />
+        )}
+
         {showWelcomeMoment && (
           <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
             onClick={() => setShowWelcomeMoment(false)}>
@@ -2867,7 +2975,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🌍 Impact
+                📖 Board
               </button>
               <button
                 onClick={() => setActiveTab("hacks")}
@@ -2883,6 +2991,17 @@ export default function App() {
             {/* Live pulse — one thin rotating line that shows kindness is happening right now */}
             {activeTab === "feed" && <PulseStrip db={db} currentUser={currentUser} messages={messages} />}
 
+            {/* Kindness loop — feelings that need encouragement right now (+ your own slot) */}
+            {activeTab === "feed" && (
+              <FeelingsStrip
+                myFeeling={myFeeling}
+                others={otherFeelings}
+                onCompose={() => setFeelingComposerOpen(true)}
+                onEncourage={(f) => setEncourageFeeling(f)}
+                onOpenMine={(f) => setMyFeelingPanel(f)}
+              />
+            )}
+
             {activeTab === "hacks" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <LifeHacks db={db} currentUser={currentUser} profile={profile} />
@@ -2895,7 +3014,7 @@ export default function App() {
               <CommunityArena db={db} currentUser={currentUser} profile={profile} isAdmin={isAdmin} candidates={candidates} champions={champions} />
             ) : activeTab === "impact" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
-                <MyImpact db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
+                <KindnessBoard db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
               </Suspense>
             ) : (
             <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 pt-2 pb-4"
@@ -3018,6 +3137,47 @@ export default function App() {
                       className="p-1 flex-shrink-0"
                       style={{ color: "rgba(94,234,212,0.5)" }}
                     >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Encouragement arrived — someone replied to my feeling status */}
+              {freplyToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setFreplyToast(null); if (myFeeling) setMyFeelingPanel(myFeeling); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1px solid #fcd34d", boxShadow: "0 8px 24px rgba(245,158,11,0.18)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">💛</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-amber-800">
+                        {freplyToast.name} sent you encouragement
+                      </p>
+                      <p className="text-xs mt-0.5 text-amber-600">Tap to read your kind words →</p>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setFreplyToast(null); }}
+                      className="p-1 flex-shrink-0 text-amber-300"
+                    >✕</span>
+                  </button>
+                </div>
+              )}
+              {/* Kindness echo — the person I encouraged said it helped */}
+              {echoToast && (
+                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEchoToast(null); }}
+                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #c4b5fd", boxShadow: "0 8px 24px rgba(139,92,246,0.18)", animation: "hackOverlayIn 0.4s ease" }}
+                  >
+                    <span className="text-2xl">🌟</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-violet-800">
+                        {echoToast.name ? `${echoToast.name} says your words helped` : "Your words helped someone"}
+                      </p>
+                      <p className="text-xs mt-0.5 text-violet-500">Right when they were needed. That was you 💛</p>
+                    </div>
+                    <span className="p-1 flex-shrink-0 text-violet-300">✕</span>
                   </button>
                 </div>
               )}

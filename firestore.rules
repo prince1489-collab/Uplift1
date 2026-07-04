@@ -92,6 +92,27 @@ service cloud.firestore {
             && request.resource.data.who5Raw <= 25;
         allow update, delete: if request.auth != null && request.auth.uid == userId;
       }
+
+      // Encouragement replies to my feeling status — written by the responder,
+      // read only by me (replies are private; the feed shows just a counter).
+      match /feelingReplies/{replyId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create: if request.auth != null
+            && request.resource.data.responderUid == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 120;
+        allow delete: if request.auth != null && request.auth.uid == userId || isAdmin();
+      }
+
+      // Kindness echoes — "your encouragement helped". Written by the feeling's
+      // poster when they acknowledge, read only by the responder it belongs to.
+      match /kindnessEchoes/{echoId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create: if request.auth != null
+            && request.resource.data.fromUid == request.auth.uid
+            && request.resource.data.ownerUid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId || isAdmin();
+      }
     }
 
     // ── Presence (ephemeral heartbeat) ──
@@ -213,6 +234,30 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isAdmin();
+    }
+
+    // ── Feeling statuses (the Kindness Loop's "see a real need") ──
+    // One active feeling per user: the doc id IS the poster's uid, so posting again
+    // overwrites. Everyone signed-in can read (the feed strip); only the owner can
+    // create/update their status — except responders, who may bump replyCount only.
+    match /feelings/{posterUid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+          && request.auth.uid == posterUid
+          && request.resource.data.uid == posterUid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 60
+          && request.resource.data.visibility in ['open', 'anon'];
+      allow update: if request.auth != null && (
+          (request.auth.uid == posterUid
+            && request.resource.data.uid == posterUid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 60
+            && request.resource.data.visibility in ['open', 'anon'])
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
+      );
+      allow delete: if request.auth != null
+          && (request.auth.uid == posterUid || isAdmin());
     }
 
     // ── App-wide state (reset signal etc.) ──

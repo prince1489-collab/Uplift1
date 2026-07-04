@@ -6,7 +6,7 @@ import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 
 // ── Theme tokens ──────────────────────────────────────────────────
-const DARK = {
+export const DARK = {
   pageBg:       "#060e18",
   card:         "rgba(255,255,255,0.04)",
   cardInner:    "rgba(255,255,255,0.04)",
@@ -35,7 +35,7 @@ const DARK = {
   barTrack:     "rgba(255,255,255,0.06)",
   skeleton:     "rgba(255,255,255,0.07)",
 };
-const LIGHT = {
+export const LIGHT = {
   pageBg:       "#f1f5f9",
   card:         "rgba(255,255,255,0.9)",
   cardInner:    "rgba(0,0,0,0.03)",
@@ -67,7 +67,7 @@ const LIGHT = {
 
 // ── Haversine distance ────────────────────────────────────────────
 
-function kmBetween([lon1, lat1], [lon2, lat2]) {
+export function kmBetween([lon1, lat1], [lon2, lat2]) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -79,7 +79,7 @@ function kmBetween([lon1, lat1], [lon2, lat2]) {
 
 const CACHE_TTL = 60 * 60 * 1000;
 
-function useReactionData(db, currentUser, period) {
+export function useReactionData(db, currentUser, period) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -179,7 +179,7 @@ function useReactionData(db, currentUser, period) {
 // ── Ripple data — people my kindness sparked into greeting others ──
 // Each doc under users/{me}/ripples represents one person who reacted to my
 // greeting and then went on to send their own. Counted once per person.
-function useRippleData(db, currentUser) {
+export function useRippleData(db, currentUser) {
   const [ripples, setRipples] = useState(null);
 
   useEffect(() => {
@@ -212,7 +212,7 @@ function useRippleData(db, currentUser) {
 // their own total likes received onto their profile (reactionsReceivedCount), which
 // any user can read. We sum across my ripple responders. Best-effort: a responder's
 // count only populates once they've been online running the latest build.
-function useOnwardReach(db, currentUser, ripples) {
+export function useOnwardReach(db, currentUser, ripples) {
   const [onwardReach, setOnwardReach] = useState(() => {
     if (!currentUser) return 0;
     try {
@@ -290,7 +290,7 @@ function buildWeeklyStory({ countriesCount, notableReaction, rippleCount, onward
 
 // ── Odometer number — rolling digit reels ─────────────────────────
 
-function OdometerNumber({ value = 0, fontSize = 26, duration = 1100, color = "#fff" }) {
+export function OdometerNumber({ value = 0, fontSize = 26, duration = 1100, color = "#fff" }) {
   const target = Math.max(0, Math.round(Number(value) || 0));
   const digits = String(target).split("").map(Number); // most-significant first
   const n = digits.length;
@@ -356,7 +356,7 @@ function StatTile({ value, label, sub, loading, dark = false }) {
 
 const MILESTONES = [1, 5, 10, 20, 35, 50, 75, 100];
 
-function MilestoneCard({ countriesCount, dark = false }) {
+export function MilestoneCard({ countriesCount, dark = false }) {
   const C = dark ? DARK : LIGHT;
   const reached = MILESTONES.filter(m => countriesCount >= m);
   const next = MILESTONES.find(m => countriesCount < m) || null;
@@ -404,7 +404,7 @@ function MilestoneCard({ countriesCount, dark = false }) {
 
 // ── Furthest Reach card ───────────────────────────────────────────
 
-function FurthestReachCard({ reactionByCountry, homeCountry, dark = false }) {
+export function FurthestReachCard({ reactionByCountry, homeCountry, dark = false }) {
   const C = dark ? DARK : LIGHT;
   const result = useMemo(() => {
     const homeCoords = COUNTRY_COORDS[homeCountry];
@@ -485,7 +485,7 @@ function RhythmCard({ streak, dayMap, dark = false }) {
 
 // ── Hero: Lives Touched ───────────────────────────────────────────
 // Reframes the cold "greetings sent" count as felt human impact.
-function LivesTouchedHero({ sentCount, dark = false }) {
+export function LivesTouchedHero({ sentCount, dark = false }) {
   const C = dark ? DARK : LIGHT;
   const n = sentCount ?? 0;
   return (
@@ -507,7 +507,7 @@ function LivesTouchedHero({ sentCount, dark = false }) {
 
 // ── Hero: Ripple line ─────────────────────────────────────────────
 // You → people you reached → those who passed the kindness on.
-function RippleLine({ reachedCount, rippleCount, onwardReach = 0, dark = false }) {
+export function RippleLine({ reachedCount, rippleCount, onwardReach = 0, dark = false }) {
   const C = dark ? DARK : LIGHT;
   const reached = reachedCount ?? 0;
   const showOnward = rippleCount > 0;
@@ -562,7 +562,7 @@ function WeeklyStoryCard({ story, dark = false }) {
 
 // ── Countries Reached — interactive horizontal bar chart ──────────
 
-function ReachByCountryGraph({ usersByCountry, loading, dark = false }) {
+export function ReachByCountryGraph({ usersByCountry, loading, dark = false }) {
   const C = dark ? DARK : LIGHT;
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [sortAlpha, setSortAlpha] = useState(false);
