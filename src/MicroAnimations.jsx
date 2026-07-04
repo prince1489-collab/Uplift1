@@ -263,6 +263,12 @@ const KEYFRAMES = `
     0%   { transform: translateY(8px); opacity: 0; }
     100% { transform: translateY(0);   opacity: 1; }
   }
+
+  /* Flashing attention pulse (the "how are you feeling?" chat bubble by the name) */
+  @keyframes seenBubbleFlash {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(20,184,166,0.55); }
+    50%      { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(20,184,166,0); }
+  }
 `;
 
 let _keyframesInjected = false;

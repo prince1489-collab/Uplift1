@@ -479,7 +479,7 @@ const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
 // If a user's shared feeling reads as distressed, gently surface the Support flow to them.
 const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t cope|exhaust|burn(t| ?ed)? out|worthless|suicid|self.?harm|breaking down|falling apart|so sad|really sad|give up|giving up)/i;
-const TOUR_VERSION = 3; // bump to re-run the guided tour once for everyone after a release
+const TOUR_VERSION = 4; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
 function NotificationBell({ streak, db, currentUser }) {
@@ -1853,8 +1853,8 @@ export default function App() {
     {
       key: "feeling",
       target: '[data-tour="feeling"]',
-      title: "Share how you're feeling 💭",
-      body: "Tap “How are you feeling?” by your name to share a few words. Others send you encouragement — and you can thank each of them back. You can encourage them too, right from the feed.",
+      title: "Share how you're feeling 💬",
+      body: "Tap the flashing 💬 bubble by your name to share how you're feeling in a few words. Others send you encouragement — and you can thank each of them back. You can encourage them too, right from the feed.",
       before: () => { setPickerOpen(false); setHeaderOpen(false); },
     },
     {
@@ -2815,18 +2815,15 @@ export default function App() {
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
                     {showFeelPrompt && (
-                      <span data-tour="feeling" onClick={(e) => e.stopPropagation()}
-                        className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full pl-2 pr-1 py-0.5 whitespace-nowrap"
-                        style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4", animation: "seenFadeUp 400ms ease both" }}>
-                        <button onClick={() => { setFeelingComposerOpen(true); dismissFeelPrompt(); }}
-                          className="text-[10px] font-semibold text-teal-700 active:scale-95 transition-transform">
-                          💭 How are you feeling?
-                        </button>
-                        <button onClick={dismissFeelPrompt} aria-label="Dismiss"
-                          className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-teal-400 hover:text-teal-600">
-                          <X size={9} />
-                        </button>
-                      </span>
+                      <button
+                        data-tour="feeling"
+                        aria-label="How are you feeling?"
+                        title="How are you feeling?"
+                        onClick={(e) => { e.stopPropagation(); setFeelingComposerOpen(true); dismissFeelPrompt(); }}
+                        className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-[13px] leading-none"
+                        style={{ background: "linear-gradient(135deg, #2dd4bf, #10b981)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
+                        💬
+                      </button>
                     )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
