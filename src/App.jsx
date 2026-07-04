@@ -2367,6 +2367,9 @@ export default function App() {
           transaction.set(refDoc, {
             sparkBalance: Number(profileData?.sparkBalance ?? 0) + earnedSparks,
             lastGreetingAt: nowMs(),
+            // Durable lifetime "messages sent" tally (transactional, can't lose increments) —
+            // powers the Board's accurate "Messages sent" circle without a composite index.
+            greetingsSentCount: Number(profileData?.greetingsSentCount ?? 0) + 1,
             ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
           }, { merge: true });
         }),
@@ -2807,28 +2810,29 @@ export default function App() {
                 className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
                 onClick={() => setHeaderOpen((v) => !v)}>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
                     {profile?.moodTag && (
-                      <span className="text-base leading-none">
+                      <span className="text-base leading-none flex-shrink-0">
                         {{ grateful:"🙏", hopeful:"🌱", tired:"😴", happy:"😊", struggling:"🌧️", peaceful:"☁️", energised:"⚡", lonely:"🌙" }[profile.moodTag]}
+                      </span>
+                    )}
+                    {showFeelPrompt && (
+                      <span onClick={(e) => e.stopPropagation()}
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full pl-2 pr-1 py-0.5 whitespace-nowrap"
+                        style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4", animation: "seenFadeUp 400ms ease both" }}>
+                        <button onClick={() => { setFeelingComposerOpen(true); dismissFeelPrompt(); }}
+                          className="text-[10px] font-semibold text-teal-700 active:scale-95 transition-transform">
+                          💭 How are you feeling?
+                        </button>
+                        <button onClick={dismissFeelPrompt} aria-label="Dismiss"
+                          className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-teal-400 hover:text-teal-600">
+                          <X size={9} />
+                        </button>
                       </span>
                     )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
-                  {showFeelPrompt && (
-                    <div onClick={(e) => e.stopPropagation()} className="mt-1.5 inline-flex items-center gap-1.5 rounded-full rounded-tl-sm pl-2.5 pr-1.5 py-1"
-                      style={{ background: "linear-gradient(135deg, #f0fdfa, #ecfdf5)", border: "1px solid #99f6e4", animation: "seenFadeUp 400ms ease both" }}>
-                      <button onClick={() => { setFeelingComposerOpen(true); dismissFeelPrompt(); }}
-                        className="text-[11px] font-semibold text-teal-700 active:scale-95 transition-transform">
-                        💭 How are you feeling today?
-                      </button>
-                      <button onClick={dismissFeelPrompt} aria-label="Dismiss"
-                        className="flex h-4 w-4 items-center justify-center rounded-full text-teal-400 hover:text-teal-600">
-                        <X size={11} />
-                      </button>
-                    </div>
-                  )}
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>

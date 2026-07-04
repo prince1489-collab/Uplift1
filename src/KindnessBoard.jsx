@@ -15,7 +15,7 @@ import { collection, query, where, orderBy, limit, getDocs } from "firebase/fire
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import {
   DARK, LIGHT, kmBetween,
-  useReactionData, useRippleData,
+  useRippleData, useOnwardReach,
 } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
@@ -183,9 +183,9 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({});
 
-  // Existing aggregate hooks power the cover metrics (reached, countries, ripple).
-  const { data: reactData } = useReactionData(db, currentUser, "30d");
-  const { rippleCount } = useRippleData(db, currentUser);
+  // Ripple metric: live uncapped ripple-doc count + second-order onward reach.
+  const { rippleCount, ripples: liveRipples } = useRippleData(db, currentUser);
+  const onwardReach = useOnwardReach(db, currentUser, liveRipples);
 
   useEffect(() => {
     if (!db || !uid) return;
@@ -193,9 +193,10 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
     (async () => {
       const safe = async (p) => { try { return await p; } catch { return { docs: [] }; } };
       const [sendsSnap, heartsSnap, ripplesSnap, upliftSnap, echoSnap] = await Promise.all([
-        safe(getDocs(query(collection(db, "publicMessages"), where("uid", "==", uid), orderBy("timestamp", "desc"), limit(150)))),
-        safe(getDocs(query(collection(db, "users", uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(150)))),
-        safe(getDocs(query(collection(db, "users", uid, "ripples"), orderBy("createdAt", "desc"), limit(50)))),
+        // Equality-only (no orderBy) so it needs NO composite index — buildStory sorts in JS.
+        safe(getDocs(query(collection(db, "publicMessages"), where("uid", "==", uid), limit(500)))),
+        safe(getDocs(query(collection(db, "users", uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(300)))),
+        safe(getDocs(query(collection(db, "users", uid, "ripples"), orderBy("createdAt", "desc"), limit(200)))),
         safe(getDocs(query(collection(db, "users", uid, "feelingReplies"), orderBy("createdAt", "desc"), limit(100)))),
         safe(getDocs(query(collection(db, "users", uid, "kindnessEchoes"), orderBy("createdAt", "desc"), limit(50)))),
       ]);
@@ -268,7 +269,11 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
     return t ? new Date(t).toLocaleDateString([], { month: "long", year: "numeric" }) : null;
   }, [profile]);
 
-  const countriesCount = Object.keys(reactData?.usersByCountry ?? {}).length;
+  // Lifetime metrics from the already-fetched subcollection reads (no 30-day window, no composite index).
+  const messagesSent = Math.max(raw?.sends?.length ?? 0, Number(profile?.greetingsSentCount ?? 0));
+  const usersReached = raw ? new Set(raw.hearts.map((h) => h.reactorUid).filter(Boolean)).size : 0;
+  const countriesCount = raw ? new Set(raw.hearts.map((h) => h.country).filter(Boolean)).size : 0;
+  const rippleEffect = (rippleCount ?? 0) + (onwardReach ?? 0);
 
   return (
     <main className="flex-1 overflow-y-auto px-4 py-5" style={{ background: T.pageBg }}>
@@ -278,10 +283,10 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
         {startedLabel && <p className="text-[10px] mt-0.5" style={{ color: T.textDim }}>began {startedLabel}</p>}
       </div>
       <div className="flex items-start justify-between gap-1.5">
-        <StatCircle value={raw?.sends?.length ?? 0} label="Messages sent" color="#14b8a6" dark={darkMode} />
-        <StatCircle value={reactData?.uniqueReactorCount ?? 0} label="Users reached" color="#f59e0b" dark={darkMode} />
+        <StatCircle value={messagesSent} label="Messages sent" color="#14b8a6" dark={darkMode} />
+        <StatCircle value={usersReached} label="Users reached" color="#f59e0b" dark={darkMode} />
         <StatCircle value={countriesCount} label="Countries reached" color="#6366f1" dark={darkMode} />
-        <StatCircle value={rippleCount} label="Ripple effect" color="#10b981" dark={darkMode} />
+        <StatCircle value={rippleEffect} label="Ripple effect" color="#10b981" dark={darkMode} />
       </div>
 
       {/* ── Chapters: collapsible Year → Month → Week ── */}
