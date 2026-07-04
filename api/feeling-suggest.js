@@ -16,33 +16,76 @@ function initAdmin() {
 
 const MAX_FEELING_LEN = 60;
 
-// Keyword-bucketed fallbacks when the AI is unreachable. Deliberately warm and generic.
+// Keyword-bucketed fallbacks when the AI is unreachable. Ordered most-specific first; positive
+// feelings get CELEBRATORY replies (not comfort), because "excited" shouldn't get "hang in there".
 const FALLBACKS = [
-  { match: /nervous|anxious|anxiety|scared|worried|interview|first day|exam|test/i, out: [
+  // ── positive / celebratory ──
+  { match: /excit|can'?t wait|looking forward|pumped|thrilled/i, out: [
+    "Love this energy — go make today yours! 🎉",
+    "Whatever you're excited for, you've earned it. Enjoy every second ✨",
+    "That spark is contagious — someone across the world just smiled reading this 🌍",
+  ]},
+  { match: /happy|great|amazing|wonderful|good day|feeling good|joy|cheer|smil/i, out: [
+    "Your good day just reached someone far away — thank you for that 💛",
+    "Hold onto this feeling. You deserve every bit of it ✨",
+    "Days like this are worth savouring — soak it all in 🌞",
+  ]},
+  { match: /grateful|thankful|blessed|appreciat/i, out: [
+    "Gratitude looks good on you 💛",
+    "Noticing the good is a quiet superpower — keep it up 🌿",
+    "Someone far away is grateful for you right now, too ✨",
+  ]},
+  { match: /proud|accomplish|achiev|did it|finished|passed|nailed|won/i, out: [
+    "You did that — take a moment to feel proud 🎉",
+    "Hard work meeting its moment. Well done, truly 💪",
+    "Celebrating you from across the world right now ✨",
+  ]},
+  { match: /hopeful|optimis|excited for the future|new chapter|fresh start/i, out: [
+    "Here's to what's coming — it's lucky to have you 🌅",
+    "That hope will carry you further than you think 💛",
+    "New chapters suit you. Go write a good one ✨",
+  ]},
+  // ── nervous / anxious ──
+  { match: /nervous|anxious|anxiety|scared|worried|interview|first day|exam|test|presentation/i, out: [
     "You've prepared for this more than you realise — you've got this 💪",
-    "Nerves just mean it matters. Breathe — you belong in that room 💛",
+    "Nerves just mean it matters. Breathe — you belong there 💛",
     "One step at a time. By tonight, this will be a story you tell ✨",
   ]},
-  { match: /sad|down|low|blue|cry|grief|loss|heartbrok/i, out: [
+  // ── sad / grief ──
+  { match: /sad|down|low|blue|cry|grief|loss|heartbrok|lost|miss(ing)? (my|someone)/i, out: [
     "It's okay to feel this. You don't have to carry it alone 💛",
     "Sending you warmth from afar — gentler days are coming 🌤️",
     "You matter more than you know. One breath at a time 🤍",
   ]},
-  { match: /tired|exhausted|drained|burn|overwhelm|stress/i, out: [
-    "Rest isn't quitting — it's how you keep going. Be kind to yourself 🌿",
+  // ── tired / overwhelmed ──
+  { match: /tired|exhaust|drain|burn(t|ed| out)?|overwhelm|stress|so much|too much|swamp/i, out: [
+    "Rest isn't quitting — it's how you keep going. Be gentle with yourself 🌿",
     "You've been carrying a lot. Permission to slow down today 💛",
     "Even on empty, you showed up. That counts for something ✨",
   ]},
-  { match: /lonely|alone|isolat|miss/i, out: [
+  // ── lonely ──
+  { match: /lonely|alone|isolat|no one|nobody/i, out: [
     "Someone across the world just read this and cares. You're not alone 🌍",
     "Sending you a little company from afar 💛",
     "This feeling is real, but so is this: someone's thinking of you right now 🤍",
   ]},
+  // ── angry / frustrated ──
+  { match: /angry|frustrat|annoy|mad|fed up|irritat|unfair/i, out: [
+    "That frustration is valid — you're allowed to feel it 💛",
+    "Take a breath. You'll find your footing again 🌿",
+    "Whatever's testing you today, it doesn't get the last word ✨",
+  ]},
+  // ── unwell ──
+  { match: /sick|ill|unwell|pain|hurt|poorly|headache|fever/i, out: [
+    "Be kind to your body today — rest is allowed 🍵",
+    "Sending you gentle get-well warmth from far away 💛",
+    "Hope you feel more like yourself soon 🌿",
+  ]},
 ];
 const GENERIC = [
   "Whatever today holds, someone out here is rooting for you 💛",
-  "You've made it through every hard day so far — that's a 100% record ✨",
-  "Sending you a little strength from across the world 🌍",
+  "You've made it through every day so far — that's a 100% record ✨",
+  "Sending you a little warmth from across the world 🌍",
 ];
 
 function fallbackFor(text) {
@@ -79,10 +122,12 @@ export default async function handler(req, res) {
         role: "user",
         content:
           `Someone on a kindness app shared how they're feeling: "${text}"\n\n` +
-          `Write exactly 3 short encouragement messages (each under 120 characters) that a kind ` +
-          `stranger could send them. Rules: warm, specific to their feeling, human — not clinical ` +
-          `or preachy. No advice-giving, no medical claims, no questions. At most one emoji each. ` +
-          `Vary the tone across the three (one grounding, one uplifting, one companionable).\n\n` +
+          `Write exactly 3 short messages (each under 120 characters) a kind stranger could send ` +
+          `in response. CRUCIAL: match the emotion. If they're happy/excited/proud/grateful, ` +
+          `CELEBRATE with them — do NOT send comfort or "hang in there". If they're anxious/sad/` +
+          `tired/lonely, offer warmth and steadiness. Always specific to what they actually said, ` +
+          `human and warm — never clinical, preachy, or generic. No advice, no medical claims, no ` +
+          `questions. At most one emoji each. Vary the three in tone.\n\n` +
           `Reply with ONLY a JSON array of 3 strings.`,
       }],
     });

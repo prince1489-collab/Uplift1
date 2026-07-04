@@ -18,6 +18,28 @@ function initAdmin() {
 
 const MAX_LEN = 200; // hard input cap; callers enforce their own tighter limits
 
+// Lightweight safety net used when the AI is unavailable, so custom encouragement still works
+// (rather than being hard-blocked). Catches the obvious stuff; the AI does the nuanced work when
+// it's reachable, and user reporting is the final backstop.
+const BAD_WORDS = [
+  "fuck", "shit", "bitch", "cunt", "asshole", "dick", "bastard", "slut", "whore",
+  "faggot", "retard", "nigger", "nigga", "kill yourself", "kys", "die", "hate you",
+  "loser", "idiot", "stupid", "ugly", "worthless", "pathetic",
+];
+function wordlistCheck(text) {
+  const lower = ` ${text.toLowerCase()} `;
+  // Contact-info / spam fishing: emails, URLs, long digit runs (phone numbers).
+  if (/https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.-]+\b/.test(text)) {
+    return { ok: false, reason: "Let's keep links and contact details out 💛" };
+  }
+  if (/\d[\d\s().-]{7,}\d/.test(text)) {
+    return { ok: false, reason: "Let's keep phone numbers private 💛" };
+  }
+  const hit = BAD_WORDS.find((w) => lower.includes(` ${w} `) || lower.includes(`${w} `) || lower.includes(` ${w}`));
+  if (hit) return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
+  return { ok: true };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -36,7 +58,11 @@ export default async function handler(req, res) {
   if (!text) return res.status(400).json({ error: "missing text" });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(200).json({ ok: true, checked: false });
+  // No AI available → fall back to the word-list check (still a real check, so callers can send).
+  if (!apiKey) {
+    const wl = wordlistCheck(text);
+    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
+  }
 
   try {
     const client = new Anthropic({ apiKey });
@@ -65,9 +91,12 @@ export default async function handler(req, res) {
     if (parsed && typeof parsed.ok === "boolean") {
       return res.status(200).json({ ok: parsed.ok, reason: parsed.reason || null, checked: true });
     }
-    return res.status(200).json({ ok: true, checked: false });
+    // Malformed AI response → word-list fallback rather than blocking outright.
+    const wl = wordlistCheck(text);
+    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
   } catch (err) {
     console.error("[moderate-message]", err?.message);
-    return res.status(200).json({ ok: true, checked: false });
+    const wl = wordlistCheck(text);
+    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
   }
 }

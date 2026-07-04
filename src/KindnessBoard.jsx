@@ -12,10 +12,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
-import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import {
-  DARK, LIGHT, kmBetween, LivesTouchedHero, RippleLine,
-  FurthestReachCard, ReachByCountryGraph, MilestoneCard,
+  DARK, LIGHT, kmBetween, LivesTouchedHero,
   useReactionData, useRippleData, useOnwardReach,
 } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
@@ -30,10 +29,27 @@ function monthKey(ts) {
 }
 function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString([], { month: "long", year: "numeric" });
+  return new Date(y, m - 1, 1).toLocaleDateString([], { month: "long" });
 }
 function dayLabel(ts) {
   return new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
+}
+// ISO-ish week number, and a "16–22 Jun" range label for the week that ts falls in (Mon–Sun).
+function weekOfYear(ts) {
+  const d = new Date(ts);
+  const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (u.getUTCDay() + 6) % 7;
+  u.setUTCDate(u.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(u.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((u - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+}
+function weekRangeLabel(ts) {
+  const d = new Date(ts);
+  const day = (d.getDay() + 6) % 7; // Mon = 0
+  const mon = new Date(d); mon.setDate(d.getDate() - day);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = (x) => x.toLocaleDateString([], { day: "numeric", month: "short" });
+  return `${fmt(mon)} – ${fmt(sun)}`;
 }
 
 // ── build the story: merge event streams → batched cards + milestone stickers ──────
@@ -137,16 +153,64 @@ function storyLine(ev) {
   }
 }
 
+// ── compact, collapsible impact journey (replaces the old boxy ripple row) ──────────
+// One tight line of connected nodes: You → hearts reached · countries → passed on → onward.
+// Absorbs "countries reached", so the old numbers section is fully redundant.
+
+function ImpactJourney({ reached, countries, passedOn, onward, dark }) {
+  const T = dark ? DARK : LIGHT;
+  const [open, setOpen] = useState(true);
+
+  const nodes = [
+    { key: "you", emoji: "🫶", label: "you" },
+    { key: "reached", n: reached, label: reached === 1 ? "heart reached" : "hearts reached" },
+    ...(countries > 0 ? [{ key: "countries", n: countries, label: countries === 1 ? "country" : "countries" }] : []),
+    ...(passedOn > 0 ? [{ key: "passed", n: passedOn, label: "passed it on", accent: true }] : []),
+    ...(onward > 0 ? [{ key: "onward", n: onward, label: "reached onward", accent: true }] : []),
+  ];
+  const caption = passedOn > 0
+    ? (onward > 0 ? `Your kindness rippled onward to ${onward} more ${onward === 1 ? "person" : "people"}.` : "Your kindness didn't stop with you.")
+    : reached > 0 ? "Your warmth is being felt across the world." : "Send a greeting — your ripple starts here.";
+
+  return (
+    <div className="mt-3 rounded-2xl overflow-hidden" style={{ background: T.accentBg, border: `1px solid ${T.accentBorder}` }}>
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-3.5 py-2">
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: T.accentLabel }}>🌊 Your ripple</span>
+        {open ? <ChevronDown size={14} style={{ color: T.accentMuted }} /> : <ChevronRight size={14} style={{ color: T.accentMuted }} />}
+      </button>
+      {open && (
+        <div className="px-3 pb-3.5">
+          <div className="flex items-stretch justify-center gap-1">
+            {nodes.map((nd, i) => (
+              <React.Fragment key={nd.key}>
+                {i > 0 && <span className="self-center text-[13px] pb-3.5" style={{ color: T.accentMuted }}>→</span>}
+                <div className="flex flex-col items-center justify-start gap-0.5 flex-1" style={{ minWidth: 44 }}>
+                  <span className="text-[17px] font-extrabold leading-none" style={{ color: nd.accent ? T.accent : T.text }}>
+                    {nd.emoji ?? nd.n}
+                  </span>
+                  <span className="text-[8px] font-bold uppercase tracking-wide text-center leading-tight" style={{ color: T.textDim }}>{nd.label}</span>
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+          <p className="text-[11px] font-semibold text-center mt-2.5" style={{ color: passedOn > 0 ? T.accentDim : T.textDim }}>{caption}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── the board ──────────────────────────────────────────────────────────────────────
 
 export default function KindnessBoard({ db, currentUser, liveStats, streak, profile, darkMode }) {
   const T = darkMode ? DARK : LIGHT;
   const uid = currentUser?.uid;
   const [raw, setRaw] = useState(null); // { sends, hearts, ripples, uplifts, echoes }
-  const [atlasOpen, setAtlasOpen] = useState(false);
+  const [openYears, setOpenYears] = useState({});
+  const [openMonths, setOpenMonths] = useState({});
 
-  // Existing aggregate hooks power the cover + atlas exactly as they did on Impact.
-  const { data: reactData, loading: reactLoading } = useReactionData(db, currentUser, "30d");
+  // Existing aggregate hooks power the cover ripple (reached + countries + onward).
+  const { data: reactData } = useReactionData(db, currentUser, "30d");
   const { rippleCount, ripples: liveRipples } = useRippleData(db, currentUser);
   const onwardReach = useOnwardReach(db, currentUser, liveRipples);
 
@@ -182,32 +246,56 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
     return () => { alive = false; };
   }, [db, uid]);
 
-  const chapters = useMemo(() => {
+  // Nest the story into Year → Month (chapter) → Week, newest first at every level.
+  const tree = useMemo(() => {
     if (!raw) return null;
     const story = buildStory({ ...raw, homeCountry: profile?.country ?? null });
-    const byMonth = new Map();
+    if (!story.length) return [];
+    const years = new Map(); // year → Map(monthKey → Map(weekNum → { weekNum, label, events }))
     story.forEach((ev) => {
-      const k = monthKey(ev.ts);
-      if (!byMonth.has(k)) byMonth.set(k, []);
-      byMonth.get(k).push(ev);
+      const y = new Date(ev.ts).getFullYear();
+      const mk = monthKey(ev.ts);
+      const wk = weekOfYear(ev.ts);
+      if (!years.has(y)) years.set(y, new Map());
+      const months = years.get(y);
+      if (!months.has(mk)) months.set(mk, new Map());
+      const weeks = months.get(mk);
+      if (!weeks.has(wk)) weeks.set(wk, { weekNum: wk, label: weekRangeLabel(ev.ts), events: [] });
+      weeks.get(wk).events.push(ev);
     });
-    // Newest chapter first; events inside newest-first too (a storyboard you scroll down through time).
-    return [...byMonth.entries()]
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([k, evs], i, arr) => ({
-        key: k,
-        number: arr.length - i,
-        label: monthLabel(k),
-        title: chapterTitle(evs),
-        current: k === monthKey(Date.now()),
-        events: [...evs].sort((a, b) => b.ts - a.ts),
-      }));
+    const nowY = new Date().getFullYear();
+    const nowM = monthKey(Date.now());
+    // Number chapters (months) oldest = 1 so the newest carries the highest chapter number.
+    const totalMonths = [...years.values()].reduce((n, m) => n + m.size, 0);
+    let seen = 0;
+    return [...years.entries()].sort((a, b) => b[0] - a[0]).map(([year, months]) => ({
+      year,
+      current: year === nowY,
+      months: [...months.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([mk, weeks]) => {
+        const allEvents = [...weeks.values()].flatMap((w) => w.events);
+        seen += 1;
+        return {
+          key: mk,
+          number: totalMonths - seen + 1,
+          label: monthLabel(mk),
+          title: chapterTitle(allEvents),
+          current: mk === nowM,
+          weeks: [...weeks.values()].sort((a, b) => b.weekNum - a.weekNum)
+            .map((w) => ({ ...w, events: [...w.events].sort((a, b) => b.ts - a.ts) })),
+        };
+      }),
+    }));
   }, [raw, profile?.country]);
+
+  const isYearOpen = (yr) => openYears[yr.year] ?? yr.current;
+  const isMonthOpen = (m) => openMonths[m.key] ?? m.current;
 
   const startedLabel = useMemo(() => {
     const t = profile?.onboardingCompletedAt?.toMillis?.() ?? null;
     return t ? new Date(t).toLocaleDateString([], { month: "long", year: "numeric" }) : null;
   }, [profile]);
+
+  const countriesCount = Object.keys(reactData?.usersByCountry ?? {}).length;
 
   return (
     <main className="flex-1 overflow-y-auto px-4 py-5" style={{ background: T.pageBg }}>
@@ -217,18 +305,19 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
         {startedLabel && <p className="text-[10px] mt-0.5" style={{ color: T.textDim }}>began {startedLabel}</p>}
       </div>
       <LivesTouchedHero sentCount={liveStats?.sent30d ?? 0} dark={darkMode} />
-      <RippleLine
-        reachedCount={reactData?.uniqueReactorCount ?? 0}
-        rippleCount={rippleCount}
-        onwardReach={onwardReach}
+      <ImpactJourney
+        reached={reactData?.uniqueReactorCount ?? 0}
+        countries={countriesCount}
+        passedOn={rippleCount}
+        onward={onwardReach}
         dark={darkMode}
       />
 
-      {/* ── Chapters ── */}
-      {!chapters ? (
+      {/* ── Chapters: collapsible Year → Month → Week ── */}
+      {!tree ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" style={{ color: T.accent ?? "#14b8a6" }} size={26} /></div>
-      ) : chapters.length === 0 ? (
-        <div className="rounded-2xl px-4 py-8 text-center mt-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+      ) : tree.length === 0 ? (
+        <div className="rounded-2xl px-4 py-8 text-center mt-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
           <p className="text-3xl mb-2">📖</p>
           <p className="text-sm font-bold" style={{ color: T.text }}>Your first page is waiting</p>
           <p className="text-[12px] mt-1 leading-relaxed" style={{ color: T.textDim }}>
@@ -237,65 +326,77 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
           </p>
         </div>
       ) : (
-        chapters.map((ch) => (
-          <section key={ch.key} className="mt-6">
-            {/* Chapter divider */}
-            <div className="flex items-center gap-3 mb-3">
+        tree.map((yr) => (
+          <section key={yr.year} className="mt-5">
+            {/* Year header (collapsible) */}
+            <button onClick={() => setOpenYears((s) => ({ ...s, [yr.year]: !isYearOpen(yr) }))}
+              className="w-full flex items-center gap-2 mb-1">
+              {isYearOpen(yr) ? <ChevronDown size={16} style={{ color: T.textDim }} /> : <ChevronRight size={16} style={{ color: T.textDim }} />}
+              <span className="text-[15px] font-extrabold tracking-tight" style={{ color: T.text }}>{yr.year}</span>
               <div className="flex-1 h-px" style={{ background: T.border }} />
-              <div className="text-center">
-                <p className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: T.textDim }}>
-                  Chapter {ch.number} · {ch.label}
-                </p>
-                <p className="text-[13px] font-bold" style={{ color: T.text }}>
-                  {ch.title}{ch.current ? " " : ""}
-                  {ch.current && <span className="font-medium" style={{ color: T.textDim }}>— still being written ✍️</span>}
-                </p>
-              </div>
-              <div className="flex-1 h-px" style={{ background: T.border }} />
-            </div>
+              {yr.current && <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: T.accentLabel }}>this year</span>}
+            </button>
 
-            {/* Story cards on a timeline spine */}
-            <div className="relative pl-5">
-              <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: T.border }} />
-              <div className="space-y-2">
-                {ch.events.map((ev, i) => (
-                  ev.type === "milestone" ? (
-                    <div key={`${ev.ts}_${i}`} className="relative">
-                      <span className="absolute -left-[19px] top-2 h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b", boxShadow: "0 0 0 3px rgba(245,158,11,0.2)" }} />
-                      <div className="rounded-2xl px-3 py-2.5"
-                        style={{ background: darkMode ? "rgba(245,158,11,0.12)" : "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1px solid rgba(245,158,11,0.35)" }}>
-                        <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: "#d97706" }}>{dayLabel(ev.ts)} · Milestone</p>
-                        <p className="text-[13px] font-bold leading-snug" style={{ color: darkMode ? "#fcd34d" : "#92400e" }}>{ev.emoji} {ev.label}</p>
+            {isYearOpen(yr) && yr.months.map((m) => (
+              <div key={m.key} className="mt-2.5">
+                {/* Month = chapter (collapsible) */}
+                <button onClick={() => setOpenMonths((s) => ({ ...s, [m.key]: !isMonthOpen(m) }))}
+                  className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left"
+                  style={{ background: T.card, border: `1px solid ${T.border}` }}>
+                  {isMonthOpen(m) ? <ChevronDown size={14} style={{ color: T.textDim }} /> : <ChevronRight size={14} style={{ color: T.textDim }} />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[8.5px] font-bold uppercase tracking-[0.16em]" style={{ color: T.textDim }}>
+                      Chapter {m.number} · {m.label}
+                    </p>
+                    <p className="text-[12.5px] font-bold leading-tight" style={{ color: T.text }}>
+                      {m.title}
+                      {m.current && <span className="font-medium" style={{ color: T.textDim }}> — still being written ✍️</span>}
+                    </p>
+                  </div>
+                </button>
+
+                {isMonthOpen(m) && (
+                  <div className="mt-2 pl-1">
+                    {m.weeks.map((w) => (
+                      <div key={w.weekNum} className="mb-2">
+                        {/* Week subheader */}
+                        <p className="text-[9px] font-bold uppercase tracking-wide mb-1.5 pl-4" style={{ color: T.textDim }}>
+                          Week {w.weekNum} · {w.label}
+                        </p>
+                        {/* Story cards on a timeline spine */}
+                        <div className="relative pl-5">
+                          <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: T.border }} />
+                          <div className="space-y-2">
+                            {w.events.map((ev, i) => (
+                              ev.type === "milestone" ? (
+                                <div key={`${ev.ts}_${i}`} className="relative">
+                                  <span className="absolute -left-[19px] top-2 h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b", boxShadow: "0 0 0 3px rgba(245,158,11,0.2)" }} />
+                                  <div className="rounded-2xl px-3 py-2.5"
+                                    style={{ background: darkMode ? "rgba(245,158,11,0.12)" : "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1px solid rgba(245,158,11,0.35)" }}>
+                                    <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: "#d97706" }}>{dayLabel(ev.ts)} · Milestone</p>
+                                    <p className="text-[13px] font-bold leading-snug" style={{ color: darkMode ? "#fcd34d" : "#92400e" }}>{ev.emoji} {ev.label}</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div key={`${ev.ts}_${i}`} className="relative">
+                                  <span className="absolute -left-[18px] top-2.5 h-2 w-2 rounded-full" style={{ background: T.border }} />
+                                  <div className="rounded-2xl px-3 py-2.5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+                                    <p className="text-[9px] font-semibold" style={{ color: T.textDim }}>{dayLabel(ev.ts)}</p>
+                                    <p className="text-[13px] leading-snug" style={{ color: T.text }}>{storyLine(ev)}</p>
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div key={`${ev.ts}_${i}`} className="relative">
-                      <span className="absolute -left-[18px] top-2.5 h-2 w-2 rounded-full" style={{ background: T.border }} />
-                      <div className="rounded-2xl px-3 py-2.5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
-                        <p className="text-[9px] font-semibold" style={{ color: T.textDim }}>{dayLabel(ev.ts)}</p>
-                        <p className="text-[13px] leading-snug" style={{ color: T.text }}>{storyLine(ev)}</p>
-                      </div>
-                    </div>
-                  )
-                ))}
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            ))}
           </section>
         ))
-      )}
-
-      {/* ── Atlas (the old Impact deep-dives, nothing lost) ── */}
-      <button onClick={() => setAtlasOpen((v) => !v)}
-        className="mt-7 w-full flex items-center justify-center gap-1.5 rounded-full py-2 text-[12px] font-bold"
-        style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textDim }}>
-        🗺️ The numbers behind the story {atlasOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-      {atlasOpen && (
-        <div className="mt-3 space-y-3 pb-4">
-          <MilestoneCard countriesCount={Object.keys(reactData?.usersByCountry ?? {}).length} dark={darkMode} />
-          <FurthestReachCard reactionByCountry={reactData?.reactionByCountry ?? {}} homeCountry={profile?.country} dark={darkMode} />
-          <ReachByCountryGraph usersByCountry={reactData?.usersByCountry ?? {}} loading={reactLoading} dark={darkMode} />
-        </div>
       )}
       <div className="h-6" />
     </main>

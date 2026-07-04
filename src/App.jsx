@@ -77,8 +77,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
-import { KindnessStoryCard, PulseStrip } from "./KindnessStory";
-import DailyMissionCard from "./DailyMission";
 import { FeelingsStrip, FeelingComposer, EncourageSheet, MyFeelingPanel, useActiveFeelings, useFeelingToasts } from "./Feelings";
 
 const firebaseConfig = {
@@ -2988,10 +2986,8 @@ export default function App() {
               </button>
             </div>
 
-            {/* Live pulse — one thin rotating line that shows kindness is happening right now */}
-            {activeTab === "feed" && <PulseStrip db={db} currentUser={currentUser} messages={messages} />}
-
-            {/* Kindness loop — feelings that need encouragement right now (+ your own slot) */}
+            {/* Kindness loop — "how are you feeling?" + a rotating feeling that needs encouragement,
+                sitting directly under the tabs (replaces the old presence pulse line) */}
             {activeTab === "feed" && (
               <FeelingsStrip
                 myFeeling={myFeeling}
@@ -3038,12 +3034,6 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
-              {/* "While you were away" impact story + Today's Mission — the welcome-back moment.
-                  Both are conditional/compact so the messages stay the hero of the feed. */}
-              <KindnessStoryCard db={db} currentUser={currentUser} profile={profile} messages={messages}
-                onOpenImpact={() => setActiveTab("impact")} />
-              <DailyMissionCard db={db} currentUser={currentUser} messages={messages}
-                todayMessageCount={todayMessageCount} />
               {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
                 <div
