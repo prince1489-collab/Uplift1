@@ -21,13 +21,21 @@ const MAX_LEN = 200; // hard input cap; callers enforce their own tighter limits
 // Lightweight safety net used when the AI is unavailable, so custom encouragement still works
 // (rather than being hard-blocked). Catches the obvious stuff; the AI does the nuanced work when
 // it's reachable, and user reporting is the final backstop.
-const BAD_WORDS = [
-  "fuck", "shit", "bitch", "cunt", "asshole", "dick", "bastard", "slut", "whore",
-  "faggot", "retard", "nigger", "nigga", "kill yourself", "kys", "die", "hate you",
-  "loser", "idiot", "stupid", "ugly", "worthless", "pathetic",
+// HARD = profanity/slurs: matched even when EMBEDDED / spaced / leetspeak / stretched
+// ("motherfucker", "f u c k", "sh1t", "fuuuck"). SOFT = insults: whole-word only, so kind
+// phrasing like "you're not stupid" isn't wrongly blocked. The AI is the real reviewer.
+const HARD_WORDS = [
+  "fuck", "motherfuck", "shit", "bitch", "cunt", "asshole", "arsehole", "bastard",
+  "slut", "whore", "wank", "bollock", "twat", "nigger", "nigga", "faggot", "molest",
+  "kkk", "nazi", "killyourself",
 ];
+const SOFT_WORDS = ["loser", "idiot", "stupid", "ugly", "worthless", "pathetic", "retard", "dickhead", "hate you"];
+function normalize(s) {
+  return s.toLowerCase()
+    .replace(/[@4]/g, "a").replace(/0/g, "o").replace(/[1!|]/g, "i").replace(/3/g, "e")
+    .replace(/[$5]/g, "s").replace(/7/g, "t").replace(/[^a-z]/g, "");
+}
 function wordlistCheck(text) {
-  const lower = ` ${text.toLowerCase()} `;
   // Contact-info / spam fishing: emails, URLs, long digit runs (phone numbers).
   if (/https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.-]+\b/.test(text)) {
     return { ok: false, reason: "Let's keep links and contact details out 💛" };
@@ -35,8 +43,15 @@ function wordlistCheck(text) {
   if (/\d[\d\s().-]{7,}\d/.test(text)) {
     return { ok: false, reason: "Let's keep phone numbers private 💛" };
   }
-  const hit = BAD_WORDS.find((w) => lower.includes(` ${w} `) || lower.includes(`${w} `) || lower.includes(` ${w}`));
-  if (hit) return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
+  const flat = normalize(text);
+  const collapsed = flat.replace(/(.)\1+/g, "$1");
+  if (HARD_WORDS.find((w) => flat.includes(w) || collapsed.includes(w))) {
+    return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
+  }
+  const spaced = ` ${text.toLowerCase().replace(/[^a-z\s]/g, " ")} `;
+  if (SOFT_WORDS.find((w) => spaced.includes(` ${w} `))) {
+    return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
+  }
   return { ok: true };
 }
 

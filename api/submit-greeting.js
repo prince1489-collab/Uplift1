@@ -31,18 +31,27 @@ function startOfTodayMs() {
 }
 
 // English word-list fallback (used only when the AI is unavailable). The AI is the real,
-// multilingual reviewer; this just catches the obvious English cases so the feature still works.
+// multilingual reviewer; this catches the obvious English cases (including EMBEDDED / spaced /
+// leetspeak / stretched variants — e.g. "motherfucker", "f u c k", "sh1t", "fuuuck") so the
+// feature stays safe without the AI. Words chosen so substring-matching rarely false-positives.
 const BAD_WORDS = [
-  "fuck", "shit", "bitch", "cunt", "asshole", "dick", "bastard", "slut", "whore", "prick",
-  "faggot", "retard", "nigger", "nigga", "spic", "chink", "kike", "wetback", "coon",
-  "kill yourself", "kys", "rape", "rapist", "nazi",
+  "fuck", "motherfuck", "shit", "bitch", "cunt", "asshole", "arsehole", "bastard",
+  "slut", "whore", "wank", "bollock", "twat", "nigger", "nigga", "faggot", "molest",
+  "kkk", "nazi", "killyourself", "retard", "dickhead",
 ];
+function normalize(s) {
+  return s.toLowerCase()
+    .replace(/[@4]/g, "a").replace(/0/g, "o").replace(/[1!|]/g, "i").replace(/3/g, "e")
+    .replace(/[$5]/g, "s").replace(/7/g, "t")
+    .replace(/[^a-z]/g, ""); // drop spaces/punctuation → catches "f u c k", "f.u.c.k", "sh!t"
+}
 function wordlistCheck(text) {
-  const lower = ` ${text.toLowerCase().replace(/[^a-z\s]/g, " ")} `;
-  if (/https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.-]+\b/.test(text)) {
+  if (/https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.-]+\b/i.test(text)) {
     return { ok: false, reason: "Please keep links and contact details out." };
   }
-  const hit = BAD_WORDS.find((w) => lower.includes(` ${w} `));
+  const flat = normalize(text);                     // "hellomotherfucker"
+  const collapsed = flat.replace(/(.)\1+/g, "$1");  // "fuuuck" → "fuck", "shhhit" → "shit"
+  const hit = BAD_WORDS.find((w) => flat.includes(w) || collapsed.includes(w));
   if (hit) return { ok: false, reason: "Please keep it kind and clean for everyone." };
   return { ok: true };
 }
