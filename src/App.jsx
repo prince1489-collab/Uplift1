@@ -77,6 +77,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
+import { apiUrl } from "./apiBase";
 import { FeelingsStrip, FeelingComposer, EncourageSheet, MyFeelingPanel, useActiveFeelings, useFeelingToasts } from "./Feelings";
 
 const firebaseConfig = {
@@ -2606,7 +2607,7 @@ export default function App() {
     setPromoting(true);
     try {
       const token = await currentUser.getIdToken();
-      const res = await fetch("/api/rotate-champions?force=1", {
+      const res = await fetch(apiUrl("/api/rotate-champions?force=1"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });

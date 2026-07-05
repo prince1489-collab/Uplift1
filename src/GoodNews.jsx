@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Share2, ExternalLink } from "lucide-react";
+import { apiUrl } from "./apiBase";
 
 const CATEGORY_KEYS = ["inspiring", "breakthrough", "weirdWonderful", "kind", "funny"];
 const ALL_TAB = "all";
@@ -464,7 +465,7 @@ export default function GoodNews({ profile, onShareStory }) {
         if (profile?.country) params.set("name", profile.country);
       }
       const url = params.size ? `/api/goodnews?${params}` : "/api/goodnews";
-      const res = await fetch(url);
+      const res = await fetch(apiUrl(url));
       if (!res.ok) throw new Error("Could not load Wonderful News");
       const data = await res.json();
       setCategories(data.categories || {});

@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { X, Send, Heart, Loader2, PenLine, Check } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { apiUrl } from "./apiBase";
 
 export const FEELING_MAX_LEN = 60;
 export const REPLY_MAX_LEN = 120;
@@ -41,7 +42,7 @@ function timeAgo(ms) {
 
 async function authedPost(currentUser, path, body) {
   const token = await currentUser.getIdToken();
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),

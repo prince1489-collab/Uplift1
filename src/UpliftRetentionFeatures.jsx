@@ -36,6 +36,7 @@ import { startCheckout } from "./payments";
 import { AddToCircleButton } from "./Circles";
 import { StickerPicker } from "./StickerReactions";
 import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
+import { apiUrl } from "./apiBase";
 
 import {
   Bell,
@@ -854,7 +855,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         // Push notification to message owner (best-effort; throttled per message so rapid
         // like/unlike/like can't spam the recipient).
         if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          fetch("/api/notify-like", {
+          fetch(apiUrl("/api/notify-like"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
@@ -1867,7 +1868,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         // Push notification to message owner (best-effort; throttled per message so rapid
         // like/unlike/like can't spam the recipient).
         if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          fetch("/api/notify-like", {
+          fetch(apiUrl("/api/notify-like"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
