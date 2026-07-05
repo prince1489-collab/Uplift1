@@ -101,6 +101,14 @@ service cloud.firestore {
             && request.resource.data.responderUid == request.auth.uid
             && request.resource.data.text is string
             && request.resource.data.text.size() <= 120;
+        // The reply id is deterministic (one per responder per feeling), so re-sending overwrites
+        // the SAME doc — that's an update, not a create. Let the original responder revise their
+        // own reply so a repeat send never fails with "couldn't send".
+        allow update: if request.auth != null
+            && resource.data.responderUid == request.auth.uid
+            && request.resource.data.responderUid == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 120;
         allow delete: if request.auth != null && request.auth.uid == userId || isAdmin();
       }
 

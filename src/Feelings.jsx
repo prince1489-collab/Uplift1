@@ -270,17 +270,30 @@ export function EncourageSheet({ db, currentUser, profile, feeling, onClose }) {
         }
       }
 
-      await setDoc(doc(db, "users", feeling.uid, "feelingReplies", `${feeling.createdAt}_${currentUser.uid}`), {
-        feelingUid: feeling.uid,
-        feelingCreatedAt: feeling.createdAt,
-        feelingText: feeling.text,
-        responderUid: currentUser.uid,
-        responderName: profile?.fullName ?? "Someone",
-        responderCountry: profile?.country ?? null,
-        text: clean,
-        source,
-        createdAt: Date.now(),
-      });
+      try {
+        await setDoc(doc(db, "users", feeling.uid, "feelingReplies", `${feeling.createdAt}_${currentUser.uid}`), {
+          feelingUid: feeling.uid,
+          feelingCreatedAt: feeling.createdAt,
+          feelingText: feeling.text,
+          responderUid: currentUser.uid,
+          responderName: profile?.fullName ?? "Someone",
+          responderCountry: profile?.country ?? null,
+          text: clean,
+          source,
+          createdAt: Date.now(),
+        });
+      } catch (e) {
+        // Deterministic id = one reply per responder. A denied write here means we've already
+        // encouraged this person (e.g. the local "sent" flag was cleared by an app reinstall) —
+        // treat it as done, not a scary failure, and don't double-count.
+        if (e?.code === "permission-denied") {
+          try { localStorage.setItem(repliedKey(currentUser.uid, feeling.uid, feeling.createdAt), "1"); } catch { /* ignore */ }
+          setError("You've already sent this person encouragement 💛");
+          setBusy(false);
+          return;
+        }
+        throw e;
+      }
       try { localStorage.setItem(repliedKey(currentUser.uid, feeling.uid, feeling.createdAt), "1"); } catch { /* ignore */ }
       updateDoc(doc(db, "feelings", feeling.uid), { replyCount: increment(1) }).catch(() => {});
 
