@@ -884,7 +884,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">💛 Most days, I'm…</label>
-            <input name="mostDays" value={form.mostDays} onChange={onChange} maxLength={80}
+            <input name="mostDays" value={form.mostDays} onChange={onChange} maxLength={120}
               placeholder="a tired but hopeful nurse"
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
             <GlimpseChips examples={MOST_DAYS_EXAMPLES} accent="amber"
@@ -892,7 +892,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">✨ In another life, I'd be…</label>
-            <input name="anotherLife" value={form.anotherLife} onChange={onChange} maxLength={80}
+            <input name="anotherLife" value={form.anotherLife} onChange={onChange} maxLength={120}
               placeholder="a jazz pianist in Lisbon"
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
             <GlimpseChips examples={ANOTHER_LIFE_EXAMPLES} accent="violet"

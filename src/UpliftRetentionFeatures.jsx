@@ -1412,7 +1412,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
               <input
                 value={mostDays}
                 onChange={e => setMostDays(e.target.value)}
-                maxLength={80}
+                maxLength={120}
                 placeholder="a tired but hopeful nurse"
                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
               />
@@ -1423,7 +1423,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
               <input
                 value={anotherLife}
                 onChange={e => setAnotherLife(e.target.value)}
-                maxLength={80}
+                maxLength={120}
                 placeholder="a jazz pianist in Lisbon"
                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
               />
