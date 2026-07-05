@@ -181,13 +181,11 @@ service cloud.firestore {
     // ── Community greeting submissions ──
     match /greetingSubmissions/{id} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.status == "pending"
-          && request.resource.data.text is string
-          && request.resource.data.text.size() <= 120;
-      // Admin moderates (status/approval). Anyone else may only touch the
-      // vote / report / sent counters — never status or text.
+      // Submissions are created ONLY by the AI-moderation endpoint (Admin SDK, which bypasses
+      // rules) — never directly by a client — so an unmoderated/inappropriate greeting can't be
+      // written straight to Firestore. isAdmin() keeps a manual console path.
+      allow create: if isAdmin();
+      // Anyone else may only touch the vote / report / sent counters — never status or text.
       allow update: if request.auth != null && (
           isAdmin()
           || request.resource.data.diff(resource.data).affectedKeys()

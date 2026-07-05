@@ -37,6 +37,7 @@ import { AddToCircleButton } from "./Circles";
 import { StickerPicker } from "./StickerReactions";
 import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
 import { apiUrl } from "./apiBase";
+import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
 import {
   Bell,
@@ -1415,6 +1416,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
                 placeholder="a tired but hopeful nurse"
                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
               />
+              <GlimpseChips examples={MOST_DAYS_EXAMPLES} accent="amber" onPick={setMostDays} />
             </div>
             <div>
               <p className="text-sm font-medium text-slate-600 mb-1">✨ In another life, I'd be…</p>
@@ -1425,6 +1427,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
                 placeholder="a jazz pianist in Lisbon"
                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-teal-400 transition-colors"
               />
+              <GlimpseChips examples={ANOTHER_LIFE_EXAMPLES} accent="violet" onPick={setAnotherLife} />
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">Keep it light — no personal details. This is the little glimpse others see.</p>
           </div>

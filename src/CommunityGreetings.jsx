@@ -10,8 +10,9 @@ import {
   addDoc, collection, doc, getDocs, onSnapshot, query,
   runTransaction, updateDoc, where,
 } from "firebase/firestore";
-import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { apiUrl } from "./apiBase";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 export const COMMUNITY_SPARK_REWARD = 12;  // sender earns this (scaled by streak)
@@ -224,39 +225,18 @@ export function SubmitGreetingModal({ db, currentUser, profile, onClose }) {
     if (len > MAX_LEN) { setError(`Keep it under ${MAX_LEN} characters.`); return; }
     setSubmitting(true);
     try {
-      // Daily-limit + exact-duplicate guard across this user's own submissions.
-      const mineSnap = await getDocs(query(
-        collection(db, "greetingSubmissions"),
-        where("authorUid", "==", currentUser.uid),
-      ));
-      const since = startOfTodayMs();
-      const todayCount = mineSnap.docs.filter((d) => (d.data().createdAt ?? 0) >= since).length;
-      if (todayCount >= DAILY_SUBMISSION_LIMIT) {
-        setError("You've reached today's submission limit — try again tomorrow!");
-        setSubmitting(false);
-        return;
-      }
-      const dup = mineSnap.docs.some(
-        (d) => (d.data().text ?? "").trim().toLowerCase() === trimmed.toLowerCase()
-      );
-      if (dup) { setError("You've already submitted this one."); setSubmitting(false); return; }
-
-      await addDoc(collection(db, "greetingSubmissions"), {
-        text: trimmed,
-        category: "community",
-        authorUid: currentUser.uid,
-        authorName: profile?.fullName ?? "Someone",
-        authorCountry: profile?.country ?? null,
-        status: "pending",
-        createdAt: Date.now(),
-        approvedAt: null,
-        upvotes: 0,
-        voters: {},
-        sentCount: 0,
-        reportCount: 0,
-        reporters: {},
+      // Instant AI moderation + live publish happen server-side (auth + daily-limit + dedup +
+      // Admin-SDK write live). A clean greeting is approved immediately; a bad one is rejected
+      // with a gentle reason. No admin step.
+      const token = await currentUser.getIdToken();
+      const res = await fetch(apiUrl("/api/submit-greeting"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: trimmed }),
       });
-      setDone(true);
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) setDone(true);
+      else setError(data.reason || "This greeting doesn't meet our community guidelines.");
     } catch (_) {
       setError("Couldn't submit — please try again.");
     }
@@ -284,10 +264,10 @@ export function SubmitGreetingModal({ db, currentUser, profile, onClose }) {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-100">
               <Send size={20} className="text-teal-600" />
             </div>
-            <p className="text-sm font-bold text-slate-800">Thank you! 💛</p>
+            <p className="text-sm font-bold text-slate-800">It's live! 💛</p>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Your greeting is in the queue. Once it's approved it'll appear in the Community tab —
-              you'll earn <strong>{APPROVAL_REWARD} sparks</strong> and a bonus every time someone sends it.
+              Your greeting is on the leaderboard now — you've earned <strong>{APPROVAL_REWARD} sparks</strong> ✨,
+              plus a bonus every time someone sends it. Get votes to reach this week's Top 5!
             </p>
             <button onClick={onClose}
               className="mt-2 rounded-full bg-teal-600 px-6 py-2 text-sm font-semibold text-white hover:bg-teal-700 transition-colors">
@@ -453,6 +433,7 @@ const PAGE_SIZE = 10;
 export function CommunityArena({ db, currentUser, profile, isAdmin = false, candidates = [], champions = [] }) {
   const [showSubmit, setShowSubmit] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showChampions, setShowChampions] = useState(false); // collapsed by default → leaderboard is the hero
   const [page, setPage] = useState(0);
   const [pendingVotes, setPendingVotes] = useState({}); // submissionId → desired voted bool (optimistic)
   const [reportedIds, setReportedIds] = useState({});
@@ -553,12 +534,16 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
         )}
       </div>
 
-      {/* This week's champions */}
+      {/* This week's champions — collapsed by default (tap to reveal) so the leaderboard leads */}
       {featured.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide flex items-center gap-1 mb-1">
-            <Trophy size={11} /> This week's champions
-          </p>
+          <button onClick={() => setShowChampions((v) => !v)}
+            className="w-full flex items-center gap-1.5 mb-1 text-amber-600">
+            <Trophy size={11} />
+            <span className="text-[10px] font-bold uppercase tracking-wide">This week's champions ({featured.length})</span>
+            {showChampions ? <ChevronUp size={13} className="ml-auto" /> : <ChevronDown size={13} className="ml-auto" />}
+          </button>
+          {showChampions && (
           <div className="space-y-1">
             {featured.filter((g) => !removedIds[g.submissionId]).map((g) => (
               <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-300 px-2.5 py-1.5"
@@ -576,13 +561,14 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
-      {/* Leaderboard */}
+      {/* Leaderboard — the hero of the tab */}
       <div>
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-          Leaderboard · vote for next week
+        <p className="text-[13px] font-extrabold text-teal-700 tracking-tight mb-1.5 flex items-center gap-1.5">
+          🗳️ Leaderboard <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">· vote for next week</span>
         </p>
         {candidates.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-6 text-center">

@@ -52,9 +52,9 @@ import JournalPanel from "./Journal";
 import UserGlimpse from "./UserGlimpse";
 import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
 import {
-  useChampionGreetings, useLeaderboardCandidates, useCommunitySubmissionCount,
+  useChampionGreetings, useLeaderboardCandidates,
   CommunityArena,
-  recordCommunitySend, approveSubmission, rejectSubmission, REPORT_THRESHOLD,
+  recordCommunitySend,
 } from "./CommunityGreetings";
 
 import { initializeApp } from "firebase/app";
@@ -78,6 +78,7 @@ import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
 import { apiUrl } from "./apiBase";
+import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 import { FeelingsStrip, FeelingComposer, EncourageSheet, MyFeelingPanel, useActiveFeelings, useFeelingToasts } from "./Feelings";
 
 const firebaseConfig = {
@@ -239,7 +240,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, pendingSubmissionCount = 0, promoting = false, onAdminClearFeed, onAdminFullReset, onAdminReports, onAdminSubmissions, onAdminPromote }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset, onAdminReports }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -401,18 +402,8 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   <div className="mx-4 border-t border-slate-100" />
                   <div className="px-3 py-2 space-y-0.5">
                     <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
-                    <Row
-                      onClick={() => { onAdminSubmissions?.(); close(); }}
-                      icon={<IconBox className="bg-teal-50"><Shield size={15} className="text-teal-600" /></IconBox>}
-                      label="Community greetings"
-                      sub={pendingSubmissionCount > 0 ? `${pendingSubmissionCount} pending review` : "Moderate submissions"}
-                    />
-                    <Row
-                      onClick={() => { onAdminPromote?.(); }}
-                      icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🏆</span></IconBox>}
-                      label={promoting ? "Promoting…" : "Promote Top 5 now"}
-                      sub="Rotate this week's champions"
-                    />
+                    {/* Community greetings are now AI-moderated at submit; the weekly champion
+                        rotation runs automatically via cron — no manual admin steps needed. */}
                     <Row
                       onClick={() => { onAdminReports?.(); close(); }}
                       icon={<IconBox className="bg-orange-50"><Shield size={15} className="text-orange-500" /></IconBox>}
@@ -896,12 +887,16 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             <input name="mostDays" value={form.mostDays} onChange={onChange} maxLength={80}
               placeholder="a tired but hopeful nurse"
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
+            <GlimpseChips examples={MOST_DAYS_EXAMPLES} accent="amber"
+              onPick={(v) => setForm((prev) => ({ ...prev, mostDays: v }))} />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">✨ In another life, I'd be…</label>
             <input name="anotherLife" value={form.anotherLife} onChange={onChange} maxLength={80}
               placeholder="a jazz pianist in Lisbon"
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
+            <GlimpseChips examples={ANOTHER_LIFE_EXAMPLES} accent="violet"
+              onPick={(v) => setForm((prev) => ({ ...prev, anotherLife: v }))} />
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">Keep it light — no personal details. This is the little glimpse others see.</p>
         </div>
@@ -1636,9 +1631,6 @@ export default function App() {
   // Community greetings: live approved pool (for the picker) + pending count (admin badge)
   const champions = useChampionGreetings(db);            // weekly Top-5 → sendable in picker
   const candidates = useLeaderboardCandidates(db);        // approved pool → voting arena
-  const pendingSubmissionCount = useCommunitySubmissionCount(db, isAdmin);
-  const [adminSubmissions, setAdminSubmissions] = useState(null); // null = not loaded
-  const [adminSubmissionsLoading, setAdminSubmissionsLoading] = useState(false);
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
@@ -2560,69 +2552,8 @@ export default function App() {
     } catch (err) { console.error("Dismiss report failed:", err); }
   };
 
-  // ── Community greeting moderation ──
-  const loadSubmissions = async () => {
-    if (!isAdmin) return;
-    setAdminSubmissions([]); // open the panel immediately
-    setAdminSubmissionsLoading(true);
-    try {
-      // Pending queue + approved-but-flagged (auto-hidden) items needing review.
-      const [pendingSnap, approvedSnap] = await Promise.all([
-        getDocs(query(collection(db, "greetingSubmissions"), where("status", "==", "pending"))),
-        getDocs(query(collection(db, "greetingSubmissions"), where("status", "==", "approved"))),
-      ]);
-      const pending = pendingSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const flagged = approvedSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((s) => (s.reportCount ?? 0) >= REPORT_THRESHOLD);
-      const all = [...flagged, ...pending].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-      setAdminSubmissions(all);
-    } catch (err) {
-      console.error("Failed to load submissions:", err);
-    } finally {
-      setAdminSubmissionsLoading(false);
-    }
-  };
-
-  const handleApproveSubmission = async (submission) => {
-    if (!isAdmin) return;
-    try {
-      await approveSubmission(db, submission);
-      setAdminSubmissions((prev) => prev.filter((s) => s.id !== submission.id));
-    } catch (err) { console.error("Approve failed:", err); }
-  };
-
-  const handleRejectSubmission = async (submission) => {
-    if (!isAdmin) return;
-    try {
-      await rejectSubmission(db, submission);
-      setAdminSubmissions((prev) => prev.filter((s) => s.id !== submission.id));
-    } catch (err) { console.error("Reject failed:", err); }
-  };
-
-  const [promoting, setPromoting] = useState(false);
-  const handlePromoteChampions = async () => {
-    if (!isAdmin || promoting) return;
-    if (!window.confirm("Retire this week's champions and promote the current Top 5? This is normally automatic each Monday.")) return;
-    setPromoting(true);
-    try {
-      const token = await currentUser.getIdToken();
-      const res = await fetch(apiUrl("/api/rotate-champions?force=1"), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        window.alert(`Promoted ${data.promoted ?? 0} champion(s) for ${data.weekId ?? "this week"}.`);
-      } else {
-        window.alert(`Promotion failed: ${data.error ?? res.status}`);
-      }
-    } catch (err) {
-      window.alert(`Promotion failed: ${err?.message ?? "network error"}`);
-    } finally {
-      setPromoting(false);
-    }
-  };
+  // Community greetings are AI-moderated at submit (api/submit-greeting) and champions rotate
+  // automatically via the weekly cron — so there's no admin approve/reject/promote flow here.
 
   // Hold the loader until the profile read positively resolves, so an already-onboarded
   // user is never shown the onboarding screen during a transient cold-start read error.
@@ -2891,13 +2822,9 @@ export default function App() {
                       streak={streak}
                       sparkBalance={sparkBalance}
                       isAdmin={isAdmin}
-                      pendingSubmissionCount={pendingSubmissionCount}
-                      promoting={promoting}
                       onAdminClearFeed={() => setAdminConfirm(true)}
                       onAdminFullReset={() => setAdminResetConfirm(true)}
                       onAdminReports={loadAdminReports}
-                      onAdminSubmissions={loadSubmissions}
-                      onAdminPromote={handlePromoteChampions}
                     />
                   </div>
                 </div>
@@ -3535,59 +3462,6 @@ export default function App() {
                       )}
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Admin: community greeting moderation queue ── */}
-            {adminSubmissions !== null && (
-              <div className="absolute inset-0 z-50 flex flex-col bg-white">
-                <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
-                  <button onClick={() => setAdminSubmissions(null)} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
-                    <ArrowLeft size={18} className="text-slate-600" />
-                  </button>
-                  <h2 className="text-sm font-bold text-slate-800 flex-1">Community Greetings</h2>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {adminSubmissionsLoading && (
-                    <div className="flex justify-center pt-10"><Loader2 size={22} className="animate-spin text-slate-300" /></div>
-                  )}
-                  {!adminSubmissionsLoading && adminSubmissions.length === 0 && (
-                    <div className="flex flex-col items-center justify-center pt-20 gap-2 text-center">
-                      <Sparkles size={36} className="text-slate-200" />
-                      <p className="text-sm text-slate-400">Nothing to review 🌱</p>
-                    </div>
-                  )}
-                  {adminSubmissions.map((sub) => {
-                    const flagged = (sub.reportCount ?? 0) >= REPORT_THRESHOLD;
-                    return (
-                      <div key={sub.id} className={`rounded-2xl border px-4 py-3 space-y-2 ${flagged ? "border-red-100 bg-red-50" : "border-teal-100 bg-teal-50/50"}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${flagged ? "bg-red-200 text-red-700" : "bg-teal-200 text-teal-700"}`}>
-                            {flagged ? `⚐ Flagged ×${sub.reportCount}` : "Pending"}
-                          </span>
-                          <span className="text-[10px] text-slate-400">{new Date(sub.createdAt ?? 0).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                        <p className="text-sm text-slate-800 bg-white rounded-xl px-3 py-2 border border-slate-100 leading-relaxed font-semibold">{sub.text}</p>
-                        <div className="flex justify-between text-[10px] text-slate-500">
-                          <span>By: <strong>{sub.authorName}</strong>{sub.authorCountry ? ` · ${sub.authorCountry}` : ""}</span>
-                          {!flagged && <span>👍 {sub.upvotes ?? 0}</span>}
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          {!flagged && (
-                            <button onClick={() => handleApproveSubmission(sub)}
-                              className="flex-1 rounded-xl bg-teal-600 py-2 text-xs font-bold text-white hover:bg-teal-700 transition-colors">
-                              Approve
-                            </button>
-                          )}
-                          <button onClick={() => handleRejectSubmission(sub)}
-                            className="flex-1 rounded-xl border border-slate-200 py-2 text-xs text-slate-600 hover:bg-slate-100 transition-colors">
-                            {flagged ? "Remove" : "Reject"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             )}
