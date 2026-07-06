@@ -57,10 +57,12 @@ function toGreeting(s) {
 // ── Live approved community greetings ───────────────────────────────────────────
 // Single-field equality filter only (no composite index needed); sorted client-side
 // by upvotes desc. Auto-hides anything flagged >= REPORT_THRESHOLD.
-export function useApprovedCommunityGreetings(db) {
+export function useApprovedCommunityGreetings(db, currentUser) {
   const [greetings, setGreetings] = useState([]);
   useEffect(() => {
-    if (!db) return;
+    // Wait for auth — greetingSubmissions reads require request.auth != null, so attaching before
+    // the session restores (cold start) hits permission-denied and the listener never recovers.
+    if (!db || !currentUser) return;
     const q = query(collection(db, "greetingSubmissions"), where("status", "==", "approved"));
     return onSnapshot(q, (snap) => {
       const items = snap.docs
@@ -71,17 +73,17 @@ export function useApprovedCommunityGreetings(db) {
         .map(toGreeting);
       setGreetings(items);
     }, () => {});
-  }, [db]);
+  }, [db, currentUser]);
   return greetings;
 }
 
 // ── Champions — the weekly Top-5, sendable in the picker for 7 days ───────────────
 // status == "champion" and still inside their spotlight window, sorted by winning vote score.
 // Nothing surfaces in the picker until the admin promotes (no approved-greeting fallback).
-export function useChampionGreetings(db) {
+export function useChampionGreetings(db, currentUser) {
   const [greetings, setGreetings] = useState([]);
   useEffect(() => {
-    if (!db) return;
+    if (!db || !currentUser) return; // wait for auth (see note in useApprovedCommunityGreetings)
     const q = query(collection(db, "greetingSubmissions"), where("status", "==", "champion"));
     return onSnapshot(q, (snap) => {
       const now = Date.now();
@@ -91,15 +93,15 @@ export function useChampionGreetings(db) {
         .sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0));
       setGreetings(champions.map(toGreeting));
     }, () => {});
-  }, [db]);
+  }, [db, currentUser]);
   return greetings;
 }
 
 // ── Leaderboard candidates — the voting arena (status == "approved") ──────────────
-export function useLeaderboardCandidates(db) {
+export function useLeaderboardCandidates(db, currentUser) {
   const [candidates, setCandidates] = useState([]);
   useEffect(() => {
-    if (!db) return;
+    if (!db || !currentUser) return; // wait for auth (see note in useApprovedCommunityGreetings)
     const q = query(collection(db, "greetingSubmissions"), where("status", "==", "approved"));
     return onSnapshot(q, (snap) => {
       const items = snap.docs
@@ -110,7 +112,7 @@ export function useLeaderboardCandidates(db) {
         .map(toGreeting);
       setCandidates(items);
     }, () => {});
-  }, [db]);
+  }, [db, currentUser]);
   return candidates;
 }
 

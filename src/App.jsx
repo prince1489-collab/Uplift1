@@ -1629,8 +1629,8 @@ export default function App() {
   const [adminReportsLoading, setAdminReportsLoading] = useState(false);
   const [showResolvedReports, setShowResolvedReports] = useState(false);
   // Community greetings: live approved pool (for the picker) + pending count (admin badge)
-  const champions = useChampionGreetings(db);            // weekly Top-5 → sendable in picker
-  const candidates = useLeaderboardCandidates(db);        // approved pool → voting arena
+  const champions = useChampionGreetings(db, currentUser);            // weekly Top-5 → sendable in picker
+  const candidates = useLeaderboardCandidates(db, currentUser);        // approved pool → voting arena
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
 
