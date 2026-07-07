@@ -762,7 +762,7 @@ function NotificationBell({ streak, db, currentUser }) {
                       <p className="flex-1 text-[11px] text-slate-700 min-w-0">
                         <span className="font-semibold">{(r.responderName || "Someone").split(" ")[0]}</span>
                         {r.responderCountry ? <> from <span className="font-semibold">{r.responderCountry}</span></> : null}
-                        {" "}sent you encouragement — tap your 💭 card in the feed to read it
+                        {" "}sent you encouragement — tap the 💛 badge by your name to read it
                       </p>
                     </div>
                   );
@@ -1193,6 +1193,7 @@ export default function App() {
   const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
   const [myFeelingPanel, setMyFeelingPanel] = useState(null); // snapshot of my feeling — stays mounted through ack + pass-forward
   const [feelPromptDismissed, setFeelPromptDismissed] = useState(false); // once-a-day "how are you feeling?" bubble
+  const [, setEncReadTick] = useState(0); // bump to re-hide the "you've been encouraged" pill after reading
   const [echoToast, setEchoToast] = useState(null); // { id, name } — "your words helped"
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
@@ -1597,6 +1598,22 @@ export default function App() {
   const dismissFeelPrompt = () => {
     setFeelPromptDismissed(true);
     try { if (feelPromptKey) localStorage.setItem(feelPromptKey, "1"); } catch { /* ignore */ }
+  };
+  // Persistent "you've been encouraged" pill (sits where the 💬 bubble does, by the name).
+  // Unread = live replyCount on my feeling − the count I last read. localStorage read-marker,
+  // keyed per feeling; opening the replies reader marks it read so the pill re-hides.
+  const encReadKey = currentUser?.uid && myFeeling?.createdAt
+    ? `seen_freplies_${currentUser.uid}_${myFeeling.createdAt}`
+    : null;
+  const encReadCount = (() => {
+    if (!encReadKey) return 0;
+    try { return Number(localStorage.getItem(encReadKey) || 0); } catch { return 0; }
+  })();
+  const unreadEnc = myFeeling ? Math.max(0, (myFeeling.replyCount ?? 0) - encReadCount) : 0;
+  const showEncPill = !!myFeeling && unreadEnc > 0;
+  const markEncouragementRead = () => {
+    try { if (encReadKey) localStorage.setItem(encReadKey, String(myFeeling?.replyCount ?? 0)); } catch { /* ignore */ }
+    setEncReadTick((t) => t + 1);
   };
   useEffect(() => {
     if (!echoToast) return;
@@ -2645,7 +2662,7 @@ export default function App() {
         {myFeelingPanel && (
           <MyFeelingPanel db={db} currentUser={currentUser} feeling={myFeelingPanel}
             othersFeelings={otherFeelings}
-            onClose={() => setMyFeelingPanel(null)}
+            onClose={() => { markEncouragementRead(); setMyFeelingPanel(null); }}
             onEncourage={(f) => setEncourageFeeling(f)} />
         )}
 
@@ -2746,7 +2763,16 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
-                    {showFeelPrompt && (
+                    {showEncPill ? (
+                      <button
+                        aria-label={`${unreadEnc} new encouragement — tap to read`}
+                        title="Read your encouragement"
+                        onClick={(e) => { e.stopPropagation(); setMyFeelingPanel(myFeeling); markEncouragementRead(); }}
+                        className="flex-shrink-0 flex items-center gap-1 rounded-full pl-2 pr-2.5 py-0.5 text-[10px] font-semibold text-white whitespace-nowrap leading-none"
+                        style={{ background: "linear-gradient(135deg, #f59e0b, #f43f5e)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
+                        💛 {unreadEnc} new
+                      </button>
+                    ) : showFeelPrompt ? (
                       <button
                         data-tour="feeling"
                         aria-label="How are you feeling?"
@@ -2756,7 +2782,7 @@ export default function App() {
                         style={{ background: "linear-gradient(135deg, #2dd4bf, #10b981)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
                         💬
                       </button>
-                    )}
+                    ) : null}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
