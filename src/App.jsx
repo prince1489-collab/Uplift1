@@ -17,8 +17,6 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
-
-import { CirclesPanel, useCircles, CircleInviteBanner } from "./Circles";
 import { StickerDisplay } from "./StickerReactions";
 const LifeHacks = React.lazy(() => import("./LifeHacks"));
 const Support   = React.lazy(() => import("./Support"));
@@ -244,7 +242,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
-  const [showCircles, setShowCircles] = useState(false);
   const [showJournal, setShowJournal] = useState(false);
   const [showWellbeing, setShowWellbeing] = useState(false);
 
@@ -373,27 +370,6 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   sub="Wellbeing tools & crisis help"
                 />
 
-                {/* Circles row — expands inline */}
-                <button
-                  data-tour="m-circles"
-                  onClick={() => setShowCircles(v => !v)}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
-                  <IconBox><Users size={16} className="text-slate-500" /></IconBox>
-                  <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-medium text-slate-700">Circles</p>
-                    <p className="text-[11px] text-slate-400">Your private kindness groups</p>
-                  </div>
-                  <ChevronDown
-                    size={15}
-                    className={`text-slate-400 flex-shrink-0 transition-transform duration-200 ${showCircles ? "rotate-180" : ""}`}
-                  />
-                </button>
-                {showCircles && (
-                  <div className="mx-1 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
-                    <CirclesPanel db={db} currentUser={currentUser} isPremium={isPremium} />
-                  </div>
-                )}
-
               </div>
 
               {/* Admin tools — only for the admin account */}
@@ -478,9 +454,7 @@ function NotificationBell({ streak, db, currentUser }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
   const [likes, setLikes] = useState([]);
-  const [circleInvites, setCircleInvites] = useState([]);
   const [dismissedLikes, setDismissedLikes] = useState(new Set());
-  const [dismissedInvites, setDismissedInvites] = useState(new Set());
   const [likesSeenAt, setLikesSeenAt] = useState(() => {
     try { return Number(localStorage.getItem("seen-likes-at")) || 0; } catch { return 0; }
   });
@@ -531,18 +505,6 @@ function NotificationBell({ streak, db, currentUser }) {
     }, () => {});
   }, [db, currentUser]);
 
-  // Circle invite notifications
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const q = query(
-      collection(db, "circleInvites"),
-      where("toUid", "==", currentUser.uid),
-      where("status", "==", "pending")
-    );
-    return onSnapshot(q, (snap) => {
-      setCircleInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    }, () => {});
-  }, [db, currentUser]);
 
   // Likes — someone hearted one of my messages. Every ❤️ writes a doc to
   // users/{me}/reactionsReceived, denormalized with the reactor's first name +
@@ -651,15 +613,13 @@ function NotificationBell({ streak, db, currentUser }) {
   };
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
   const dismissLike = (id) => setDismissedLikes((s) => new Set(s).add(id));
-  const dismissInvite = (id) => setDismissedInvites((s) => new Set(s).add(id));
 
   const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id));
-  const visibleInvites = circleInvites.filter((inv) => !dismissedInvites.has(inv.id));
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = rippleRows.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
   const newFreplyCount = freplyRows.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
   const newEchoCount = echoRows.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
-  const totalUnread = waves.length + newLikesCount + visibleInvites.length + newRipplesCount + newFreplyCount + newEchoCount;
+  const totalUnread = waves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
   const hot = streak >= 7;
 
   return (
@@ -687,27 +647,10 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleLikes.length === 0 && visibleInvites.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 ? (
+            {waves.length === 0 && visibleLikes.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
-                {visibleInvites.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-teal-50">
-                    <span className="text-base flex-shrink-0">{inv.circleEmoji ?? "⭐"}</span>
-                    <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                      <span className="font-semibold">{inv.fromName ?? "Someone"}</span> invited you to join{" "}
-                      <span className="font-semibold text-teal-700">{inv.circleName}</span>
-                      <span className="text-slate-400 block">Open ··· → Circles to accept</span>
-                    </p>
-                    <button onClick={() => dismissInvite(inv.id)}
-                      className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-                {visibleInvites.length > 0 && (waves.length > 0 || visibleLikes.length > 0) && (
-                  <div className="mx-4 my-1 border-t border-slate-100" />
-                )}
                 {waves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
@@ -738,7 +681,7 @@ function NotificationBell({ streak, db, currentUser }) {
                     </div>
                   );
                 })}
-                {(waves.length > 0 || visibleLikes.length > 0 || visibleInvites.length > 0) && rippleRows.length > 0 && (
+                {(waves.length > 0 || visibleLikes.length > 0) && rippleRows.length > 0 && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
                 {rippleRows.map((r) => {
@@ -782,13 +725,12 @@ function NotificationBell({ streak, db, currentUser }) {
               </div>
             )}
           </div>
-          {(waves.length > 1 || visibleLikes.length > 0 || visibleInvites.length > 0) && (
+          {(waves.length > 1 || visibleLikes.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
                 onClick={() => {
                   dismissAllWaves();
                   visibleLikes.forEach((l) => dismissLike(l.id));
-                  visibleInvites.forEach((inv) => dismissInvite(inv.id));
                 }}
                 className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-slate-600">
                 Clear all
@@ -1898,7 +1840,7 @@ export default function App() {
       key: "menu-intro",
       target: '[data-tour="menu"]',
       title: "There's more in here",
-      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing Score, Circles and Support.",
+      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing Score and Support.",
       // Never opens the menu — keeping the tour off the live menu state guarantees you land on the feed.
       before: () => { setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
     },
@@ -1906,7 +1848,7 @@ export default function App() {
       key: "journey",
       target: null,
       title: "That's your journey",
-      body: "Send kindness daily, keep your streak alive, grow your Circles, and watch your impact light up the world map. Ready?",
+      body: "Send kindness daily, keep your streak alive, and watch your impact light up the world map. Ready?",
       before: () => { setReactionBarId(null); setMenuOpen(false); },
     },
   ], [messages, currentUser]);
@@ -2128,7 +2070,6 @@ export default function App() {
 
 
   const isPremium = true; // all features free — grow the user base
-  const circles = useCircles(db, currentUser);
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
   const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
@@ -2875,8 +2816,6 @@ export default function App() {
               </div>
             </header>
 
-            <CircleInviteBanner db={db} currentUser={currentUser} />
-
             {showInstallBanner && deferredInstallRef.current && (
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -3494,7 +3433,7 @@ export default function App() {
                       <Shield size={22} className="text-red-600" />
                     </div>
                     <p className="font-bold text-slate-800 text-base">Full app reset?</p>
-                    <p className="text-sm text-slate-500">Permanently deletes all messages, reactions, waves, presence, chat requests, and reports. User accounts and circles are kept. This cannot be undone.</p>
+                    <p className="text-sm text-slate-500">Permanently deletes all messages, reactions, waves, presence, chat requests, and reports. User accounts are kept. This cannot be undone.</p>
                     {adminResetError && (
                       <p className="text-xs font-semibold text-red-500 bg-red-50 rounded-xl px-3 py-2 w-full">{adminResetError}</p>
                     )}

@@ -33,7 +33,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat";
 import { startCheckout } from "./payments";
-import { AddToCircleButton } from "./Circles";
 import { StickerPicker } from "./StickerReactions";
 import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
 import { apiUrl } from "./apiBase";
@@ -1204,7 +1203,6 @@ export function PremiumUpgradePrompt({ onClose, currentUser, country }) {
   const displayPrice = PRICE_DISPLAY[country] ?? "$3.99/mo";
   const BENEFITS = [
     { icon: "📅", title: "25 greetings per day",       sub: "Free plan: 10/day" },
-    { icon: "⭕", title: "6 Circles · 25 members each", sub: "Free plan: 3 circles · 10 members" },
     { icon: "💪", title: "Exclusive greeting packs",    sub: "Strength, Celebrate, World Moments" },
     { icon: "🗓️", title: "Monthly themed pack",        sub: "Rotates every month — Earth Month, Gratitude…" },
     { icon: "📊", title: "Kindness analytics",          sub: "Stats, streaks & 30-day activity heatmap" },
@@ -1955,7 +1953,6 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       {isOther && (
         <>
           <div className="seen-qrb-sep" />
-          <AddToCircleButton db={db} currentUser={currentUser} targetUid={senderUid} targetName={senderName} isPremium={isPremium} />
           <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} onClose={onClose} />
         </>
       )}
