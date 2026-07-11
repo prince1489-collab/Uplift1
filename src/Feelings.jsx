@@ -99,10 +99,10 @@ export function useActiveFeelings(db, currentUser) {
 // and in the profile, so this strip is purely "someone needs you right now" — and it hides itself
 // entirely when nobody has shared, keeping the feed clean.
 
-export function FeelingsStrip({ others, onEncourage, myUid }) {
+export function FeelingsStrip({ others, onEncourage, myUid, onOpenMine }) {
   const [idx, setIdx] = useState(0);
 
-  // Rotate through others' feelings, one at a time, every 3 seconds.
+  // Rotate through the shared feelings (your own included), one at a time, every 3 seconds.
   useEffect(() => {
     if (others.length < 2) return;
     const t = setInterval(() => setIdx((i) => i + 1), 3000);
@@ -112,19 +112,26 @@ export function FeelingsStrip({ others, onEncourage, myUid }) {
   if (!others.length) return null;
 
   const current = others[idx % others.length];
-  const sent = (() => { try { return localStorage.getItem(repliedKey(myUid, current.uid, current.createdAt)) === "1"; } catch { return false; } })();
+  const mine = current.uid === myUid;
+  const sent = mine ? false : (() => { try { return localStorage.getItem(repliedKey(myUid, current.uid, current.createdAt)) === "1"; } catch { return false; } })();
 
   return (
     <div className="border-b border-slate-100 bg-white px-3.5 py-1.5 flex-shrink-0">
-      <button key={`${current.uid}_${current.createdAt}`} onClick={() => !sent && onEncourage(current)}
+      <button key={`${current.uid}_${current.createdAt}`} onClick={() => (mine ? onOpenMine?.() : (!sent && onEncourage(current)))}
         className="w-full rounded-xl px-3 py-2 text-left active:scale-[0.99] transition-transform flex items-center gap-2"
-        style={{ background: "linear-gradient(135deg, #fffbeb, #fef3f2)", border: "1px solid #fde68a", animation: "seenFadeUp 400ms ease both" }}>
+        style={{
+          background: mine ? "linear-gradient(135deg, #ecfdf5, #f0fdfa)" : "linear-gradient(135deg, #fffbeb, #fef3f2)",
+          border: mine ? "1px solid #99f6e4" : "1px solid #fde68a",
+          animation: "seenFadeUp 400ms ease both",
+        }}>
         <div className="flex-1 min-w-0">
-          <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 truncate">{feelingLabel(current)}</p>
+          <p className={`text-[9px] font-bold uppercase tracking-wide truncate ${mine ? "text-emerald-600" : "text-amber-600"}`}>
+            {mine ? "Your status" : feelingLabel(current)}
+          </p>
           <p className="text-[12px] font-semibold text-slate-700 leading-tight truncate">“{current.text}”</p>
         </div>
-        <span className={`flex-shrink-0 text-[11px] font-bold ${sent ? "text-emerald-600" : "text-rose-500"}`}>
-          {sent ? "💛 Sent" : "💛 Encourage"}
+        <span className={`flex-shrink-0 text-[11px] font-bold ${mine || sent ? "text-emerald-600" : "text-rose-500"}`}>
+          {mine ? "💬 You" : sent ? "💛 Sent" : "💛 Encourage"}
         </span>
       </button>
     </div>

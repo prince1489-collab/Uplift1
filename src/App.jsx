@@ -1192,7 +1192,6 @@ export default function App() {
   const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
   const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
   const [myFeelingPanel, setMyFeelingPanel] = useState(null); // snapshot of my feeling — stays mounted through ack + pass-forward
-  const [feelPromptDismissed, setFeelPromptDismissed] = useState(false); // once-a-day "how are you feeling?" bubble
   const [, setEncReadTick] = useState(0); // bump to re-hide the "you've been encouraged" pill after reading
   const [echoToast, setEchoToast] = useState(null); // { id, name } — "your words helped"
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
@@ -1589,16 +1588,6 @@ export default function App() {
     null,
     (e) => setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null })
   );
-  // Once-a-day "how are you feeling?" nudge by the header name (only when nothing is shared yet today).
-  const feelPromptKey = currentUser?.uid
-    ? `seen_feelprompt_${currentUser.uid}_${(() => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; })()}`
-    : null;
-  const showFeelPrompt = !myFeeling && !feelPromptDismissed && !!feelPromptKey &&
-    (() => { try { return localStorage.getItem(feelPromptKey) !== "1"; } catch { return true; } })();
-  const dismissFeelPrompt = () => {
-    setFeelPromptDismissed(true);
-    try { if (feelPromptKey) localStorage.setItem(feelPromptKey, "1"); } catch { /* ignore */ }
-  };
   // Persistent "you've been encouraged" pill (sits where the 💬 bubble does, by the name).
   // Unread = live replyCount on my feeling − the count I last read. localStorage read-marker,
   // keyed per feeling; opening the replies reader marks it read so the pill re-hides.
@@ -2772,17 +2761,17 @@ export default function App() {
                         style={{ background: "linear-gradient(135deg, #f59e0b, #f43f5e)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
                         💛 {unreadEnc} new
                       </button>
-                    ) : showFeelPrompt ? (
+                    ) : (
                       <button
                         data-tour="feeling"
-                        aria-label="How are you feeling?"
-                        title="How are you feeling?"
-                        onClick={(e) => { e.stopPropagation(); setFeelingComposerOpen(true); dismissFeelPrompt(); }}
+                        aria-label={myFeeling ? "Your status — how are you feeling?" : "How are you feeling?"}
+                        title={myFeeling ? "Your status" : "How are you feeling?"}
+                        onClick={(e) => { e.stopPropagation(); if (myFeeling) { setMyFeelingPanel(myFeeling); } else { setFeelingComposerOpen(true); } }}
                         className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-[13px] leading-none"
                         style={{ background: "linear-gradient(135deg, #2dd4bf, #10b981)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
                         💬
                       </button>
-                    ) : null}
+                    )}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -2958,7 +2947,11 @@ export default function App() {
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}
             {activeTab === "feed" && (
-              <FeelingsStrip others={otherFeelings} myUid={currentUser?.uid} onEncourage={(f) => setEncourageFeeling(f)} />
+              <FeelingsStrip
+                others={myFeeling ? [myFeeling, ...otherFeelings] : otherFeelings}
+                myUid={currentUser?.uid}
+                onEncourage={(f) => setEncourageFeeling(f)}
+                onOpenMine={() => myFeeling && setMyFeelingPanel(myFeeling)} />
             )}
 
             {activeTab === "hacks" ? (
@@ -3339,7 +3332,7 @@ export default function App() {
                     data-tour="send"
                     onClick={() => setPickerOpen(true)}
                     disabled={isSending}
-                    className="w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70"
+                    className={`w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
                     style={{
                       background:
                         "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%)",
