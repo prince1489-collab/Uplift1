@@ -1130,6 +1130,7 @@ export default function App() {
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
   const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
   const [rippleToast, setRippleToast] = useState(null); // { id, country } — a kindness chain just grew
+  const [sentToast, setSentToast] = useState(false); // brief "💛 Sent" confirmation (message lands at the top of the feed)
   // Kindness loop (feeling statuses)
   const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
   const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
@@ -1505,6 +1506,13 @@ export default function App() {
     const t = setTimeout(() => setReactionToast(null), 6000);
     return () => clearTimeout(t);
   }, [reactionToast]);
+
+  // Auto-dismiss the "💛 Sent" confirmation after ~1.6s
+  useEffect(() => {
+    if (!sentToast) return;
+    const t = setTimeout(() => setSentToast(false), 1600);
+    return () => clearTimeout(t);
+  }, [sentToast]);
 
   // Auto-dismiss hometown toast after 7s
   useEffect(() => {
@@ -2275,6 +2283,7 @@ export default function App() {
       // Message is written — close picker and play animations immediately
       setPickerOpen(false);
       setIsSending(false);
+      setSentToast(true); // the greeting lands at the top of the feed, so confirm the send here
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
@@ -2952,6 +2961,16 @@ export default function App() {
                       style={{ color: "rgba(144,208,255,0.5)" }}
                     >✕</span>
                   </button>
+                </div>
+              )}
+              {/* "💛 Sent" confirmation — the greeting appears at the top, so reassure by the composer */}
+              {sentToast && (
+                <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[250] flex justify-center px-4">
+                  <div
+                    className="flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white"
+                    style={{ background: "linear-gradient(135deg, #34d399, #10b981)", boxShadow: "0 8px 24px rgba(16,185,129,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+                    <span className="text-base">💛</span> Sent
+                  </div>
                 </div>
               )}
               {/* Reaction-from-country toast */}
