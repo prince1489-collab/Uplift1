@@ -738,7 +738,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -757,7 +757,13 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   const displayCount = serverCount + (localHearted && !userAlreadyReacted ? 1 : 0);
   const active = displayCount > 0 ? ["❤️"] : EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
 
-  if (active.length === 0 && displayCount === 0) return null;
+  // Invite the FIRST real heart on a recent, un-reacted greeting from someone else — so a post
+  // that would otherwise get no response gets a GENUINE reaction (never a fabricated one).
+  const BE_FIRST_WINDOW_MS = 3 * 60 * 60 * 1000;
+  const showBeFirst = !mine && displayCount === 0 && senderUid && senderUid !== currentUser?.uid
+    && messageTs && (Date.now() - messageTs < BE_FIRST_WINDOW_MS);
+
+  if (active.length === 0 && displayCount === 0 && !showBeFirst) return null;
 
   const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
@@ -891,6 +897,19 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
       }
     }
   };
+
+  // Zero reactions but recent + not mine → invite the first (real) heart.
+  if (active.length === 0 && displayCount === 0) {
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); toggle("❤️"); }}
+        className="absolute -bottom-3 right-1 flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
+        style={{ zIndex: 3 }}
+        title="Be the first to send a heart">
+        🤍 Be first
+      </button>
+    );
+  }
 
   // Glow intensity grows with heart count: 1-2 faint, 3-6 medium, 7+ vivid
   const glowTier = displayCount >= 7 ? 3 : displayCount >= 3 ? 2 : 1;
