@@ -1,9 +1,10 @@
-// Wellbeing.jsx — the WHO-5 Well-Being Index (5 items, "past two weeks" recall) → a 0–100 score.
-// Captured as a baseline during onboarding, then re-taken FORTNIGHTLY (the WHO-5 recall window is two
-// weeks, so a 14-day cadence keeps each score over a distinct, non-overlapping period). The daily mood
-// selector (moodTag) is the lightweight high-frequency "pulse"; this is the formal outcome measure.
-// Stored per-user at users/{uid}/wellbeing/{id} (private). Raw item responses are kept so the data can
-// back efficacy claims. WHO-5 Well-Being Index · © World Health Organization (free to use, attribution required).
+// Wellbeing.jsx — a gentle personal "how have you been feeling?" check-in based on the five WHO-5
+// well-being statements ("past two weeks" recall) → a 0–100 personal reflection score. Offered as a
+// first check-in during onboarding, then again roughly fortnightly so you can look back on your own
+// reflections over time. Stored per-user at users/{uid}/wellbeing/{id} (private, for the user's own
+// eyes). IMPORTANT: this is a personal wellbeing reflection — NOT a medical test, diagnosis, screening
+// or monitoring tool, and not a substitute for professional care.
+// Based on the WHO-5 Well-Being Index · © World Health Organization (attribution required).
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -45,7 +46,7 @@ export function computeRaw(scores) {
 export function computeScore(scores) {
   return computeRaw(scores) * 4;
 }
-// A WHO-5 score of 50 or below (raw ≤ 12) warrants a gentle check-in / signpost to support.
+// A lower personal score just prompts us to gently offer supportive resources — never a diagnosis.
 export function isLowWellbeing(score) {
   return typeof score === "number" && score <= 50;
 }
@@ -55,9 +56,9 @@ export async function saveCheckin(db, uid, scores) {
   const raw = computeRaw(scores);
   await addDoc(collection(db, "users", uid, "wellbeing"), {
     scores,                 // raw item responses { cheer:4, calm:3, … } (0–5 each)
-    who5Raw: raw,           // 0–25 (the true WHO-5 score, for export/research)
+    who5Raw: raw,           // 0–25
     score: raw * 4,         // 0–100 (display + trend)
-    screeningFlag: raw < 13, // low-wellbeing flag (WHO-5 convention)
+    lowWellbeingReflection: raw < 13, // gentle low-score prompt for supportive resources (not a clinical flag)
     instrument: "WHO5",
     version: 1,
     createdAt: Date.now(),
@@ -118,9 +119,9 @@ function ScoringInfo({ label = null, center = false }) {
         <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-left">
           <p className="text-[11px] text-slate-500 leading-relaxed">
             Each statement is scored from <b>0</b> (at no time) to <b>5</b> (all of the time) for the past
-            two weeks. Your five answers add up to 0–25, then multiply by 4 to give a score out of{" "}
-            <b>100</b> — higher means better wellbeing. A score of 50 or below is a gentle sign that some
-            extra support could help. This is the WHO-5 Well-Being Index, a validated measure used worldwide.
+            two weeks, adding up to a personal score out of <b>100</b> — higher just means you've been
+            feeling better lately. It's only for your own reflection: it isn't a medical test, a diagnosis,
+            or a way to screen for or monitor any condition. Based on the WHO-5 Well-Being Index.
           </p>
         </div>
       )}
@@ -148,6 +149,11 @@ export function WellbeingCheckin({ onComplete, intro, submitLabel = "See my scor
   return (
     <div className="space-y-4">
       {intro && <p className="text-[13px] text-slate-500 leading-relaxed">{intro}</p>}
+      <p className="text-[11px] text-slate-500 leading-relaxed rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+        A personal check-in to help you notice how you've been feeling — not a medical or diagnostic
+        assessment, and not a substitute for advice from a doctor or other health professional. If you're
+        worried about your mental health, please speak to your GP or a qualified professional.
+      </p>
       <ScoringInfo label={<p className="text-[12px] font-bold uppercase tracking-wide text-teal-600">Over the past two weeks…</p>} />
       {WELLBEING_QUESTIONS.map((q) => (
         <div key={q.key} className="rounded-2xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
@@ -246,7 +252,7 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
           <ArrowLeft size={18} className="text-slate-600" />
         </button>
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-teal-500" /> Wellbeing Score
+          <TrendingUp size={15} className="text-teal-500" /> Wellbeing check-in
         </h2>
       </div>
 
@@ -261,18 +267,21 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
           <>
             {/* Current score */}
             <div className="rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-5 py-5 text-center">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Your wellbeing score</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">How you've been feeling</p>
               <p className="text-5xl font-extrabold tabular-nums" style={{ color: scoreColour(current) }}>{current}<span className="text-lg text-slate-300">/100</span></p>
               {showDelta ? (
                 <p className={`text-xs font-semibold mt-1 ${delta > 0 ? "text-emerald-600" : delta < 0 ? "text-rose-500" : "text-slate-400"}`}>
-                  {delta > 0 ? `▲ +${delta}` : delta < 0 ? `▼ ${delta}` : "no change"} since your baseline ({baseline.score})
+                  {delta > 0 ? `▲ +${delta}` : delta < 0 ? `▼ ${delta}` : "no change"} since your first check-in ({baseline.score})
                 </p>
               ) : (
-                <p className="text-xs text-slate-400 mt-1">Baseline recorded — your trend builds from here. 🌱</p>
+                <p className="text-xs text-slate-400 mt-1">First check-in recorded — your reflections build from here. 🌱</p>
               )}
               <div className="mt-2">
-                <ScoringInfo center label={<span className="text-[10px] font-semibold text-slate-400">How is this scored?</span>} />
+                <ScoringInfo center label={<span className="text-[10px] font-semibold text-slate-400">How is this worked out?</span>} />
               </div>
+              <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+                A personal reflection of how you've been feeling — not a medical test, diagnosis or monitoring tool.
+              </p>
             </div>
 
             {/* Low-wellbeing safeguarding */}
@@ -281,6 +290,10 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
                 <p className="text-[13px] text-amber-800 leading-snug">
                   Scores like this are really common and they can change. If you'd like a little support, there are
                   gentle tools and people here for you.
+                </p>
+                <p className="text-[11px] text-amber-700 leading-snug mt-1.5">
+                  Seen isn't an emergency service. If you need urgent help, call 999 or NHS 111 (choose the
+                  mental-health option). You can talk to Samaritans free any time on 116 123, or text SHOUT to 85258.
                 </p>
                 {onSupport && (
                   <button onClick={onSupport}

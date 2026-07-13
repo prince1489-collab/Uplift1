@@ -352,8 +352,8 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   tourId="m-wellbeing"
                   onClick={() => { setShowWellbeing(true); close(); }}
                   icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📊</span></IconBox>}
-                  label="Wellbeing Score"
-                  sub="Track how you're doing over time"
+                  label="Wellbeing check-in"
+                  sub="See how you've been feeling over time"
                 />
                 <Row
                   tourId="m-support"
@@ -1826,7 +1826,7 @@ export default function App() {
       key: "menu-intro",
       target: '[data-tour="menu"]',
       title: "There's more in here",
-      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing Score and Support.",
+      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing check-in and Support.",
       // Never opens the menu — keeping the tour off the live menu state guarantees you land on the feed.
       before: () => { setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
     },
@@ -2587,11 +2587,17 @@ export default function App() {
                       <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md"><Sparkles size={24} /></div>
                     </div>
                     <h1 className="font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em] text-slate-800">A quick wellbeing check-in</h1>
-                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">A quick, validated check-in (it asks about the past two weeks). This sets your baseline — we'll check in every couple of weeks so you can see how you're doing over time.</p>
+                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">A quick, gentle check-in (it asks about the past two weeks) — just for your own reflection, not a medical test. You can look back on it over time. You're welcome to skip it.</p>
                     <WellbeingCheckin
                       submitLabel="Finish & enter Seen"
                       onComplete={async (scores) => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails, wellbeing: scores }); }}
                     />
+                    <button
+                      type="button"
+                      onClick={async () => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails }); }}
+                      className="mt-3 w-full text-center text-[13px] font-semibold text-slate-400 hover:text-slate-600 transition-colors">
+                      Skip for now
+                    </button>
                     {onboardingError && <p className="px-1 mt-2 text-center text-sm text-rose-600">{onboardingError}</p>}
                   </div>
                 </div>
