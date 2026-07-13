@@ -2320,6 +2320,9 @@ export default function App() {
       setPickerOpen(false);
       setIsSending(false);
       setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]); // giving-focused confirmation
+      // Feed is newest-at-top, but the Send bar is at the bottom — glide the feed up so the
+      // sender SEES their greeting land at the top (closes the send→top spatial mismatch).
+      requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
