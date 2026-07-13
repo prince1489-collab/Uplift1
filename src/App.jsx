@@ -1604,6 +1604,7 @@ export default function App() {
   }, [echoToast]);
   const [showMap, setShowMap] = useState(false);
   const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
+  const [welcomeDismissed, setWelcomeDismissed] = useState(() => { try { return localStorage.getItem("seen_welcome_dismissed") === "1"; } catch { return false; } }); // transparent "Seen · official" welcome card
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
@@ -2941,6 +2942,29 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
+              {/* Transparent "Seen · official" welcome — shown to new users (before their first
+                  send). NOT a fake human/account: a clearly-labelled system message that warms
+                  the cold-start. Disappears once they send, or on dismiss. */}
+              {!hasSent && !welcomeDismissed && (
+                <div className="relative mb-3 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3.5 pr-9"
+                  style={{ animation: "seenFadeUp 400ms ease both" }}>
+                  <button
+                    onClick={() => { setWelcomeDismissed(true); try { localStorage.setItem("seen_welcome_dismissed", "1"); } catch { /* ignore */ } }}
+                    aria-label="Dismiss welcome"
+                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-white/60 hover:text-slate-600">
+                    <X size={13} />
+                  </button>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-400 text-white shadow-sm">
+                      <Sparkles size={16} />
+                    </div>
+                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Seen · official</span>
+                  </div>
+                  <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
+                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Send your first greeting below, and someone, somewhere, will feel it.
+                  </p>
+                </div>
+              )}
               {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
               {showMapPrompt && (
                 <div
