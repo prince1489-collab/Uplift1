@@ -1550,13 +1550,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [reactionToast]);
 
-  // First-time "tap to send" coach-mark: once it has shown for ~8s, mark it seen so it
-  // never returns (also marked seen the moment the user opens the picker).
-  useEffect(() => {
-    if (!(activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen)) return;
-    const t = setTimeout(markCoachSeen, 8000);
-    return () => clearTimeout(t);
-  }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
 
   // Auto-dismiss the "💛 Sent" confirmation after ~1.6s
   useEffect(() => {
@@ -1615,6 +1608,14 @@ export default function App() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(() => { try { return localStorage.getItem("seen_welcome_dismissed") === "1"; } catch { return false; } }); // transparent "Seen · official" welcome card
   const [coachSeen, setCoachSeen] = useState(() => { try { return localStorage.getItem("seen_send_coach_seen") === "1"; } catch { return false; } }); // first-time "tap to send" coach-mark
   const markCoachSeen = () => { setCoachSeen(true); try { localStorage.setItem("seen_send_coach_seen", "1"); } catch { /* ignore */ } };
+  // First-time "tap to send" coach-mark: once it has shown for ~8s, mark it seen so it
+  // never returns (also marked seen the moment the user opens the picker). Placed AFTER
+  // coachSeen/markCoachSeen are declared to avoid a temporal-dead-zone crash on render.
+  useEffect(() => {
+    if (!(activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen)) return;
+    const t = setTimeout(markCoachSeen, 8000);
+    return () => clearTimeout(t);
+  }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
