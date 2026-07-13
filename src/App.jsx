@@ -156,6 +156,16 @@ const LEVEL_THRESHOLDS = [
   { min: 10_000_000,title: "Chronically GOATED" },
 ];
 
+// Rotating, giving-focused confirmations shown after sending — reframes the reward as the
+// act of kindness itself, so a reaction-back isn't the implied payoff.
+const SEND_AFFIRMATIONS = [
+  "Sent",
+  "Kindness sent — that's the point",
+  "Someone out there will feel that",
+  "On its way to someone who needs it",
+  "A little more good in the world",
+];
+
 const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
@@ -446,7 +456,7 @@ const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t 
 const TOUR_VERSION = 4; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
-function NotificationBell({ streak, db, currentUser }) {
+function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const [open, setOpen] = useState(false);
   const [waves, setWaves] = useState([]);
   const [likes, setLikes] = useState([]);
@@ -616,6 +626,10 @@ function NotificationBell({ streak, db, currentUser }) {
   const newFreplyCount = freplyRows.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
   const newEchoCount = echoRows.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
   const totalUnread = waves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
+  // Honest, transparently system-authored reassurance: if you've shared kindness but no one
+  // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
+  // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
+  const showSeenAck = hasSentGreeting && likes.length === 0;
   const hot = streak >= 7;
 
   return (
@@ -643,10 +657,19 @@ function NotificationBell({ streak, db, currentUser }) {
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleLikes.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 ? (
+            {waves.length === 0 && visibleLikes.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 && !showSeenAck ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
+                {showSeenAck && (
+                  <div className="flex items-start gap-2.5 px-4 py-2.5">
+                    <span className="text-base flex-shrink-0">💛</span>
+                    <p className="flex-1 text-[11px] text-slate-700 min-w-0">
+                      Your kindness is out there spreading — thank you for showing up.
+                      <span className="mt-0.5 block text-[10px] font-semibold text-emerald-600">— from Seen</span>
+                    </p>
+                  </div>
+                )}
                 {waves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
@@ -1150,7 +1173,7 @@ export default function App() {
   const [reactionToast, setReactionToast] = useState(null); // { id, emoji, country }
   const [hometownToast, setHometownToast] = useState(null); // { id, emoji } — same-country reaction
   const [rippleToast, setRippleToast] = useState(null); // { id, country } — a kindness chain just grew
-  const [sentToast, setSentToast] = useState(false); // brief "💛 Sent" confirmation (message lands at the top of the feed)
+  const [sentToast, setSentToast] = useState(""); // brief giving-focused send confirmation (message lands at the top of the feed)
   // Kindness loop (feeling statuses)
   const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
   const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
@@ -1530,7 +1553,7 @@ export default function App() {
   // Auto-dismiss the "💛 Sent" confirmation after ~1.6s
   useEffect(() => {
     if (!sentToast) return;
-    const t = setTimeout(() => setSentToast(false), 1600);
+    const t = setTimeout(() => setSentToast(""), 1800);
     return () => clearTimeout(t);
   }, [sentToast]);
 
@@ -2296,7 +2319,7 @@ export default function App() {
       // Message is written — close picker and play animations immediately
       setPickerOpen(false);
       setIsSending(false);
-      setSentToast(true); // the greeting lands at the top of the feed, so confirm the send here
+      setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]); // giving-focused confirmation
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
@@ -2687,7 +2710,7 @@ export default function App() {
                     </button>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <NotificationBell streak={streak} db={db} currentUser={currentUser} />
+                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
@@ -2946,7 +2969,7 @@ export default function App() {
                   <div
                     className="flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white"
                     style={{ background: "linear-gradient(135deg, #34d399, #10b981)", boxShadow: "0 8px 24px rgba(16,185,129,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
-                    <span className="text-base">💛</span> Sent
+                    <span className="text-base">💛</span> {sentToast}
                   </div>
                 </div>
               )}
