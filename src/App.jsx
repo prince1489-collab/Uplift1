@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -1580,6 +1580,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [echoToast]);
   const [showMap, setShowMap] = useState(false);
+  const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
@@ -2733,9 +2734,16 @@ export default function App() {
                 className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  <div data-tour="sparks" className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                  <div data-tour="sparks" className="relative flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowLevels(true); }}
+                      aria-label="About kindness levels"
+                      title="About kindness levels"
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/70 hover:text-slate-600 active:scale-90 transition-all">
+                      <Info size={14} />
+                    </button>
                     <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} initial={firstName?.[0]?.toUpperCase() ?? "✨"} />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pr-6">
                       <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
                       <p className="text-[11px] text-slate-500"
                         style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
@@ -2758,6 +2766,41 @@ export default function App() {
                 </div>
               </div>
             </header>
+
+            {showLevels && createPortal(
+              <div className="fixed inset-0 z-[280] flex items-end justify-center bg-black/40" onClick={() => setShowLevels(false)}>
+                <div onClick={(e) => e.stopPropagation()}
+                  className="w-full max-w-md rounded-t-3xl bg-white px-5 pt-4"
+                  style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-base font-bold text-slate-800">Kindness levels</h3>
+                    <button onClick={() => setShowLevels(false)} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"><X size={16} /></button>
+                  </div>
+                  <p className="mb-3 text-[12px] leading-relaxed text-slate-500">Earn ✨ sparks by sending kindness. Each level is a little badge for how much good you've put into the world.</p>
+                  <div className="max-h-[58vh] space-y-1 overflow-y-auto pb-2">
+                    {LEVEL_THRESHOLDS.map((lvl) => {
+                      const achieved = sparkBalance >= lvl.min;
+                      const isCurrent = lvl.min === currentLevel.min;
+                      return (
+                        <div key={lvl.min}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2 ${isCurrent ? "border border-teal-200 bg-teal-50" : achieved ? "bg-slate-50" : ""}`}>
+                          <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] ${achieved ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-400"}`}>
+                            {achieved ? "✓" : "🔒"}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-[13px] leading-tight ${isCurrent ? "font-bold text-teal-800" : achieved ? "font-semibold text-slate-700" : "text-slate-400"}`}>{lvl.title}</p>
+                            <p className="text-[11px] text-slate-400">{lvl.min.toLocaleString()} sparks</p>
+                          </div>
+                          {isCurrent && <span className="flex-shrink-0 rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold text-white">You're here</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
             {showInstallBanner && deferredInstallRef.current && (
               <div style={{
