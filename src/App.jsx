@@ -408,11 +408,20 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                 </button>
               </div>
 
-              {/* Copyright */}
-              <p className="px-3 pb-8 pt-1 text-center text-[10px] text-slate-300">
-                © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
-                <span className="block mt-1 text-slate-200">build {__BUILD_ID__}</span>
-              </p>
+              {/* Legal + copyright */}
+              <div className="px-3 pb-8 pt-1 text-center">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                  <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Privacy Policy</a>
+                  <span className="text-slate-200">·</span>
+                  <a href="/child-safety.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Child Safety</a>
+                  <span className="text-slate-200">·</span>
+                  <a href="/delete-account.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Delete Account</a>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-300">
+                  © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
+                  <span className="block mt-1 text-slate-200">build {__BUILD_ID__}</span>
+                </p>
+              </div>
 
             </div>
           </div>
@@ -853,6 +862,11 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"} disabled:cursor-not-allowed`}>
           Continue <ArrowRight size={18} />
         </button>
+        <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-400">
+          You must be 13 or older to use Seen. By continuing you agree to our{" "}
+          <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Privacy Policy</a>{" "}and{" "}
+          <a href="/child-safety.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Child Safety Standards</a>.
+        </p>
       </form>
     </div>
   );
