@@ -2284,7 +2284,8 @@ export default function App() {
         sender: profile.fullName,
         text: greeting.text,
         timestamp: nowMs(),
-        moodTag: profile?.moodTag ?? null,
+        // moodTag (health-adjacent, special-category) is no longer written into the world-readable
+        // public feed — it stays on the private profile doc only.
         country: profile?.country ?? null,
         isMystery: greeting.isMystery ?? false,
         isPremium: isPremium,

@@ -172,7 +172,9 @@ export function FeelingComposer({ db, currentUser, profile, onClose }) {
       const now = Date.now();
       await setDoc(doc(db, "feelings", currentUser.uid), {
         uid: currentUser.uid,
-        posterName: profile?.fullName ?? "Someone",
+        // Don't store the real name on an anonymous feeling — anon posts render as
+        // "Someone from {country}", so the name must never be written to the doc.
+        posterName: visibility === "anon" ? null : (profile?.fullName ?? "Someone"),
         country: profile?.country ?? null,
         text: clean,
         visibility,
