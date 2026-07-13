@@ -1550,6 +1550,14 @@ export default function App() {
     return () => clearTimeout(t);
   }, [reactionToast]);
 
+  // First-time "tap to send" coach-mark: once it has shown for ~8s, mark it seen so it
+  // never returns (also marked seen the moment the user opens the picker).
+  useEffect(() => {
+    if (!(activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen)) return;
+    const t = setTimeout(markCoachSeen, 8000);
+    return () => clearTimeout(t);
+  }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
+
   // Auto-dismiss the "💛 Sent" confirmation after ~1.6s
   useEffect(() => {
     if (!sentToast) return;
@@ -1605,6 +1613,8 @@ export default function App() {
   const [showMap, setShowMap] = useState(false);
   const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
   const [welcomeDismissed, setWelcomeDismissed] = useState(() => { try { return localStorage.getItem("seen_welcome_dismissed") === "1"; } catch { return false; } }); // transparent "Seen · official" welcome card
+  const [coachSeen, setCoachSeen] = useState(() => { try { return localStorage.getItem("seen_send_coach_seen") === "1"; } catch { return false; } }); // first-time "tap to send" coach-mark
+  const markCoachSeen = () => { setCoachSeen(true); try { localStorage.setItem("seen_send_coach_seen", "1"); } catch { /* ignore */ } };
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   const [newMessageIds, setNewMessageIds] = useState(new Set());
@@ -3307,6 +3317,19 @@ export default function App() {
             </main>
             )} {/* end activeTab === "feed" */}
 
+            {/* First-time "tap to send" coach-mark — floats above the Send bar for brand-new
+                users, never while the guided tour runs; vanishes on first send/tap. */}
+            {activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen && (
+              <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[240] flex justify-center px-4">
+                <div className="send-coach-hop flex flex-col items-center">
+                  <div className="flex items-center gap-1.5 rounded-full bg-slate-900/90 px-3.5 py-2 text-[12px] font-semibold text-white shadow-lg">
+                    👆 Tap to send your first kindness
+                  </div>
+                  <div style={{ width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "7px solid rgba(15,23,42,0.9)" }} />
+                </div>
+              </div>
+            )}
+
             {/* FAB-style footer — only on feed tab */}
             {activeTab === "feed" && (
             <footer className="border-t border-slate-100 px-3 pt-2" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))", background: "linear-gradient(to bottom, #ffffff 0, #ffffff calc(100% - env(safe-area-inset-bottom)), #10b981 calc(100% - env(safe-area-inset-bottom)))" }}>
@@ -3325,9 +3348,9 @@ export default function App() {
                   )}
                   <button
                     data-tour="send"
-                    onClick={() => setPickerOpen(true)}
+                    onClick={() => { setPickerOpen(true); markCoachSeen(); }}
                     disabled={isSending}
-                    className={`w-full rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
+                    className={`w-full relative overflow-hidden rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
                     style={{
                       background:
                         "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%)",
@@ -3336,6 +3359,7 @@ export default function App() {
                         "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(4,120,87,0.45), 0 4px 16px rgba(16,185,129,0.45)",
                       textShadow: "0 1px 1px rgba(4,120,87,0.4)",
                     }}>
+                    {!isSending && <span aria-hidden="true" className="send-kindness-shine" />}
                     {isSending
                       ? <Loader2 size={16} className="text-white animate-spin" />
                       : <>

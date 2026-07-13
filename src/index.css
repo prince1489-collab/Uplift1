@@ -428,17 +428,48 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
   70%  { transform: scale(1); }
   100% { transform: scale(1);     filter: drop-shadow(0 2px 6px rgba(16, 185, 129, 0.35)); }
 }
+/* Stronger resting glow so the bar stays noticeable after the one-time flare. */
 @keyframes seenSendGlow {
-  0%, 100% { filter: drop-shadow(0 2px 6px rgba(16, 185, 129, 0.35)); }
-  50%      { filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.85)); }
+  0%, 100% { filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.5)); }
+  50%      { filter: drop-shadow(0 0 20px rgba(16, 185, 129, 1)); }
 }
 .send-kindness-pulse {
   animation:
     seenSendAttention 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
     seenSendGlow 2.2s ease-in-out 1.7s infinite;
 }
+
+/* Premium shine sweep — a narrow diagonal glare passes across the button ~every 4.5s
+   (long off-screen pause between sweeps). Clipped to the button via overflow-hidden. */
+@keyframes seenSendShine {
+  0%   { transform: translateX(-160%) skewX(-18deg); opacity: 0; }
+  6%   { opacity: 0.9; }
+  20%  { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+  100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+}
+.send-kindness-shine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 42%;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  transform: translateX(-160%) skewX(-18deg);
+  animation: seenSendShine 4.5s ease-in-out 2s infinite;
+}
+
+/* Coach-mark gentle hop */
+@keyframes seenCoachHop {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+.send-coach-hop { animation: seenCoachHop 1.3s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .send-kindness-pulse { animation: none; }
+  .send-kindness-shine { animation: none; opacity: 0; }
+  .send-coach-hop { animation: none; }
 }
 
 @keyframes sheetSlideUp {
