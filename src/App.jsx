@@ -746,7 +746,23 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
     }));
   }, [initialData, initialEmail]);
 
-  const valid = Boolean(form.country) && Boolean(form.email) && Boolean(form.mostDays.trim()) && Boolean(form.anotherLife.trim());
+  // Age gate — a complete date of birth is now required, and under-13s cannot create an account
+  // (the app's minimum age). Computed from the DOB selectors.
+  const dobComplete = Boolean(form.dobMonth && form.dobDay && form.dobYear);
+  const age = (() => {
+    if (!dobComplete) return null;
+    const mi = MONTHS.indexOf(form.dobMonth);
+    if (mi < 0) return null;
+    const d = new Date(Number(form.dobYear), mi, Number(form.dobDay));
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    let a = now.getFullYear() - d.getFullYear();
+    const md = now.getMonth() - d.getMonth();
+    if (md < 0 || (md === 0 && now.getDate() < d.getDate())) a -= 1;
+    return a;
+  })();
+  const tooYoung = age !== null && age < 13;
+  const valid = Boolean(form.country) && Boolean(form.email) && Boolean(form.mostDays.trim()) && Boolean(form.anotherLife.trim()) && dobComplete && !tooYoung;
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -787,7 +803,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
 
         <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
-            <Calendar size={13} /><span>Date of Birth <span className="font-normal normal-case tracking-normal text-slate-400">(optional)</span></span>
+            <Calendar size={13} /><span>Date of Birth</span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -805,6 +821,9 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
               </div>
             ))}
           </div>
+          {tooYoung && (
+            <p className="mt-2 text-xs font-semibold text-rose-600">You need to be 13 or older to use Seen.</p>
+          )}
         </div>
 
         <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3 space-y-3">
