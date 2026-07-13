@@ -61,7 +61,7 @@ export const CONDITIONS = [
 
 export const QUESTIONNAIRES = {
   "PHQ-9": {
-    title: "PHQ-9: Depression Check",
+    title: "Low mood check-in",
     instruction: "Over the last 2 weeks, how often have you been bothered by the following problems?",
     options: ["Not at all", "Several days", "More than half the days", "Nearly every day"],
     scores: [0, 1, 2, 3],
@@ -91,7 +91,7 @@ export const QUESTIONNAIRES = {
   },
 
   "GAD-7": {
-    title: "GAD-7: Anxiety Check",
+    title: "Worry check-in",
     instruction: "Over the last 2 weeks, how often have you been bothered by the following?",
     options: ["Not at all", "Several days", "More than half the days", "Nearly every day"],
     scores: [0, 1, 2, 3],
@@ -117,7 +117,7 @@ export const QUESTIONNAIRES = {
   },
 
   "UCLA-3": {
-    title: "UCLA-3: Loneliness Check",
+    title: "Loneliness check-in",
     instruction: "How often do you feel the following?",
     options: ["Hardly ever", "Some of the time", "Often"],
     scores: [1, 2, 3],
@@ -138,7 +138,7 @@ export const QUESTIONNAIRES = {
   },
 
   "PSS-4": {
-    title: "PSS-4: Stress Check",
+    title: "Stress check-in",
     instruction: "In the last month, how often have you…",
     options: ["Never", "Almost never", "Sometimes", "Fairly often", "Very often"],
     scores: [0, 1, 2, 3, 4],
@@ -318,8 +318,23 @@ export const COUNTRY_RESOURCES = {
   },
 };
 
+// Normalise common UK/other aliases so a crisis-moment lookup never silently
+// misses a country and drops the user to a phone-less GLOBAL fallback.
+const COUNTRY_ALIASES = {
+  "uk": "United Kingdom", "u.k.": "United Kingdom", "gb": "United Kingdom",
+  "great britain": "United Kingdom", "britain": "United Kingdom",
+  "england": "United Kingdom", "scotland": "United Kingdom",
+  "wales": "United Kingdom", "northern ireland": "United Kingdom",
+  "usa": "United States", "us": "United States", "u.s.": "United States",
+  "u.s.a.": "United States", "america": "United States",
+};
+
 export function getResources(countryName) {
-  return COUNTRY_RESOURCES[countryName] || GLOBAL;
+  if (countryName && COUNTRY_RESOURCES[countryName]) return COUNTRY_RESOURCES[countryName];
+  const norm = (countryName || "").trim().toLowerCase();
+  const aliased = COUNTRY_ALIASES[norm];
+  if (aliased && COUNTRY_RESOURCES[aliased]) return COUNTRY_RESOURCES[aliased];
+  return GLOBAL;
 }
 
 // ── Affiliate links ───────────────────────────────────────────────────────────
@@ -348,7 +363,7 @@ export const AFFILIATE_APPS = [
   {
     id: "betterhelp",
     name: "BetterHelp",
-    tagline: "Talk to a licensed therapist online",
+    tagline: "Online talking-therapy support",
     emoji: "💬",
     color: "#22c55e",
     url: "https://www.betterhelp.com/start/?utm_source=seen_app&utm_medium=referral&utm_campaign=support",
@@ -358,7 +373,7 @@ export const AFFILIATE_APPS = [
   {
     id: "woebot",
     name: "Woebot",
-    tagline: "AI-guided CBT exercises, anytime",
+    tagline: "Guided self-help exercises, anytime",
     emoji: "🤖",
     color: "#6366f1",
     url: "https://woebothealth.com/?utm_source=seen_app&utm_medium=referral&utm_campaign=support",

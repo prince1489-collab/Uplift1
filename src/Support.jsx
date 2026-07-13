@@ -55,14 +55,19 @@ function LandingScreen({ onSelect }) {
         ))}
       </div>
 
-      <p className="text-[10px] text-center text-slate-400 mt-6 px-2">
-        All responses stay on your device. Nothing is shared or stored.
+      <p className="text-[11px] text-center text-slate-500 mt-6 px-2 leading-relaxed">
+        This is a personal moment to check in with yourself, not a medical test. Seen does not
+        screen for, diagnose or monitor any health condition and is not a substitute for advice
+        from a doctor or other health professional. Your answers stay on your device.
+      </p>
+      <p className="text-[11px] text-center font-semibold text-slate-500 mt-3 px-2">
+        Seen offers wellbeing support, not medical care or crisis help. In an emergency call 999.
       </p>
     </div>
   );
 }
 
-// ── Assessment ────────────────────────────────────────────────────────────────
+// ── Check-in ──────────────────────────────────────────────────────────────────
 function AssessmentScreen({ condition, onDone, onBack, country }) {
   const qKey = condition.questionnaire;
   const q = QUESTIONNAIRES[qKey];
@@ -103,9 +108,13 @@ function AssessmentScreen({ condition, onDone, onBack, country }) {
       <div className="flex flex-col h-full px-4 py-8 items-center justify-center text-center">
         <span className="text-5xl mb-4">🆘</span>
         <h2 className="text-xl font-bold text-red-600 mb-2">You're not alone</h2>
-        <p className="text-sm text-slate-700 mb-6">
+        <p className="text-sm text-slate-700 mb-4">
           If you're having thoughts of harming yourself, please reach out right now. You matter, and help is available.
         </p>
+        <div className="w-full rounded-2xl bg-red-100 border border-red-300 px-4 py-3 mb-4 text-left">
+          <p className="text-sm font-bold text-red-800">In immediate danger? Call 999 now.</p>
+          <p className="text-xs text-red-600 mt-0.5">Seen is not an emergency or crisis service.</p>
+        </div>
         <div className="w-full space-y-3 mb-6">
           {crisisResources.map((r, i) => (
             <a
@@ -139,7 +148,7 @@ function AssessmentScreen({ condition, onDone, onBack, country }) {
           onClick={continueCrisis}
           className="text-sm text-slate-500 underline"
         >
-          Continue assessment
+          I've seen this — continue
         </button>
       </div>
     );
@@ -216,27 +225,21 @@ function ResultsScreen({ condition, answers, onViewResources, onBack }) {
     <div className="flex flex-col h-full overflow-y-auto px-4 py-5">
       <div className="flex items-center gap-2 mb-4">
         <button onClick={onBack} className="text-slate-400 hover:text-slate-600 p-1">←</button>
-        <p className="text-sm font-semibold text-slate-700">Your results</p>
+        <p className="text-sm font-semibold text-slate-700">Your check-in</p>
       </div>
 
-      {/* Score card */}
+      {/* Reflection card — deliberately shows NO score and NO clinical severity label.
+          This is personal self-reflection, not an assessment or screen. */}
       <div
         className="rounded-2xl p-5 mb-4 text-white"
-        style={{ background: `linear-gradient(135deg, ${severity?.color}dd, ${severity?.color})` }}
+        style={{ background: "linear-gradient(135deg, #14b8a6, #0d9488)" }}
       >
         <p className="text-xs font-semibold opacity-80 mb-1">{conditionLabel}</p>
-        <p className="text-3xl font-bold mb-0.5">{severity?.label}</p>
-        {totalScore !== null && (
-          <p className="text-xs opacity-70">Score: {totalScore}</p>
-        )}
-        <p className="text-xs opacity-80 mt-2">
-          {severity?.level === "minimal" || severity?.level === "low"
-            ? "You're doing well. Keep nurturing these habits."
-            : severity?.level === "mild"
-            ? "A few changes could make a real difference. You've got this."
-            : severity?.level === "moderate"
-            ? "It's worth taking this seriously. Support is available."
-            : "Please don't face this alone. Professional support can help."}
+        <p className="text-lg font-bold mb-1">Thank you for checking in 💚</p>
+        <p className="text-sm opacity-90 leading-relaxed">
+          Whatever you're feeling right now is valid, and noticing it is a real act of self-care.
+          Below are a few gentle things that might help — and people you can reach out to whenever
+          you need them.
         </p>
       </div>
 
@@ -263,8 +266,10 @@ function ResultsScreen({ condition, answers, onViewResources, onBack }) {
         See resources &amp; apps →
       </button>
 
-      <p className="text-[10px] text-center text-slate-400 mt-4">
-        This is a screening tool, not a diagnosis. If you're concerned, please speak to a healthcare professional.
+      <p className="text-[10px] text-center text-slate-400 mt-4 leading-relaxed">
+        This is a personal reflection to help you notice how you've been feeling — not a diagnosis
+        or medical assessment. If you're worried about your mental health, please speak to your GP
+        or a qualified professional.
       </p>
     </div>
   );
@@ -274,7 +279,6 @@ function ResultsScreen({ condition, answers, onViewResources, onBack }) {
 function ResourcesScreen({ conditionId, severity, country, onBack, onRestart }) {
   const resources = getResources(country);
   const apps = getAffiliateApps(conditionId);
-  const isSevere = ["severe", "moderateSevere", "high"].includes(severity?.level);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 py-5">
@@ -283,10 +287,18 @@ function ResourcesScreen({ conditionId, severity, country, onBack, onRestart }) 
         <p className="text-sm font-semibold text-slate-700">Support &amp; Resources</p>
       </div>
 
-      {/* Crisis section for severe scores */}
-      {isSevere && resources.crisis?.length > 0 && (
-        <div className="mb-4">
-          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2">If you need help right now</p>
+      {/* Crisis help — always available, never gated by a score */}
+      <div className="mb-4">
+        <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 mb-2">
+          <p className="text-sm font-bold text-red-700">In an emergency, call 999</p>
+          <p className="text-xs text-red-500 mt-0.5">
+            Seen is not an emergency or crisis service. If you or someone else is in immediate
+            danger, call 999 (or your local emergency number) now.
+          </p>
+        </div>
+        {resources.crisis?.length > 0 && (
+          <>
+          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2">Talk to someone now</p>
           <div className="flex flex-col gap-2">
             {resources.crisis.map((r, i) => (
               <a
@@ -305,8 +317,9 @@ function ResourcesScreen({ conditionId, severity, country, onBack, onRestart }) 
               </a>
             ))}
           </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {/* Professional support */}
       {resources.mental?.length > 0 && (
@@ -367,8 +380,9 @@ function ResourcesScreen({ conditionId, severity, country, onBack, onRestart }) 
               </a>
             ))}
           </div>
-          <p className="text-[10px] text-slate-400 mt-2 text-center">
-            Some links may be affiliate links — they don't cost you anything extra.
+          <p className="text-[10px] text-slate-400 mt-2 text-center leading-relaxed">
+            These are third-party apps. Seen may earn a commission if you sign up. This is not a
+            clinical recommendation.
           </p>
         </div>
       )}
