@@ -238,6 +238,10 @@ export function FeelingComposer({ db, currentUser, profile, onClose }) {
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />} Share
         </button>
         <p className="mt-2 text-center text-[10px] text-slate-400">Visible for 24 hours · replies stay private to you</p>
+        <p className="mt-1.5 text-center text-[10px] text-slate-400 leading-relaxed">
+          Seen is a peer-support space, not a crisis or medical service. If you need urgent help, call
+          999, Samaritans on 116 123, or text SHOUT to 85258.
+        </p>
       </div>
     </div>,
     document.body

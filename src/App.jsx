@@ -433,7 +433,7 @@ const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile",
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
 // If a user's shared feeling reads as distressed, gently surface the Support flow to them.
-const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t cope|exhaust|burn(t| ?ed)? out|worthless|suicid|self.?harm|breaking down|falling apart|so sad|really sad|give up|giving up)/i;
+const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t cope|exhaust|burn(t| ?ed)? out|worthless|suicid|self.?harm|breaking down|falling apart|so sad|really sad|give up|giving up|end (it|my life|the pain)|kill (myself|me)|hurt(ing)? myself|want(ing)? to die|wanna die|better off dead|don'?t want to (be here|live|wake up)|no reason to (live|go on)|take my (own )?life)/i;
 const TOUR_VERSION = 4; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
@@ -2963,22 +2963,32 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {/* Support banner — gently surfaced when your shared feeling reads as distressed */}
+              {/* Crisis-support banner — surfaced when your shared feeling reads as distressed.
+                  Shows live helplines inline (not just a deep-link) so a heavy moment never
+                  requires navigating away to find a number. */}
               {DISTRESS_RE.test(myFeeling?.text || "") && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
-                  className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
-                  style={{
-                    background: "linear-gradient(135deg, #fce7f3, #ede9fe)",
-                    border: "1px solid #f5c9e0",
-                  }}
+                <div
+                  className="w-full mb-4 rounded-2xl px-4 py-3.5"
+                  style={{ background: "linear-gradient(135deg, #fef2f2, #fce7f3)", border: "1px solid #fbcfe8" }}
                 >
-                  <span className="text-2xl">🫂</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800 text-sm">Sounds like a heavy moment — you're not alone</p>
-                    <p className="text-xs text-slate-500 mt-0.5">Tap for a free check-in &amp; support resources →</p>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl flex-shrink-0">🫂</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-800 text-sm">Sounds like a heavy moment — you're not alone</p>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                        Seen isn't a crisis service. If you need to talk to someone right now:
+                      </p>
+                      <div className="mt-2 flex flex-col gap-1.5 text-xs">
+                        <a href="tel:999" className="font-bold text-red-600">🚨 In immediate danger? Call 999</a>
+                        <a href="tel:116123" className="font-semibold text-slate-700">📞 Samaritans — 116 123 (free, 24/7)</a>
+                        <a href="sms:85258?&body=SHOUT" className="font-semibold text-slate-700">💬 Text SHOUT to 85258</a>
+                        <a href="tel:111" className="font-semibold text-slate-700">📞 NHS 111 — choose the mental-health option</a>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
+                        className="mt-2 text-xs font-semibold text-teal-600">More support in Seen →</button>
+                    </div>
                   </div>
-                </button>
+                </div>
               )}
               {(() => {
                 const grouped = [];
