@@ -31,7 +31,6 @@ import {
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-import { ChatRequestButton, canSendChatRequest, getChatId } from "./PrivateChat";
 import { startCheckout } from "./payments";
 import { StickerPicker } from "./StickerReactions";
 import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
@@ -423,9 +422,6 @@ export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOp
               <span className="text-[11px] text-slate-700">{b.fullName}</span>
             </div>
             <div className="flex items-center gap-1">
-              {canSendChatRequest(profile) && (
-                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
-              )}
               <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400"><X size={10} /></button>
             </div>
           </div>
@@ -487,9 +483,6 @@ export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOp
               {b.moodTag && <MoodPill mood={b.moodTag} tiny />}
             </div>
             <div className="flex items-center gap-1.5">
-              {canSendChatRequest(profile) && (
-                <ChatRequestButton db={db} currentUser={currentUser} buddyUid={b.uid} buddyName={b.fullName} onChatOpen={onChatOpen} />
-              )}
               <button onClick={() => removeBuddy(b.uid)} className="text-slate-300 hover:text-rose-400 transition-colors"><X size={12} /></button>
             </div>
           </div>
@@ -1669,76 +1662,6 @@ const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
-// The recipient can receive the request regardless of premium status but
-// can only accept/open the chat once they become premium.
-function ChatInviteButton({ db, currentUser, senderUid, isPremium, onUpgrade, onClose }) {
-  const [status, setStatus] = useState(null); // null | "pending" | "chatting"
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!db || !currentUser?.uid || !senderUid) return;
-    const chatId = getChatId(currentUser.uid, senderUid);
-    getDoc(doc(db, "privateChats", chatId)).then((snap) => {
-      if (snap.exists()) setStatus("chatting");
-    }).catch(() => {});
-    // Two where() clauses only — avoids composite index requirement
-    getDocs(query(
-      collection(db, "chatRequests"),
-      where("fromUid", "==", currentUser.uid),
-      where("toUid", "==", senderUid)
-    )).then((snap) => {
-      const hasPending = snap.docs.some((d) => d.data().status === "pending");
-      if (hasPending) setStatus((s) => s === "chatting" ? s : "pending");
-    }).catch(() => {});
-  }, [db, currentUser, senderUid]);
-
-  const handleClick = async () => {
-    if (status || loading) return;
-    setLoading(true);
-    try {
-      // Re-check at click time — async state may not have resolved before tap
-      const chatSnap = await getDoc(doc(db, "privateChats", getChatId(currentUser.uid, senderUid)));
-      if (chatSnap.exists()) { setStatus("chatting"); setLoading(false); return; }
-      await addDoc(collection(db, "chatRequests"), {
-        fromUid: currentUser.uid,
-        toUid: senderUid,
-        fromName: currentUser.displayName ?? "Someone",
-        status: "pending",
-        createdAt: Date.now(),
-      });
-      setStatus("pending");
-      setTimeout(() => onClose?.(), 500);
-    } catch (err) {
-      console.error("Chat invite error:", err);
-      alert("Could not send request. Please try again.");
-    }
-    setLoading(false);
-  };
-
-  if (status === "chatting") {
-    return (
-      <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Already chatting">
-        💬
-      </button>
-    );
-  }
-
-  if (status === "pending") {
-    return (
-      <button className="seen-qrb-btn seen-qrb-btn--done" disabled title="Request sent">
-        💬
-      </button>
-    );
-  }
-
-  return (
-    <button className="seen-qrb-btn" onClick={handleClick} disabled={loading}
-      title="Invite to private chat">
-      {loading ? "…" : "💬"}
-    </button>
-  );
-}
-
 export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
@@ -1950,12 +1873,6 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           {emoji}
         </button>
       ))}
-      {isOther && (
-        <>
-          <div className="seen-qrb-sep" />
-          <ChatInviteButton db={db} currentUser={currentUser} senderUid={senderUid} isPremium={isPremium} onUpgrade={onUpgrade} onClose={onClose} />
-        </>
-      )}
       {mine && onDelete && (
         <>
           <div className="seen-qrb-sep" />
