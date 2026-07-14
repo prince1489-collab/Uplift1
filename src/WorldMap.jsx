@@ -14,6 +14,7 @@ import {
   onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { X } from "lucide-react";
+import { playArcLaunch, playArcLand } from "./sounds";
 
 // ── Country centroids [longitude, latitude] ──────────────────────
 export const COUNTRY_COORDS = {
@@ -282,6 +283,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       });
     };
     fireWave();
+    playArcLaunch();                          // whoosh as kindness sets off
+    setTimeout(() => playArcLand(), 900);     // soft bloom as it reaches the world
     clearInterval(sendBurstIntervalRef.current);
     sendBurstIntervalRef.current = setInterval(() => {
       if (Date.now() > endAt) { clearInterval(sendBurstIntervalRef.current); return; }
@@ -296,6 +299,7 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
   useEffect(() => {
     if (!mapReady || !myCoords) return;
     const prev = prevReactedCountriesRef.current;
+    let inbound = false;
     for (const country of Object.keys(reactedCountries)) {
       if (prev[country]) continue; // already seen — skip
       const fromC = COUNTRY_COORDS[country];
@@ -303,7 +307,9 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const id = ++arcIdRef.current;
       arcsRef.current = [...arcsRef.current.slice(-60), { id, fromC, toC: myCoords, startTime: Date.now(), color: "#FF6B9D" }];
       setTimeout(() => { arcsRef.current = arcsRef.current.filter(a => a.id !== id); }, 2200);
+      inbound = true;
     }
+    if (inbound) playArcLand();                // soft bloom as kindness comes back to you
     prevReactedCountriesRef.current = reactedCountries;
   }, [reactedCountries, mapReady, myCoords]);
 

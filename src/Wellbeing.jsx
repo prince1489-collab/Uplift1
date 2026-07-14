@@ -9,6 +9,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { playCheckIn } from "./sounds";
 import { ArrowLeft, Loader2, TrendingUp, LifeBuoy, Info } from "lucide-react";
 
 // WHO-5: five statements, each rated 0–5 for how true it's been over the past two weeks.
@@ -242,6 +243,7 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
 
   const handleComplete = async (scores) => {
     await saveCheckin(db, uid, scores);
+    playCheckIn();
     setCheckingIn(false);
   };
 

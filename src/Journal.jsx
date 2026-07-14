@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, Sprout, History, ChevronRight, Folder } from "lucide-react";
 import { useSparkCounter } from "./MicroAnimations";
 import { pickDailyPrompt } from "./JournalPrompts";
@@ -309,6 +310,7 @@ export default function JournalPanel({ db, currentUser, onClose }) {
         type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
       });
       setText("");
+      playCheckIn();
     } catch (_) { /* best-effort */ }
     setSaving(false);
   };

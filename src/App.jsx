@@ -18,7 +18,7 @@ import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
 import { StickerDisplay } from "./StickerReactions";
-import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, playMystery, playSpark, startMapAmbient, stopMapAmbient } from "./sounds";
+import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
 const LifeHacks = React.lazy(() => import("./LifeHacks"));
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -1582,8 +1582,8 @@ export default function App() {
   // echo still pops as a feed banner (a rewarding moment), so we keep that toast callback.
   useFeelingToasts(
     db, currentUser,
-    null,
-    (e) => setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null })
+    () => playEncourage(),   // someone encouraged your feeling — a warm "you were seen" cue
+    (e) => { playEncourage(); setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null }); }
   );
   // Persistent "you've been encouraged" pill (sits where the 💬 bubble does, by the name).
   // Unread = live replyCount on my feeling − the count I last read. localStorage read-marker,
