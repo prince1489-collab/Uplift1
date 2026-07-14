@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -18,6 +18,7 @@ import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
 import { StickerDisplay } from "./StickerReactions";
+import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, playMystery, playSpark, startMapAmbient, stopMapAmbient } from "./sounds";
 const LifeHacks = React.lazy(() => import("./LifeHacks"));
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -1079,6 +1080,8 @@ export default function App() {
     try { const v = localStorage.getItem("seen-theme"); return v !== null ? v === "dark" : true; }
     catch { return true; }
   });
+  const [soundOn, setSoundOnState] = useState(isSoundOn); // gentle UI sounds (default on)
+  const toggleSound = () => { const next = !soundOn; setSoundOn(next); setSoundOnState(next); };
   useEffect(() => {
     try { localStorage.setItem("seen-theme", darkMode ? "dark" : "light"); } catch {}
   }, [darkMode]);
@@ -2136,6 +2139,18 @@ export default function App() {
 
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
   const animatedProgress = useProgressBarFill(progressPercent);
+  // Level-up chime — fires when the spark level crosses into a higher tier (placed AFTER
+  // currentLevel is declared to avoid a temporal-dead-zone crash).
+  const prevLevelRef = useRef(currentLevel.min);
+  useEffect(() => {
+    if (currentLevel.min > prevLevelRef.current) playLevelUp();
+    prevLevelRef.current = currentLevel.min;
+  }, [currentLevel.min]);
+  // World-map ambient drone — starts when the globe opens, stops when it closes.
+  useEffect(() => {
+    if (showMap) startMapAmbient(); else stopMapAmbient();
+    return () => stopMapAmbient();
+  }, [showMap]);
 
   const todayMessageCount = useMemo(() =>
     messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
@@ -2338,6 +2353,7 @@ export default function App() {
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
+      if (hasSent) playSend(); else playFirstSend(); // giving-is-the-reward sound
       const sendTs = Date.now();
       setLastSendTime(sendTs);
       try { localStorage.setItem("seen_last_send_time", String(sendTs)); } catch (_) {}
@@ -2353,11 +2369,11 @@ export default function App() {
         setShowMapPrompt(true);
       }
       if ([3, 7, 14, 30].includes(newStreak)) {
-        setTimeout(() => anim.triggerStreakConfetti(), 300);
+        setTimeout(() => { anim.triggerStreakConfetti(); playStreak(); }, 300);
       }
       if (greeting.isMystery) {
         setMysteryReward(computeSparkReward(greeting.sparkReward, streak));
-        setTimeout(() => setShowGiftModal(true), 1000);
+        setTimeout(() => { setShowGiftModal(true); playMystery(); }, 1000);
       }
 
       // Bookkeeping runs in the background — doesn't block the UI
@@ -2722,6 +2738,15 @@ export default function App() {
                       className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
                       aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
                       {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+                    </button>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={toggleSound}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all"
+                      aria-label={soundOn ? "Turn sounds off" : "Turn sounds on"}
+                      title={soundOn ? "Sounds on" : "Sounds off"}>
+                      {soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
                     </button>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
@@ -3200,6 +3225,7 @@ export default function App() {
                                             onReact={(emoji) => {
                                               triggerReactionBurst(emoji);
                                               haptic([5]);
+                                              playHeart();
                                               if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
                                             onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
@@ -3289,7 +3315,7 @@ export default function App() {
                                             </div>
                                           );
                                         })()}
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={triggerReactionBurst} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
