@@ -121,22 +121,26 @@ export const playArcLand = guard(() => {                    // soft "bloom" as k
   note(987.77, { start: 0.05, dur: 0.45, peak: 0.08 });
 });
 
-// ── ambient world-map soundscape: soft, slow piano over a very quiet pad ──────
-// A gentle, warm "piano-ish" note (fundamental + a few decaying harmonics, percussive
-// attack + long decay) — synthesized, no samples.
-function pianoNote(freq, { dur = 2.6, peak = 0.12 } = {}) {
+// ── ambient world-map soundscape: warm, slow, CIRCULAR piano lullaby ──────────
+// Mood brief: a gentle steady pulse (a slow heartbeat / hammock sway); velvet-smooth,
+// rounded, warm, grounded and safe; circular repetition that invites rest.
+//
+// A soft, rounded note: pure sine + a sub-octave for body + a faint octave for glow, with
+// a SLOW click-free attack and a LONG decay so consecutive notes overlap into a legato wash
+// (no sharp edges — "velvet/silk").
+function warmNote(freq, { dur = 3.8, peak = 0.09, attack = 0.08 } = {}) {
   const c = getCtx();
   if (!c || !master) return;
   const t0 = c.currentTime;
-  [[1, 1], [2, 0.34], [3, 0.13], [4, 0.05]].forEach(([mult, amp]) => {
+  [[1, 1], [0.5, 0.45], [2, 0.1]].forEach(([mult, amp]) => {
     const osc = c.createOscillator();
     const g = c.createGain();
-    osc.type = "triangle";
+    osc.type = "sine";
     osc.frequency.value = freq * mult;
     const p = peak * amp;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(p, t0 + 0.01);           // soft attack
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);  // long, natural decay
+    g.gain.linearRampToValueAtTime(p, t0 + attack);         // slow, soft swell (no attack click)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);  // long, smooth decay → notes blend
     osc.connect(g);
     g.connect(master);
     osc.start(t0);
@@ -144,20 +148,29 @@ function pianoNote(freq, { dur = 2.6, peak = 0.12 } = {}) {
   });
 }
 
-// Calm C-major-pentatonic notes across a couple of octaves.
-const PIANO_SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99];
+// A grounded, circular progression in C major (warm add9 / 7th voicings). Each chord:
+// a low bass anchor + four upper tones arpeggiated gently. The loop repeats forever —
+// that circular return is the point.
+const PIANO_PROGRESSION = [
+  { bass: 130.81, notes: [261.63, 329.63, 392.0, 587.33] }, // Cadd9 (C3 · C4 E4 G4 D5)
+  { bass: 174.61, notes: [261.63, 329.63, 440.0, 523.25] }, // Fmaj7 (F3 · C4 E4 A4 C5)
+  { bass: 220.0,  notes: [261.63, 329.63, 392.0, 523.25] }, // Am7   (A3 · C4 E4 G4 C5)
+  { bass: 196.0,  notes: [246.94, 293.66, 392.0, 493.88] }, // G     (G3 · B3 D4 G4 B4)
+];
+
+const PIANO_PULSE_MS = 1000; // ~1s — a slow, steady heartbeat / hammock pulse
 
 export function startMapAmbient() {
   try {
     if (!isSoundOn()) return;
     const c = getCtx();
     if (!c || !master || ambient) return;
-    // very quiet warm pad underneath, for depth
+    // A very quiet, warm low drone underneath for grounding / stability.
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, c.currentTime);
-    g.gain.linearRampToValueAtTime(0.03, c.currentTime + 3);
+    g.gain.linearRampToValueAtTime(0.026, c.currentTime + 4);
     g.connect(master);
-    const oscs = [130.81, 196].map((f) => {                 // C3 · G3
+    const oscs = [65.41, 130.81].map((f) => {               // C2 · C3 warm foundation
       const o = c.createOscillator();
       o.type = "sine";
       o.frequency.value = f;
@@ -166,18 +179,18 @@ export function startMapAmbient() {
       return o;
     });
     const state = { g, oscs, timer: null, stopped: false };
-    // Schedule gentle piano notes at slow, slightly-varied intervals.
-    const scheduleNext = () => {
+    let chordIdx = 0;
+    let step = 0;
+    const tick = () => {
       if (state.stopped || !isSoundOn()) return;
-      pianoNote(PIANO_SCALE[Math.floor(Math.random() * PIANO_SCALE.length)]);
-      // occasionally a soft second note a moment later for a little movement
-      if (Math.random() < 0.35) {
-        const t = setTimeout(() => { if (!state.stopped) pianoNote(PIANO_SCALE[Math.floor(Math.random() * PIANO_SCALE.length)], { peak: 0.08 }); }, 420);
-        state.extra = t;
-      }
-      state.timer = setTimeout(scheduleNext, 1800 + Math.random() * 1800); // ~1.8–3.6s apart
+      const chord = PIANO_PROGRESSION[chordIdx];
+      if (step === 0) warmNote(chord.bass, { dur: 4.6, peak: 0.075 }); // grounded bass on the "one"
+      warmNote(chord.notes[step % chord.notes.length]);               // gentle ascending arpeggio
+      step += 1;
+      if (step >= 4) { step = 0; chordIdx = (chordIdx + 1) % PIANO_PROGRESSION.length; } // circular
+      state.timer = setTimeout(tick, PIANO_PULSE_MS);
     };
-    state.timer = setTimeout(scheduleNext, 600);
+    state.timer = setTimeout(tick, 500);
     ambient = state;
   } catch { /* ignore */ }
 }
