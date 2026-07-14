@@ -1688,6 +1688,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
   const [popping, setPopping] = useState(null);
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -1857,11 +1858,25 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       await addDoc(collection(db, "reports"), {
         messageId,
         reporterUid: currentUser?.uid,
+        reportedUid: senderUid ?? null,
         reason,
         timestamp: Date.now(),
       });
     } catch {}
     setTimeout(() => onClose?.(), 1400);
+  };
+
+  // Block this author: hides all their content from this user's feed (users/{uid}/blockedUsers).
+  const handleBlock = async () => {
+    if (!isOther || !db || blocked) return;
+    setBlocked(true);
+    try {
+      await setDoc(doc(db, "users", currentUser.uid, "blockedUsers", senderUid), {
+        name: senderName ?? "Someone",
+        blockedAt: Date.now(),
+      });
+    } catch {}
+    setTimeout(() => onClose?.(), 1200);
   };
 
   const canGift = isOther && !gifted && Number(profile?.sparkBalance ?? 0) >= QUICK_GIFT_AMOUNT;
@@ -1877,6 +1892,18 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           {reported ? "✅" : r}
         </button>
       ))}
+      {isOther && (
+        <>
+          <div className="seen-qrb-sep" />
+          <button
+            className="seen-qrb-btn"
+            title="Block this person"
+            style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34, fontWeight: 700, color: "#ef4444" }}
+            onClick={handleBlock}>
+            {blocked ? "Blocked ✓" : "🚫 Block"}
+          </button>
+        </>
+      )}
       <div className="seen-qrb-sep" />
       <button className="seen-qrb-btn" style={{ fontSize: 16 }} onClick={() => setReporting(false)}>✕</button>
     </div>

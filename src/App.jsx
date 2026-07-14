@@ -248,6 +248,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
   const [showJournal, setShowJournal] = useState(false);
   const [showWellbeing, setShowWellbeing] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -373,6 +374,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   label="Support"
                   sub="Wellbeing tools & crisis help"
                 />
+                <Row
+                  onClick={() => { setShowBlocked(true); close(); }}
+                  icon={<IconBox className="bg-slate-100"><span style={{ fontSize: "15px", lineHeight: 1 }}>🚫</span></IconBox>}
+                  label="Blocked accounts"
+                  sub="Manage people you've blocked"
+                />
 
               </div>
 
@@ -445,7 +452,77 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
       {showWellbeing && (
         <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} onSupport={() => { setShowWellbeing(false); onSupport(); }} />
       )}
+      {showBlocked && (
+        <BlockedAccountsPanel db={db} currentUser={currentUser} onClose={() => setShowBlocked(false)} />
+      )}
     </>
+  );
+}
+
+// Manage the people you've blocked: lists users/{uid}/blockedUsers and lets you unblock
+// (deleteDoc). Unblocking restores their content to the feed on the next snapshot.
+function BlockedAccountsPanel({ db, currentUser, onClose }) {
+  const [list, setList] = useState(null); // null = loading, [] = none
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = onSnapshot(
+      collection(db, "users", currentUser.uid, "blockedUsers"),
+      (snap) => setList(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+        .sort((a, b) => (b.blockedAt ?? 0) - (a.blockedAt ?? 0))),
+      () => setList([])
+    );
+    return () => unsub();
+  }, [db, currentUser?.uid]);
+
+  const unblock = (uid) => {
+    deleteDoc(doc(db, "users", currentUser.uid, "blockedUsers", uid)).catch(() => {});
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">Blocked accounts</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <p className="px-5 pb-3 text-xs text-slate-400">
+          You won't see messages from people you block. You can unblock anyone at any time.
+        </p>
+        <div className="overflow-y-auto overscroll-contain px-3 pb-8">
+          {list === null ? (
+            <div className="py-10 text-center text-sm text-slate-400">Loading…</div>
+          ) : list.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-400">
+              <div className="text-3xl mb-2">🕊️</div>
+              You haven't blocked anyone.
+            </div>
+          ) : (
+            list.map((b) => (
+              <div key={b.uid} className="flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-slate-50">
+                <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-400">
+                  <span style={{ fontSize: "15px" }}>🚫</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-700 truncate">{b.name || "Someone"}</p>
+                  <p className="text-[11px] text-slate-400">Blocked</p>
+                </div>
+                <button
+                  onClick={() => unblock(b.uid)}
+                  className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1.5 rounded-full hover:bg-teal-50">
+                  Unblock
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1099,6 +1176,7 @@ export default function App() {
   const [tourActive, setTourActive] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState("");
   const [messages, setMessages] = useState(_feedCache);
+  const [blockedUids, setBlockedUids] = useState(() => new Set()); // uids the user has blocked (feed filter)
   const [isChatLive, setIsChatLive] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastLiveAt, setLastLiveAt] = useState(null);
@@ -1749,6 +1827,18 @@ export default function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  // Blocked users — live set of uids the user has blocked, used to hide their content from the
+  // feed (Firestore: users/{uid}/blockedUsers/{blockedUid}). Private to the owner (see rules).
+  useEffect(() => {
+    if (!isRealSignedInUser || !currentUser?.uid) { setBlockedUids(new Set()); return; }
+    const unsub = onSnapshot(
+      collection(db, "users", currentUser.uid, "blockedUsers"),
+      (snap) => setBlockedUids(new Set(snap.docs.map((d) => d.id))),
+      () => {} // read failures are non-fatal — just means no filtering this session
+    );
+    return () => unsub();
+  }, [isRealSignedInUser, currentUser?.uid]);
 
   // Persist referral code and clean URL
   useEffect(() => {
@@ -3156,6 +3246,7 @@ export default function App() {
               {(() => {
                 const grouped = [];
                 messages.forEach((m) => {
+                  if (m.uid && blockedUids.has(m.uid)) return; // hide blocked users' messages
                   const last = grouped[grouped.length - 1];
                   const tsMs = typeof m.timestamp === "number" ? m.timestamp : Number(m.timestamp);
                   const mDay = m.timestamp ? new Date(tsMs).toDateString() : null;
