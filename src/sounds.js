@@ -121,17 +121,43 @@ export const playArcLand = guard(() => {                    // soft "bloom" as k
   note(987.77, { start: 0.05, dur: 0.45, peak: 0.08 });
 });
 
-// ── ambient world-map drone (soft pad) ───────────────────────────────────────
+// ── ambient world-map soundscape: soft, slow piano over a very quiet pad ──────
+// A gentle, warm "piano-ish" note (fundamental + a few decaying harmonics, percussive
+// attack + long decay) — synthesized, no samples.
+function pianoNote(freq, { dur = 2.6, peak = 0.12 } = {}) {
+  const c = getCtx();
+  if (!c || !master) return;
+  const t0 = c.currentTime;
+  [[1, 1], [2, 0.34], [3, 0.13], [4, 0.05]].forEach(([mult, amp]) => {
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq * mult;
+    const p = peak * amp;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(p, t0 + 0.01);           // soft attack
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);  // long, natural decay
+    osc.connect(g);
+    g.connect(master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  });
+}
+
+// Calm C-major-pentatonic notes across a couple of octaves.
+const PIANO_SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99];
+
 export function startMapAmbient() {
   try {
     if (!isSoundOn()) return;
     const c = getCtx();
     if (!c || !master || ambient) return;
+    // very quiet warm pad underneath, for depth
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, c.currentTime);
-    g.gain.linearRampToValueAtTime(0.07, c.currentTime + 2);
+    g.gain.linearRampToValueAtTime(0.03, c.currentTime + 3);
     g.connect(master);
-    const oscs = [130.81, 196, 261.63].map((f) => {         // C3 · G3 · C4 pad
+    const oscs = [130.81, 196].map((f) => {                 // C3 · G3
       const o = c.createOscillator();
       o.type = "sine";
       o.frequency.value = f;
@@ -139,27 +165,36 @@ export function startMapAmbient() {
       o.start();
       return o;
     });
-    const lfo = c.createOscillator();
-    const lfoGain = c.createGain();
-    lfo.frequency.value = 0.08;                              // slow gentle swell
-    lfoGain.gain.value = 0.025;
-    lfo.connect(lfoGain);
-    lfoGain.connect(g.gain);
-    lfo.start();
-    ambient = { g, oscs, lfo };
+    const state = { g, oscs, timer: null, stopped: false };
+    // Schedule gentle piano notes at slow, slightly-varied intervals.
+    const scheduleNext = () => {
+      if (state.stopped || !isSoundOn()) return;
+      pianoNote(PIANO_SCALE[Math.floor(Math.random() * PIANO_SCALE.length)]);
+      // occasionally a soft second note a moment later for a little movement
+      if (Math.random() < 0.35) {
+        const t = setTimeout(() => { if (!state.stopped) pianoNote(PIANO_SCALE[Math.floor(Math.random() * PIANO_SCALE.length)], { peak: 0.08 }); }, 420);
+        state.extra = t;
+      }
+      state.timer = setTimeout(scheduleNext, 1800 + Math.random() * 1800); // ~1.8–3.6s apart
+    };
+    state.timer = setTimeout(scheduleNext, 600);
+    ambient = state;
   } catch { /* ignore */ }
 }
 
 export function stopMapAmbient() {
   try {
-    if (!ambient || !ctx) return;
-    const { g, oscs, lfo } = ambient;
-    const t = ctx.currentTime;
-    g.gain.cancelScheduledValues(t);
-    g.gain.setValueAtTime(g.gain.value, t);
-    g.gain.linearRampToValueAtTime(0.0001, t + 1);
-    oscs.forEach((o) => o.stop(t + 1.1));
-    lfo.stop(t + 1.1);
+    if (!ambient) return;
+    ambient.stopped = true;
+    if (ambient.timer) clearTimeout(ambient.timer);
+    if (ambient.extra) clearTimeout(ambient.extra);
+    if (ambient.g && ctx) {
+      const t = ctx.currentTime;
+      ambient.g.gain.cancelScheduledValues(t);
+      ambient.g.gain.setValueAtTime(ambient.g.gain.value, t);
+      ambient.g.gain.linearRampToValueAtTime(0.0001, t + 1);
+      (ambient.oscs || []).forEach((o) => o.stop(t + 1.1));
+    }
     ambient = null;
   } catch { /* ignore */ }
 }
