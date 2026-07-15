@@ -111,18 +111,12 @@ const KEYFRAMES = `
     border-radius: 999px;
   }
 
-  /* 8. Message slide-in from left */
-  @keyframes seenMsgSlideLeft {
-    0%   { transform: translateX(-22px); opacity: 0; }
-    60%  { transform: translateX(4px); opacity: 1; }
-    100% { transform: translateX(0); opacity: 1; }
-  }
-
-  /* 8. Message slide-in from right */
-  @keyframes seenMsgSlideRight {
-    0%   { transform: translateX(22px); opacity: 0; }
-    60%  { transform: translateX(-4px); opacity: 1; }
-    100% { transform: translateX(0); opacity: 1; }
+  /* 8. Message entrance — a gentle rise + fade (no edge slide; QA found the
+     left-edge entry read as an unpolished notification popup) */
+  @keyframes seenMsgRise {
+    0%   { transform: translateY(10px); opacity: 0; }
+    60%  { transform: translateY(-2px); opacity: 1; }
+    100% { transform: translateY(0); opacity: 1; }
   }
 
   /* 9. Typing dots */
@@ -482,7 +476,7 @@ export function MessageSlideIn({ mine, isNew, children }) {
   if (!isNew) return children;
   return (
     <div style={{
-      animationName: mine ? "seenMsgSlideRight" : "seenMsgSlideLeft",
+      animationName: "seenMsgRise",
       animationDuration: "320ms",
       animationTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
       animationFillMode: "both",

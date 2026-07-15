@@ -19,6 +19,7 @@ import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
 import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
+import { useBackLayer } from "./backStack";
 const LifeHacks = React.lazy(() => import("./LifeHacks"));
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -249,6 +250,10 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   const [showJournal, setShowJournal] = useState(false);
   const [showWellbeing, setShowWellbeing] = useState(false);
   const [showBlocked, setShowBlocked] = useState(false);
+  // Android back closes these menu sub-panels instead of exiting the app (QA #2)
+  useBackLayer(showJournal, () => setShowJournal(false));
+  useBackLayer(showWellbeing, () => setShowWellbeing(false));
+  useBackLayer(showBlocked, () => setShowBlocked(false));
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -887,12 +892,12 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             <Sparkles size={24} />
           </div>
         </div>
-        <h1 className="font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em] text-slate-800">Welcome to Seen</h1>
-        <p className="pb-4 text-center text-[20px] leading-tight text-slate-500">Tell us a bit about yourself to start connecting.</p>
+        <h1 className="font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em] text-slate-900">Welcome to Seen</h1>
+        <p className="pb-4 text-center text-[20px] leading-tight text-slate-600">Tell us a bit about yourself to start connecting.</p>
 
         <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
           <select name="country" value={form.country} onChange={onChange}
-            className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base text-slate-500">
+            className={`w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pr-10 pl-11 text-base ${form.country ? "text-slate-900" : "text-slate-600"}`}>
             <option value="">Select Country</option>
             {COUNTRY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -900,14 +905,21 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
 
         <InputRow icon={User}>
           <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Full Name (optional)"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
         </InputRow>
 
-        <InputRow icon={Mail}>
-          <input type="email" name="email" value={form.email} onChange={onChange} placeholder="Email Address"
-            readOnly={Boolean(initialEmail)}
-            className={`w-full rounded-2xl border border-slate-200 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400 ${initialEmail ? "bg-slate-100" : "bg-slate-50"}`} />
-        </InputRow>
+        {initialEmail ? (
+          // Signed in via a provider: the email can't change, so show it as a quiet caption
+          // instead of a greyed-out input (QA: the readOnly grey-on-grey field was hard to read).
+          <p className="px-1 pb-1 text-sm text-slate-500">
+            Signed in as <span className="font-semibold text-slate-700">{form.email}</span>
+          </p>
+        ) : (
+          <InputRow icon={Mail}>
+            <input type="email" name="email" value={form.email} onChange={onChange} placeholder="Email Address"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
+          </InputRow>
+        )}
 
         {errorMessage && <p className="px-1 text-sm text-rose-600">{errorMessage}</p>}
 
@@ -1706,6 +1718,19 @@ export default function App() {
   const scrollHideTimer = useRef(null);
   const [feedDateLabel, setFeedDateLabel] = useState("Today");
   const [feedDateVisible, setFeedDateVisible] = useState(false);
+
+  // Android back button: register every closable layer so back closes the top-most
+  // one instead of exiting the app (QA #2). Order of opening = order of closing.
+  useBackLayer(Boolean(reactionBarId), () => setReactionBarId(null));
+  useBackLayer(pickerOpen, () => setPickerOpen(false));
+  useBackLayer(Boolean(glimpse), () => setGlimpse(null));
+  useBackLayer(menuOpen, () => setMenuOpen(false));
+  useBackLayer(showLevels, () => setShowLevels(false));
+  useBackLayer(showUpgrade, () => setShowUpgrade(false));
+  useBackLayer(Boolean(encourageFeeling), () => setEncourageFeeling(null));
+  useBackLayer(Boolean(myFeelingPanel), () => setMyFeelingPanel(null));
+  useBackLayer(showMap, () => setShowMap(false));
+  useBackLayer(activeTab !== "feed", () => setActiveTab("feed"));
 
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
@@ -3101,7 +3126,7 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                    style={{ background: "linear-gradient(135deg, #0e1e30, #162d45)", border: "1px solid rgba(90,170,255,0.35)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🌍</span>
                     <div className="flex-1 min-w-0">
@@ -3132,7 +3157,7 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setReactionToast(null); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #3a2a05, #5a3d0a)", border: "1px solid rgba(255,179,71,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                    style={{ background: "linear-gradient(135deg, #3a2a05, #5a3d0a)", border: "1px solid rgba(255,179,71,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">{reactionToast.emoji}</span>
                     <div className="flex-1 min-w-0">
@@ -3155,7 +3180,7 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setHometownToast(null); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #0a2e1a, #133d24)", border: "1px solid rgba(80,200,120,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                    style={{ background: "linear-gradient(135deg, #0a2e1a, #133d24)", border: "1px solid rgba(80,200,120,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🏠</span>
                     <div className="flex-1 min-w-0">
@@ -3180,7 +3205,7 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setRippleToast(null); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #042f2e, #0c4a42)", border: "1px solid rgba(45,212,191,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "hackOverlayIn 0.4s ease" }}
+                    style={{ background: "linear-gradient(135deg, #042f2e, #0c4a42)", border: "1px solid rgba(45,212,191,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🌱</span>
                     <div className="flex-1 min-w-0">
@@ -3203,7 +3228,7 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setEchoToast(null); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #c4b5fd", boxShadow: "0 8px 24px rgba(139,92,246,0.18)", animation: "hackOverlayIn 0.4s ease" }}
+                    style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #c4b5fd", boxShadow: "0 8px 24px rgba(139,92,246,0.18)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🌟</span>
                     <div className="flex-1 min-w-0">
@@ -3450,7 +3475,7 @@ export default function App() {
 
             {/* FAB-style footer — only on feed tab */}
             {activeTab === "feed" && (
-            <footer className="border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+            <footer className="border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
                   <span className="text-lg">🌙</span>
@@ -3511,7 +3536,7 @@ export default function App() {
                 />
                 <div
                   className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
-                  style={{ animation: "seenSheetRise 400ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+                  style={{ animation: "seenSheetRise 400ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                   <GreetingPicker
                     profile={profile}

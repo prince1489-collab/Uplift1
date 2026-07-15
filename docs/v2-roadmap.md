@@ -187,3 +187,17 @@ Each phase ships independently to testers via the existing web-deploy loop
 
 **Decisions locked in:** 3 HYT prompts/day with a no-guilt swap; Editorial launches
 without free-text comments.
+
+---
+
+## Deferred from QA report (PrimeTestLab, 15 Jul 2026)
+
+**"Write your own" kindness message (their Suggestion S1)** — deliberately deferred:
+- Conflicts with the safety posture declared in the App Store review notes
+  ("users cannot free-type messages into the public feed") and the preset-only
+  moderation model.
+- If ever built, it must ship as one package: server-side AI moderation for feed
+  messages (same unbypassable pattern as `/api/submit-greeting`), updated App Store
+  review notes + age-rating answers, and updated support-page safety copy.
+- Partial alternative already exists: users can submit greetings to the community
+  pool (AI-moderated) and send private encouragement replies.

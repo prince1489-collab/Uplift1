@@ -553,6 +553,12 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* In-app notification banners drop in from the top like a standard Android banner
+   (QA: the old fade-in-place read as an unpolished popup inside the content). */
+@keyframes seenToastDown {
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
 @keyframes hackCardIn {
   from { transform: scale(0.78); opacity: 0; }
   to   { transform: scale(1);    opacity: 1; }
