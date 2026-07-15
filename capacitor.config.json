@@ -2,9 +2,11 @@
   "appId": "app.seenapp.ios",
   "appName": "Seen",
   "webDir": "dist",
+  "backgroundColor": "#ffffff",
   "ios": {
-    "contentInset": "always",
-    "scrollEnabled": false
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "backgroundColor": "#ffffff"
   },
   "plugins": {
     "PushNotifications": {
