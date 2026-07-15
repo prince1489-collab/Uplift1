@@ -16,6 +16,7 @@ import { useEffect, useRef } from "react";
 const closers = []; // open layers, oldest → newest (top of stack = last)
 let armed = false;
 let listening = false;
+let pendingConsume = false;
 
 function arm() {
   if (armed || typeof window === "undefined") return;
@@ -23,6 +24,22 @@ function arm() {
     window.history.pushState({ seenBack: true }, "");
     armed = true;
   } catch { /* ignore */ }
+}
+
+// Consume the stale sentinel AFTER the current render commit settles. When one layer
+// swaps for another in the same tap (e.g. the ⋯ menu closes as Journal opens), the
+// stack is only *transiently* empty during cleanup — calling history.back() right then
+// would immediately close the layer that just opened. Deferring and re-checking makes
+// the consume happen only when nothing really remained open.
+function scheduleConsume() {
+  if (pendingConsume || typeof window === "undefined") return;
+  pendingConsume = true;
+  setTimeout(() => {
+    pendingConsume = false;
+    if (!closers.length && armed) {
+      try { window.history.back(); } catch { /* ignore */ }
+    }
+  }, 0);
 }
 
 function onPop() {
@@ -54,10 +71,8 @@ export function useBackLayer(isOpen, close) {
       const i = closers.indexOf(entry);
       if (i >= 0) closers.splice(i, 1);
       // Last layer closed via its own UI (✕ / backdrop): consume the stale sentinel
-      // so the user's next back press isn't silently swallowed.
-      if (!closers.length && armed) {
-        try { window.history.back(); } catch { /* ignore */ }
-      }
+      // so the user's next back press isn't silently swallowed. Deferred — see above.
+      if (!closers.length && armed) scheduleConsume();
     };
   }, [isOpen]);
 }
