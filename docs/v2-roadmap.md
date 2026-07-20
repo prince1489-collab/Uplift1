@@ -88,7 +88,45 @@ others react.
 - Report + Block (already shipped) apply here.
 - New `stories` collection; reuse reaction components.
 
-## 5. "My SEEN Story" (Board → personal narrative)
+## 5. Free-text greetings (AI-moderated) — replaces community greetings
+
+**Decision (15 Jul 2026):** retire the community-greetings pipeline entirely
+(submissions → voting → leaderboard → weekly champions cron) and instead let users
+**write their own greeting, max 80 characters**, screened by AI before anyone sees
+it. This adopts the QA tester's Suggestion S1 deliberately, with guardrails.
+
+Why: hand-written kindness carries far more emotional weight than a picked preset
+(the QA tester independently called this the app's biggest feature gap), and the
+community pipeline was heavy machinery whose end goal — more varied greetings —
+free text achieves directly. Removing it deletes a whole meta-game (voting,
+champions, `rotate-champions` cron, `greetingSubmissions` collection).
+
+Guardrails (non-negotiable):
+- **Presets stay** as the default quick-send path; "✍️ Write your own" appears
+  alongside them in the picker. Zero-effort sending must survive.
+- **Server-side moderation, unbypassable:** extend the existing
+  `/api/submit-greeting` pattern (Anthropic AI screen for profanity, hate,
+  harassment, sexual content, contact info — multilingual, with word-list
+  fallback). The send happens via the API with the Admin SDK; **Firestore rules
+  change to forbid direct client writes to `publicMessages`** — which also closes
+  the existing latent gap where preset-only was client-enforced.
+- **Fail closed:** if the moderation endpoint can't run, custom sending is
+  disabled (with a gentle message); presets keep working.
+- **Level-gated (anti-abuse):** unlock "write your own" at a low Kindness-Jar
+  level, so brand-new/throwaway accounts start preset-only.
+- **Rejected messages** get a kind, non-shaming explanation and keep the preset
+  option in view.
+- Report + Block (already shipped) continue to apply to all feed messages.
+- **App Store lockstep:** ship in the same release as updated review notes and
+  support-page copy ("user-written messages are screened by automated AI
+  moderation before delivery" — replacing "users cannot free-type messages into
+  the public feed"). Age rating already declares UGC; no change needed there.
+
+Cleanup: remove `CommunityGreetings.jsx` voting/leaderboard/champions UI, the
+`rotate-champions` cron in `vercel.json`, and the Community tab; migrate the best
+approved community greetings into the preset library so that content isn't lost.
+
+## 6. "My SEEN Story" (Board → personal narrative)
 
 Amalgamates Feed activity, Journal, Have you tried?, and wellbeing check-ins into
 a narrative + metrics view. Daily / Weekly / Monthly / Yearly segments.
@@ -106,17 +144,18 @@ a narrative + metrics view. Daily / Weekly / Monthly / Yearly segments.
   layer, not a rebuild.
 - **Shareable image card** for monthly/yearly summaries = organic marketing.
 
-## 6. Navigation changes
+## 7. Navigation changes
 
 - Tab order: **Feed → Have you tried? → Editorial → My SEEN Story**.
-- **Community greetings moves into the ⋯ menu** (contributor feature, not a daily
-  destination).
+- **Community tab removed entirely** — the community-greetings pipeline is retired
+  in favour of AI-moderated free-text greetings (section 5). Nothing moves to the
+  ⋯ menu.
 - ⋯ menu is getting crowded → add sections ("You", "Community", "Support") in the
   same release.
 - **Bump `TOUR_VERSION`** so the guided tour re-runs once and reintroduces the new
   layout to existing users.
 
-## 7. Sparks → Kindness Jar
+## 8. Sparks → Kindness Jar
 
 - Replace the sparks meter with a **Kindness Jar**: coins earned for in-app
   actions; the jar's **fill level = progress within a level**, the **jar size/shape
@@ -133,19 +172,19 @@ a narrative + metrics view. Daily / Weekly / Monthly / Yearly segments.
 - Technically a re-theme of the existing spark/level system + one animated SVG/CSS
   screen.
 
-## 8. Level rewards (ranked)
+## 9. Level rewards (ranked)
 
 1. **Real-world kindness as the reward** — full jar plants a tree / funds a food
    bank via a charity partner. On-brand, meaningful, and sellable to B2B.
 2. **Cosmetics** — jar skins, profile auras/frames, exclusive sticker packs,
    "Founding Kind" badge for early testers. Free to run.
-3. **Capability unlocks** — higher levels unlock community-greeting submission,
-   early Editorial access (privileges as abuse-gates).
+3. **Capability unlocks** — levels unlock "write your own" greetings (section 5)
+   and early Editorial access (privileges as abuse-gates).
 4. **Yearly printable "Kindness Certificate"/story-book** of their SEEN Story.
 5. **Avoid:** cash-value rewards, prize draws (gambling/age-rating issues),
    anything making kindness feel transactional.
 
-## 9. B2B — "Seen for Teams" (v3 horizon)
+## 10. B2B — "Seen for Teams" (v3 horizon)
 
 Product:
 - Private company-scoped spaces (feed/HYT/jar within an organisation); peer
@@ -176,9 +215,9 @@ exactly the asset that makes it sellable.
 | Phase | Scope | Rationale |
 |---|---|---|
 | **1** | Have you tried? tab + prompt bank; retire Life Hacks tab (keep data for Self-life slot) | Biggest user value, zero moderation risk, feeds everything else |
-| **2** | Kindness Jar (sparks→coins 1:1) + remove main-screen meter; community greetings → menu; new tab order; menu sections; `TOUR_VERSION` bump | All structural churn in one release |
+| **2** | Kindness Jar (sparks→coins 1:1) + remove main-screen meter; retire Community tab/pipeline (migrate best greetings to presets, remove champions cron); new tab order; menu sections; `TOUR_VERSION` bump | All structural churn in one release |
 | **3** | My SEEN Story v1 (template narratives + metrics + shareable card) | Needs HYT data flowing to be good |
-| **4** | Editorial (pre-moderated, reactions + preset responses, **no free comments**) | Highest moderation stakes — do when the rest is stable |
+| **4** | Moderation build-out: free-text greetings (80-char, server-screened, level-gated, fail-closed) + Editorial (pre-moderated, reactions + preset responses, **no free comments**) + App Store notes/support-page updates in lockstep | Highest moderation stakes, shared AI-moderation infrastructure — do when the rest is stable |
 | **5** | Rebrand: sunset palette + logo + icon/splash + new store screenshots | Last, so store assets are shot once |
 | Later | AI narratives, free-text comments, charity-partner rewards, Seen for Teams | |
 
@@ -186,18 +225,18 @@ Each phase ships independently to testers via the existing web-deploy loop
 (Vercel; Android TWA follows automatically, iOS needs a Codemagic rebuild).
 
 **Decisions locked in:** 3 HYT prompts/day with a no-guilt swap; Editorial launches
-without free-text comments.
+without free-text comments; community greetings retired in favour of AI-moderated
+80-char free-text greetings (presets kept as the quick-send path).
 
 ---
 
-## Deferred from QA report (PrimeTestLab, 15 Jul 2026)
+## QA report follow-up (PrimeTestLab, 15 Jul 2026)
 
-**"Write your own" kindness message (their Suggestion S1)** — deliberately deferred:
-- Conflicts with the safety posture declared in the App Store review notes
-  ("users cannot free-type messages into the public feed") and the preset-only
-  moderation model.
-- If ever built, it must ship as one package: server-side AI moderation for feed
-  messages (same unbypassable pattern as `/api/submit-greeting`), updated App Store
-  review notes + age-rating answers, and updated support-page safety copy.
-- Partial alternative already exists: users can submit greetings to the community
-  pool (AI-moderated) and send private encouragement replies.
+**"Write your own" kindness message (their Suggestion S1)** — initially deferred,
+now **ADOPTED into v2** as section 5 (decision 15 Jul 2026). The original deferral
+conditions became the design's guardrails: server-side AI moderation on the
+unbypassable `/api/submit-greeting` pattern, fail-closed behaviour, presets
+retained, level-gating, and App Store review-notes + support-page updates shipped
+in lockstep. It must NOT ship before those conditions are met — until phase 4
+goes live, the current "preset-only feed" posture declared to Apple remains true
+and unchanged.
