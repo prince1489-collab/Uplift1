@@ -11,6 +11,17 @@ body {
   font-family: "Inter", system-ui, sans-serif;
 }
 
+/* iOS/WKWebView colours input glyphs via -webkit-text-fill-color derived from the
+   *system* appearance when color-scheme is undeclared. On a light-mode iPhone that
+   painted dark text over our (dark-shell) dark input background, so typed text was
+   invisible during onboarding — while Android and dark-mode iPads rendered fine.
+   Declare each shell's scheme and pin the fill to the element's own CSS colour so
+   what the user types always matches the intended colour. */
+:root { color-scheme: light; }
+[data-dark-shell] { color-scheme: dark; }
+input, textarea, select { -webkit-text-fill-color: currentColor; }
+input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColor; opacity: 1; }
+
 /* Mood heartbeat — two subtle pulses (lub-dub) every 4s */
 @keyframes seenHeartbeat {
   0%, 100% { transform: scale(1); }
