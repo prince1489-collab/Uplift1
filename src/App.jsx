@@ -1173,7 +1173,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
               activeGreetings.map((greeting) => (
                 <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
                   disabled={isSending}
-                  className="relative overflow-hidden w-full rounded-xl border border-amber-300 px-3 py-2.5 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed"
+                  className="seen-champion-card relative overflow-hidden w-full rounded-xl border border-amber-300 px-3 py-2.5 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed"
                   style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", boxShadow: "0 1px 8px rgba(245,158,11,0.18)" }}>
                   {!isSending && (
                     <span aria-hidden className="absolute inset-0 pointer-events-none"

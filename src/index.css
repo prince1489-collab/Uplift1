@@ -177,10 +177,16 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-rose-700    { color: #fda4af !important; }
 [data-dark-shell] .text-blue-700    { color: #93c5fd !important; }
 
-/* Champion greeting cards use an inline cream gradient (uncatchable by class remaps);
-   an !important rule still overrides the non-important inline style in dark mode. */
+/* Champion greeting cards (leaderboard + the community picker) use an inline cream
+   gradient (uncatchable by class remaps); an !important rule still overrides the
+   non-important inline style in dark mode so the remapped-light text stays legible. */
 [data-dark-shell] .seen-champion-card {
   background: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(245,158,11,0.07)) !important;
+}
+/* Feeling/status strip at the top of the feed — inline mint/cream gradient → neutral
+   dark tint in dark mode (the emerald/amber label + border still distinguish variants). */
+[data-dark-shell] .seen-feeling-strip {
+  background: rgba(255,255,255,0.06) !important;
 }
 
 /* ─── 44px minimum tap targets (Suggestion 4) ───────────────────────────── */
