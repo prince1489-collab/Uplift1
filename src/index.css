@@ -189,6 +189,22 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   background: rgba(255,255,255,0.06) !important;
 }
 
+/* Reaction heart badges straddle the bottom edge of a message bubble. A translucent
+   background let the bubble's border show through, which looked untidy in dark mode —
+   give them a solid, opaque chip so they sit cleanly on top. */
+[data-dark-shell] .seen-react-badge {
+  background-color: #232a36 !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
+[data-dark-shell] .seen-react-badge.is-mine {
+  background-color: #14352f !important;
+  border-color: rgba(45,212,191,0.5) !important;
+  color: #5eead4 !important;
+}
+
+/* Journal progress-track (thin bar, translucent white) → subtle light-on-dark. */
+[data-dark-shell] .bg-white\/70 { background-color: rgba(255,255,255,0.1) !important; }
+
 /* ─── 44px minimum tap targets (Suggestion 4) ───────────────────────────── */
 /* Expand tap area without changing visual layout */
 [data-dark-shell] button,

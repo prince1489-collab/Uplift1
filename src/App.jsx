@@ -244,7 +244,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -461,7 +461,7 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
         document.body
       )}
       {showJournal && (
-        <JournalPanel db={db} currentUser={currentUser} onClose={() => setShowJournal(false)} />
+        <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} onClose={() => setShowJournal(false)} />
       )}
       {showWellbeing && (
         <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} onSupport={() => { setShowWellbeing(false); onSupport(); }} />
@@ -2988,6 +2988,7 @@ export default function App() {
                       onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
                       onChangePassword={changePassword}
+                      darkMode={darkMode}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
                         if (!cid) { alert("No subscription found."); return; }

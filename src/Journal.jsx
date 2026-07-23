@@ -201,7 +201,7 @@ function MonthHeatmap({ counts }) {
   );
 }
 
-export default function JournalPanel({ db, currentUser, onClose }) {
+export default function JournalPanel({ db, currentUser, darkMode = false, onClose }) {
   const uid = currentUser?.uid;
   const [type, setType] = useState("grateful");
   const [date, setDate] = useState(todayStr());
@@ -323,7 +323,12 @@ export default function JournalPanel({ db, currentUser, onClose }) {
   const goalPct = Math.min(100, (reflectionsThisWeek / WEEKLY_GOAL) * 100);
 
   return createPortal(
-    <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
+    // Portals attach to document.body (outside the app's dark shell), so set the shell
+    // attribute here too when dark mode is on — this inherits all the [data-dark-shell]
+    // colour remaps. Root background is set explicitly (the remaps only touch descendants).
+    <div data-portal {...(darkMode ? { "data-dark-shell": "" } : {})}
+      className="fixed inset-0 z-[250] flex flex-col"
+      style={{ background: darkMode ? "#0e1219" : "#fff" }}>
       {celebrate && <Confetti />}
       <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
@@ -337,7 +342,7 @@ export default function JournalPanel({ db, currentUser, onClose }) {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Stats & gentle weekly cadence header */}
         {entries.length > 0 && (
-          <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-emerald-50 border border-amber-100 px-4 py-3">
+          <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
             <div className="flex items-center">
               <div className="flex-1 text-center">
                 <p className="text-2xl font-extrabold text-slate-800 tabular-nums">{totalDisp}</p>
@@ -379,7 +384,7 @@ export default function JournalPanel({ db, currentUser, onClose }) {
         {onThisDay && (
           <button
             onClick={() => setExpandPast((v) => !v)}
-            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 transition-colors hover:bg-violet-50">
+            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 transition-colors hover:bg-violet-50">
             <div className="flex items-center gap-1.5 mb-1">
               <History size={13} className="text-violet-400" />
               <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500">{onThisDay.label}</p>
