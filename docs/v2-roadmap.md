@@ -13,9 +13,16 @@ experience should a user get out of Seen?** Answer: *feel genuinely seen by the
 people who matter to them, practise kindness in real life, and watch themselves
 grow.*
 
-Three tabs, three verbs:
+Four tabs, four verbs:
 
-**Feed** (connect) → **Have you tried?** (practise) → **My SEEN Story** (reflect)
+**Feed** (connect) → **Have you tried?** (practise) → **Journal** (reflect) →
+**My SEEN Story** (see your journey)
+
+**The daily loop:** a user opens the app → lands on the focused Feed (interacts
+with close contacts, watches stranger kindness roll by in the bulletin, hearts
+messages, sends kindness) → checks today's Have-you-tried prompts → writes to
+today's single Journal prompt → occasionally visits My SEEN Story to see how
+far they've come.
 
 Everything social lives in the Feed. The separate Editorial tab, the status
 strip, and the Community tab are all absorbed or retired. Two signature visuals:
@@ -127,7 +134,7 @@ Rules:
   no public streak shaming.
 - Optional one-tap reflection after ticking ("How did it feel?" 😊 😌 💪) —
   feeds My SEEN Story.
-- Completing prompts **waters your Kindness Tree** (section 5) — the daily
+- Completing prompts **waters your Kindness Tree** (section 6) — the daily
   action and the growth visual reinforce each other.
 
 Content: bank of ~20–30 prompts per area (~400 total), tiny/concrete/
@@ -141,7 +148,28 @@ Data model: prompt bank ships in the bundle (like `greetings.js`);
 `users/{uid}/haveYouTried/{yyyy-mm-dd}` stores the day's 3 prompt IDs +
 completion. Deterministic selection seeded by date+uid → **no cron needed**.
 
-## 4. "My SEEN Story" (Board → personal narrative)
+## 4. Journal — one prompt a day (promoted to tab 3)
+
+**Decision (23 Jul):** Journal moves out of the ⋯ menu into the main tab bar,
+and is radically simplified — fewer choices, one focused daily ritual.
+
+- **One journal, not two.** The Grateful / Kindness category choice is removed
+  entirely. Existing entries keep their data (the old category becomes a silent
+  historical tag); going forward there is just "today's entry".
+- **One prompt, rotating every 24 h** — a deterministic date-seeded pick from a
+  bank of ~30–60 warm prompts blending gratitude and kindness ("What small
+  kindness found you today?", "Who made today lighter?", "What did you do today
+  that your future self will thank you for?"). Same no-cron pattern as the
+  Have-you-tried prompts. Free writing stays available beneath the prompt for
+  users who want to go off-script.
+- **Private by default.** "Share this story" to the feed (story cards, section
+  2) is the opt-in bridge — today's prompt doubles as the story seed.
+- Entries continue to feed **My SEEN Story** narratives and **water the
+  Kindness Tree**.
+- **Differentiation:** Journal = *write today*; My SEEN Story = *read your
+  journey*. Two reflection tabs, two distinct jobs — no duplication.
+
+## 5. "My SEEN Story" (Board → personal narrative)
 
 Amalgamates Feed activity, Journal, Have you tried?, and wellbeing check-ins
 into a narrative + metrics view. Daily / Weekly / Monthly / Yearly segments.
@@ -157,10 +185,10 @@ into a narrative + metrics view. Daily / Weekly / Monthly / Yearly segments.
   HYT completed by life area (mini radar/bars), journal entries, check-in trend
   arrow. Mostly reuses existing MyImpact/Board data.
 - **Shareable image card** for monthly/yearly summaries = organic marketing.
-- The **Kindness Tree** (section 5) lives here and/or one tap from the header —
+- The **Kindness Tree** (section 6) lives here and/or one tap from the header —
   the personal-growth visual anchoring the reflection space.
 
-## 5. The Kindness Tree (decision: replaces the Kindness Jar)
+## 6. The Kindness Tree (decision: replaces the Kindness Jar)
 
 **Decision (22 Jul): growth visual = seed → tree, not piggy-bank/jar.**
 
@@ -189,7 +217,7 @@ Design:
 - Optional delight: seasons/weather passes over the tree; a tiny bird arrives at
   higher stages.
 
-## 6. Wellbeing hub — merge check-in + Support
+## 7. Wellbeing hub — merge check-in + Support
 
 External feedback: Wellbeing check-in and Support appear as two separate
 questionnaire-ish features in the ⋯ menu.
@@ -203,17 +231,18 @@ questionnaire-ish features in the ⋯ menu.
 - One menu entry instead of two; simpler mental model ("everything about how
   I'm doing lives here").
 
-## 7. Navigation (end state)
+## 8. Navigation (end state)
 
-- **Three tabs: Feed → Have you tried? → My SEEN Story.**
+- **Four tabs: Feed → Have you tried? → Journal → My SEEN Story.**
+- Promoted: **Journal** moves from the ⋯ menu to tab 3 (section 4).
 - Retired: Life Hacks tab (content lives in HYT "Self life"), Community tab
   (pipeline retired), Editorial tab (absorbed into feed), status strip
   (absorbed into posting), guided tour (replaced by coach-marks).
 - ⋯ menu gets sections ("You", "Community", "Support") and holds: World Map,
-  Person behind the Kindness, Journal, **Wellbeing hub** (merged), Kindness
-  Tree, Blocked accounts, Change password, admin tools.
+  Person behind the Kindness, **Wellbeing hub** (merged), Kindness Tree,
+  Blocked accounts, Change password, admin tools.
 
-## 8. Rebrand — logo & LA-sunset palette
+## 9. Rebrand — logo & LA-sunset palette
 
 - **Palette:** coral → warm orange → dusky pink → soft violet
   (e.g. `#FF6B6B → #FF9E57 → #F472B6 → #8B7CF6`), warm sand `#FDF6EC` neutrals,
@@ -223,12 +252,12 @@ questionnaire-ish features in the ⋯ menu.
      reads as an open eye (sunset + "seen" in one mark). *Preferred.*
   2. Two overlapping circles forming a vesica/eye — "two worlds touching".
   3. Keep the ✦ spark inside a warm gradient sun disc — lowest-risk evolution.
-- The nature palette now also serves the **Kindness Tree** (section 5).
+- The nature palette now also serves the **Kindness Tree** (section 6).
 - **Implementation:** centralise colours as CSS variables first, then re-skin.
   Regenerate icon/splash (`assets/icon.png` → Codemagic `@capacitor/assets`
   step) + new store screenshots. **Do last** so screenshots are shot once.
 
-## 9. Level rewards (ranked)
+## 10. Level rewards (ranked)
 
 1. **Real-world kindness as the reward** — a full-grown Kindness Tree plants a
    real tree / funds a food bank via a charity partner. On-brand, meaningful,
@@ -241,7 +270,7 @@ questionnaire-ish features in the ⋯ menu.
 5. **Avoid:** cash-value rewards, prize draws (gambling/age-rating issues),
    anything making kindness feel transactional.
 
-## 10. B2B — "Seen for Teams" (v3 horizon)
+## 11. B2B — "Seen for Teams" (v3 horizon)
 
 Product:
 - Private company-scoped spaces (feed/HYT/tree within an organisation); peer
@@ -288,7 +317,7 @@ Not part of v2; small fixes worth shipping to current users when convenient:
 |---|---|---|
 | **0** | Near-term polish: dark-theme contrast audit + change password | Small, current-user value, no dependencies |
 | **1** | Onboarding simplification (cut glimpse Qs to later prompt, remove tour) + Have you tried? tab + prompt bank; retire Life Hacks tab | Friction off the front door; biggest new user value; zero moderation risk |
-| **2** | Kindness Tree (sparks→1:1) + remove main-screen meter; retire Community tab/pipeline (migrate best greetings to presets, remove champions cron); three-tab order; menu sections + Wellbeing hub merge | All structural churn in one release |
+| **2** | Kindness Tree (sparks→1:1) + remove main-screen meter; retire Community tab/pipeline (migrate best greetings to presets, remove champions cron); four-tab order incl. Journal promotion + one-prompt simplification; menu sections + Wellbeing hub merge | All structural churn in one release |
 | **3** | My SEEN Story v1 (template narratives + metrics + shareable card + tree) | Needs HYT data flowing to be good |
 | **4** | **Moderation build-out / Feed 2.0:** server-side AI moderation infra (fail-closed, unbypassable) → free-text + anonymous posting, bulletin ribbon, story cards + featured slot, who-hearted list, bounded private replies + consented interaction broadcasts. App Store notes/support-page updates in lockstep. | Highest stakes; everything social rides on this wall — built once, properly |
 | **5** | Rebrand: sunset palette + logo + icon/splash + new store screenshots | Last, so store assets are shot once |
@@ -307,6 +336,8 @@ Each phase ships independently to testers via the existing web-deploy loop
 - Editorial is feed story cards + a featured slot, not a tab. No free-text
   comments at launch.
 - Onboarding keeps DOB (13+ gate) and country; everything else moves later.
+- **Four tabs: Feed → Have you tried? → Journal → My SEEN Story** — Journal
+  promoted out of the ⋯ menu, single category, one prompt rotating every 24 h.
 
 ---
 
