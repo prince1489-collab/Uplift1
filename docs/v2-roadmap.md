@@ -297,17 +297,23 @@ retainer. Multi-tenancy in Firestore is the big technical lift — v3, but v2
 
 ---
 
-## Near-term polish (v1 — can ship before v2 starts)
+## Phase 0 — near-term polish  ✅ SHIPPED 23 Jul 2026
 
-Not part of v2; small fixes worth shipping to current users when convenient:
-1. **Dark-theme contrast audit** — the dark shell maps specific colour classes;
-   areas it doesn't cover (reported: community greetings) render low-contrast
-   text. Sweep every screen in both themes; extend the `[data-dark-shell]`
-   mappings (same bug family as the fixed iPhone invisible-input issue).
-2. **In-app "Change password"** — currently the only path is "Forgot password"
-   on the sign-in screen. Add a menu entry for email/password accounts
-   (Firebase `updatePassword` with re-authentication; point Google/Apple
-   sign-in users to their provider).
+1. **Dark-theme contrast (readability)** ✅ — extended the `[data-dark-shell]` map
+   in `src/index.css` to darken light accent backgrounds (teal/emerald/amber/
+   violet/rose/blue `-50/-100`) and lighten dark accent text (`text-*-700`),
+   brightened `text-slate-400`, and fixed the reported community-greetings header
+   + champion cards (`CommunityGreetings.jsx`, incl. an `!important` override of
+   the inline champion-card gradient). MyImpact/Board already dark-aware.
+2. **In-app "Change password"** ✅ — new `ChangePasswordPanel` (⋯ menu → Change
+   password) using Firebase `reauthenticateWithCredential` + `updatePassword`;
+   Google/Apple accounts get a "manage it with your provider" note.
+
+**Deferred → dedicated "dark-mode consistency" pass (not Phase 0):** the portal
+components (`Feelings`, `Wellbeing`, `Journal`, `UserGlimpse`, `SubmitGreetingModal`,
+stickers, tour) `createPortal` outside the dark shell and render permanently light.
+Their text is dark-on-white = readable (passes the "font is clear" bar) but
+theme-inconsistent. Making them dark-aware is per-component work — a separate task.
 
 ---
 

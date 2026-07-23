@@ -507,7 +507,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
   return (
     <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4 space-y-3">
       {/* Compact header — explanation tucked behind the ⓘ toggle */}
-      <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-50 px-3 py-2.5">
+      <div className="rounded-2xl border border-teal-100 bg-teal-50 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1 flex-1 min-w-0">
             🌱 Community Greetings
@@ -548,7 +548,7 @@ export function CommunityArena({ db, currentUser, profile, isAdmin = false, cand
           {showChampions && (
           <div className="space-y-1">
             {featured.filter((g) => !removedIds[g.submissionId]).map((g) => (
-              <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-300 px-2.5 py-1.5"
+              <div key={g.id} className="seen-champion-card relative overflow-hidden rounded-xl border border-amber-300 px-2.5 py-1.5"
                 style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", boxShadow: "0 1px 8px rgba(245,158,11,0.18)" }}>
                 {/* shimmer sweep */}
                 <span aria-hidden className="absolute inset-0 pointer-events-none"

@@ -58,6 +58,7 @@ import {
   isSignInWithEmailLink, signInWithEmailLink,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
   sendPasswordResetEmail, updateProfile as updateAuthProfile,
+  updatePassword, reauthenticateWithCredential, EmailAuthProvider,
 } from "firebase/auth";
 
 import {
@@ -243,17 +244,19 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
   const [showJournal, setShowJournal] = useState(false);
   const [showWellbeing, setShowWellbeing] = useState(false);
   const [showBlocked, setShowBlocked] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   // Android back closes these menu sub-panels instead of exiting the app (QA #2)
   useBackLayer(showJournal, () => setShowJournal(false));
   useBackLayer(showWellbeing, () => setShowWellbeing(false));
   useBackLayer(showBlocked, () => setShowBlocked(false));
+  useBackLayer(showChangePassword, () => setShowChangePassword(false));
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -385,6 +388,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   label="Blocked accounts"
                   sub="Manage people you've blocked"
                 />
+                <Row
+                  onClick={() => { setShowChangePassword(true); close(); }}
+                  icon={<IconBox className="bg-slate-100"><span style={{ fontSize: "15px", lineHeight: 1 }}>🔑</span></IconBox>}
+                  label="Change password"
+                  sub="Update your account password"
+                />
 
               </div>
 
@@ -460,6 +469,9 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
       {showBlocked && (
         <BlockedAccountsPanel db={db} currentUser={currentUser} onClose={() => setShowBlocked(false)} />
       )}
+      {showChangePassword && (
+        <ChangePasswordPanel currentUser={currentUser} onChangePassword={onChangePassword} onClose={() => setShowChangePassword(false)} />
+      )}
     </>
   );
 }
@@ -523,6 +535,83 @@ function BlockedAccountsPanel({ db, currentUser, onClose }) {
                 </button>
               </div>
             ))
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Change the password of an email/password account (re-auth + updatePassword).
+// Google/Apple sign-in users are pointed to their provider instead.
+function ChangePasswordPanel({ currentUser, onChangePassword, onClose }) {
+  const providers = currentUser?.providerData ?? [];
+  const isPasswordAccount = providers.some((p) => p?.providerId === "password");
+  const providerName = providers.some((p) => p?.providerId === "google.com")
+    ? "Google"
+    : providers.some((p) => p?.providerId === "apple.com") ? "Apple" : "your sign-in provider";
+
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(""); setMessage("");
+    if (next.length < 6) { setError("New password must be at least 6 characters."); return; }
+    if (next !== confirm) { setError("New passwords don't match."); return; }
+    if (next === current) { setError("New password must be different from your current one."); return; }
+    setBusy(true);
+    const result = await onChangePassword(current, next);
+    setBusy(false);
+    if (result?.error) { setError(result.error); return; }
+    setMessage("Password updated ✓");
+    setCurrent(""); setNext(""); setConfirm("");
+    setTimeout(() => onClose?.(), 1400);
+  };
+
+  const inputCls = "w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-base text-slate-900 placeholder:text-slate-400";
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">Change password</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain px-5 pb-8">
+          {!isPasswordAccount ? (
+            <div className="py-8 text-center">
+              <div className="text-3xl mb-3">🔐</div>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                You signed in with <span className="font-semibold text-slate-800">{providerName}</span>, so your
+                password is managed there. To change it, update your {providerName} account.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-3 pt-1">
+              <input type="password" autoComplete="current-password" className={inputCls}
+                placeholder="Current password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+              <input type="password" autoComplete="new-password" className={inputCls}
+                placeholder="New password (min 6 characters)" value={next} onChange={(e) => setNext(e.target.value)} />
+              <input type="password" autoComplete="new-password" className={inputCls}
+                placeholder="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+              {error && <p className="px-1 text-sm text-rose-600">{error}</p>}
+              {message && <p className="px-1 text-sm font-semibold text-teal-600">{message}</p>}
+              <button type="submit" disabled={busy || !current || !next || !confirm}
+                className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
+                {busy ? "Updating…" : "Update password"}
+              </button>
+            </form>
           )}
         </div>
       </div>
@@ -2137,6 +2226,29 @@ export default function App() {
     } finally { setIsEmailActionLoading(false); }
   };
 
+  // Change password for an email/password account: re-authenticate with the current
+  // password (Firebase requires a recent login), then set the new one.
+  const changePassword = async (currentPassword, newPassword) => {
+    const user = auth.currentUser;
+    if (!user?.email) return { error: "You need to be signed in to change your password." };
+    try {
+      const cred = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, cred);
+      await updatePassword(user, newPassword);
+      return { ok: true };
+    } catch (error) {
+      if (error?.code === "auth/wrong-password" || error?.code === "auth/invalid-credential")
+        return { error: "Your current password is incorrect." };
+      if (error?.code === "auth/weak-password")
+        return { error: "New password is too weak — use at least 6 characters." };
+      if (error?.code === "auth/requires-recent-login")
+        return { error: "For your security, please sign out and back in, then try again." };
+      if (error?.code === "auth/too-many-requests")
+        return { error: "Too many attempts. Please wait a moment and try again." };
+      return { error: "Unable to change your password right now." };
+    }
+  };
+
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
@@ -2875,6 +2987,7 @@ export default function App() {
                       onShare={() => setShowProfileCard(true)}
                       onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
+                      onChangePassword={changePassword}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
                         if (!cid) { alert("No subscription found."); return; }

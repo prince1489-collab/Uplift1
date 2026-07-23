@@ -100,7 +100,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-slate-700 { color: #cbd5e1 !important; }
 [data-dark-shell] .text-slate-600 { color: #94a3b8 !important; }
 [data-dark-shell] .text-slate-500 { color: #64748b !important; }
-[data-dark-shell] .text-slate-400 { color: #4a5568 !important; }
+[data-dark-shell] .text-slate-400 { color: #8792a6 !important; } /* was #4a5568 — too dim for author/meta lines */
 
 /* Backgrounds */
 [data-dark-shell] .bg-white           { background-color: #161b22 !important; }
@@ -151,6 +151,37 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .border-orange-200 { border-color: rgba(245,158,11,0.35) !important; }
 [data-dark-shell] .text-orange-700   { color: #fbbf24 !important; }
 [data-dark-shell] .text-orange-500   { color: #f59e0b !important; }
+
+/* ── Accent colour remaps (Phase 0 contrast audit) ─────────────────────────────
+   The shell above only remapped slate + orange, so accent "islands" (teal/emerald/
+   amber/violet/rose/blue tints) kept LIGHT backgrounds while any slate text inside
+   them was remapped LIGHT → light-on-light (the reported unclear-font bug), and
+   dark accent titles (text-*-700) sat dark-on-dark. Darken the light accent
+   backgrounds AND lighten the dark accent text so each island flips together. */
+[data-dark-shell] .bg-teal-50     { background-color: rgba(45,212,191,0.12) !important; }
+[data-dark-shell] .bg-teal-100    { background-color: rgba(45,212,191,0.16) !important; }
+[data-dark-shell] .bg-emerald-50  { background-color: rgba(16,185,129,0.12) !important; }
+[data-dark-shell] .bg-amber-50    { background-color: rgba(245,158,11,0.12) !important; }
+[data-dark-shell] .bg-violet-50   { background-color: rgba(139,92,246,0.14) !important; }
+[data-dark-shell] .bg-violet-100  { background-color: rgba(139,92,246,0.18) !important; }
+[data-dark-shell] .bg-rose-50     { background-color: rgba(244,63,94,0.12) !important; }
+[data-dark-shell] .bg-rose-100    { background-color: rgba(244,63,94,0.16) !important; }
+[data-dark-shell] .bg-blue-50     { background-color: rgba(59,130,246,0.12) !important; }
+
+[data-dark-shell] .text-teal-700    { color: #5eead4 !important; }
+[data-dark-shell] .text-emerald-700 { color: #6ee7b7 !important; }
+[data-dark-shell] .text-amber-700   { color: #fbbf24 !important; }
+[data-dark-shell] .text-amber-800   { color: #fcd34d !important; }
+[data-dark-shell] .text-violet-700  { color: #c4b5fd !important; }
+[data-dark-shell] .text-violet-800  { color: #ddd6fe !important; }
+[data-dark-shell] .text-rose-700    { color: #fda4af !important; }
+[data-dark-shell] .text-blue-700    { color: #93c5fd !important; }
+
+/* Champion greeting cards use an inline cream gradient (uncatchable by class remaps);
+   an !important rule still overrides the non-important inline style in dark mode. */
+[data-dark-shell] .seen-champion-card {
+  background: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(245,158,11,0.07)) !important;
+}
 
 /* ─── 44px minimum tap targets (Suggestion 4) ───────────────────────────── */
 /* Expand tap area without changing visual layout */
