@@ -201,9 +201,9 @@ function MonthHeatmap({ counts }) {
   );
 }
 
-export default function JournalPanel({ db, currentUser, darkMode = false, onClose }) {
+export default function JournalPanel({ db, currentUser, darkMode = false, inline = false, onClose }) {
   const uid = currentUser?.uid;
-  const [type, setType] = useState("grateful");
+  const type = "reflection"; // v2: single-category journal
   const [date, setDate] = useState(todayStr());
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -322,22 +322,20 @@ export default function JournalPanel({ db, currentUser, darkMode = false, onClos
 
   const goalPct = Math.min(100, (reflectionsThisWeek / WEEKLY_GOAL) * 100);
 
-  return createPortal(
-    // Portals attach to document.body (outside the app's dark shell), so set the shell
-    // attribute here too when dark mode is on — this inherits all the [data-dark-shell]
-    // colour remaps. Root background is set explicitly (the remaps only touch descendants).
-    <div data-portal {...(darkMode ? { "data-dark-shell": "" } : {})}
-      className="fixed inset-0 z-[250] flex flex-col"
-      style={{ background: darkMode ? "#0e1219" : "#fff" }}>
+  // v2: renders inline as a tab (inline=true) or as a full-screen portal (from the menu).
+  const content = (
+    <>
       {celebrate && <Confetti />}
-      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
-        <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
-          <ArrowLeft size={18} className="text-slate-600" />
-        </button>
-        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-          <BookOpen size={15} className="text-teal-500" /> Journal
-        </h2>
-      </div>
+      {!inline && (
+        <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+          <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
+            <ArrowLeft size={18} className="text-slate-600" />
+          </button>
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <BookOpen size={15} className="text-teal-500" /> Journal
+          </h2>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Stats & gentle weekly cadence header */}
@@ -399,22 +397,10 @@ export default function JournalPanel({ db, currentUser, darkMode = false, onClos
         {/* New entry */}
         <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-3">
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            A gentle space for gratitude and kindness — a few times a week is plenty. Pick a type and write what comes.
+            A gentle space to reflect — a few times a week is plenty. Just follow today's prompt and write what comes.
           </p>
-          <div className="flex gap-2">
-            {TYPES.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setType(t.id)}
-                className={`flex-1 rounded-xl py-2 text-sm font-semibold border transition-all ${
-                  type === t.id ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                }`}
-                style={type === t.id ? { background: t.color } : undefined}>
-                {t.emoji} {t.label}
-              </button>
-            ))}
-          </div>
 
+          {/* v2: one journal, one daily prompt (no category choice) */}
           {/* Today's prompt — refreshes automatically once a day */}
           <div className="rounded-xl bg-white border border-slate-200 px-3 py-2.5">
             <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's prompt</p>
@@ -484,6 +470,22 @@ export default function JournalPanel({ db, currentUser, darkMode = false, onClos
           )}
         </div>
       </div>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <main {...(darkMode ? { "data-dark-shell": "" } : {})} className="flex-1 overflow-hidden flex flex-col"
+        style={{ background: darkMode ? "#0e1219" : undefined }}>
+        {content}
+      </main>
+    );
+  }
+  return createPortal(
+    <div data-portal {...(darkMode ? { "data-dark-shell": "" } : {})}
+      className="fixed inset-0 z-[250] flex flex-col"
+      style={{ background: darkMode ? "#0e1219" : "#fff" }}>
+      {content}
     </div>,
     document.body
   );

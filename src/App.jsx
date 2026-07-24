@@ -20,6 +20,8 @@ import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
+import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
+import MySeenStory from "./MySeenStory";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -243,7 +245,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -358,28 +360,20 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   onClick={() => { onShare(); close(); }}
                   icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
                   label="Person behind the Kindness"
-                  sub={`${sparkBalance.toLocaleString()} sparks · ${currentLevel.title}`}
+                  sub={`Kindness Tree · ${treeStageFor(sparkBalance).name}`}
                 />
                 <Row
-                  tourId="m-journal"
-                  onClick={() => { setShowJournal(true); close(); }}
-                  icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📓</span></IconBox>}
-                  label="Journal"
-                  sub="Your gratitude & kindness log"
+                  onClick={() => { onKindnessTree?.(); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🌳</span></IconBox>}
+                  label="Kindness Tree"
+                  sub="Watch your kindness grow"
                 />
                 <Row
                   tourId="m-wellbeing"
                   onClick={() => { setShowWellbeing(true); close(); }}
-                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📊</span></IconBox>}
-                  label="Wellbeing check-in"
-                  sub="See how you've been feeling over time"
-                />
-                <Row
-                  tourId="m-support"
-                  onClick={() => { onSupport(); close(); }}
-                  icon={<IconBox className="bg-emerald-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
-                  label="Support"
-                  sub="Wellbeing tools & crisis help"
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
+                  label="Wellbeing"
+                  sub="Check-in & support tools"
                 />
                 <Row
                   onClick={() => { setShowBlocked(true); close(); }}
@@ -3022,6 +3016,7 @@ export default function App() {
                       onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
                       onChangePassword={changePassword}
+                      onKindnessTree={() => setShowLevels(true)}
                       darkMode={darkMode}
                       onManageSubscription={async () => {
                         const cid = profile?.stripeCustomerId;
@@ -3060,27 +3055,17 @@ export default function App() {
                 className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  <div data-tour="sparks" className="relative flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setShowLevels(true); }}
-                      aria-label="About kindness levels"
-                      title="About kindness levels"
-                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/70 hover:text-slate-600 active:scale-90 transition-all">
-                      <Info size={14} />
-                    </button>
-                    <SparkRing value={displayedSparks} max={nextLevel?.min ?? sparkBalance} percent={animatedProgress} initial={firstName?.[0]?.toUpperCase() ?? "✨"} />
-                    <div className="flex-1 min-w-0 pr-6">
-                      <p className="text-xs font-semibold text-slate-800">{currentLevel.title}</p>
-                      <p className="text-[11px] text-slate-500"
-                        style={{ animation: sparksFlashing ? "seenSparkFlash 600ms ease-out" : "none" }}>
-                        {nextLevel ? `${displayedSparks} / ${nextLevel.min} Sparks` : `${displayedSparks} Sparks · Max level!`}
-                      </p>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500"
-                          style={{ width: `${animatedProgress}%`, transition: "width 0.85s cubic-bezier(0.34,1.2,0.64,1)", boxShadow: animatedProgress > 5 ? "0 0 6px rgba(45,212,191,0.7)" : "none" }} />
-                      </div>
+                  {/* v2: sparks meter removed from the main screen — growth now lives in the
+                      Kindness Tree (⋯ menu). A slim tree-stage chip replaces the meter. */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowLevels(true); }}
+                    className="w-full flex items-center gap-2.5 rounded-2xl border border-teal-100 bg-teal-50 px-3 py-2 text-left active:scale-[0.99] transition-transform">
+                    <span className="text-xl">{treeStageFor(sparkBalance).scene}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-800">{treeStageFor(sparkBalance).name}</p>
+                      <p className="text-[11px] text-slate-500">Your Kindness Tree · tap to tend it 🌱</p>
                     </div>
-                  </div>
+                  </button>
                   <div className="space-y-1">
                     <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
                     {!isChatLive && chatError && (
@@ -3093,39 +3078,8 @@ export default function App() {
               </div>
             </header>
 
-            {showLevels && createPortal(
-              <div className="fixed inset-0 z-[280] flex items-end justify-center bg-black/40" onClick={() => setShowLevels(false)}>
-                <div onClick={(e) => e.stopPropagation()}
-                  className="w-full max-w-md rounded-t-3xl bg-white px-5 pt-4"
-                  style={{ animation: "seenSheetRise 320ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
-                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-base font-bold text-slate-800">Kindness levels</h3>
-                    <button onClick={() => setShowLevels(false)} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"><X size={16} /></button>
-                  </div>
-                  <p className="mb-3 text-[12px] leading-relaxed text-slate-500">Earn ✨ sparks by sending kindness. Each level is a little badge for how much good you've put into the world.</p>
-                  <div className="max-h-[58vh] space-y-1 overflow-y-auto pb-2">
-                    {LEVEL_THRESHOLDS.map((lvl) => {
-                      const achieved = sparkBalance >= lvl.min;
-                      const isCurrent = lvl.min === currentLevel.min;
-                      return (
-                        <div key={lvl.min}
-                          className={`flex items-center gap-3 rounded-xl px-3 py-2 ${isCurrent ? "border border-teal-200 bg-teal-50" : achieved ? "bg-slate-50" : ""}`}>
-                          <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] ${achieved ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-400"}`}>
-                            {achieved ? "✓" : "🔒"}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-[13px] leading-tight ${isCurrent ? "font-bold text-teal-800" : achieved ? "font-semibold text-slate-700" : "text-slate-400"}`}>{lvl.title}</p>
-                            <p className="text-[11px] text-slate-400">{lvl.min.toLocaleString()} sparks</p>
-                          </div>
-                          {isCurrent && <span className="flex-shrink-0 rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold text-white">You're here</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>,
-              document.body
+            {showLevels && (
+              <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} onClose={() => setShowLevels(false)} />
             )}
 
             {showInstallBanner && deferredInstallRef.current && (
@@ -3176,13 +3130,13 @@ export default function App() {
                 ✅ Have you tried?
               </button>
               <button
-                onClick={() => setActiveTab("community")}
+                onClick={() => setActiveTab("journal")}
                 className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "community"
+                  activeTab === "journal"
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🌱 Community
+                📓 Journal
               </button>
               <button
                 onClick={() => setActiveTab("impact")}
@@ -3191,7 +3145,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                📖 Board
+                🪞 My SEEN Story
               </button>
             </div>
 
@@ -3207,16 +3161,14 @@ export default function App() {
 
             {activeTab === "hyt" ? (
               <HaveYouTried currentUser={currentUser} />
+            ) : activeTab === "journal" ? (
+              <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} inline />
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
               </Suspense>
-            ) : activeTab === "community" ? (
-              <CommunityArena db={db} currentUser={currentUser} profile={profile} isAdmin={isAdmin} candidates={candidates} champions={champions} />
             ) : activeTab === "impact" ? (
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
-                <KindnessBoard db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} darkMode={darkMode} />
-              </Suspense>
+              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} />
             ) : (
             <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 pt-2 pb-4"
               onClick={() => { setActiveMessageId(null); }}

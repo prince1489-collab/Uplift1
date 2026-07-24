@@ -88,9 +88,13 @@ function seedFromUid(uid) {
   return h;
 }
 
-// Deterministic daily prompt for a user + entry type. `offset` lets the user cycle to another.
-export function pickDailyPrompt(uid, type, offset = 0) {
-  const list = JOURNAL_PROMPTS[type] || JOURNAL_PROMPTS.grateful;
+// v2: one journal, one prompt a day — merge the two banks into a single "reflection" list.
+const ALL_PROMPTS = [...JOURNAL_PROMPTS.grateful, ...JOURNAL_PROMPTS.kindness];
+
+// Deterministic daily prompt for a user. `type` is legacy (per-category); "reflection"
+// (or anything unknown) draws from the merged bank. `offset` lets the user cycle to another.
+export function pickDailyPrompt(uid, type = "reflection", offset = 0) {
+  const list = JOURNAL_PROMPTS[type] || ALL_PROMPTS;
   const raw = (dayNumber() + seedFromUid(uid) + (offset | 0)) % list.length;
   return list[((raw % list.length) + list.length) % list.length];
 }
