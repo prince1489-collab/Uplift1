@@ -22,6 +22,7 @@ import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
+import { BulletinRibbon, PostComposer, PreviewPostsStrip, loadLocalPosts } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1833,6 +1834,10 @@ export default function App() {
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
+  // v2 Feed 2.0 (preview): free-text post composer + device-local preview posts
+  const [postComposerOpen, setPostComposerOpen] = useState(false);
+  const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
+  useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   // v2: deferred glimpse questions — sheet + one-time dismissible feed card
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
   const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
@@ -2858,6 +2863,12 @@ export default function App() {
           <FeelingComposer db={db} currentUser={currentUser} profile={profile}
             onClose={() => setFeelingComposerOpen(false)} />
         )}
+        {postComposerOpen && (
+          <PostComposer
+            profile={profile}
+            onPosted={(next) => setLocalPosts(next)}
+            onClose={() => setPostComposerOpen(false)} />
+        )}
         {showGlimpseSheet && currentUser && (
           <GlimpsePromptSheet
             initial={{ mostDays: profile?.mostDays, anotherLife: profile?.anotherLife }}
@@ -3152,11 +3163,10 @@ export default function App() {
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}
             {activeTab === "feed" && (
-              <FeelingsStrip
-                others={myFeeling ? [myFeeling, ...otherFeelings] : otherFeelings}
+              <BulletinRibbon
+                messages={messages}
                 myUid={currentUser?.uid}
-                onEncourage={(f) => setEncourageFeeling(f)}
-                onOpenMine={() => myFeeling && setMyFeelingPanel(myFeeling)} />
+                onCompose={() => setPostComposerOpen(true)} />
             )}
 
             {activeTab === "hyt" ? (
@@ -3191,6 +3201,8 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
+              {/* v2 preview: your own free-text posts (device-local, only you see them) */}
+              <PreviewPostsStrip posts={localPosts} onClear={() => { try { localStorage.removeItem("seen_v2_local_posts"); } catch { /* ignore */ } setLocalPosts([]); }} />
               {/* Transparent "Seen · official" welcome — shown to new users (before their first
                   send). NOT a fake human/account: a clearly-labelled system message that warms
                   the cold-start. Disappears once they send, or on dismiss. */}
