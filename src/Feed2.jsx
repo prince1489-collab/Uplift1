@@ -38,7 +38,10 @@ export function addLocalStory(story) {
 const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const firstName = (n) => (n || "Someone").split(" ")[0];
 
-// ── Worldwide Message Board — strangers only, full messages, like + reply + follow ──
+// ── Worldwide Message Board — a compact, single-broadcast rotator ──────────────
+// One stranger's message shows at a time (~2 lines), auto-rotating every few seconds.
+// Tap the message to reveal Like / Reply / Follow — collapsed by default to save space.
+const ROTATE_MS = 5000;
 export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   const strangers = useMemo(
@@ -46,49 +49,72 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggl
     [messages, myUid, focusedSet]
   );
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
+  const [idx, setIdx] = useState(0);
+  const [open, setOpen] = useState(false); // actions revealed for the current message
+
+  // Keep the index in range as the list changes.
+  useEffect(() => { if (idx >= strangers.length) setIdx(0); }, [strangers.length, idx]);
+
+  // Auto-rotate — paused while the actions are open so people can act without it moving.
+  useEffect(() => {
+    if (open || strangers.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % strangers.length), ROTATE_MS);
+    return () => clearInterval(t);
+  }, [open, strangers.length]);
+
   const like = (id) => {
     const nowLiked = !likes[id];
     const next = { ...likes, [id]: nowLiked }; setLikes(next); writeJSON(LIKES_KEY, next);
     if (nowLiked) { try { awardPoints("like"); } catch { /* ignore */ } } // waters the tree (device-local)
   };
 
+  const m = strangers[Math.min(idx, Math.max(0, strangers.length - 1))];
+  const following = m ? focusedSet.has(m.uid) : false;
+
   return (
-    <div className="border-b border-slate-100 bg-white px-3 py-2.5 flex-shrink-0">
-      <p className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">🌍 Worldwide Message Board</p>
-      {strangers.length === 0 ? (
-        <div className="rounded-2xl bg-teal-50 px-3 py-4 text-center text-[12px] text-slate-500">
+    <div className="border-b border-slate-100 bg-white px-3 py-2 flex-shrink-0">
+      <div className="flex items-center justify-between px-1 pb-1">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">🌍 Worldwide Message Board</p>
+        {strangers.length > 1 && <span className="text-[10px] font-semibold text-slate-300 tabular-nums">{idx + 1}/{strangers.length}</span>}
+      </div>
+
+      {!m ? (
+        <div className="rounded-2xl bg-teal-50 px-3 py-3 text-center text-[12px] text-slate-500">
           💛 Kind messages from around the world will appear here.
         </div>
       ) : (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollSnapType: "x mandatory" }}>
-          {strangers.map((m) => {
-            const following = focusedSet.has(m.uid);
-            return (
-              <div key={m.id} className="flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 flex flex-col"
-                style={{ width: "78%", minHeight: 128, scrollSnapAlign: "start" }}>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-sm">{flagFor(m.country)}</span>
-                  <span className="text-[11px] font-semibold text-slate-500 truncate flex-1">{firstName(m.sender)}</span>
-                  <button onClick={() => onToggleFocus?.(m)} title={following ? "In your focused feed" : "Add to focused feed"}
-                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${following ? "bg-teal-100 text-teal-700" : "bg-white border border-slate-200 text-slate-500"}`}>
-                    {following ? <UserCheck size={11} /> : <UserPlus size={11} />}{following ? "Following" : "Follow"}
-                  </button>
-                </div>
-                <p className="flex-1 text-[14px] leading-snug text-slate-800 font-medium">“{m.text}”</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <button onClick={() => like(m.id)}
-                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${likes[m.id] ? "bg-rose-50 text-rose-600" : "bg-white border border-slate-200 text-slate-500"}`}>
-                    <Heart size={12} fill={likes[m.id] ? "currentColor" : "none"} /> {likes[m.id] ? "Liked" : "Like"}
-                  </button>
-                  <button onClick={() => onReplyPrivately?.(m)}
-                    className="flex items-center gap-1 rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                    <MessageCircle size={12} /> Reply privately
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <button
+            key={m.id}
+            onClick={() => setOpen((v) => !v)}
+            className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 active:scale-[0.99] transition-transform"
+            style={{ animation: "seenFadeUp 350ms ease both" }}>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-sm">{flagFor(m.country)}</span>
+              <span className="text-[11px] font-semibold text-slate-500 truncate flex-1">{firstName(m.sender)}</span>
+              {likes[m.id] && <Heart size={11} className="text-rose-500 flex-shrink-0" fill="currentColor" />}
+              <span className="text-[10px] text-slate-300 flex-shrink-0">{open ? "tap to close" : "tap to like or reply"}</span>
+            </div>
+            <p className="text-[13px] leading-snug text-slate-800 font-medium line-clamp-2">“{m.text}”</p>
+          </button>
+
+          {open && (
+            <div className="mt-1.5 flex items-center gap-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
+              <button onClick={() => like(m.id)}
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${likes[m.id] ? "bg-rose-50 text-rose-600" : "bg-white border border-slate-200 text-slate-500"}`}>
+                <Heart size={12} fill={likes[m.id] ? "currentColor" : "none"} /> {likes[m.id] ? "Liked" : "Like"}
+              </button>
+              <button onClick={() => onReplyPrivately?.(m)}
+                className="flex items-center gap-1 rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                <MessageCircle size={12} /> Reply
+              </button>
+              <button onClick={() => onToggleFocus?.(m)}
+                className={`ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${following ? "bg-teal-100 text-teal-700" : "bg-white border border-slate-200 text-slate-500"}`}>
+                {following ? <UserCheck size={11} /> : <UserPlus size={11} />}{following ? "Following" : "Follow"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
