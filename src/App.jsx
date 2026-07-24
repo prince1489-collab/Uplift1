@@ -1841,6 +1841,10 @@ export default function App() {
   // v2: deferred glimpse questions — sheet + one-time dismissible feed card
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
   const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
+  // v2: wellbeing check-in moved out of onboarding to a post-login prompt
+  const [showWellbeingSheet, setShowWellbeingSheet] = useState(false);
+  const [wellbeingPromptDismissed, setWellbeingPromptDismissed] = useState(() => safeLocalGet("seen_wellbeing_prompt_dismissed") === "1");
+  useBackLayer(showWellbeingSheet, () => setShowWellbeingSheet(false));
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
@@ -2869,6 +2873,30 @@ export default function App() {
             onPosted={(next) => setLocalPosts(next)}
             onClose={() => setPostComposerOpen(false)} />
         )}
+        {showWellbeingSheet && currentUser && createPortal(
+          <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowWellbeingSheet(false)} />
+            <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[90dvh] overflow-y-auto flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-center pt-3 pb-2 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
+              <div className="px-5 pb-2 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-800">A quick wellbeing check-in</h2>
+                <button onClick={() => setShowWellbeingSheet(false)} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+              </div>
+              <div className="px-5 pb-8">
+                <p className="text-[13px] text-slate-500 leading-relaxed mb-3">Just for your own reflection — it's not a medical test, and you can look back on it over time.</p>
+                <WellbeingCheckin
+                  submitLabel="Save check-in"
+                  onComplete={async (scores) => {
+                    try { await saveCheckin(db, currentUser.uid, scores); await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores }, { merge: true }); } catch { /* ignore */ }
+                    setWellbeingPromptDismissed(true); safeLocalSet("seen_wellbeing_prompt_dismissed", "1");
+                    setShowWellbeingSheet(false);
+                  }}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
         {showGlimpseSheet && currentUser && (
           <GlimpsePromptSheet
             initial={{ mostDays: profile?.mostDays, anotherLife: profile?.anotherLife }}
@@ -2890,21 +2918,7 @@ export default function App() {
             onEncourage={(f) => setEncourageFeeling(f)} />
         )}
 
-        {showWelcomeMoment && (
-          <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 to-emerald-500 px-8 text-center"
-            onClick={() => setShowWelcomeMoment(false)}>
-            <div className="mb-6 text-6xl animate-bounce" style={{ animationDuration: "2s" }}>🌍</div>
-            <p className="text-white text-xl font-bold leading-snug tracking-tight max-w-xs">
-              You just joined a global community that believes one kind message can change someone's day.
-            </p>
-            <p className="mt-4 text-white/80 text-base font-medium">Start with a greeting.</p>
-            <button
-              onClick={() => setShowWelcomeMoment(false)}
-              className="mt-10 rounded-full bg-white px-8 py-3 text-sm font-bold text-teal-700 shadow-lg active:scale-95 transition-transform">
-              Let's go ✨
-            </button>
-          </div>
-        )}
+        {/* v2: green welcome-moment screen removed (onboarding is near-zero friction now) */}
 
 
         {!hasCompletedOnboarding || !profile ? (
@@ -2957,7 +2971,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <Onboarding onContinue={(data) => { setOnboardingError(""); setPendingOnboardingDetails(data); }}
+                <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
                   loading={isSavingProfile} initialData={pendingProfileData}
                   initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
               )}
@@ -2973,26 +2987,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
-                    {showEncPill ? (
-                      <button
-                        aria-label={`${unreadEnc} new encouragement — tap to read`}
-                        title="Read your encouragement"
-                        onClick={(e) => { e.stopPropagation(); setMyFeelingPanel(myFeeling); markEncouragementRead(); }}
-                        className="flex-shrink-0 flex items-center gap-1 rounded-full pl-2 pr-2.5 py-0.5 text-[10px] font-semibold text-white whitespace-nowrap leading-none"
-                        style={{ background: "linear-gradient(135deg, #f59e0b, #f43f5e)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
-                        💛 {unreadEnc} new
-                      </button>
-                    ) : (
-                      <button
-                        data-tour="feeling"
-                        aria-label={myFeeling ? "Your status — how are you feeling?" : "How are you feeling?"}
-                        title={myFeeling ? "Your status" : "How are you feeling?"}
-                        onClick={(e) => { e.stopPropagation(); if (myFeeling) { setMyFeelingPanel(myFeeling); } else { setFeelingComposerOpen(true); } }}
-                        className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-[13px] leading-none"
-                        style={{ background: "linear-gradient(135deg, #2dd4bf, #10b981)", animation: "seenBubbleFlash 1.4s ease-in-out infinite" }}>
-                        💬
-                      </button>
-                    )}
+                    {/* v2: flashing status/feeling button removed (feelings feature retired) */}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -3365,6 +3360,19 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => { setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1"); }}
+                    className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
+                </div>
+              )}
+              {/* v2: post-login wellbeing check-in prompt (moved out of onboarding) */}
+              {!wellbeingPromptDismissed && profile && !profile.wellbeing && (
+                <div className="w-full mb-3 flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
+                  <span className="text-xl flex-shrink-0">🌤️</span>
+                  <button onClick={() => setShowWellbeingSheet(true)} className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-bold text-slate-800">How have you been feeling lately?</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">A quick, private check-in — just for your own reflection →</p>
+                  </button>
+                  <button
+                    onClick={() => { setWellbeingPromptDismissed(true); safeLocalSet("seen_wellbeing_prompt_dismissed", "1"); }}
                     className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
                 </div>
               )}
