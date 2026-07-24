@@ -3124,7 +3124,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                💬 Feed
+                🤝 Connect
                 {feedUnreadCount > 0 && (
                   <span className="absolute top-0.5 -right-3 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-500 px-1 text-[8px] font-bold text-white">
                     {feedUnreadCount > 99 ? "99+" : feedUnreadCount}
@@ -3138,7 +3138,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                ✅ Have you tried?
+                🌱 Practice
               </button>
               <button
                 onClick={() => setActiveTab("journal")}
@@ -3147,7 +3147,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                📓 Journal
+                📓 Reflect
               </button>
               <button
                 onClick={() => setActiveTab("impact")}
@@ -3156,7 +3156,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🪞 My SEEN Story
+                🧭 My Journey
               </button>
             </div>
 
