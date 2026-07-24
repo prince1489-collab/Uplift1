@@ -41,6 +41,7 @@ import {
   Bell,
   Camera,
   CheckCircle2,
+  ChevronRight,
   Flame,
   Gift,
   Heart,
@@ -1462,7 +1463,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
 // PROFILE CARD
 // ─────────────────────────────────────────────────────────────────
 
-export function ProfileCard({ profile, streak, sparkBalance, onClose, db, currentUser }) {
+export function ProfileCard({ profile, streak, sparkBalance, onClose, db, currentUser, onOpenBlocked, onOpenChangePassword }) {
   const cardRef = useRef(null);
   const [copying, setCopying] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -1592,6 +1593,34 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
               Close
             </button>
           </div>
+
+          {/* Account sub-options — nested here under "Person behind the Kindness" */}
+          {(onOpenBlocked || onOpenChangePassword) && (
+            <div className="mt-3 rounded-2xl bg-white shadow-lg overflow-hidden divide-y divide-slate-100">
+              {onOpenBlocked && (
+                <button onClick={onOpenBlocked}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+                  <span className="text-base">🚫</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-700">Blocked accounts</span>
+                    <span className="block text-[11px] text-slate-400">Manage people you've blocked</span>
+                  </span>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </button>
+              )}
+              {onOpenChangePassword && (
+                <button onClick={onOpenChangePassword}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+                  <span className="text-base">🔑</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-700">Change password</span>
+                    <span className="block text-[11px] text-slate-400">Update your account password</span>
+                  </span>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

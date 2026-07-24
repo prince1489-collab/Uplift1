@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, CreditCard, Globe, Heart,
+  ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, ChevronRight, CreditCard, Globe, Heart,
   Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
@@ -252,14 +252,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
   const [showJournal, setShowJournal] = useState(false);
-  const [showWellbeing, setShowWellbeing] = useState(false);
-  const [showBlocked, setShowBlocked] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showWellbeingHub, setShowWellbeingHub] = useState(false); // hub listing Check-in + Support
+  const [showWellbeing, setShowWellbeing] = useState(false);       // the WHO-5 check-in panel
   // Android back closes these menu sub-panels instead of exiting the app (QA #2)
   useBackLayer(showJournal, () => setShowJournal(false));
+  useBackLayer(showWellbeingHub, () => setShowWellbeingHub(false));
   useBackLayer(showWellbeing, () => setShowWellbeing(false));
-  useBackLayer(showBlocked, () => setShowBlocked(false));
-  useBackLayer(showChangePassword, () => setShowChangePassword(false));
 
   const currentLevel = LEVEL_THRESHOLDS.reduce(
     (l, t) => sparkBalance >= t.min ? t : l,
@@ -351,6 +349,13 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
               <div className="px-3 py-2 space-y-0.5">
 
                 <Row
+                  tourId="m-profile"
+                  onClick={() => { onShare(); close(); }}
+                  icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
+                  label="Person behind the Kindness"
+                  sub="Your profile · blocked accounts · password"
+                />
+                <Row
                   tourId="m-world"
                   onClick={() => { onWorld(); close(); }}
                   icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
@@ -358,36 +363,11 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   sub="See who's spreading kindness"
                 />
                 <Row
-                  tourId="m-profile"
-                  onClick={() => { onShare(); close(); }}
-                  icon={<IconBox><User size={16} className="text-slate-500" /></IconBox>}
-                  label="Person behind the Kindness"
-                  sub={`Kindness Tree · ${treeStageFor(sparkBalance).name}`}
-                />
-                <Row
-                  onClick={() => { onKindnessTree?.(); close(); }}
-                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🌳</span></IconBox>}
-                  label="Kindness Tree"
-                  sub="Watch your kindness grow"
-                />
-                <Row
                   tourId="m-wellbeing"
-                  onClick={() => { setShowWellbeing(true); close(); }}
+                  onClick={() => { setShowWellbeingHub(true); close(); }}
                   icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
                   label="Wellbeing"
-                  sub="Check-in & support tools"
-                />
-                <Row
-                  onClick={() => { setShowBlocked(true); close(); }}
-                  icon={<IconBox className="bg-slate-100"><span style={{ fontSize: "15px", lineHeight: 1 }}>🚫</span></IconBox>}
-                  label="Blocked accounts"
-                  sub="Manage people you've blocked"
-                />
-                <Row
-                  onClick={() => { setShowChangePassword(true); close(); }}
-                  icon={<IconBox className="bg-slate-100"><span style={{ fontSize: "15px", lineHeight: 1 }}>🔑</span></IconBox>}
-                  label="Change password"
-                  sub="Update your account password"
+                  sub="Wellbeing check-in & Support"
                 />
 
               </div>
@@ -458,16 +438,52 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
       {showJournal && (
         <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} onClose={() => setShowJournal(false)} />
       )}
+      {showWellbeingHub && (
+        <WellbeingHubSheet
+          onCheckin={() => { setShowWellbeingHub(false); setShowWellbeing(true); }}
+          onSupport={() => { setShowWellbeingHub(false); onSupport(); }}
+          onClose={() => setShowWellbeingHub(false)}
+        />
+      )}
       {showWellbeing && (
         <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} onSupport={() => { setShowWellbeing(false); onSupport(); }} />
       )}
-      {showBlocked && (
-        <BlockedAccountsPanel db={db} currentUser={currentUser} onClose={() => setShowBlocked(false)} />
-      )}
-      {showChangePassword && (
-        <ChangePasswordPanel currentUser={currentUser} onChangePassword={onChangePassword} onClose={() => setShowChangePassword(false)} />
-      )}
     </>
+  );
+}
+
+// Wellbeing hub — two clear sub-categories: a check-in and support resources.
+function WellbeingHubSheet({ onCheckin, onSupport, onClose }) {
+  const HubRow = ({ emoji, label, sub, onClick }) => (
+    <button onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">
+      <span className="text-xl">{emoji}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-semibold text-slate-800">{label}</span>
+        <span className="block text-[12px] text-slate-500">{sub}</span>
+      </span>
+      <ChevronRight size={18} className="text-slate-300" />
+    </button>
+  );
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">💚 Wellbeing</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <p className="px-5 pb-3 text-[12px] text-slate-500 leading-relaxed">
+          A gentle place to check in with yourself, and to find support whenever you need it.
+        </p>
+        <div className="px-4 pb-8 space-y-2">
+          <HubRow emoji="🌤️" label="Wellbeing check-in" sub="A private WHO-5 reflection & your trend" onClick={onCheckin} />
+          <HubRow emoji="🛟" label="Support" sub="Helplines and supportive resources" onClick={onSupport} />
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1427,6 +1443,9 @@ export default function App() {
   });
   const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
+  // Account sub-options now live under "Person behind the Kindness" (ProfileCard)
+  const [showBlockedApp, setShowBlockedApp] = useState(false);
+  const [showChangePasswordApp, setShowChangePasswordApp] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [premiumSuccess, setPremiumSuccess] = useState(false);
   // Detect Stripe checkout return
@@ -2904,7 +2923,15 @@ export default function App() {
         <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
         {showProfileCard && (
-          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser} />
+          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
+            onOpenBlocked={() => setShowBlockedApp(true)}
+            onOpenChangePassword={() => setShowChangePasswordApp(true)} />
+        )}
+        {showBlockedApp && (
+          <BlockedAccountsPanel db={db} currentUser={currentUser} onClose={() => setShowBlockedApp(false)} />
+        )}
+        {showChangePasswordApp && (
+          <ChangePasswordPanel currentUser={currentUser} onChangePassword={changePassword} onClose={() => setShowChangePasswordApp(false)} />
         )}
 
         {glimpse && (
