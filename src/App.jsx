@@ -12,7 +12,6 @@ import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
   ReactionBurstLayer, useReactionBurst, FLAG_MAP } from "./MicroAnimations";
 
-import TourGuide from "./TourGuide";
 import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
@@ -20,7 +19,7 @@ import IntroStep from "./IntroStep";
 import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
-const LifeHacks = React.lazy(() => import("./LifeHacks"));
+import HaveYouTried from "./HaveYouTried";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -620,6 +619,64 @@ function ChangePasswordPanel({ currentUser, onChangePassword, onClose }) {
   );
 }
 
+// v2: the glimpse questions moved out of signup. A couple of days in, a small feed
+// card invites the user to add them; this sheet collects the two lines and saves
+// them to the profile (owner update — no rules change needed).
+function GlimpsePromptSheet({ initial = {}, onSave, onClose }) {
+  const [mostDays, setMostDays] = useState(initial.mostDays || "");
+  const [anotherLife, setAnotherLife] = useState(initial.anotherLife || "");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onSave({ mostDays: mostDays.trim(), anotherLife: anotherLife.trim() }); } catch { /* ignore */ }
+    setBusy(false);
+    onClose?.();
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">The person behind the kindness</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain px-5 pb-8 space-y-3">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Two light-hearted lines others see when they tap your name. Keep it playful — no
+            personal details.
+          </p>
+          <div>
+            <label className="text-sm font-medium text-slate-600">💛 Most days, I'm…</label>
+            <input value={mostDays} onChange={(e) => setMostDays(e.target.value)} maxLength={120}
+              placeholder="a tired but hopeful nurse"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-3 text-sm text-slate-900 placeholder:text-slate-400" />
+            <GlimpseChips examples={MOST_DAYS_EXAMPLES} accent="amber" onPick={setMostDays} />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600">✨ In another life, I'd be…</label>
+            <input value={anotherLife} onChange={(e) => setAnotherLife(e.target.value)} maxLength={120}
+              placeholder="a jazz pianist in Lisbon"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 px-3 text-sm text-slate-900 placeholder:text-slate-400" />
+            <GlimpseChips examples={ANOTHER_LIFE_EXAMPLES} accent="violet" onPick={setAnotherLife} />
+          </div>
+          <button onClick={save} disabled={busy || (!mostDays.trim() && !anotherLife.trim())}
+            className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 const REACTION_WORD = { "❤️": "heart", "🙏": "thank you", "😊": "smile", "🌟": "star" };
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const TOAST_AGE_LIMIT_MS = 30 * 60 * 1000; // reactions older than 30 min never pop a toast
@@ -966,7 +1023,9 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
     return a;
   })();
   const tooYoung = age !== null && age < 13;
-  const valid = Boolean(form.country) && Boolean(form.email) && Boolean(form.mostDays.trim()) && Boolean(form.anotherLife.trim()) && dobComplete && !tooYoung;
+  // v2: the glimpse questions are no longer asked at signup — they arrive as a gentle
+  // in-app prompt a couple of days in (GlimpsePromptCard). Signup = country/email/DOB only.
+  const valid = Boolean(form.country) && Boolean(form.email) && dobComplete && !tooYoung;
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -1037,28 +1096,8 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-300 bg-slate-100/80 p-3 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-500 uppercase">
-            <Sparkles size={13} /><span>A little about you</span>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-600">💛 Most days, I'm…</label>
-            <input name="mostDays" value={form.mostDays} onChange={onChange} maxLength={120}
-              placeholder="a tired but hopeful nurse"
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
-            <GlimpseChips examples={MOST_DAYS_EXAMPLES} accent="amber"
-              onPick={(v) => setForm((prev) => ({ ...prev, mostDays: v }))} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-600">✨ In another life, I'd be…</label>
-            <input name="anotherLife" value={form.anotherLife} onChange={onChange} maxLength={120}
-              placeholder="a jazz pianist in Lisbon"
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 placeholder:text-slate-400" />
-            <GlimpseChips examples={ANOTHER_LIFE_EXAMPLES} accent="violet"
-              onPick={(v) => setForm((prev) => ({ ...prev, anotherLife: v }))} />
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">Keep it light — no personal details. This is the little glimpse others see.</p>
-        </div>
+        {/* v2: the "little about you" glimpse questions moved out of signup — they arrive
+            as a gentle in-app prompt after a couple of days (GlimpsePromptSheet). */}
 
         <button type="submit" disabled={!valid}
           className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"} disabled:cursor-not-allowed`}>
@@ -1800,6 +1839,9 @@ export default function App() {
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
+  // v2: deferred glimpse questions — sheet + one-time dismissible feed card
+  const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
+  const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
@@ -1819,6 +1861,7 @@ export default function App() {
   useBackLayer(Boolean(encourageFeeling), () => setEncourageFeeling(null));
   useBackLayer(Boolean(myFeelingPanel), () => setMyFeelingPanel(null));
   useBackLayer(showMap, () => setShowMap(false));
+  useBackLayer(showGlimpseSheet, () => setShowGlimpseSheet(false));
   useBackLayer(activeTab !== "feed", () => setActiveTab("feed"));
 
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
@@ -1983,27 +2026,8 @@ export default function App() {
     if (isRealSignedInUser && hasCompletedOnboarding) scheduleGreetingWindowNotification(profile);
   }, [isRealSignedInUser, hasCompletedOnboarding]);
 
-  // First-time guided spotlight tour — show once per account, after onboarding, on the feed.
-  // Gated on the user's Firestore profile (tourCompletedAt) so it's per-account, not per-browser.
-  const tourScheduledRef = useRef(false);
-  useEffect(() => {
-    if (tourScheduledRef.current) return;
-    if (!isRealSignedInUser || !hasCompletedOnboarding || !profile) return;
-    if (showWelcomeMoment || activeTab !== "feed") return;
-    // Gate solely on the tour VERSION so a version bump re-runs the refreshed tour once for
-    // everyone (existing users included), then never again. finishTour writes the new version.
-    if (profile.tourCompletedVersion === TOUR_VERSION) { tourScheduledRef.current = true; return; }
-    tourScheduledRef.current = true;
-    // Start the tour promptly once the user lands on the feed (welcome moment dismissed). Short
-    // settle only so the feed has painted; TourGuide has its own ~360ms per-step measure delay.
-    // NOTE: deliberately no clearTimeout cleanup. The profile listener uses
-    // includeMetadataChanges, so the `profile` reference changes several times right after
-    // onboarding (cache→server, pending-write flush). A cleanup that cleared this timer would
-    // cancel it on that churn and — because the one-shot ref above is already burned — never
-    // reschedule, so the tour would never start. That race lands inside the 250ms window
-    // reliably on iOS WKWebView (worked on Android only by luck of faster metadata settling).
-    setTimeout(() => setTourActive(true), 250);
-  }, [isRealSignedInUser, hasCompletedOnboarding, profile, showWelcomeMoment, activeTab]);
+  // v2: the guided spotlight tour is retired — contextual coach-marks teach at the moment
+  // of first use instead. `tourActive` stays (always false) so coach-mark gating is untouched.
 
   const finishTour = useCallback(() => {
     setHeaderOpen(false);
@@ -2840,6 +2864,16 @@ export default function App() {
           <FeelingComposer db={db} currentUser={currentUser} profile={profile}
             onClose={() => setFeelingComposerOpen(false)} />
         )}
+        {showGlimpseSheet && currentUser && (
+          <GlimpsePromptSheet
+            initial={{ mostDays: profile?.mostDays, anotherLife: profile?.anotherLife }}
+            onSave={async (fields) => {
+              await setDoc(userProfileRef(currentUser.uid), fields, { merge: true });
+              setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1");
+            }}
+            onClose={() => setShowGlimpseSheet(false)}
+          />
+        )}
         {encourageFeeling && (
           <EncourageSheet db={db} currentUser={currentUser} profile={profile}
             feeling={encourageFeeling} onClose={() => setEncourageFeeling(null)} />
@@ -3133,6 +3167,15 @@ export default function App() {
                 )}
               </button>
               <button
+                onClick={() => setActiveTab("hyt")}
+                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "hyt"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                ✅ Have you tried?
+              </button>
+              <button
                 onClick={() => setActiveTab("community")}
                 className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "community"
@@ -3150,15 +3193,6 @@ export default function App() {
                 }`}>
                 📖 Board
               </button>
-              <button
-                onClick={() => setActiveTab("hacks")}
-                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "hacks"
-                    ? "border-teal-500 text-teal-600"
-                    : "border-transparent text-slate-400 hover:text-slate-600"
-                }`}>
-                💡 Life Hacks
-              </button>
             </div>
 
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
@@ -3171,10 +3205,8 @@ export default function App() {
                 onOpenMine={() => myFeeling && setMyFeelingPanel(myFeeling)} />
             )}
 
-            {activeTab === "hacks" ? (
-              <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
-                <LifeHacks db={db} currentUser={currentUser} profile={profile} />
-              </Suspense>
+            {activeTab === "hyt" ? (
+              <HaveYouTried currentUser={currentUser} />
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
@@ -3353,6 +3385,23 @@ export default function App() {
                     </div>
                     <span className="p-1 flex-shrink-0 text-violet-300">✕</span>
                   </button>
+                </div>
+              )}
+              {/* v2: deferred glimpse invitation — appears a couple of days in, once,
+                  only while the profile still has no glimpse lines. */}
+              {!glimpsePromptDismissed && profile && !profile.mostDays && !profile.anotherLife &&
+                (typeof profile.onboardingCompletedAt === "number"
+                  ? Date.now() - profile.onboardingCompletedAt > 48 * 60 * 60 * 1000
+                  : hasSent) && (
+                <div className="w-full mb-3 flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
+                  <span className="text-xl flex-shrink-0">💛</span>
+                  <button onClick={() => setShowGlimpseSheet(true)} className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-bold text-slate-800">Help people see the person behind the kindness</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Add two playful lines to your profile →</p>
+                  </button>
+                  <button
+                    onClick={() => { setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1"); }}
+                    className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
                 </div>
               )}
               {/* Crisis-support banner — surfaced when your shared feeling reads as distressed.
@@ -3671,7 +3720,7 @@ export default function App() {
             {/* ── First-time guided spotlight tour ── */}
             {/* Never render over the post-onboarding "Let's go" welcome overlay — otherwise the
                 tour spotlight targets feed elements that are hidden behind it (out of sync). */}
-            {tourActive && !showWelcomeMoment && <TourGuide steps={tourSteps} onDone={finishTour} />}
+            {/* v2: guided tour retired (coach-marks teach in context instead) */}
 
             {/* ── Admin: confirm clear-feed modal ── */}
             {adminConfirm && (
