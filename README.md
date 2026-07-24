@@ -55,3 +55,4 @@ If users can sign in but fail on the profile form, Firebase usually rejected the
    - Verify the client has network access and no blockers are preventing calls to Firebase services.
 
 The app now surfaces clearer onboarding save errors for common Firestore codes (`permission-denied`, `unavailable`, and `failed-precondition`) to help diagnose this faster.
+
