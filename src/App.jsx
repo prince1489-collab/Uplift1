@@ -22,7 +22,7 @@ import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
-import { BulletinRibbon, PostComposer, PreviewPostsStrip, loadLocalPosts } from "./Feed2";
+import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, loadLocalPosts, loadFocused, loadKindMoments } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1129,10 +1129,10 @@ function MysteryGiftModal({ open, reward, onClose }) {
   );
 }
 
-function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSending = false, remainingToday, db, currentUser, communityGreetings = [] }) {
+function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, onPersonalShare, isSending = false, remainingToday, db, currentUser, communityGreetings = [] }) {
   const isPremium = true;
   const categories = getGreetingsByCategory(isPremium);
-  const [activeCategory, setActiveCategory] = useState("community");
+  const [activeCategory, setActiveCategory] = useState("core");
 
   // Local greetings filtered to the user's language; fall back to global phrases if no match.
   const userLang = LANGUAGE_MAP[profile?.country] ?? null;
@@ -1147,8 +1147,8 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
     : activeCategory === "local"
     ? localGreetings
     : categories.find((c) => c.id === activeCategory)?.greetings ?? [];
+  // v2: Community category retired; replaced by a personalised free-text share option.
   const allCategories = [
-    { id: "community", label: "Community", emoji: "🌱", isPremium: false },
     { id: "core",      label: "Greetings", emoji: "☀️", isPremium: false },
     { id: "warmth",    label: "Warmth",    emoji: "💛", isPremium: false },
     { id: "calm",      label: "Calm",      emoji: "🌿", isPremium: false },
@@ -1192,6 +1192,18 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, isSendi
           );
         })}
       </div>
+      {/* v2: personalised free-text share (replaces the retired Community pool) */}
+      {onPersonalShare && (
+        <button onClick={onPersonalShare}
+          className="w-full flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-left active:scale-[0.99] transition-transform">
+          <span className="text-lg">✍️</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-violet-800">In your own words</p>
+            <p className="text-[11px] text-violet-500">Write your own kind message to share</p>
+          </div>
+          <span className="text-violet-400">→</span>
+        </button>
+      )}
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {isCommunity ? (
           <>
@@ -1834,10 +1846,21 @@ export default function App() {
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
-  // v2 Feed 2.0 (preview): free-text post composer + device-local preview posts
+  // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
+  const [focusedUids, setFocusedUids] = useState(() => loadFocused());
+  const [kindMoments, setKindMoments] = useState(() => loadKindMoments());
+  const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
+  useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
+  const toggleFocus = (m) => {
+    setFocusedUids((prev) => {
+      const next = prev.includes(m.uid) ? prev.filter((u) => u !== m.uid) : [...prev, m.uid];
+      try { localStorage.setItem("seen_v2_focused_uids", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
   // v2: deferred glimpse questions — sheet + one-time dismissible feed card
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
   const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
@@ -2873,6 +2896,13 @@ export default function App() {
             onPosted={(next) => setLocalPosts(next)}
             onClose={() => setPostComposerOpen(false)} />
         )}
+        {replyTarget && (
+          <PrivateReplySheet
+            target={replyTarget}
+            me={profile}
+            onDone={(next) => setKindMoments(next)}
+            onClose={() => setReplyTarget(null)} />
+        )}
         {showWellbeingSheet && currentUser && createPortal(
           <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowWellbeingSheet(false)} />
@@ -3158,10 +3188,12 @@ export default function App() {
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}
             {activeTab === "feed" && (
-              <BulletinRibbon
+              <WorldwideBoard
                 messages={messages}
                 myUid={currentUser?.uid}
-                onCompose={() => setPostComposerOpen(true)} />
+                focusedUids={focusedUids}
+                onToggleFocus={toggleFocus}
+                onReplyPrivately={(m) => setReplyTarget(m)} />
             )}
 
             {activeTab === "hyt" ? (
@@ -3403,10 +3435,16 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {/* v2: "kind moment" broadcasts from private exchanges (preview, device-local) */}
+              {kindMoments.map((km) => <KindMomentCard key={km.id} moment={km} />)}
+              {/* v2 Focused Feed: only people you've chosen (+ your own messages). Strangers live
+                  in the Worldwide Message Board above. */}
               {(() => {
+                const focusedSet = new Set(focusedUids);
+                const focusedMsgs = messages.filter((m) => m.uid && !blockedUids.has(m.uid) && (focusedSet.has(m.uid) || m.uid === currentUser.uid));
+                if (focusedMsgs.length === 0 && kindMoments.length === 0) return <FocusedFeedEmpty />;
                 const grouped = [];
-                messages.forEach((m) => {
-                  if (m.uid && blockedUids.has(m.uid)) return; // hide blocked users' messages
+                focusedMsgs.forEach((m) => {
                   const last = grouped[grouped.length - 1];
                   const tsMs = typeof m.timestamp === "number" ? m.timestamp : Number(m.timestamp);
                   const mDay = m.timestamp ? new Date(tsMs).toDateString() : null;
@@ -3679,6 +3717,7 @@ export default function App() {
                     onSelect={handleSendMessage}
                     onClose={() => setPickerOpen(false)}
                     onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
+                    onPersonalShare={() => { setPickerOpen(false); setPostComposerOpen(true); }}
                     isSending={isSending}
                     remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
                     db={db}
