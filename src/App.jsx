@@ -1874,7 +1874,6 @@ export default function App() {
     window.addEventListener("seen-points", onPts);
     return () => window.removeEventListener("seen-points", onPts);
   }, []);
-  useEffect(() => { if (isRealSignedInUser) awardPoints("dailyOpen", { oncePerDay: true }); }, [isRealSignedInUser]);
   // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
@@ -1928,6 +1927,8 @@ export default function App() {
   useBackLayer(activeTab !== "feed", () => setActiveTab("feed"));
 
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
+  // v2 preview: award the daily first-open once per day (defined after isRealSignedInUser to avoid TDZ)
+  useEffect(() => { if (isRealSignedInUser) awardPoints("dailyOpen", { oncePerDay: true }); }, [isRealSignedInUser]);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
   const [adminClearing, setAdminClearing] = useState(false);
