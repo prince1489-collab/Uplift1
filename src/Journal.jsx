@@ -10,9 +10,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { playCheckIn } from "./sounds";
-import { ArrowLeft, Trash2, BookOpen, Sprout, History, ChevronRight, Folder } from "lucide-react";
-import { useSparkCounter } from "./MicroAnimations";
+import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt } from "./JournalPrompts";
+import { awardPoints } from "./points";
+import { addLocalStory } from "./Feed2";
 
 const TYPES = [
   { id: "grateful", label: "Grateful", emoji: "🙏", color: "#f59e0b" },
@@ -201,7 +202,87 @@ function MonthHeatmap({ counts }) {
   );
 }
 
-export default function JournalPanel({ db, currentUser, darkMode = false, inline = false, onClose }) {
+// ── Share a reflection to the feed as a Featured Story (v2 preview — device-local) ──
+const ENRICH_PROMPTS = [
+  { key: "matter", label: "What made this matter to you?" },
+  { key: "who", label: "Who was it for — and why them?" },
+  { key: "feel", label: "How did it leave you feeling?" },
+];
+function ShareStorySheet({ entry, authorName, country, onShared, onClose }) {
+  const [enrich, setEnrich] = useState({});
+  const [anon, setAnon] = useState(false);
+  const [posting, setPosting] = useState(false);
+
+  const share = () => {
+    if (posting) return;
+    setPosting(true);
+    const extras = ENRICH_PROMPTS
+      .map((p) => (enrich[p.key]?.trim() ? { q: p.label, a: enrich[p.key].trim() } : null))
+      .filter(Boolean);
+    addLocalStory({
+      text: entry.text,
+      enrich: extras,
+      anonymous: anon,
+      authorName: anon ? "Someone, somewhere" : (authorName || "A member"),
+      country: anon ? null : (country || null),
+      date: entry.date || null,
+    });
+    try { awardPoints("story"); } catch { /* ignore */ }
+    try { playCheckIn(); } catch { /* ignore */ }
+    onShared?.();
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 flex items-center gap-3 border-b border-slate-100 bg-white px-4 py-3">
+          <h3 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <Share2 size={15} className="text-teal-500" /> Share as a Featured Story
+          </h3>
+          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+        </div>
+        <div className="px-4 py-4 space-y-4">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Your reflection</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{entry.text}</p>
+          </div>
+          <div className="space-y-3">
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Add a little more so others can feel it too (all optional).
+            </p>
+            {ENRICH_PROMPTS.map((p) => (
+              <div key={p.key}>
+                <label className="text-[11px] font-semibold text-slate-600">{p.label}</label>
+                <textarea rows={2} value={enrich[p.key] || ""}
+                  onChange={(e) => setEnrich((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                  className="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-teal-400 focus:outline-none" />
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setAnon((v) => !v)}
+            className="w-full flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-left">
+            <span className={`grid h-6 w-6 flex-shrink-0 place-items-center rounded-md border-2 transition-colors ${anon ? "border-teal-500 bg-teal-500 text-white" : "border-slate-300 text-transparent"}`}>
+              <Check size={14} strokeWidth={3} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-semibold text-slate-800">Share anonymously</span>
+              <span className="block text-[11px] text-slate-500">Your name and country won't be shown.</span>
+            </span>
+          </button>
+          <button onClick={share} disabled={posting}
+            className="w-full rounded-full bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
+            {posting ? "Sharing…" : "Share to Featured Stories ✨"}
+          </button>
+          <p className="text-center text-[10px] text-slate-400">Preview: stories stay on this device only.</p>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export default function JournalPanel({ db, currentUser, profile, darkMode = false, inline = false, onClose }) {
   const uid = currentUser?.uid;
   const type = "reflection"; // v2: single-category journal
   const [date, setDate] = useState(todayStr());
@@ -210,6 +291,8 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
   const [entries, setEntries] = useState([]);
   const [celebrate, setCelebrate] = useState(false);
   const [expandPast, setExpandPast] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false); // v2: calendar collapsed by default to reclaim space
+  const [shareEntry, setShareEntry] = useState(null); // entry being shared as a Featured Story
   const [openFolders, setOpenFolders] = useState(null); // Set of open folder keys (null → init to newest)
   const prevWeekly = useRef(null);
   const prevWeeks = useRef(null);
@@ -244,7 +327,6 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
   const curWeek = currentWeekStartKey();
   const reflectionsThisWeek = entries.filter((e) => e.date && weekKeyFromStr(e.date) === curWeek).length;
   const onThisDay = pickOnThisDay(entries);
-  const { displayed: totalDisp } = useSparkCounter(entries.length);
 
   // Folder tree (Year → Month → Week). Default-open the path to the newest entry.
   const folders = buildFolders(entries);
@@ -272,12 +354,19 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-[10px] text-slate-400">{fmtDate(e.date)}</span>
+            <button onClick={() => setShareEntry(e)} title="Share as story" className="text-slate-300 hover:text-teal-500 transition-colors">
+              <Share2 size={12} />
+            </button>
             <button onClick={() => handleDelete(e.id)} title="Delete" className="text-slate-300 hover:text-red-400 transition-colors">
               <Trash2 size={12} />
             </button>
           </div>
         </div>
         <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed relative">{e.text}</p>
+        <button onClick={() => setShareEntry(e)}
+          className="mt-2 inline-flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-1 text-[10px] font-semibold text-teal-600 hover:bg-teal-100 transition-colors">
+          <Share2 size={10} /> Share as a Featured Story
+        </button>
       </div>
     );
   };
@@ -310,6 +399,7 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
         type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
       });
       setText("");
+      try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree
       playCheckIn();
     } catch (_) { /* best-effort */ }
     setSaving(false);
@@ -338,45 +428,31 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Stats & gentle weekly cadence header */}
+        {/* v2: numeric stats now live in "My Journey". Reflect stays a calm writing space.
+            A slim, non-numeric weekly-cadence line keeps the gentle rhythm without a stats block. */}
         {entries.length > 0 && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
-            <div className="flex items-center">
-              <div className="flex-1 text-center">
-                <p className="text-2xl font-extrabold text-slate-800 tabular-nums">{totalDisp}</p>
-                <p className="text-[10px] text-slate-500">reflections</p>
-              </div>
-              <div className="flex-1 text-center">
-                <div className="inline-flex items-center justify-center gap-1">
-                  <Sprout size={16} className="text-emerald-500" />
-                  <span className="text-2xl font-extrabold text-emerald-600 tabular-nums">{weeksActive}</span>
-                </div>
-                <p className="text-[10px] text-slate-500">{weeksActive === 1 ? "week active" : "weeks active"}</p>
-              </div>
-              <div className="flex-1 text-center">
-                <p className="text-sm font-bold text-slate-700">🙏 {gratefulCount} · 💚 {kindnessCount}</p>
-                <p className="text-[10px] text-slate-500">grateful · kindness</p>
-              </div>
-            </div>
-            {/* Gentle weekly goal — encouraging, never punitive */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold text-slate-500">
-                  {reflectionsThisWeek > 0
-                    ? `Reflections this week: ${reflectionsThisWeek} of ${WEEKLY_GOAL}`
-                    : "A fresh week — whenever you're ready 🌱"}
-                </span>
-                {reflectionsThisWeek >= WEEKLY_GOAL && <span className="text-[10px] font-bold text-emerald-600">✓ lovely rhythm</span>}
-              </div>
-              <div className="h-1.5 rounded-full bg-white/70 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-500" style={{ width: `${goalPct}%` }} />
-              </div>
-            </div>
+          <div className="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-100 px-4 py-2.5">
+            <span className="text-[11px] font-semibold text-slate-500">
+              {reflectionsThisWeek > 0
+                ? `Reflections this week: ${reflectionsThisWeek} of ${WEEKLY_GOAL}`
+                : "A fresh week — whenever you're ready 🌱"}
+            </span>
+            {reflectionsThisWeek >= WEEKLY_GOAL && <span className="text-[10px] font-bold text-emerald-600">✓ lovely rhythm</span>}
           </div>
         )}
 
-        {/* Heatmap */}
-        {entries.length > 0 && <MonthHeatmap counts={counts} />}
+        {/* Calendar — collapsed by default (it's spacious); tap to reveal */}
+        {entries.length > 0 && (
+          <div>
+            <button onClick={() => setShowCalendar((v) => !v)}
+              className="w-full flex items-center gap-2 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors">
+              <Calendar size={14} className="text-teal-500" />
+              <span className="text-[12px] font-semibold text-slate-700">This month's reflections</span>
+              <ChevronRight size={14} className={`ml-auto text-slate-400 transition-transform ${showCalendar ? "rotate-90" : ""}`} />
+            </button>
+            {showCalendar && <div className="mt-2"><MonthHeatmap counts={counts} /></div>}
+          </div>
+        )}
 
         {/* On this day — resurface a past reflection */}
         {onThisDay && (
@@ -470,6 +546,16 @@ export default function JournalPanel({ db, currentUser, darkMode = false, inline
           )}
         </div>
       </div>
+
+      {shareEntry && (
+        <ShareStorySheet
+          entry={shareEntry}
+          authorName={profile?.fullName}
+          country={profile?.country}
+          onShared={() => setShareEntry(null)}
+          onClose={() => setShareEntry(null)}
+        />
+      )}
     </>
   );
 

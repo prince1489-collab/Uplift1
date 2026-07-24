@@ -8,13 +8,15 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
+import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Sparkles, ChevronRight } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { awardPoints } from "./points";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids";
 const MOMENTS_KEY = "seen_v2_kind_moments";
 const LIKES_KEY = "seen_v2_board_likes";
+const STORIES_KEY = "seen_v2_stories";
 const MAX_LEN = 80;
 const BLOCKLIST = ["hate", "kill", "stupid", "ugly", "idiot", "loser"];
 
@@ -25,6 +27,14 @@ export const loadLocalPosts = () => readJSON(POSTS_KEY, []);
 const saveLocalPosts = (l) => writeJSON(POSTS_KEY, l.slice(0, 30));
 export const loadFocused = () => readJSON(FOCUS_KEY, []);
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
+export const loadLocalStories = () => readJSON(STORIES_KEY, []);
+// Add a Featured Story (from a shared journal reflection). Device-local; never Firestore.
+export function addLocalStory(story) {
+  const id = `story_${loadLocalStories().length + 1}_${(story.text || "").length}`;
+  const next = [{ id, ...story, ts: Date.now() }, ...loadLocalStories()].slice(0, 20);
+  writeJSON(STORIES_KEY, next);
+  return next;
+}
 const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const firstName = (n) => (n || "Someone").split(" ")[0];
 
@@ -36,7 +46,11 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggl
     [messages, myUid, focusedSet]
   );
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
-  const like = (id) => { const next = { ...likes, [id]: !likes[id] }; setLikes(next); writeJSON(LIKES_KEY, next); };
+  const like = (id) => {
+    const nowLiked = !likes[id];
+    const next = { ...likes, [id]: nowLiked }; setLikes(next); writeJSON(LIKES_KEY, next);
+    if (nowLiked) { try { awardPoints("like"); } catch { /* ignore */ } } // waters the tree (device-local)
+  };
 
   return (
     <div className="border-b border-slate-100 bg-white px-3 py-2.5 flex-shrink-0">
@@ -109,6 +123,7 @@ export function PrivateReplySheet({ target, me, onDone, onClose }) {
     };
     const next = [moment, ...loadKindMoments()].slice(0, 30);
     writeJSON(MOMENTS_KEY, next);
+    try { awardPoints("reply"); } catch { /* ignore */ } // waters the tree (device-local)
     onDone?.(next);
     setTimeout(() => onClose?.(), 1000);
   };
@@ -213,6 +228,65 @@ export function PostComposer({ profile, onPosted, onClose }) {
             Preview: your post is screened by a (mock) kindness check and saved only on this device. The live
             version will screen every post with AI moderation before anyone sees it.
           </p>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Featured Stories — reflections members chose to share (device-local preview) ──
+export function FeaturedStories({ stories = [], onOpen }) {
+  if (!stories.length) return null;
+  return (
+    <div className="mb-3">
+      <p className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1">
+        <Sparkles size={12} className="text-amber-400" /> Featured stories
+      </p>
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollSnapType: "x mandatory" }}>
+        {stories.map((s) => (
+          <button key={s.id} onClick={() => onOpen?.(s)}
+            className="flex-shrink-0 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left flex flex-col"
+            style={{ width: "80%", minHeight: 132, scrollSnapAlign: "start" }}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-sm">{s.anonymous ? "🕊️" : flagFor(s.country)}</span>
+              <span className="text-[11px] font-semibold text-slate-500 truncate flex-1">{s.anonymous ? "Someone, somewhere" : firstName(s.authorName)}</span>
+              <ChevronRight size={14} className="text-amber-400" />
+            </div>
+            <p className="flex-1 text-[14px] leading-snug text-slate-800 font-medium line-clamp-4">"{s.text}"</p>
+            <span className="mt-2 text-[10px] font-semibold text-amber-600">Read story →</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function FeaturedStoryReader({ story, onClose }) {
+  if (!story) return null;
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[260] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
+        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5"><Sparkles size={15} className="text-amber-400" /> Featured story</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto px-5 py-6">
+        <div className="mx-auto max-w-md space-y-5">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{story.anonymous ? "🕊️" : flagFor(story.country)}</span>
+            <div>
+              <p className="text-sm font-bold text-slate-800">{story.anonymous ? "Someone, somewhere" : (story.authorName || "A member")}</p>
+              <p className="text-[11px] text-slate-400">A shared reflection</p>
+            </div>
+          </div>
+          <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">"{story.text}"</p>
+          {Array.isArray(story.enrich) && story.enrich.map((e, i) => (
+            <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">{e.q}</p>
+              <p className="mt-1 text-[15px] text-slate-700 leading-relaxed whitespace-pre-wrap">{e.a}</p>
+            </div>
+          ))}
+          <p className="pt-4 text-center text-[10px] text-slate-400">Preview: featured stories are stored on this device only.</p>
         </div>
       </div>
     </div>,

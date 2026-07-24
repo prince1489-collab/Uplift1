@@ -23,7 +23,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES, TreeScene } from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints } from "./points";
-import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, loadLocalPosts, loadFocused, loadKindMoments } from "./Feed2";
+import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFocused, loadKindMoments, loadLocalStories } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1861,6 +1861,14 @@ export default function App() {
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
   const [focusedUids, setFocusedUids] = useState(() => loadFocused());
   const [kindMoments, setKindMoments] = useState(() => loadKindMoments());
+  const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
+  const [openStory, setOpenStory] = useState(null); // Featured story being read
+  useEffect(() => {
+    const refresh = () => setFeaturedStories(loadLocalStories());
+    window.addEventListener("seen-points", refresh); // stories share the same award event
+    window.addEventListener("focus", refresh);
+    return () => { window.removeEventListener("seen-points", refresh); window.removeEventListener("focus", refresh); };
+  }, []);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
@@ -3139,6 +3147,8 @@ export default function App() {
               <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree} onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
             )}
 
+            {openStory && <FeaturedStoryReader story={openStory} onClose={() => setOpenStory(null)} />}
+
             {showInstallBanner && deferredInstallRef.current && (
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -3220,7 +3230,7 @@ export default function App() {
             {activeTab === "hyt" ? (
               <HaveYouTried currentUser={currentUser} dob={profile?.dob} />
             ) : activeTab === "journal" ? (
-              <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} inline />
+              <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode} inline />
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
@@ -3249,6 +3259,8 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
+              {/* v2 preview: Featured stories shared from members' reflections (device-local) */}
+              <FeaturedStories stories={featuredStories} onOpen={(s) => setOpenStory(s)} />
               {/* v2 preview: your own free-text posts (device-local, only you see them) */}
               <PreviewPostsStrip posts={localPosts} onClear={() => { try { localStorage.removeItem("seen_v2_local_posts"); } catch { /* ignore */ } setLocalPosts([]); }} />
               {/* Transparent "Seen · official" welcome — shown to new users (before their first
