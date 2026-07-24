@@ -20,8 +20,9 @@ import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
-import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
+import KindnessTreePanel, { treeStageFor, TREE_STAGES, TreeScene } from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
+import { awardPoints, getPoints } from "./points";
 import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, loadLocalPosts, loadFocused, loadKindMoments } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -1833,6 +1834,7 @@ export default function App() {
   }, [echoToast]);
   const [showMap, setShowMap] = useState(false);
   const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
+  const [autoWaterTree, setAutoWaterTree] = useState(false); // v2: first-send routes globe→tree with a watering animation
   const [welcomeDismissed, setWelcomeDismissed] = useState(() => { try { return localStorage.getItem("seen_welcome_dismissed") === "1"; } catch { return false; } }); // transparent "Seen · official" welcome card
   const [coachSeen, setCoachSeen] = useState(() => { try { return localStorage.getItem("seen_send_coach_seen") === "1"; } catch { return false; } }); // first-time "tap to send" coach-mark
   const markCoachSeen = () => { setCoachSeen(true); try { localStorage.setItem("seen_send_coach_seen", "1"); } catch { /* ignore */ } };
@@ -1846,6 +1848,14 @@ export default function App() {
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
+  // v2 (preview): local points ledger — grows the Kindness Tree on top of the real spark balance
+  const [localPoints, setLocalPoints] = useState(() => getPoints());
+  useEffect(() => {
+    const onPts = () => setLocalPoints(getPoints());
+    window.addEventListener("seen-points", onPts);
+    return () => window.removeEventListener("seen-points", onPts);
+  }, []);
+  useEffect(() => { if (isRealSignedInUser) awardPoints("dailyOpen", { oncePerDay: true }); }, [isRealSignedInUser]);
   // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
@@ -2406,6 +2416,8 @@ export default function App() {
 
   const isPremium = true; // all features free — grow the user base
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
+  // v2 tree balance = real sparks + device-local preview points (grows the Kindness Tree)
+  const treeBalance = sparkBalance + localPoints;
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
   const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
   const progressPercent = useMemo(() => {
@@ -2630,6 +2642,7 @@ export default function App() {
       const newStreak = streak + 1;
       anim.triggerSparkBurst(85, 92);
       haptic([10, 30, 10]);
+      awardPoints("send"); // v2 preview: waters the Kindness Tree (device-local)
       if (hasSent) playSend(); else playFirstSend(); // giving-is-the-reward sound
       const sendTs = Date.now();
       setLastSendTime(sendTs);
@@ -2638,10 +2651,18 @@ export default function App() {
       try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
       if (!hasSent) {
         // First send ever — skip the prompt, open the globe automatically so they
-        // see their arc flying to another country.
+        // see their arc flying to another country, then (v2) glide straight to the
+        // Kindness Tree so they watch their kindness water the seed.
         setHasSent(true);
         try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {}
         setTimeout(() => setShowMap(true), 1100);
+        let firstV2 = false;
+        try { firstV2 = !localStorage.getItem("seen_v2_first_send_done"); } catch (_) {}
+        if (firstV2) {
+          try { localStorage.setItem("seen_v2_first_send_done", "1"); } catch (_) {}
+          setAutoWaterTree(true);
+          setTimeout(() => { setShowMap(false); setShowLevels(true); }, 4200);
+        }
       } else {
         setShowMapPrompt(true);
       }
@@ -3096,9 +3117,9 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowLevels(true); }}
                     className="w-full flex items-center gap-2.5 rounded-2xl border border-teal-100 bg-teal-50 px-3 py-2 text-left active:scale-[0.99] transition-transform">
-                    <span className="text-xl">{treeStageFor(sparkBalance).scene}</span>
+                    <span className="flex-shrink-0"><TreeScene stageIdx={TREE_STAGES.indexOf(treeStageFor(treeBalance))} size={32} /></span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-800">{treeStageFor(sparkBalance).name}</p>
+                      <p className="text-xs font-semibold text-slate-800">{treeStageFor(treeBalance).name}</p>
                       <p className="text-[11px] text-slate-500">Your Kindness Tree · tap to tend it 🌱</p>
                     </div>
                   </button>
@@ -3115,7 +3136,7 @@ export default function App() {
             </header>
 
             {showLevels && (
-              <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} onClose={() => setShowLevels(false)} />
+              <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree} onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
             )}
 
             {showInstallBanner && deferredInstallRef.current && (
@@ -3197,7 +3218,7 @@ export default function App() {
             )}
 
             {activeTab === "hyt" ? (
-              <HaveYouTried currentUser={currentUser} />
+              <HaveYouTried currentUser={currentUser} dob={profile?.dob} />
             ) : activeTab === "journal" ? (
               <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} inline />
             ) : activeTab === "support" ? (
