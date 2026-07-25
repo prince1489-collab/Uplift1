@@ -23,7 +23,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
-import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories, splitStories, seedDemoStories } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1875,6 +1875,13 @@ export default function App() {
   // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
+  const removeLocalPost = (id) => {
+    setLocalPosts((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      try { localStorage.setItem("seen_v2_local_posts", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
   // `follows` is the source of truth ({uid, name, country, label}); the feed filter and the
   // Worldwide rotator only need the uids, so those are derived.
   const [follows, setFollows] = useState(() => loadFollows());
@@ -1891,7 +1898,13 @@ export default function App() {
     [kindMoments, focusedUids, currentUser?.uid]
   );
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
-  const [openStory, setOpenStory] = useState(null); // Featured story being read
+  const [openStory, setOpenStory] = useState(null); // shared journal being read
+  // Shared journals route the same way as kind moments: yours or a followed author's go to
+  // the Focused Feed; a stranger's broadcasts in the Worldwide Feed.
+  const { focused: focusedStories, worldwide: worldwideStories } = useMemo(
+    () => splitStories(featuredStories, focusedUids, currentUser?.uid),
+    [featuredStories, focusedUids, currentUser?.uid]
+  );
   useEffect(() => {
     const refresh = () => setFeaturedStories(loadLocalStories());
     window.addEventListener("seen-points", refresh); // stories share the same award event
@@ -1904,8 +1917,8 @@ export default function App() {
   useEffect(() => {
     if (demoSeededRef.current || !currentUser?.uid || messages.length < 2) return;
     demoSeededRef.current = true;
-    const next = seedDemoKindMoments(messages, currentUser.uid);
-    setKindMoments(next);
+    setKindMoments(seedDemoKindMoments(messages, currentUser.uid));
+    setFeaturedStories(seedDemoStories(messages, currentUser.uid));
   }, [messages, currentUser?.uid]);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
@@ -2995,6 +3008,7 @@ export default function App() {
         {postComposerOpen && (
           <PostComposer
             profile={profile}
+            myUid={currentUser?.uid}
             onPosted={(next) => setLocalPosts(next)}
             onClose={() => setPostComposerOpen(false)} />
         )}
@@ -3208,7 +3222,13 @@ export default function App() {
               <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree} onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
             )}
 
-            {openStory && <FeaturedStoryReader story={openStory} onClose={() => setOpenStory(null)} />}
+            {openStory && (
+              <FeaturedStoryReader
+                story={openStory}
+                me={{ uid: currentUser?.uid, name: profile?.fullName, country: profile?.country }}
+                onChanged={() => setFeaturedStories(loadLocalStories())}
+                onClose={() => setOpenStory(null)} />
+            )}
 
             {showInstallBanner && deferredInstallRef.current && (
               <div style={{
@@ -3285,6 +3305,8 @@ export default function App() {
                 myUid={currentUser?.uid}
                 focusedUids={focusedUids}
                 moments={worldwideMoments}
+                stories={worldwideStories}
+                onOpenStory={(s) => setOpenStory(s)}
                 onToggleFocus={toggleFocus}
                 onReplyPrivately={(m) => setReplyTarget(m)} />
             )}
@@ -3322,10 +3344,8 @@ export default function App() {
                   {feedDateLabel}
                 </span>
               </div>
-              {/* v2 preview: Featured stories shared from members' reflections (device-local) */}
-              <FeaturedStories stories={featuredStories} onOpen={(s) => setOpenStory(s)} />
-              {/* v2 preview: your own free-text posts (device-local, only you see them) */}
-              <PreviewPostsStrip posts={localPosts} onClear={() => { try { localStorage.removeItem("seen_v2_local_posts"); } catch { /* ignore */ } setLocalPosts([]); }} />
+              {/* Shared journals and your own posts are no longer fixed strips here — they
+                  flow inside whichever feed they belong to, in time order. */}
               {/* Transparent "Seen · official" welcome — shown to new users (before their first
                   send). NOT a fake human/account: a clearly-labelled system message that warms
                   the cold-start. Disappears once they send, or on dismiss. */}
@@ -3536,7 +3556,7 @@ export default function App() {
               {(() => {
                 const focusedSet = new Set(focusedUids);
                 const focusedMsgs = messages.filter((m) => m.uid && !blockedUids.has(m.uid) && (focusedSet.has(m.uid) || m.uid === currentUser.uid));
-                if (focusedMsgs.length === 0 && focusedMoments.length === 0) return <FocusedFeedEmpty />;
+                if (focusedMsgs.length === 0 && focusedMoments.length === 0 && focusedStories.length === 0 && localPosts.length === 0) return <FocusedFeedEmpty />;
                 const grouped = [];
                 focusedMsgs.forEach((m) => {
                   const last = grouped[grouped.length - 1];
@@ -3552,18 +3572,23 @@ export default function App() {
                     grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
                   }
                 });
-                // Moments flow inline with the messages, ordered by time like everything else,
-                // rather than sitting in a fixed block at the top of the feed.
+                // Everything that belongs to your people — messages, kind moments, shared
+                // journals and your own posts — flows inline in time order, rather than
+                // sitting in fixed blocks above the feed.
                 const groupTs = (g) => Number(g.items[0]?.timestamp) || 0;
                 const entries = [
                   ...grouped.map((g) => ({ kind: "group", ts: groupTs(g), key: g.items[0].id, group: g })),
                   ...focusedMoments.map((km) => ({ kind: "moment", ts: Number(km.ts) || 0, key: km.id, moment: km })),
+                  ...focusedStories.map((s) => ({ kind: "story", ts: Number(s.ts) || 0, key: s.id, story: s })),
+                  ...localPosts.map((p) => ({ kind: "post", ts: Number(p.timestamp) || 0, key: p.id, post: p })),
                 ].sort((a, b) => b.ts - a.ts);
                 return (
                   <>
                   <FocusedFeedHeader count={follows.length} onManage={() => setShowFollowing(true)} />
                   {entries.map((entry) => {
                   if (entry.kind === "moment") return <KindMomentCard key={entry.key} moment={entry.moment} />;
+                  if (entry.kind === "story") return <SharedJournalCard key={entry.key} story={entry.story} onOpen={(s) => setOpenStory(s)} />;
+                  if (entry.kind === "post") return <LocalPostCard key={entry.key} post={entry.post} onDelete={removeLocalPost} />;
                   const group = entry.group;
                   const mine = group.uid === currentUser.uid;
                   const isMulti = group.items.length > 1;

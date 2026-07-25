@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, getDoc, onSnapshot, collection } from "firebase/firestore";
-import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Sparkles, ChevronRight } from "lucide-react";
+import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
 
@@ -97,13 +97,78 @@ export const loadRepliesReceived = (messageId) => {
   const all = readJSON(REPLIES_IN_KEY, {});
   return Array.isArray(all?.[messageId]) ? all[messageId] : [];
 };
+// ── Shared kindness journals ──────────────────────────────────────────────────
 export const loadLocalStories = () => readJSON(STORIES_KEY, []);
-// Add a Featured Story (from a shared journal reflection). Device-local; never Firestore.
+// Add a shared journal (from a Reflect entry). Device-local; never Firestore.
 export function addLocalStory(story) {
-  const id = `story_${loadLocalStories().length + 1}_${(story.text || "").length}`;
-  const next = [{ id, ...story, ts: Date.now() }, ...loadLocalStories()].slice(0, 20);
+  const existing = loadLocalStories();
+  const id = `story_${existing.length + 1}_${(story.text || "").length}_${(story.authorUid || "me").slice(0, 6)}`;
+  const next = [{ id, ...story, ts: Date.now() }, ...existing].slice(0, 20);
   writeJSON(STORIES_KEY, next);
   return next;
+}
+
+// How a shared journal is announced in the feed. Anonymous shares never name the author.
+export const storyAuthorLabel = (s) => (s?.anonymous ? "Someone" : (s?.authorName || "Someone"));
+
+// Same routing rule as kind moments: yours or a followed author → Focused Feed;
+// anyone else → Worldwide Feed. Legacy stories have no authorUid and were always yours.
+export function splitStories(stories = [], focusedUids = [], myUid) {
+  const near = new Set([...focusedUids, myUid].filter(Boolean));
+  const focused = [], worldwide = [];
+  for (const s of stories) {
+    const isNear = !s.authorUid || near.has(s.authorUid);
+    (isNear ? focused : worldwide).push(s);
+  }
+  return { focused, worldwide };
+}
+
+// Preview-only: you can't receive someone else's shared journal on a single device, so
+// seed one from a real feed author to make the Worldwide routing testable. Tagged `demo`.
+export function seedDemoStories(messages = [], myUid) {
+  const existing = loadLocalStories();
+  if (existing.some((s) => s.demo)) return existing;
+  const author = messages.find((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.sender);
+  if (!author) return existing;
+  const demo = {
+    id: `story_demo_${author.uid}`,
+    authorUid: author.uid, authorName: firstName(author.sender), country: author.country ?? null,
+    anonymous: false, demo: true,
+    text: "I nearly didn't send anything today. I did, and a stranger wrote back within the hour. I've read it about six times since.",
+    enrich: [{ q: "What made this matter to you?", a: "It landed on a day I'd convinced myself nobody would notice either way." }],
+    ts: Date.now() - 5400000,
+  };
+  const next = [...existing, demo].slice(0, 20);
+  writeJSON(STORIES_KEY, next);
+  return next;
+}
+
+// ── Likes + comments on a shared journal (device-local) ──────────────────────
+const STORY_ENGAGE_KEY = "seen_v2_story_engagement"; // { [storyId]: { likes: [], comments: [] } }
+const loadEngageAll = () => readJSON(STORY_ENGAGE_KEY, {});
+export function loadStoryEngagement(storyId) {
+  const e = loadEngageAll()[storyId];
+  return { likes: Array.isArray(e?.likes) ? e.likes : [], comments: Array.isArray(e?.comments) ? e.comments : [] };
+}
+export function toggleStoryLike(storyId, me) {
+  const all = loadEngageAll();
+  const cur = loadStoryEngagement(storyId);
+  const mine = cur.likes.find((l) => l.uid === me?.uid);
+  const likes = mine ? cur.likes.filter((l) => l.uid !== me?.uid)
+    : [...cur.likes, { uid: me?.uid ?? "me", name: me?.name || "You", country: me?.country ?? null, ts: Date.now() }];
+  all[storyId] = { ...cur, likes };
+  writeJSON(STORY_ENGAGE_KEY, all);
+  if (!mine) { try { awardPoints("like"); } catch { /* ignore */ } }
+  return { ...cur, likes };
+}
+export function addStoryComment(storyId, me, text) {
+  const all = loadEngageAll();
+  const cur = loadStoryEngagement(storyId);
+  const comments = [...cur.comments, { uid: me?.uid ?? "me", name: me?.name || "You", country: me?.country ?? null, text, ts: Date.now() }];
+  all[storyId] = { ...cur, comments };
+  writeJSON(STORY_ENGAGE_KEY, all);
+  try { awardPoints("reply"); } catch { /* ignore */ }
+  return { ...cur, comments };
 }
 const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const firstName = (n) => (n || "Someone").split(" ")[0];
@@ -114,7 +179,7 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
 const ROTATE_MS = 5000;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments = [], onToggleFocus, onReplyPrivately }) {
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   // Strangers' messages and stranger-to-stranger kind moments share one rotation, so a
   // moment takes its turn in the same slot instead of adding fixed height below it.
@@ -124,8 +189,9 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments
       .slice(0, 25)
       .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
     const kms = moments.map((km) => ({ type: "moment", id: km.id, ts: Number(km.ts) || 0, moment: km }));
-    return [...msgs, ...kms].sort((a, b) => b.ts - a.ts);
-  }, [messages, myUid, focusedSet, moments]);
+    const sts = stories.map((s) => ({ type: "story", id: s.id, ts: Number(s.ts) || 0, story: s }));
+    return [...msgs, ...kms, ...sts].sort((a, b) => b.ts - a.ts);
+  }, [messages, myUid, focusedSet, moments, stories]);
 
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
   const [idx, setIdx] = useState(0);
@@ -151,7 +217,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments
   const m = item?.type === "message" ? item.msg : null;
   const following = m ? focusedSet.has(m.uid) : false;
   // A moment has no author to act on, so it just displays for its turn.
-  useEffect(() => { if (item?.type === "moment" && open) setOpen(false); }, [item?.type, open]);
+  useEffect(() => { if (item && item.type !== "message" && open) setOpen(false); }, [item?.type, open]);
 
   return (
     <div className="border-b-2 border-sky-100 bg-sky-50/60 px-3 py-2 flex-shrink-0">
@@ -169,6 +235,10 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments
       ) : item.type === "moment" ? (
         <div key={item.id} style={{ animation: "seenFadeUp 350ms ease both" }}>
           <KindMomentCard moment={item.moment} compact />
+        </div>
+      ) : item.type === "story" ? (
+        <div key={item.id} style={{ animation: "seenFadeUp 350ms ease both" }}>
+          <SharedJournalCard story={item.story} onOpen={onOpenStory} compact />
         </div>
       ) : (
         <>
@@ -427,7 +497,7 @@ export function FocusedFeedHeader({ count = 0, onManage }) {
 }
 
 // ── Post composer (simulated free-text) ───────────────────────────────────────
-export function PostComposer({ profile, onPosted, onClose }) {
+export function PostComposer({ profile, myUid, onPosted, onClose }) {
   const [text, setText] = useState("");
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
@@ -437,7 +507,7 @@ export function PostComposer({ profile, onPosted, onClose }) {
     setState("checking");
     await new Promise((r) => setTimeout(r, 650));
     if (BLOCKLIST.some((w) => text.toLowerCase().includes(w))) { setState("rejected"); return; }
-    const post = { id: `local_${Date.now()}`, text: text.trim(), anon, sender: anon ? "Anonymous" : firstName(profile?.fullName), country: anon ? null : (profile?.country ?? null), timestamp: Date.now(), preview: true };
+    const post = { id: `local_${Date.now()}`, uid: myUid ?? null, text: text.trim(), anon, sender: anon ? "Anonymous" : firstName(profile?.fullName), country: anon ? null : (profile?.country ?? null), timestamp: Date.now(), preview: true };
     const next = [post, ...loadLocalPosts()];
     saveLocalPosts(next); setState("done"); onPosted?.(next);
     setTimeout(() => onClose?.(), 900);
@@ -486,58 +556,167 @@ export function PostComposer({ profile, onPosted, onClose }) {
   );
 }
 
-// ── Featured Stories — reflections members chose to share (device-local preview) ──
-export function FeaturedStories({ stories = [], onOpen }) {
-  if (!stories.length) return null;
+// ── Shared-journal announcement card — sits inline in whichever feed it belongs to ──
+export function SharedJournalCard({ story, onOpen, compact = false }) {
+  const { likes, comments } = loadStoryEngagement(story.id);
   return (
-    <div className="mb-3">
-      <p className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1">
-        <Sparkles size={12} className="text-amber-400" /> Featured stories
-      </p>
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollSnapType: "x mandatory" }}>
-        {stories.map((s) => (
-          <button key={s.id} onClick={() => onOpen?.(s)}
-            className="flex-shrink-0 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left flex flex-col"
-            style={{ width: "80%", minHeight: 132, scrollSnapAlign: "start" }}>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <span className="text-sm">{s.anonymous ? "🕊️" : flagFor(s.country)}</span>
-              <span className="text-[11px] font-semibold text-slate-500 truncate flex-1">{s.anonymous ? "Someone, somewhere" : firstName(s.authorName)}</span>
-              <ChevronRight size={14} className="text-amber-400" />
-            </div>
-            <p className="flex-1 text-[14px] leading-snug text-slate-800 font-medium line-clamp-4">"{s.text}"</p>
-            <span className="mt-2 text-[10px] font-semibold text-amber-600">Read story →</span>
-          </button>
-        ))}
+    <button onClick={() => onOpen?.(story)}
+      className={`w-full text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white ${compact ? "px-3 py-2" : "mb-2 px-4 py-3"}`}
+      style={{ animation: "seenFadeUp 400ms ease both" }}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="flex-shrink-0 text-base">📔</span>
+        <p className="flex-1 text-[12px] leading-snug text-slate-600">
+          <strong className="text-slate-800">{storyAuthorLabel(story)}</strong>
+          {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} has decided to share their kindness journal.
+        </p>
+        {story.demo && (
+          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">preview</span>
+        )}
       </div>
-    </div>
+      <p className="text-[13px] leading-snug text-slate-700 line-clamp-2 italic">“{story.text}”</p>
+      <div className="mt-1.5 flex items-center gap-3 text-[10px] font-semibold text-amber-600">
+        <span>Read it →</span>
+        {likes.length > 0 && <span className="text-rose-500">❤️ {likes.length}</span>}
+        {comments.length > 0 && <span className="text-slate-400">💬 {comments.length}</span>}
+      </div>
+    </button>
   );
 }
 
-export function FeaturedStoryReader({ story, onClose }) {
+// The shared journal opened up: read it, heart it, leave a comment. The author gets an
+// extra row to see exactly who did. All device-local.
+export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
+  const [engage, setEngage] = useState(() => (story ? loadStoryEngagement(story.id) : { likes: [], comments: [] }));
+  const [draft, setDraft] = useState("");
+  const [showWho, setShowWho] = useState(false);
   if (!story) return null;
+
+  const iLiked = engage.likes.some((l) => l.uid === me?.uid);
+  const isMine = !story.authorUid || story.authorUid === me?.uid;
+  const like = () => { setEngage(toggleStoryLike(story.id, me)); onChanged?.(); };
+  const comment = () => {
+    const t = draft.trim();
+    if (!t) return;
+    setEngage(addStoryComment(story.id, me, t.slice(0, 200)));
+    setDraft(""); onChanged?.();
+  };
+
   return createPortal(
     <div data-portal className="fixed inset-0 z-[260] flex flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
-        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5"><Sparkles size={15} className="text-amber-400" /> Featured story</h2>
+        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">📔 Shared kindness journal</h2>
       </div>
+
       <div className="flex-1 overflow-y-auto px-5 py-6">
         <div className="mx-auto max-w-md space-y-5">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{story.anonymous ? "🕊️" : flagFor(story.country)}</span>
-            <div>
-              <p className="text-sm font-bold text-slate-800">{story.anonymous ? "Someone, somewhere" : (story.authorName || "A member")}</p>
-              <p className="text-[11px] text-slate-400">A shared reflection</p>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-800">{storyAuthorLabel(story)}</p>
+              <p className="text-[11px] text-slate-400">{story.anonymous ? "Shared anonymously" : "Shared their journal"}</p>
             </div>
           </div>
-          <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">"{story.text}"</p>
+
+          <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">“{story.text}”</p>
           {Array.isArray(story.enrich) && story.enrich.map((e, i) => (
             <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">{e.q}</p>
               <p className="mt-1 text-[15px] text-slate-700 leading-relaxed whitespace-pre-wrap">{e.a}</p>
             </div>
           ))}
-          <p className="pt-4 text-center text-[10px] text-slate-400">Preview: featured stories are stored on this device only.</p>
+
+          {/* Like + who-saw-it */}
+          <div className="flex items-center gap-2 border-y border-slate-100 py-3">
+            <button onClick={like}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                iLiked ? "bg-rose-50 text-rose-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>
+              <Heart size={14} fill={iLiked ? "currentColor" : "none"} /> {iLiked ? "Liked" : "Like"}
+              {engage.likes.length > 0 && <span className="tabular-nums">· {engage.likes.length}</span>}
+            </button>
+            <span className="text-[11px] text-slate-400">
+              {engage.comments.length > 0 ? `${engage.comments.length} comment${engage.comments.length === 1 ? "" : "s"}` : "No comments yet"}
+            </span>
+            {isMine && (
+              <button onClick={() => setShowWho(true)}
+                className="ml-auto rounded-full px-2.5 py-1 text-[11px] font-bold text-teal-600 hover:bg-teal-50 transition-colors">
+                Who responded
+              </button>
+            )}
+          </div>
+
+          {/* Comments */}
+          <div className="space-y-2">
+            {engage.comments.map((c, i) => (
+              <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-2.5">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-sm">{flagFor(c.country)}</span>
+                  <span className="flex-1 truncate text-[11px] font-semibold text-slate-500">{firstName(c.name)}</span>
+                  <span className="text-[10px] text-slate-400">{timeAgo(c.ts)}</span>
+                </div>
+                <p className="text-[13px] leading-snug text-slate-700">{c.text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-end gap-2">
+            <textarea value={draft} onChange={(e) => setDraft(e.target.value.slice(0, 200))} rows={2}
+              placeholder="Say something kind…"
+              className="flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[14px] text-slate-800 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+            <button onClick={comment} disabled={!draft.trim()}
+              className="rounded-full bg-teal-600 px-4 py-2 text-[12px] font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-40">
+              Send
+            </button>
+          </div>
+
+          <p className="pt-2 text-center text-[10px] text-slate-400">
+            Preview: shared journals, likes and comments stay on this device.
+          </p>
+        </div>
+      </div>
+
+      {showWho && <StoryEngagementPanel story={story} engage={engage} onClose={() => setShowWho(false)} />}
+    </div>,
+    document.body
+  );
+}
+
+// Who liked and commented on a journal you shared — only the author can open this.
+export function StoryEngagementPanel({ story, engage, onClose }) {
+  const Row = ({ icon, name, country, ts, text }) => (
+    <div className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
+      <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl bg-slate-50 text-[15px]">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-700">{name}</p>
+        {text ? <p className="mt-0.5 text-[13px] leading-snug text-slate-600">{text}</p>
+              : country && <p className="text-[11px] text-slate-400">{country}</p>}
+      </div>
+      <span className="flex-shrink-0 text-[10px] text-slate-400">{timeAgo(ts)}</span>
+    </div>
+  );
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[270] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up flex max-h-[85dvh] flex-col rounded-t-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
+        <div className="flex items-center justify-between px-5 pb-2">
+          <h2 className="text-lg font-bold text-slate-800">Who responded</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <p className="px-5 pb-3 text-xs text-slate-400">Only you can see this — it's your journal.</p>
+        <div className="space-y-3 overflow-y-auto overscroll-contain px-3 pb-8">
+          <div>
+            <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Hearts · {engage.likes.length}</p>
+            {engage.likes.length === 0
+              ? <p className="px-2 py-3 text-center text-[13px] text-slate-400">No hearts yet.</p>
+              : <div className="space-y-1">{engage.likes.map((l, i) => <Row key={i} icon={flagFor(l.country)} name={l.name} country={l.country} ts={l.ts} />)}</div>}
+          </div>
+          <div>
+            <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Comments · {engage.comments.length}</p>
+            {engage.comments.length === 0
+              ? <p className="px-2 py-3 text-center text-[13px] text-slate-400">No comments yet.</p>
+              : <div className="space-y-1">{engage.comments.map((c, i) => <Row key={i} icon="💬" name={firstName(c.name)} ts={c.ts} text={c.text} />)}</div>}
+          </div>
         </div>
       </div>
     </div>,
@@ -670,22 +849,26 @@ export function MessageReactionsPanel({ db, message, onClose }) {
   );
 }
 
-// ── Strip of your own preview posts ───────────────────────────────────────────
-export function PreviewPostsStrip({ posts, onClear }) {
-  if (!posts?.length) return null;
+// ── One of your own personalised messages, inline in the Focused Feed ─────────
+// Yours, so it sits with your people rather than in a separate strip. Rendered as its
+// own card (not a real message bubble) because it has no Firestore doc behind it —
+// long-pressing a bubble writes reactions, and a local post has nothing to write to.
+export function LocalPostCard({ post, onDelete }) {
   return (
-    <div className="mb-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600">Your preview posts · only you see these</p>
-        <button onClick={onClear} className="text-[10px] font-semibold text-slate-400 hover:text-rose-500">Clear</button>
+    <div className="mb-2" style={{ animation: "seenFadeUp 400ms ease both" }}>
+      <div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] font-semibold text-slate-400">
+        <span>You</span>
+        {post.anon && <span className="rounded-full bg-violet-50 px-1.5 py-px text-[9px] font-bold text-violet-500">anonymous</span>}
+        <span className="rounded-full bg-slate-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-slate-400">only you see this</span>
+        {onDelete && (
+          <button onClick={() => onDelete(post.id)}
+            className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-slate-300 hover:text-rose-500 transition-colors">
+            Remove
+          </button>
+        )}
       </div>
-      <div className="space-y-1.5">
-        {posts.map((p) => (
-          <div key={p.id} className="rounded-xl bg-white border border-violet-100 px-3 py-2">
-            <p className="text-[13px] font-medium text-slate-800">{p.text}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">— {p.sender}{p.anon ? " 🕶️" : ""}</p>
-          </div>
-        ))}
+      <div className="rounded-2xl border border-violet-200 bg-violet-50/50 px-4 py-2.5">
+        <p className="text-[15px] font-medium leading-snug text-slate-800">{post.text}</p>
       </div>
     </div>
   );

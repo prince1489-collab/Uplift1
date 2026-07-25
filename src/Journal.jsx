@@ -208,7 +208,7 @@ const ENRICH_PROMPTS = [
   { key: "who", label: "Who was it for — and why them?" },
   { key: "feel", label: "How did it leave you feeling?" },
 ];
-function ShareStorySheet({ entry, authorName, country, onShared, onClose }) {
+function ShareStorySheet({ entry, authorName, country, authorUid, onShared, onClose }) {
   const [enrich, setEnrich] = useState({});
   const [anon, setAnon] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -220,6 +220,7 @@ function ShareStorySheet({ entry, authorName, country, onShared, onClose }) {
       .map((p) => (enrich[p.key]?.trim() ? { q: p.label, a: enrich[p.key].trim() } : null))
       .filter(Boolean);
     addLocalStory({
+      authorUid: authorUid ?? null,
       text: entry.text,
       enrich: extras,
       anonymous: anon,
@@ -552,6 +553,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           entry={shareEntry}
           authorName={profile?.fullName}
           country={profile?.country}
+          authorUid={uid}
           onShared={() => setShareEntry(null)}
           onClose={() => setShareEntry(null)}
         />
