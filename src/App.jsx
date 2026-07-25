@@ -703,8 +703,41 @@ const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t 
 const TOUR_VERSION = 4; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
+// ── "Since your last visit" boundary ─────────────────────────────────────────
+// The bell used to list everything the queries returned, forever, so a like from three
+// weeks ago sat at the top looking current. Everything is now filtered to the current
+// visit. A visit starts when the app is opened after being away for VISIT_GAP_MS; a quick
+// reload keeps the same boundary, so refreshing doesn't wipe notifications you hadn't read.
+const VISIT_GAP_MS = 30 * 60 * 1000;   // away this long → it's a new visit
+const FIRST_RUN_WINDOW_MS = 48 * 60 * 60 * 1000; // no history yet → show the last 2 days
+function resolveVisitStart() {
+  const now = Date.now();
+  let start = 0, lastActive = 0;
+  try {
+    start = Number(localStorage.getItem("seen_visit_start")) || 0;
+    lastActive = Number(localStorage.getItem("seen_last_active")) || 0;
+  } catch { /* ignore */ }
+  if (!start || !lastActive || now - lastActive > VISIT_GAP_MS) {
+    // New visit: show everything that arrived since we last saw them.
+    start = lastActive || now - FIRST_RUN_WINDOW_MS;
+    try { localStorage.setItem("seen_visit_start", String(start)); } catch { /* ignore */ }
+  }
+  try { localStorage.setItem("seen_last_active", String(now)); } catch { /* ignore */ }
+  return start;
+}
+
 function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const [open, setOpen] = useState(false);
+  // Resolved once per mount — the boundary must not move under the user mid-session.
+  const [visitStart] = useState(resolveVisitStart);
+  // Keep the "last active" stamp fresh while the tab is open, so a long session that is
+  // later reloaded is treated as continuous rather than as a fresh visit.
+  useEffect(() => {
+    const touch = () => { try { localStorage.setItem("seen_last_active", String(Date.now())); } catch { /* ignore */ } };
+    const id = setInterval(touch, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", touch);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", touch); };
+  }, []);
   const [waves, setWaves] = useState([]);
   const [likes, setLikes] = useState([]);
   const [dismissedLikes, setDismissedLikes] = useState(new Set());
@@ -867,16 +900,25 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
   const dismissLike = (id) => setDismissedLikes((s) => new Set(s).add(id));
 
-  const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id));
+  // Everything shown is scoped to this visit — anything older is history, not a notification.
+  const sinceVisit = (ts) => (Number(ts) || 0) > visitStart;
+  const visibleWaves = waves.filter((w) => sinceVisit(w.createdAt));
+  const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id) && sinceVisit(l.at));
+  const visibleRipples = rippleRows.filter((r) => sinceVisit(r.createdAt));
+  const visibleFreplies = freplyRows.filter((r) => sinceVisit(r.createdAt));
+  const visibleEchoes = echoRows.filter((r) => sinceVisit(r.createdAt));
+
+  // The badge counts what's in the list and not yet looked at — so it can never exceed
+  // the number of rows the user will actually see.
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
-  const newRipplesCount = rippleRows.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
-  const newFreplyCount = freplyRows.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
-  const newEchoCount = echoRows.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
-  const totalUnread = waves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
+  const newRipplesCount = visibleRipples.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
+  const newFreplyCount = visibleFreplies.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
+  const newEchoCount = visibleEchoes.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
+  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
   // Honest, transparently system-authored reassurance: if you've shared kindness but no one
   // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
   // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
-  const showSeenAck = hasSentGreeting && likes.length === 0;
+  const showSeenAck = hasSentGreeting && visibleLikes.length === 0;
   const hot = streak >= 7;
 
   return (
@@ -903,8 +945,11 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
               </p>
             </div>
           </div>
+          <div className="border-b border-slate-100 px-4 py-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Since your last visit</p>
+          </div>
           <div className="max-h-72 overflow-y-auto">
-            {waves.length === 0 && visibleLikes.length === 0 && rippleRows.length === 0 && freplyRows.length === 0 && echoRows.length === 0 && !showSeenAck ? (
+            {visibleWaves.length === 0 && visibleLikes.length === 0 && visibleRipples.length === 0 && visibleFreplies.length === 0 && visibleEchoes.length === 0 && !showSeenAck ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
             ) : (
               <div className="py-1">
@@ -917,7 +962,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </p>
                   </div>
                 )}
-                {waves.map((w) => (
+                {visibleWaves.map((w) => (
                   <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
                     <span className="text-base flex-shrink-0">👋</span>
                     <p className="flex-1 text-[11px] text-slate-700">Someone waved at you!</p>
@@ -927,7 +972,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </button>
                   </div>
                 ))}
-                {waves.length > 0 && visibleLikes.length > 0 && (
+                {visibleWaves.length > 0 && visibleLikes.length > 0 && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
                 {visibleLikes.map((l) => {
@@ -947,10 +992,10 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </div>
                   );
                 })}
-                {(waves.length > 0 || visibleLikes.length > 0) && rippleRows.length > 0 && (
+                {(visibleWaves.length > 0 || visibleLikes.length > 0) && visibleRipples.length > 0 && (
                   <div className="mx-4 my-1 border-t border-slate-100" />
                 )}
-                {rippleRows.map((r) => {
+                {visibleRipples.map((r) => {
                   const fresh = (r.createdAt ?? 0) > ripplesSeenAt;
                   return (
                     <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-emerald-50/60" : ""} hover:bg-emerald-50`}>
@@ -963,7 +1008,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </div>
                   );
                 })}
-                {freplyRows.map((r) => {
+                {visibleFreplies.map((r) => {
                   const fresh = (r.createdAt ?? 0) > frepliesSeenAt;
                   return (
                     <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-amber-50/60" : ""} hover:bg-amber-50`}>
@@ -976,7 +1021,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </div>
                   );
                 })}
-                {echoRows.map((r) => {
+                {visibleEchoes.map((r) => {
                   const fresh = (r.createdAt ?? 0) > echoesSeenAt;
                   return (
                     <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-violet-50/60" : ""} hover:bg-violet-50`}>
