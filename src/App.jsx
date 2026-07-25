@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, ChevronRight, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, MessageCircle, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
+  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -23,7 +23,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
-import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, loadLocalStories } from "./Feed2";
+import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1362,7 +1362,6 @@ export default function App() {
     try { return new URLSearchParams(window.location.search).get("ref") || null; } catch { return null; }
   });
   const [isSending, setIsSending] = useState(false);
-  const [headerOpen, setHeaderOpen] = useState(false);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [reactionBarId, setReactionBarId] = useState(null);
@@ -1885,6 +1884,12 @@ export default function App() {
   const [reactorsFor, setReactorsFor] = useState(null); // my message whose "who felt this" is open
   useBackLayer(Boolean(reactorsFor), () => setReactorsFor(null));
   const [kindMoments, setKindMoments] = useState(() => loadKindMoments());
+  // A moment involving you or someone you follow belongs in the Focused Feed; a moment
+  // between two strangers broadcasts in the Worldwide Feed.
+  const { focused: focusedMoments, worldwide: worldwideMoments } = useMemo(
+    () => splitKindMoments(kindMoments, focusedUids, currentUser?.uid),
+    [kindMoments, focusedUids, currentUser?.uid]
+  );
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // Featured story being read
   useEffect(() => {
@@ -1893,6 +1898,15 @@ export default function App() {
     window.addEventListener("focus", refresh);
     return () => { window.removeEventListener("seen-points", refresh); window.removeEventListener("focus", refresh); };
   }, []);
+  // Preview-only: seed two stranger-to-stranger moments once real messages exist, so the
+  // Worldwide Feed routing is testable (you're always a participant in your own moments).
+  const demoSeededRef = useRef(false);
+  useEffect(() => {
+    if (demoSeededRef.current || !currentUser?.uid || messages.length < 2) return;
+    demoSeededRef.current = true;
+    const next = seedDemoKindMoments(messages, currentUser.uid);
+    setKindMoments(next);
+  }, [messages, currentUser?.uid]);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
@@ -2123,7 +2137,6 @@ export default function App() {
   // of first use instead. `tourActive` stays (always false) so coach-mark gating is untouched.
 
   const finishTour = useCallback(() => {
-    setHeaderOpen(false);
     setPickerOpen(false);
     setReactionBarId(null);
     setMenuOpen(false);
@@ -2168,28 +2181,21 @@ export default function App() {
       target: '[data-tour="send"]',
       title: "Welcome to Seen 👋",
       body: "Send a kind greeting to a real stranger somewhere in the world. They'll feel seen — and so will you.",
-      before: () => { setHeaderOpen(false); setPickerOpen(false); setReactionBarId(null); },
+      before: () => { setPickerOpen(false); setReactionBarId(null); },
     },
     {
       key: "feeling",
       target: '[data-tour="feeling"]',
       title: "Share how you're feeling 💬",
       body: "Tap the flashing 💬 bubble by your name to share how you're feeling in a few words. Others send you encouragement — and you can thank each of them back. You can encourage them too, right from the feed.",
-      before: () => { setPickerOpen(false); setHeaderOpen(false); },
-    },
-    {
-      key: "sparks",
-      target: '[data-tour="sparks"]',
-      title: "Earn Sparks ✨",
-      body: "Every greeting you send earns Sparks. Keep a daily streak to multiply them and climb the kindness ranks.",
-      before: () => { setHeaderOpen(true); },
+      before: () => { setPickerOpen(false); },
     },
     {
       key: "categories",
       target: '[data-tour="categories"]',
       title: "Choose the right words",
       body: "Community, Greetings, Warmth, Calm & Local — send a winning community greeting or a phrase in your own language.",
-      before: () => { setMenuOpen(false); setHeaderOpen(false); setPickerOpen(true); },
+      before: () => { setMenuOpen(false); setPickerOpen(true); },
     },
     {
       key: "connect",
@@ -2213,7 +2219,7 @@ export default function App() {
       target: '[data-tour="tab-nav"]',
       title: "Explore the app",
       body: "🌱 Community — vote greetings into the weekly Top 5.  📖 Board — your growing kindness story.  💡 Life Hacks — daily tips for mind & body.",
-      before: () => { setReactionBarId(null); setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
+      before: () => { setReactionBarId(null); setPickerOpen(false); setMenuOpen(false); },
     },
     {
       key: "menu-intro",
@@ -2221,7 +2227,7 @@ export default function App() {
       title: "There's more in here",
       body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing check-in and Support.",
       // Never opens the menu — keeping the tour off the live menu state guarantees you land on the feed.
-      before: () => { setPickerOpen(false); setHeaderOpen(false); setMenuOpen(false); },
+      before: () => { setPickerOpen(false); setMenuOpen(false); },
     },
     {
       key: "journey",
@@ -2996,6 +3002,7 @@ export default function App() {
           <PrivateReplySheet
             target={replyTarget}
             me={profile}
+            myUid={currentUser?.uid}
             onDone={(next) => setKindMoments(next)}
             onClose={() => setReplyTarget(null)} />
         )}
@@ -3105,11 +3112,11 @@ export default function App() {
           )
         ) : (
           <>
-            {/* ── COLLAPSIBLE HEADER ── */}
+            {/* ── HEADER ── v2: no longer collapsible. The expanding drawer only ever held the
+                 tree chip (now in My Journey) and two self-hiding banners, so tapping the name
+                 just opened an empty gap. Banners render inline below instead. */}
             <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-              <div
-                className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
-                onClick={() => setHeaderOpen((v) => !v)}>
+              <div className="flex items-center justify-between px-4 py-2.5 select-none">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
@@ -3118,7 +3125,6 @@ export default function App() {
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
-                  <span className={`text-slate-300 text-xs mr-1 transition-transform duration-200 ${headerOpen ? "rotate-180" : ""}`}>▾</span>
                   <div onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => setDarkMode(v => !v)}
@@ -3185,21 +3191,16 @@ export default function App() {
                 </div>
               </div>
 
-              <div
-                className="overflow-hidden transition-all duration-300 ease-in-out"
-                style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
-                <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  {/* v2: no sparks meter and no tree chip here — the Kindness Tree is the
-                      centrepiece of the My Journey tab, so this stays banners-only. */}
-                  <div className="space-y-1">
-                    <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
-                    {!isChatLive && chatError && (
-                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                        Chat offline ({chatError}).
-                      </p>
-                    )}
-                  </div>
-                </div>
+              {/* Banners only — both children self-hide, and `.seen-header-rail:empty`
+                  collapses the rail itself, so the header adds zero height when there's
+                  nothing to say. */}
+              <div className="seen-header-rail px-4 pb-2 space-y-1 border-t border-slate-100 pt-2">
+                <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
+                {!isChatLive && chatError && (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    Chat offline ({chatError}).
+                  </p>
+                )}
               </div>
             </header>
 
@@ -3283,6 +3284,7 @@ export default function App() {
                 messages={messages}
                 myUid={currentUser?.uid}
                 focusedUids={focusedUids}
+                moments={worldwideMoments}
                 onToggleFocus={toggleFocus}
                 onReplyPrivately={(m) => setReplyTarget(m)} />
             )}
@@ -3528,14 +3530,12 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {/* v2: "kind moment" broadcasts from private exchanges (preview, device-local) */}
-              {kindMoments.map((km) => <KindMomentCard key={km.id} moment={km} />)}
-              {/* v2 Focused Feed: only people you follow (+ your own messages). Strangers live
-                  in the Worldwide Feed above. */}
+              {/* v2 Focused Feed: only people you follow (+ your own messages), plus the kind
+                  moments involving them. Strangers live in the Worldwide Feed above. */}
               {(() => {
                 const focusedSet = new Set(focusedUids);
                 const focusedMsgs = messages.filter((m) => m.uid && !blockedUids.has(m.uid) && (focusedSet.has(m.uid) || m.uid === currentUser.uid));
-                if (focusedMsgs.length === 0 && kindMoments.length === 0) return <FocusedFeedEmpty />;
+                if (focusedMsgs.length === 0 && focusedMoments.length === 0) return <FocusedFeedEmpty />;
                 const grouped = [];
                 focusedMsgs.forEach((m) => {
                   const last = grouped[grouped.length - 1];
@@ -3554,13 +3554,13 @@ export default function App() {
                 return (
                   <>
                   <FocusedFeedHeader count={follows.length} onManage={() => setShowFollowing(true)} />
+                  {focusedMoments.map((km) => <KindMomentCard key={km.id} moment={km} />)}
                   {grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
                   const isMulti = group.items.length > 1;
                   const firstId = group.items[0].id;
                   const isNewGroup = newMessageIds.has(firstId);
                   const groupLabel = followLabelByUid[group.uid];
-                  const latestInGroup = group.items[group.items.length - 1];
                   return (
                     <React.Fragment key={firstId}>
                     {group.showDaySep && (
@@ -3584,17 +3584,11 @@ export default function App() {
                                   className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
                                   {group.sender}
                                 </button>
-                                {/* private label you gave them in "People you follow" */}
+                                {/* private label you gave them in "People you follow".
+                                    Replying lives in the bubble's action bar (press a message). */}
                                 {groupLabel && (
                                   <span className="rounded-full bg-teal-50 px-1.5 py-px text-[9px] font-bold text-teal-600">{groupLabel}</span>
                                 )}
-                                {/* private reply — reuses the same sheet as the Worldwide Feed */}
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setReplyTarget(latestInGroup); }}
-                                  title="Reply privately"
-                                  className="ml-auto flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 hover:bg-teal-50 hover:text-teal-600 transition-colors">
-                                  <MessageCircle size={11} /> Reply
-                                </button>
                               </>
                             )}
                           </div>
@@ -3629,6 +3623,7 @@ export default function App() {
                                               if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
                                             onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
+                                            onReply={() => setReplyTarget(m)}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />
                                         </div>

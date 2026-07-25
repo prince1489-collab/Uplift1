@@ -1715,7 +1715,7 @@ const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete, onReply }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -1953,6 +1953,20 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           {emoji}
         </button>
       ))}
+      {/* Reply privately — only on other people's messages. Lives here rather than beside
+          the sender's name so nothing hangs outside the bubble. */}
+      {!mine && onReply && (
+        <>
+          <div className="seen-qrb-sep" />
+          <button
+            className="seen-qrb-btn"
+            title="Reply privately"
+            style={{ fontSize: 11, fontWeight: 700, width: "auto", padding: "0 10px", height: 34, color: "#0f766e" }}
+            onClick={() => { onReply(); onClose?.(); }}>
+            💬 Reply
+          </button>
+        </>
+      )}
       {mine && onDelete && (
         <>
           <div className="seen-qrb-sep" />

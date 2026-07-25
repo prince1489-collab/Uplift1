@@ -650,3 +650,9 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
    The main app header offsets with env(safe-area-inset-top); overlays open at top:0 and would
    otherwise put their close/back button under the clock/battery. env() resolves to 0 off-iOS. */
 .seen-overlay-header { padding-top: calc(0.75rem + env(safe-area-inset-top)) !important; }
+
+/* ─── Header banner rail ───────────────────────────────────────────────────────
+   Holds the notification-permission banner and the chat-offline line. Both self-hide,
+   so without this the rail's own padding + top border would leave a visible empty gap
+   under the greeting. :empty collapses it whenever it has no banners to show. */
+.seen-header-rail:empty { display: none; }

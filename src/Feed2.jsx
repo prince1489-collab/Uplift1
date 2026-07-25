@@ -47,6 +47,49 @@ export function loadFollows() {
 export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
 
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
+
+// Route a kind moment to the right feed. A moment belongs in your Focused Feed when either
+// person in it is you or someone you follow; otherwise it's two strangers, so it broadcasts
+// in the Worldwide Feed. Legacy moments predate the uids and were always your own, so they
+// stay focused.
+export function splitKindMoments(moments = [], focusedUids = [], myUid) {
+  const near = new Set([...focusedUids, myUid].filter(Boolean));
+  const focused = [], worldwide = [];
+  for (const km of moments) {
+    const known = km.aUid || km.bUid;
+    const isNear = !known || near.has(km.aUid) || near.has(km.bUid);
+    (isNear ? focused : worldwide).push(km);
+  }
+  return { focused, worldwide };
+}
+
+// Preview-only: two-stranger moments can't arise on a single device (you're always one of
+// the pair), so seed a couple from real feed authors purely so the Worldwide Feed routing is
+// testable. Marked `demo` and rendered with a "preview" tag; device-local, never Firestore.
+export function seedDemoKindMoments(messages = [], myUid) {
+  const existing = loadKindMoments();
+  if (existing.some((km) => km.demo)) return existing;
+  const authors = [];
+  const seen = new Set([myUid]);
+  for (const m of messages) {
+    if (!m.uid || seen.has(m.uid) || m.uid === "system" || !m.sender) continue;
+    seen.add(m.uid);
+    authors.push({ uid: m.uid, name: firstName(m.sender), country: m.country ?? null });
+    if (authors.length === 4) break;
+  }
+  if (authors.length < 2) return existing;
+  const pairs = authors.length >= 4 ? [[0, 1], [2, 3]] : [[0, 1]];
+  const demos = pairs.map(([i, j], n) => ({
+    id: `km_demo_${authors[i].uid}_${authors[j].uid}`,
+    aUid: authors[i].uid, aName: authors[i].name, aCountry: authors[i].country,
+    bUid: authors[j].uid, bName: authors[j].name, bCountry: authors[j].country,
+    demo: true,
+    ts: Date.now() - (n + 1) * 3600000,
+  }));
+  const next = [...existing, ...demos].slice(0, 30);
+  writeJSON(MOMENTS_KEY, next);
+  return next;
+}
 // Private replies *received* on one of my messages, keyed by messageId. Real inbound
 // replies are merge-time work — this store exists so the viewer is ready for them.
 const REPLIES_IN_KEY = "seen_v2_replies_received";
@@ -71,7 +114,7 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
 const ROTATE_MS = 5000;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggleFocus, onReplyPrivately }) {
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments = [], onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   const strangers = useMemo(
     () => messages.filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid)).slice(0, 25),
@@ -147,35 +190,46 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggl
           )}
         </>
       )}
+
+      {/* Kind moments between two people you don't follow broadcast here. */}
+      {moments.length > 0 && (
+        <div className="mt-1.5 space-y-1.5">
+          {moments.slice(0, 2).map((km) => <KindMomentCard key={km.id} moment={km} compact />)}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Kind-moment card (a consented "shared a kind moment") ─────────────────────
-export function KindMomentCard({ moment }) {
+export function KindMomentCard({ moment, compact = false }) {
   return (
-    <div className="mb-2 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-2.5 flex items-center gap-2"
+    <div className={`rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
-      <span className="text-lg flex-shrink-0">⭐</span>
-      <p className="text-[12px] text-slate-600 leading-snug">
+      <span className={`flex-shrink-0 ${compact ? "text-base" : "text-lg"}`}>⭐</span>
+      <p className="text-[12px] text-slate-600 leading-snug flex-1">
         <strong className="text-slate-800">{moment.aName} {flagFor(moment.aCountry)}</strong> and{" "}
         <strong className="text-slate-800">{moment.bName} {flagFor(moment.bCountry)}</strong> shared a kind moment.
       </p>
+      {moment.demo && (
+        <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">preview</span>
+      )}
     </div>
   );
 }
 
 // ── Private reply sheet (simulated) → creates a kind moment on send ───────────
-export function PrivateReplySheet({ target, me, onDone, onClose }) {
+export function PrivateReplySheet({ target, me, myUid, onDone, onClose }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const send = () => {
     if (!text.trim() || sent) return;
     setSent(true);
+    // uids drive which feed the broadcast lands in (see splitKindMoments).
     const moment = {
       id: `km_${Date.now()}`,
-      aName: firstName(me?.fullName) || "You", aCountry: me?.country ?? null,
-      bName: firstName(target?.sender), bCountry: target?.country ?? null,
+      aUid: myUid ?? null, aName: firstName(me?.fullName) || "You", aCountry: me?.country ?? null,
+      bUid: target?.uid ?? null, bName: firstName(target?.sender), bCountry: target?.country ?? null,
       ts: Date.now(),
     };
     const next = [moment, ...loadKindMoments()].slice(0, 30);
