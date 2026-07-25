@@ -23,7 +23,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories, splitStories, seedDemoStories } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories, splitStories, seedDemoStories, purgeMisattributedDemos } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1917,6 +1917,9 @@ export default function App() {
   useEffect(() => {
     if (demoSeededRef.current || !currentUser?.uid || messages.length < 2) return;
     demoSeededRef.current = true;
+    // Clear out sample cards that an earlier build attributed to real members before
+    // seeding the clearly-labelled example ones.
+    purgeMisattributedDemos();
     setKindMoments(seedDemoKindMoments(messages, currentUser.uid));
     setFeaturedStories(seedDemoStories(messages, currentUser.uid));
   }, [messages, currentUser?.uid]);

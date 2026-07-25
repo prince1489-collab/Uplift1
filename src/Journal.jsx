@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt } from "./JournalPrompts";
@@ -391,16 +391,31 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
     prevWeeks.current = weeksActive;
   }, [weeksActive]);
 
+  // One reflection per day. Once the selected day already has an entry, the box edits that
+  // entry instead of offering a second blank one against the same prompt.
+  const entryForDate = entries.find((e) => e.date === date) || null;
+  const editingId = entryForDate?.id ?? null;
+  // Load the day's entry into the box when the selected date (or its entry) changes.
+  // Keyed on the id so an unrelated snapshot never wipes what's being typed.
+  useEffect(() => {
+    setText(entryForDate?.text ?? "");
+  }, [date, entryForDate?.id]);
+  // While editing, show the prompt that entry was actually written against.
+  const activePrompt = entryForDate?.prompt || prompt;
+
   const handleSave = async () => {
     const trimmed = text.trim();
     if (!trimmed || saving || !db || !uid) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, "users", uid, "journal"), {
-        type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
-      });
-      setText("");
-      try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree
+      if (editingId) {
+        await updateDoc(doc(db, "users", uid, "journal", editingId), { text: trimmed, updatedAt: Date.now() });
+      } else {
+        await addDoc(collection(db, "users", uid, "journal"), {
+          type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
+        });
+        try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
+      }
       playCheckIn();
     } catch (_) { /* best-effort */ }
     setSaving(false);
@@ -471,17 +486,23 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           </button>
         )}
 
-        {/* New entry */}
-        <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 space-y-3">
+        {/* Today's reflection — writes a new one, or edits the day's existing entry */}
+        <div className={`rounded-2xl border p-3 space-y-3 ${editingId ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-slate-50/60"}`}>
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            A gentle space to reflect — a few times a week is plenty. Just follow today's prompt and write what comes.
+            {editingId
+              ? (date === todayStr()
+                  ? "You've written today's reflection. You can keep editing it — one a day is plenty."
+                  : "You already reflected on this day. Edit it below, or pick another date.")
+              : "A gentle space to reflect — a few times a week is plenty. Just follow the prompt and write what comes."}
           </p>
 
-          {/* v2: one journal, one daily prompt (no category choice) */}
-          {/* Today's prompt — refreshes automatically once a day */}
+          {/* One journal, one daily prompt. While editing, this shows the prompt that entry
+              was written against rather than today's rotating one. */}
           <div className="rounded-xl bg-white border border-slate-200 px-3 py-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's prompt</p>
-            <p className="text-sm text-slate-700 mt-1 leading-snug">{prompt}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
+              {editingId ? "You answered" : "Today's prompt"}
+            </p>
+            <p className="text-sm text-slate-700 mt-1 leading-snug">{activePrompt}</p>
           </div>
 
           <input
@@ -495,14 +516,14 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={3}
-            placeholder={prompt}
+            placeholder={activePrompt}
             className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-teal-400 focus:outline-none"
           />
           <button
             onClick={handleSave}
-            disabled={saving || !text.trim()}
+            disabled={saving || !text.trim() || (editingId && text.trim() === (entryForDate?.text ?? "").trim())}
             className="w-full rounded-full bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
-            {saving ? "Saving…" : "Add reflection"}
+            {saving ? "Saving…" : editingId ? "Save changes" : "Add reflection"}
           </button>
         </div>
 

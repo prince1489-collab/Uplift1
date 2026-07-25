@@ -64,29 +64,22 @@ export function splitKindMoments(moments = [], focusedUids = [], myUid) {
 }
 
 // Preview-only: two-stranger moments can't arise on a single device (you're always one of
-// the pair), so seed a couple from real feed authors purely so the Worldwide Feed routing is
-// testable. Marked `demo` and rendered with a "preview" tag; device-local, never Firestore.
+// the pair), so seed one purely so the Worldwide Feed routing is testable.
+//
+// As with sample reflections, this must never name real members — an earlier version paired
+// two real feed authors, which read as a private exchange that never happened. Fictional
+// uids only, labelled EXAMPLE. Device-local, never Firestore.
 export function seedDemoKindMoments(messages = [], myUid) {
   const existing = loadKindMoments();
   if (existing.some((km) => km.demo)) return existing;
-  const authors = [];
-  const seen = new Set([myUid]);
-  for (const m of messages) {
-    if (!m.uid || seen.has(m.uid) || m.uid === "system" || !m.sender) continue;
-    seen.add(m.uid);
-    authors.push({ uid: m.uid, name: firstName(m.sender), country: m.country ?? null });
-    if (authors.length === 4) break;
-  }
-  if (authors.length < 2) return existing;
-  const pairs = authors.length >= 4 ? [[0, 1], [2, 3]] : [[0, 1]];
-  const demos = pairs.map(([i, j], n) => ({
-    id: `km_demo_${authors[i].uid}_${authors[j].uid}`,
-    aUid: authors[i].uid, aName: authors[i].name, aCountry: authors[i].country,
-    bUid: authors[j].uid, bName: authors[j].name, bCountry: authors[j].country,
+  const demo = {
+    id: "km_example",
+    aUid: "example_not_a_real_member_a", aName: "An example member", aCountry: null,
+    bUid: "example_not_a_real_member_b", bName: "another example member", bCountry: null,
     demo: true,
-    ts: Date.now() - (n + 1) * 3600000,
-  }));
-  const next = [...existing, ...demos].slice(0, 30);
+    ts: Date.now() - 3600000,
+  };
+  const next = [...existing, demo].slice(0, 30);
   writeJSON(MOMENTS_KEY, next);
   return next;
 }
@@ -123,16 +116,20 @@ export function splitStories(stories = [], focusedUids = [], myUid) {
   return { focused, worldwide };
 }
 
-// Preview-only: you can't receive someone else's shared journal on a single device, so
-// seed one from a real feed author to make the Worldwide routing testable. Tagged `demo`.
+// Preview-only: you can't receive someone else's shared reflection on a single device, so
+// seed one purely to make the Worldwide routing testable.
+//
+// IMPORTANT: sample content must NEVER be attributed to a real member. An earlier version
+// borrowed a real feed author's name, which read as though that person had actually shared
+// something — it hadn't happened. The example uses a fictional uid that can't collide with
+// a real account, and is labelled EXAMPLE wherever it appears.
+const EXAMPLE_UID = "example_not_a_real_member";
 export function seedDemoStories(messages = [], myUid) {
   const existing = loadLocalStories();
   if (existing.some((s) => s.demo)) return existing;
-  const author = messages.find((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.sender);
-  if (!author) return existing;
   const demo = {
-    id: `story_demo_${author.uid}`,
-    authorUid: author.uid, authorName: firstName(author.sender), country: author.country ?? null,
+    id: "story_example",
+    authorUid: EXAMPLE_UID, authorName: "Example member", country: null,
     anonymous: false, demo: true,
     text: "I nearly didn't send anything today. I did, and a stranger wrote back within the hour. I've read it about six times since.",
     enrich: [{ q: "What made this matter to you?", a: "It landed on a day I'd convinced myself nobody would notice either way." }],
@@ -141,6 +138,17 @@ export function seedDemoStories(messages = [], myUid) {
   const next = [...existing, demo].slice(0, 20);
   writeJSON(STORIES_KEY, next);
   return next;
+}
+
+// Drop any sample content that was attributed to a real member before the fix above.
+export function purgeMisattributedDemos() {
+  const stories = loadLocalStories();
+  const cleanStories = stories.filter((s) => !s.demo || s.authorUid === EXAMPLE_UID);
+  if (cleanStories.length !== stories.length) writeJSON(STORIES_KEY, cleanStories);
+  const moments = loadKindMoments();
+  const cleanMoments = moments.filter((km) => !km.demo || km.aUid === `${EXAMPLE_UID}_a`);
+  if (cleanMoments.length !== moments.length) writeJSON(MOMENTS_KEY, cleanMoments);
+  return { stories: cleanStories, moments: cleanMoments };
 }
 
 // ── Likes + comments on a shared journal (device-local) ──────────────────────
@@ -289,7 +297,7 @@ export function KindMomentCard({ moment, compact = false }) {
         <strong className="text-slate-800">{moment.bName} {flagFor(moment.bCountry)}</strong> shared a kind moment.
       </p>
       {moment.demo && (
-        <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">preview</span>
+        <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
       )}
     </div>
   );
@@ -567,10 +575,10 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
         <span className="flex-shrink-0 text-base">📔</span>
         <p className="flex-1 text-[12px] leading-snug text-slate-600">
           <strong className="text-slate-800">{storyAuthorLabel(story)}</strong>
-          {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} has decided to share their kindness journal.
+          {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} has decided to share their reflection.
         </p>
         {story.demo && (
-          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">preview</span>
+          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
         )}
       </div>
       <p className="text-[13px] leading-snug text-slate-700 line-clamp-2 italic">“{story.text}”</p>
@@ -605,7 +613,7 @@ export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
     <div data-portal className="fixed inset-0 z-[260] flex flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
-        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">📔 Shared kindness journal</h2>
+        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">📔 A shared reflection</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-6">
@@ -614,10 +622,18 @@ export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
             <span className="text-2xl">{story.anonymous ? "🕊️" : flagFor(story.country)}</span>
             <div className="min-w-0">
               <p className="text-sm font-bold text-slate-800">{storyAuthorLabel(story)}</p>
-              <p className="text-[11px] text-slate-400">{story.anonymous ? "Shared anonymously" : "Shared their journal"}</p>
+              <p className="text-[11px] text-slate-400">{story.anonymous ? "Shared anonymously" : "Shared their reflection"}</p>
             </div>
           </div>
 
+          {story.demo && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2.5">
+              <p className="text-[12px] font-bold text-amber-700">Example card — not a real member</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-amber-700/80">
+                Sample content showing how a shared reflection looks. Nobody actually wrote this.
+              </p>
+            </div>
+          )}
           <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">“{story.text}”</p>
           {Array.isArray(story.enrich) && story.enrich.map((e, i) => (
             <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
@@ -670,7 +686,7 @@ export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
           </div>
 
           <p className="pt-2 text-center text-[10px] text-slate-400">
-            Preview: shared journals, likes and comments stay on this device.
+            Preview: shared reflections, likes and comments stay on this device.
           </p>
         </div>
       </div>
@@ -703,7 +719,7 @@ export function StoryEngagementPanel({ story, engage, onClose }) {
           <h2 className="text-lg font-bold text-slate-800">Who responded</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
         </div>
-        <p className="px-5 pb-3 text-xs text-slate-400">Only you can see this — it's your journal.</p>
+        <p className="px-5 pb-3 text-xs text-slate-400">Only you can see this — it's your reflection.</p>
         <div className="space-y-3 overflow-y-auto overscroll-contain px-3 pb-8">
           <div>
             <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Hearts · {engage.likes.length}</p>
