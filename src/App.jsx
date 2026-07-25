@@ -703,6 +703,20 @@ const DISTRESS_RE = /(strugg|anx|depress|lonely|alone|hopeless|overwhelm|can'?t 
 const TOUR_VERSION = 4; // bump to re-run the guided tour once for everyone after a release
 const ADMIN_EMAIL = "prince1489@googlemail.com";
 
+// Compact age for a notification row — the bell had no timestamps at all, so a two-minute-old
+// like and a two-week-old one looked identical.
+function shortAgo(ts) {
+  const t = Number(ts) || 0;
+  if (!t) return "";
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return days < 7 ? `${days}d` : new Date(t).toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
 // ── "Since your last visit" boundary ─────────────────────────────────────────
 // The bell used to list everything the queries returned, forever, so a like from three
 // weeks ago sat at the top looking current. Everything is now filtered to the current
@@ -915,6 +929,49 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const newFreplyCount = visibleFreplies.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
   const newEchoCount = visibleEchoes.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
   const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
+
+  // Everything merges into ONE list, newest first, each row stamped with its age. Grouping by
+  // type meant an older ripple could sit above a fresh like, and with no timestamps at all
+  // there was no way to tell a two-minute-old event from a two-week-old one.
+  //
+  // Ripples are one doc per responder, so several from the same country read as duplicates —
+  // they collapse into a single row that says how many people, which is also more informative.
+  const rows = useMemo(() => {
+    const out = [];
+    visibleWaves.forEach((w) => out.push({
+      id: w.id, ts: Number(w.createdAt) || 0, icon: "👋", tint: "", fresh: true,
+      text: <>Someone waved at you</>, onDismiss: () => dismissWave(w.id),
+    }));
+    visibleLikes.forEach((l) => out.push({
+      id: l.id, ts: l.at, icon: "❤️", tint: "bg-rose-50/60", fresh: l.at > likesSeenAt,
+      text: <><span className="font-semibold">{l.name}</span>{l.country ? <> from <span className="font-semibold">{l.country}</span></> : null} liked your message</>,
+      onDismiss: () => dismissLike(l.id),
+    }));
+    const byCountry = new Map();
+    visibleRipples.forEach((r) => {
+      const key = r.responderCountry || "—";
+      const prev = byCountry.get(key);
+      const ts = Number(r.createdAt) || 0;
+      if (prev) { prev.n += 1; prev.ts = Math.max(prev.ts, ts); }
+      else byCountry.set(key, { n: 1, ts, country: r.responderCountry, id: r.id });
+    });
+    byCountry.forEach((g) => out.push({
+      id: `ripple_${g.id}`, ts: g.ts, icon: "🌱", tint: "bg-emerald-50/60", fresh: g.ts > ripplesSeenAt,
+      text: g.n > 1
+        ? <><span className="font-semibold">{g.n} people</span> you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>
+        : <>Someone you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>,
+    }));
+    visibleFreplies.forEach((r) => out.push({
+      id: r.id, ts: Number(r.createdAt) || 0, icon: "💛", tint: "bg-amber-50/60", fresh: (r.createdAt ?? 0) > frepliesSeenAt,
+      text: <><span className="font-semibold">{(r.responderName || "Someone").split(" ")[0]}</span>{r.responderCountry ? <> from <span className="font-semibold">{r.responderCountry}</span></> : null} sent you encouragement</>,
+    }));
+    visibleEchoes.forEach((r) => out.push({
+      id: r.id, ts: Number(r.createdAt) || 0, icon: "🌟", tint: "bg-violet-50/60", fresh: (r.createdAt ?? 0) > echoesSeenAt,
+      text: <>{r.posterName ? <span className="font-semibold">{r.posterName.split(" ")[0]}</span> : "Someone"} said your encouragement <span className="font-semibold">helped</span></>,
+    }));
+    return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
+  }, [visibleWaves, visibleLikes, visibleRipples, visibleFreplies, visibleEchoes,
+      likesSeenAt, ripplesSeenAt, frepliesSeenAt, echoesSeenAt]);
   // Honest, transparently system-authored reassurance: if you've shared kindness but no one
   // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
   // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
@@ -941,7 +998,10 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                 {streak > 0 ? `${streak}-day kindness streak!` : "Start your kindness streak"}
               </p>
               <p className="text-[10px] text-slate-500">
-                {streak >= 3 ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% spark bonus active` : "Send a greeting today to begin"}
+                {streak >= 3
+                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% spark bonus active`
+                  : streak > 0 ? "Keep it going — 3 days unlocks a spark bonus"
+                  : "Send a greeting today to begin"}
               </p>
             </div>
           </div>
@@ -949,8 +1009,8 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Since your last visit</p>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            {visibleWaves.length === 0 && visibleLikes.length === 0 && visibleRipples.length === 0 && visibleFreplies.length === 0 && visibleEchoes.length === 0 && !showSeenAck ? (
-              <p className="px-4 py-6 text-center text-[11px] text-slate-400">No new notifications</p>
+            {rows.length === 0 && !showSeenAck ? (
+              <p className="px-4 py-6 text-center text-[11px] text-slate-400">Nothing new since you were last here</p>
             ) : (
               <div className="py-1">
                 {showSeenAck && (
@@ -962,81 +1022,23 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                     </p>
                   </div>
                 )}
-                {visibleWaves.map((w) => (
-                  <div key={w.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50">
-                    <span className="text-base flex-shrink-0">👋</span>
-                    <p className="flex-1 text-[11px] text-slate-700">Someone waved at you!</p>
-                    <button onClick={() => dismissWave(w.id)}
-                      className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-                {visibleWaves.length > 0 && visibleLikes.length > 0 && (
-                  <div className="mx-4 my-1 border-t border-slate-100" />
-                )}
-                {visibleLikes.map((l) => {
-                  const fresh = l.at > likesSeenAt;
-                  return (
-                    <div key={l.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-rose-50/60" : ""} hover:bg-rose-50`}>
-                      <span className="text-base flex-shrink-0">❤️</span>
-                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                        <span className="font-semibold">{l.name}</span>
-                        {l.country ? <> from <span className="font-semibold">{l.country}</span></> : null}
-                        {" "}liked your message ❤️
-                      </p>
-                      <button onClick={() => dismissLike(l.id)}
-                        className="flex-shrink-0 flex h-6 w-6 items-center justify-center text-slate-300 hover:text-slate-500">
+                {rows.map((r) => (
+                  <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${r.fresh ? r.tint : ""} hover:bg-slate-50`}>
+                    <span className="text-base flex-shrink-0">{r.icon}</span>
+                    <p className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">{r.text}</p>
+                    <span className="flex-shrink-0 text-[10px] tabular-nums text-slate-400">{shortAgo(r.ts)}</span>
+                    {r.onDismiss && (
+                      <button onClick={r.onDismiss}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center text-slate-300 hover:text-slate-500">
                         <X size={12} />
                       </button>
-                    </div>
-                  );
-                })}
-                {(visibleWaves.length > 0 || visibleLikes.length > 0) && visibleRipples.length > 0 && (
-                  <div className="mx-4 my-1 border-t border-slate-100" />
-                )}
-                {visibleRipples.map((r) => {
-                  const fresh = (r.createdAt ?? 0) > ripplesSeenAt;
-                  return (
-                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-emerald-50/60" : ""} hover:bg-emerald-50`}>
-                      <span className="text-base flex-shrink-0">🌱</span>
-                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                        Kindness chain — someone you reached
-                        {r.responderCountry ? <> in <span className="font-semibold">{r.responderCountry}</span></> : null}
-                        {" "}went on to greet others
-                      </p>
-                    </div>
-                  );
-                })}
-                {visibleFreplies.map((r) => {
-                  const fresh = (r.createdAt ?? 0) > frepliesSeenAt;
-                  return (
-                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-amber-50/60" : ""} hover:bg-amber-50`}>
-                      <span className="text-base flex-shrink-0">💛</span>
-                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                        <span className="font-semibold">{(r.responderName || "Someone").split(" ")[0]}</span>
-                        {r.responderCountry ? <> from <span className="font-semibold">{r.responderCountry}</span></> : null}
-                        {" "}sent you encouragement — tap the 💛 badge by your name to read it
-                      </p>
-                    </div>
-                  );
-                })}
-                {visibleEchoes.map((r) => {
-                  const fresh = (r.createdAt ?? 0) > echoesSeenAt;
-                  return (
-                    <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${fresh ? "bg-violet-50/60" : ""} hover:bg-violet-50`}>
-                      <span className="text-base flex-shrink-0">🌟</span>
-                      <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                        {r.posterName ? <span className="font-semibold">{r.posterName.split(" ")[0]}</span> : "Someone"} said your
-                        encouragement <span className="font-semibold">helped</span> — right when it was needed
-                      </p>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          {(waves.length > 1 || visibleLikes.length > 0) && (
+          {(visibleWaves.length > 1 || visibleLikes.length > 0) && (
             <div className="border-t border-slate-100 px-4 py-2">
               <button
                 onClick={() => {
