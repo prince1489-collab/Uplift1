@@ -568,20 +568,25 @@ export function PostComposer({ profile, myUid, onPosted, onClose }) {
 export function SharedJournalCard({ story, onOpen, compact = false }) {
   const { likes, comments } = loadStoryEngagement(story.id);
 
-  // Worldwide rotator: a single line, since the slot is sized for two lines of message.
+  // Worldwide rotator: same two-line rhythm as a stranger's message card in the same slot
+  // — a meta row, then a clamped body. "shared their reflection" leads the BODY rather than
+  // sharing the meta row with the badge and the link, which is what truncated it mid-word.
   if (compact) {
     return (
       <button onClick={() => onOpen?.(story)}
-        className="flex w-full items-center gap-1.5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left"
+        className="w-full rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left active:scale-[0.99] transition-transform"
         style={{ animation: "seenFadeUp 400ms ease both" }}>
-        <span className="flex-shrink-0 text-sm">📔</span>
-        <p className="min-w-0 flex-1 truncate text-[12px] text-slate-600">
-          <strong className="text-slate-800">{storyAuthorLabel(story)}</strong> shared their reflection
+        <div className="mb-0.5 flex items-center gap-1.5">
+          <span className="flex-shrink-0 text-sm">📔</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-500">{storyAuthorLabel(story)}</span>
+          {story.demo && (
+            <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
+          )}
+          <span className="flex-shrink-0 text-[10px] font-bold text-amber-600">Read →</span>
+        </div>
+        <p className="line-clamp-2 text-[13px] leading-snug text-slate-800">
+          <span className="font-medium">shared their reflection</span> — “{story.text}”
         </p>
-        {story.demo && (
-          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
-        )}
-        <span className="flex-shrink-0 text-[10px] font-bold text-amber-600">Read →</span>
       </button>
     );
   }
