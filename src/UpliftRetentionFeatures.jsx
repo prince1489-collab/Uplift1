@@ -739,7 +739,7 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, messageTs = 0 }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -930,8 +930,13 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
         const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
+        // On your OWN message the badge can't toggle (you can't react to yourself), so it
+        // becomes a private "who felt this" viewer instead.
+        const isOwn = senderUid && senderUid === currentUser?.uid;
         return (
-          <button key={e} onClick={() => toggle(e)}
+          <button key={e}
+            onClick={() => (isOwn && onViewReactors ? onViewReactors() : toggle(e))}
+            title={isOwn && onViewReactors ? "See who felt this" : undefined}
             className={`seen-react-badge relative flex items-center gap-0.5 rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 before:absolute before:-inset-2 before:content-[''] ${
               mine2 ? "is-mine border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
             }`}>

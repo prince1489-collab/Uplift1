@@ -1,19 +1,21 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// Feed2.jsx — v2 "Connect" tab pieces (PREVIEW). The Worldwide Message Board shows
-// strangers' messages (people you haven't added to your focused feed); the Focused Feed
-// shows only people you've selected. Likes, private replies and "kind moment" broadcasts
+// Feed2.jsx — v2 "Connect" tab pieces (PREVIEW). The Worldwide Feed shows strangers'
+// messages (people you haven't followed); the Focused Feed below it shows only the
+// people you follow. Likes, private replies and "kind moment" broadcasts
 // are SIMULATED (localStorage only, never written to Firestore) so the preview never leaks
 // content into the real feed production testers see. Real moderation/DMs are merge-time work.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { doc, getDoc, onSnapshot, collection } from "firebase/firestore";
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Sparkles, ChevronRight } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
 
 const POSTS_KEY = "seen_v2_local_posts";
-const FOCUS_KEY = "seen_v2_focused_uids";
+const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
+const FOLLOWS_KEY = "seen_v2_follows";    // [{ uid, name, country, label }]
 const MOMENTS_KEY = "seen_v2_kind_moments";
 const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
@@ -25,8 +27,33 @@ const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); 
 
 export const loadLocalPosts = () => readJSON(POSTS_KEY, []);
 const saveLocalPosts = (l) => writeJSON(POSTS_KEY, l.slice(0, 30));
-export const loadFocused = () => readJSON(FOCUS_KEY, []);
+
+// ── Follows: who you follow, with a denormalized name/country and an optional label ──
+// Suggested labels; users can also type their own via "Custom…".
+export const FOLLOW_LABELS = ["Family", "Friend", "Work", "Neighbour"];
+
+// Reads the follow list, migrating the legacy bare-uid array on first run so existing
+// testers keep everyone they already followed.
+export function loadFollows() {
+  const stored = readJSON(FOLLOWS_KEY, null);
+  if (Array.isArray(stored)) return stored;
+  const legacy = readJSON(FOCUS_KEY, []);
+  const migrated = (Array.isArray(legacy) ? legacy : [])
+    .filter(Boolean)
+    .map((uid) => ({ uid, name: "", country: null, label: null }));
+  if (migrated.length) writeJSON(FOLLOWS_KEY, migrated);
+  return migrated;
+}
+export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
+
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
+// Private replies *received* on one of my messages, keyed by messageId. Real inbound
+// replies are merge-time work — this store exists so the viewer is ready for them.
+const REPLIES_IN_KEY = "seen_v2_replies_received";
+export const loadRepliesReceived = (messageId) => {
+  const all = readJSON(REPLIES_IN_KEY, {});
+  return Array.isArray(all?.[messageId]) ? all[messageId] : [];
+};
 export const loadLocalStories = () => readJSON(STORIES_KEY, []);
 // Add a Featured Story (from a shared journal reflection). Device-local; never Firestore.
 export function addLocalStory(story) {
@@ -38,9 +65,11 @@ export function addLocalStory(story) {
 const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const firstName = (n) => (n || "Someone").split(" ")[0];
 
-// ── Worldwide Message Board — a compact, single-broadcast rotator ──────────────
+// ── Worldwide Feed — a compact, single-broadcast rotator ──────────────────────
 // One stranger's message shows at a time (~2 lines), auto-rotating every few seconds.
 // Tap the message to reveal Like / Reply / Follow — collapsed by default to save space.
+// Tinted + pinned above the scroller so it reads as a distinct band, separate from the
+// Focused Feed below it.
 const ROTATE_MS = 5000;
 export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
@@ -72,14 +101,16 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggl
   const following = m ? focusedSet.has(m.uid) : false;
 
   return (
-    <div className="border-b border-slate-100 bg-white px-3 py-2 flex-shrink-0">
+    <div className="border-b-2 border-sky-100 bg-sky-50/60 px-3 py-2 flex-shrink-0">
       <div className="flex items-center justify-between px-1 pb-1">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">🌍 Worldwide Message Board</p>
-        {strangers.length > 1 && <span className="text-[10px] font-semibold text-slate-300 tabular-nums">{idx + 1}/{strangers.length}</span>}
+        <p className="text-[11px] font-bold uppercase tracking-wide text-sky-600">🌍 Worldwide Feed</p>
+        <span className="text-[10px] font-semibold text-sky-400">
+          {strangers.length > 1 ? <span className="tabular-nums">{idx + 1}/{strangers.length}</span> : "from strangers"}
+        </span>
       </div>
 
       {!m ? (
-        <div className="rounded-2xl bg-teal-50 px-3 py-3 text-center text-[12px] text-slate-500">
+        <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] text-slate-500">
           💛 Kind messages from around the world will appear here.
         </div>
       ) : (
@@ -87,7 +118,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], onToggl
           <button
             key={m.id}
             onClick={() => setOpen((v) => !v)}
-            className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 active:scale-[0.99] transition-transform"
+            className="w-full text-left rounded-2xl border border-sky-200 bg-white px-3 py-2 active:scale-[0.99] transition-transform"
             style={{ animation: "seenFadeUp 350ms ease both" }}>
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className="text-sm">{flagFor(m.country)}</span>
@@ -194,9 +225,138 @@ export function FocusedFeedEmpty() {
       <div className="text-3xl mb-2">👋</div>
       <p className="text-sm font-bold text-slate-800">Your focused feed is quiet</p>
       <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">
-        Tap <strong>Follow</strong> on people in the Worldwide Message Board above to see their kind
+        Tap <strong>Follow</strong> on someone in the Worldwide Feed above to see their kind
         messages here — just the people you choose.
       </p>
+    </div>
+  );
+}
+
+// ── People you follow — review, label and unfollow (⋯ menu) ───────────────────
+export function FollowingPanel({ follows = [], messages = [], onSetLabel, onUnfollow, onClose }) {
+  const [editing, setEditing] = useState(null); // uid whose label chips are open
+  const [customFor, setCustomFor] = useState(null); // uid typing a custom label
+  const [customText, setCustomText] = useState("");
+
+  // Follows saved before names were denormalized fall back to a live-message lookup.
+  const nameFor = (f) => {
+    if (f.name) return f.name;
+    const hit = messages.find((m) => m.uid === f.uid && m.sender);
+    return hit?.sender || "Someone";
+  };
+  const countryFor = (f) => f.country || messages.find((m) => m.uid === f.uid && m.country)?.country || null;
+
+  const commitCustom = (uid) => {
+    const t = customText.trim().slice(0, 20);
+    if (t) onSetLabel?.(uid, t);
+    setCustomFor(null); setCustomText(""); setEditing(null);
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">👥 People you follow</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <p className="px-5 pb-3 text-xs text-slate-400">
+          Only these people appear in your Focused Feed. Add a label to keep them organised — it's private to you.
+        </p>
+
+        <div className="overflow-y-auto overscroll-contain px-3 pb-8">
+          {follows.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-400">
+              <div className="text-3xl mb-2">🕊️</div>
+              You're not following anyone yet.
+              <p className="mt-1 text-[12px] text-slate-400">Tap <strong>Follow</strong> on a message in the Worldwide Feed.</p>
+            </div>
+          ) : (
+            follows.map((f) => {
+              const isEditing = editing === f.uid;
+              return (
+                <div key={f.uid} className="rounded-2xl px-3 py-2.5 hover:bg-slate-50">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <span style={{ fontSize: "15px" }}>{flagFor(countryFor(f))}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700 truncate">{nameFor(f)}</p>
+                      <button onClick={() => { setEditing(isEditing ? null : f.uid); setCustomFor(null); }}
+                        className="text-[11px] font-semibold text-teal-600 hover:text-teal-700">
+                        {f.label ? `${f.label} · change` : "Add a label"}
+                      </button>
+                    </div>
+                    <button onClick={() => onUnfollow?.(f.uid)}
+                      className="text-xs font-semibold text-slate-400 hover:text-rose-500 px-3 py-1.5 rounded-full hover:bg-rose-50 flex-shrink-0">
+                      Unfollow
+                    </button>
+                  </div>
+
+                  {isEditing && (
+                    <div className="mt-2 flex flex-wrap gap-1.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
+                      {FOLLOW_LABELS.map((l) => (
+                        <button key={l} onClick={() => { onSetLabel?.(f.uid, l); setEditing(null); }}
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
+                            f.label === l ? "border-teal-400 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                          }`}>
+                          {l}
+                        </button>
+                      ))}
+                      {customFor === f.uid ? (
+                        <div className="flex items-center gap-1.5 w-full mt-1">
+                          <input autoFocus value={customText} maxLength={20}
+                            onChange={(e) => setCustomText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") commitCustom(f.uid); }}
+                            placeholder="Your own label…"
+                            className="flex-1 rounded-full border border-slate-200 px-3 py-1 text-[12px] text-slate-800 focus:border-teal-400 focus:outline-none" />
+                          <button onClick={() => commitCustom(f.uid)}
+                            className="rounded-full bg-teal-600 px-3 py-1 text-[11px] font-bold text-white">Save</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setCustomFor(f.uid); setCustomText(f.label && !FOLLOW_LABELS.includes(f.label) ? f.label : ""); }}
+                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50">
+                          Custom…
+                        </button>
+                      )}
+                      {f.label && (
+                        <button onClick={() => { onSetLabel?.(f.uid, null); setEditing(null); }}
+                          className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-rose-500">
+                          Remove label
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+          <p className="pt-3 text-center text-[10px] text-slate-400">Preview: your follows and labels stay on this device.</p>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Focused-feed section header — the boundary between strangers and your people ──
+export function FocusedFeedHeader({ count = 0, onManage }) {
+  return (
+    <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-1.5">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">👥 Focused Feed</p>
+      <span className="text-[10px] font-semibold text-slate-400">
+        {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}
+      </span>
+      {onManage && (
+        <button onClick={onManage}
+          className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold text-teal-600 hover:bg-teal-50 transition-colors">
+          Manage
+        </button>
+      )}
     </div>
   );
 }
@@ -313,6 +473,131 @@ export function FeaturedStoryReader({ story, onClose }) {
             </div>
           ))}
           <p className="pt-4 text-center text-[10px] text-slate-400">Preview: featured stories are stored on this device only.</p>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── "Who felt this" — who liked / replied to ONE of my messages ────────────────
+// Opens only from the ❤️ badge on your own message, so it's private to you by
+// construction. The likes are REAL Firestore data (publicMessages/{id}/reactions/❤️
+// stores uids + countries + reactedAt and is world-readable); names are resolved from
+// users/{uid}.fullName behind a cache. Private replies read the local store above.
+const timeAgo = (ts) => {
+  if (!ts) return "";
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return days < 7 ? `${days}d ago` : new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
+};
+
+export function MessageReactionsPanel({ db, message, onClose }) {
+  const [reactors, setReactors] = useState(null); // null = loading
+  const nameCache = useRef({});
+  const replies = useMemo(() => loadRepliesReceived(message?.id), [message?.id]);
+
+  useEffect(() => {
+    if (!db || !message?.id) { setReactors([]); return; }
+    let alive = true;
+    const unsub = onSnapshot(collection(db, "publicMessages", message.id, "reactions"), async (snap) => {
+      const rows = [];
+      snap.forEach((d) => {
+        const { uids = [], countries = {}, reactedAt = {} } = d.data() || {};
+        uids.forEach((uid) => rows.push({ uid, emoji: d.id, country: countries[uid] ?? null, at: reactedAt[uid] ?? 0 }));
+      });
+      rows.sort((a, b) => (b.at || 0) - (a.at || 0));
+      const resolved = await Promise.all(rows.map(async (r) => {
+        if (nameCache.current[r.uid]) return { ...r, name: nameCache.current[r.uid] };
+        try {
+          const us = await getDoc(doc(db, "users", r.uid));
+          const name = (us.data()?.fullName || "").trim() || "Someone";
+          nameCache.current[r.uid] = name;
+          return { ...r, name, country: r.country || us.data()?.country || null };
+        } catch { return { ...r, name: "Someone" }; }
+      }));
+      if (alive) setReactors(resolved);
+    }, () => { if (alive) setReactors([]); });
+    return () => { alive = false; unsub(); };
+  }, [db, message?.id]);
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+        <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
+        <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          <Heart size={15} className="text-rose-500" fill="currentColor" /> Who felt this
+        </h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="mx-auto max-w-md space-y-5">
+          <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600 mb-1">Your message</p>
+            <p className="text-[15px] leading-relaxed text-slate-800 font-medium">“{message?.text}”</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+              Hearts {reactors ? `· ${reactors.length}` : ""}
+            </p>
+            {reactors === null ? (
+              <div className="py-8 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+                <Loader2 size={16} className="animate-spin" /> Loading…
+              </div>
+            ) : reactors.length === 0 ? (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 py-8 text-center text-[13px] text-slate-400">
+                <div className="text-2xl mb-1">🤍</div>
+                No hearts yet — they often arrive a little later.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {reactors.map((r) => (
+                  <div key={`${r.uid}_${r.emoji}`} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
+                      <span style={{ fontSize: "15px" }}>{flagFor(r.country)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700 truncate">{r.name}</p>
+                      {r.country && <p className="text-[11px] text-slate-400 truncate">{r.country}</p>}
+                    </div>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">{timeAgo(r.at)}</span>
+                    <span className="text-sm flex-shrink-0">{r.emoji}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+              Private replies {replies.length ? `· ${replies.length}` : ""}
+            </p>
+            {replies.length === 0 ? (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-5 text-center text-[12px] text-slate-400 leading-relaxed">
+                💬 Private replies to this message will appear here — only you can see them.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {replies.map((rep, i) => (
+                  <div key={i} className="rounded-2xl border border-amber-100 bg-amber-50/60 px-3.5 py-2.5">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-sm">{flagFor(rep.country)}</span>
+                      <span className="text-[11px] font-semibold text-slate-500 flex-1 truncate">{firstName(rep.name)}</span>
+                      <span className="text-[10px] text-slate-400">{timeAgo(rep.ts)}</span>
+                    </div>
+                    <p className="text-[13px] text-slate-700 leading-snug">“{rep.text}”</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <p className="pb-6 text-center text-[10px] text-slate-400">Only you can see who felt your message. 💛</p>
         </div>
       </div>
     </div>,

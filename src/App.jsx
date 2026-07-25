@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, ChevronRight, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
+  Loader2, Mail, LogOut, MessageCircle, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
@@ -20,10 +20,10 @@ import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
-import KindnessTreePanel, { treeStageFor, TREE_STAGES, TreeScene } from "./KindnessTree";
+import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
-import { awardPoints, getPoints } from "./points";
-import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFocused, loadKindMoments, loadLocalStories } from "./Feed2";
+import { awardPoints } from "./points";
+import { WorldwideBoard, PostComposer, PreviewPostsStrip, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, FeaturedStories, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, loadLocalStories } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -247,7 +247,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -361,6 +361,12 @@ function MeatballMenu({ onWorld, onShare, onUpgrade, onManageSubscription, onSup
                   icon={<IconBox><Globe size={16} className={globePulse ? "text-teal-500" : "text-slate-500"} /></IconBox>}
                   label="World Map"
                   sub="See who's spreading kindness"
+                />
+                <Row
+                  onClick={() => { onFollowing?.(); close(); }}
+                  icon={<IconBox><Users size={16} className="text-slate-500" /></IconBox>}
+                  label="People you follow"
+                  sub={followCount > 0 ? `${followCount} ${followCount === 1 ? "person" : "people"} · add labels` : "Choose who's in your Focused Feed"}
                 />
                 <Row
                   tourId="m-wellbeing"
@@ -1867,17 +1873,17 @@ export default function App() {
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
   const [menuOpen, setMenuOpen] = useState(false); // ⋯ menu open-state (lifted so the tour can drive it)
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
-  // v2 (preview): local points ledger — grows the Kindness Tree on top of the real spark balance
-  const [localPoints, setLocalPoints] = useState(() => getPoints());
-  useEffect(() => {
-    const onPts = () => setLocalPoints(getPoints());
-    window.addEventListener("seen-points", onPts);
-    return () => window.removeEventListener("seen-points", onPts);
-  }, []);
   // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
-  const [focusedUids, setFocusedUids] = useState(() => loadFocused());
+  // `follows` is the source of truth ({uid, name, country, label}); the feed filter and the
+  // Worldwide rotator only need the uids, so those are derived.
+  const [follows, setFollows] = useState(() => loadFollows());
+  const focusedUids = useMemo(() => follows.map((f) => f.uid), [follows]);
+  const [showFollowing, setShowFollowing] = useState(false);
+  useBackLayer(showFollowing, () => setShowFollowing(false));
+  const [reactorsFor, setReactorsFor] = useState(null); // my message whose "who felt this" is open
+  useBackLayer(Boolean(reactorsFor), () => setReactorsFor(null));
   const [kindMoments, setKindMoments] = useState(() => loadKindMoments());
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // Featured story being read
@@ -1890,13 +1896,36 @@ export default function App() {
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
+  // Follow/unfollow from the Worldwide Feed — denormalizes the name + country so the
+  // "People you follow" panel can render without extra reads.
   const toggleFocus = (m) => {
-    setFocusedUids((prev) => {
-      const next = prev.includes(m.uid) ? prev.filter((u) => u !== m.uid) : [...prev, m.uid];
-      try { localStorage.setItem("seen_v2_focused_uids", JSON.stringify(next)); } catch { /* ignore */ }
+    setFollows((prev) => {
+      const next = prev.some((f) => f.uid === m.uid)
+        ? prev.filter((f) => f.uid !== m.uid)
+        : [...prev, { uid: m.uid, name: m.sender || "", country: m.country ?? null, label: null }];
+      saveFollows(next);
       return next;
     });
   };
+  const setFollowLabel = (uid, label) => {
+    setFollows((prev) => {
+      const next = prev.map((f) => (f.uid === uid ? { ...f, label } : f));
+      saveFollows(next);
+      return next;
+    });
+  };
+  const unfollow = (uid) => {
+    setFollows((prev) => {
+      const next = prev.filter((f) => f.uid !== uid);
+      saveFollows(next);
+      return next;
+    });
+  };
+  // uid → label, for the chip beside a sender's name in the Focused Feed
+  const followLabelByUid = useMemo(
+    () => Object.fromEntries(follows.filter((f) => f.label).map((f) => [f.uid, f.label])),
+    [follows]
+  );
   // v2: deferred glimpse questions — sheet + one-time dismissible feed card
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
   const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
@@ -2445,7 +2474,6 @@ export default function App() {
   const isPremium = true; // all features free — grow the user base
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
   // v2 tree balance = real sparks + device-local preview points (grows the Kindness Tree)
-  const treeBalance = sparkBalance + localPoints;
   const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
   const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
   const progressPercent = useMemo(() => {
@@ -2934,6 +2962,17 @@ export default function App() {
         {showChangePasswordApp && (
           <ChangePasswordPanel currentUser={currentUser} onChangePassword={changePassword} onClose={() => setShowChangePasswordApp(false)} />
         )}
+        {showFollowing && (
+          <FollowingPanel
+            follows={follows}
+            messages={messages}
+            onSetLabel={setFollowLabel}
+            onUnfollow={unfollow}
+            onClose={() => setShowFollowing(false)} />
+        )}
+        {reactorsFor && (
+          <MessageReactionsPanel db={db} message={reactorsFor} onClose={() => setReactorsFor(null)} />
+        )}
 
         {glimpse && (
           <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} moodTag={glimpse.moodTag} onClose={() => setGlimpse(null)} />
@@ -3106,6 +3145,8 @@ export default function App() {
                       onOpenChange={handleMenuOpenChange}
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
+                      onFollowing={() => setShowFollowing(true)}
+                      followCount={follows.length}
                       onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
                       onChangePassword={changePassword}
@@ -3148,17 +3189,8 @@ export default function App() {
                 className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{ maxHeight: headerOpen ? "480px" : "0px", opacity: headerOpen ? 1 : 0 }}>
                 <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-2">
-                  {/* v2: sparks meter removed from the main screen — growth now lives in the
-                      Kindness Tree (⋯ menu). A slim tree-stage chip replaces the meter. */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowLevels(true); }}
-                    className="w-full flex items-center gap-2.5 rounded-2xl border border-teal-100 bg-teal-50 px-3 py-2 text-left active:scale-[0.99] transition-transform">
-                    <span className="flex-shrink-0"><TreeScene stageIdx={TREE_STAGES.indexOf(treeStageFor(treeBalance))} size={32} /></span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-800">{treeStageFor(treeBalance).name}</p>
-                      <p className="text-[11px] text-slate-500">Your Kindness Tree · tap to tend it 🌱</p>
-                    </div>
-                  </button>
+                  {/* v2: no sparks meter and no tree chip here — the Kindness Tree is the
+                      centrepiece of the My Journey tab, so this stays banners-only. */}
                   <div className="space-y-1">
                     <NotificationPermissionBanner onPermissionChange={() => setNotifPermission(Notification.permission)} />
                     {!isChatLive && chatError && (
@@ -3498,8 +3530,8 @@ export default function App() {
               )}
               {/* v2: "kind moment" broadcasts from private exchanges (preview, device-local) */}
               {kindMoments.map((km) => <KindMomentCard key={km.id} moment={km} />)}
-              {/* v2 Focused Feed: only people you've chosen (+ your own messages). Strangers live
-                  in the Worldwide Message Board above. */}
+              {/* v2 Focused Feed: only people you follow (+ your own messages). Strangers live
+                  in the Worldwide Feed above. */}
               {(() => {
                 const focusedSet = new Set(focusedUids);
                 const focusedMsgs = messages.filter((m) => m.uid && !blockedUids.has(m.uid) && (focusedSet.has(m.uid) || m.uid === currentUser.uid));
@@ -3519,11 +3551,16 @@ export default function App() {
                     grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
                   }
                 });
-                return grouped.map((group) => {
+                return (
+                  <>
+                  <FocusedFeedHeader count={follows.length} onManage={() => setShowFollowing(true)} />
+                  {grouped.map((group) => {
                   const mine = group.uid === currentUser.uid;
                   const isMulti = group.items.length > 1;
                   const firstId = group.items[0].id;
                   const isNewGroup = newMessageIds.has(firstId);
+                  const groupLabel = followLabelByUid[group.uid];
+                  const latestInGroup = group.items[group.items.length - 1];
                   return (
                     <React.Fragment key={firstId}>
                     {group.showDaySep && (
@@ -3541,11 +3578,24 @@ export default function App() {
                             {mine ? (
                               "You"
                             ) : (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null, name: group.sender, moodTag: group.moodTag ?? null }); }}
-                                className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
-                                {group.sender}
-                              </button>
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null, name: group.sender, moodTag: group.moodTag ?? null }); }}
+                                  className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
+                                  {group.sender}
+                                </button>
+                                {/* private label you gave them in "People you follow" */}
+                                {groupLabel && (
+                                  <span className="rounded-full bg-teal-50 px-1.5 py-px text-[9px] font-bold text-teal-600">{groupLabel}</span>
+                                )}
+                                {/* private reply — reuses the same sheet as the Worldwide Feed */}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setReplyTarget(latestInGroup); }}
+                                  title="Reply privately"
+                                  className="ml-auto flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 hover:bg-teal-50 hover:text-teal-600 transition-colors">
+                                  <MessageCircle size={11} /> Reply
+                                </button>
+                              </>
                             )}
                           </div>
                           <div className="relative">
@@ -3665,7 +3715,7 @@ export default function App() {
                                             </div>
                                           );
                                         })()}
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
@@ -3688,7 +3738,9 @@ export default function App() {
                     </MessageSlideIn>
                     </React.Fragment>
                   );
-                });
+                  })}
+                  </>
+                );
               })()}
               <SendingIndicator visible={isSending} />
             </main>
