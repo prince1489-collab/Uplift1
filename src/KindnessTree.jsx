@@ -34,66 +34,118 @@ export function treeStageFor(balance) {
   return TREE_STAGES.reduce((s, t) => (balance >= t.min ? t : s), TREE_STAGES[0]);
 }
 
+// Sky palette by time of day — the scene should feel like it belongs to the moment
+// the user opened it. [top, bottom].
+export function skyFor(hour = new Date().getHours()) {
+  if (hour < 5)  return { sky: ["#1e293b", "#334155"], sun: null,      night: true,  label: "night" };
+  if (hour < 8)  return { sky: ["#fed7aa", "#fef3c7"], sun: "#fbbf24", night: false, label: "dawn" };
+  if (hour < 17) return { sky: ["#e0f2fe", "#f0fdfa"], sun: "#fde68a", night: false, label: "day" };
+  if (hour < 20) return { sky: ["#fecaca", "#fed7aa"], sun: "#fb923c", night: false, label: "dusk" };
+  return { sky: ["#312e81", "#1e293b"], sun: null, night: true, label: "night" };
+}
+
 // ── the animated SVG growth scene ─────────────────────────────────────────────
-export function TreeScene({ stageIdx = 0, watering = false, size = 200 }) {
-  const t = Math.max(0, Math.min(1, stageIdx / (TREE_STAGES.length - 1))); // 0..1 growth
-  const stemH = 8 + t * 96;            // stem/trunk height
-  const stemTopY = 178 - stemH;        // top of trunk
+// `growth` (0..1) overrides stageIdx for smooth continuous animation — used by the
+// grow-from-seed replay. `ambient` adds drifting motes, a time-of-day sky and
+// butterflies. `watering` plays the full pour → soak → push-up sequence.
+export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour }) {
+  const maxIdx = TREE_STAGES.length - 1;
+  const eff = growth != null ? growth * maxIdx : stageIdx; // continuous stage position
+  const t = Math.max(0, Math.min(1, eff / maxIdx));        // 0..1 growth
+  const stemH = 8 + t * 96;
+  const stemTopY = 178 - stemH;
   const canopyR = t < 0.28 ? 0 : 8 + (t - 0.28) * 78;
-  const showLeaves = stageIdx >= 2 && stageIdx < 7;
-  const showCanopy = stageIdx >= 6;
-  const showBlossom = stageIdx >= 10;
+  const showLeaves = eff >= 2 && eff < 7;
+  const showCanopy = eff >= 6;
+  const showBlossom = eff >= 10;
+  const showButterflies = ambient && eff >= 8;
   const trunkW = 3 + t * 9;
+  const sky = ambient ? skyFor(hour) : null;
+  // While the replay is running we drive geometry frame by frame, so CSS transitions
+  // would fight it and smear the motion.
+  const grow = growth != null ? "none" : "all 900ms cubic-bezier(0.34,1.2,0.64,1)";
 
   return (
-    <svg viewBox="0 0 200 200" width={size} height={size} className={watering ? "" : "seen-tree-sway"} aria-hidden="true">
-      {/* soil mound */}
-      <ellipse cx="100" cy="182" rx="52" ry="12" fill="#8b5e34" />
-      <ellipse cx="100" cy="180" rx="52" ry="9" fill="#a06a3c" />
-
-      {/* seed (early) */}
-      {stageIdx <= 1 && <ellipse cx="100" cy="176" rx="7" ry="9" fill="#6b4423" style={{ transformOrigin: "100px 176px", animation: stageIdx === 1 ? "seenSeedCrack 1.6s ease-in-out infinite" : "none" }} />}
-
-      {/* trunk / stem */}
-      {stageIdx >= 1 && (
-        <rect x={100 - trunkW / 2} y={stemTopY} width={trunkW} height={stemH} rx={trunkW / 2}
-          fill={stageIdx >= 6 ? "#7a5230" : "#3f9d4f"} style={{ transition: "all 900ms cubic-bezier(0.34,1.2,0.64,1)" }} />
+    <svg viewBox="0 0 200 200" width={size} height={size}
+      className={watering || growth != null ? "" : "seen-tree-sway"} aria-hidden="true">
+      {ambient && (
+        <>
+          <defs>
+            <linearGradient id="seenSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={sky.sky[0]} />
+              <stop offset="100%" stopColor={sky.sky[1]} />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="200" height="200" fill="url(#seenSky)" rx="18" />
+          {sky.sun && <circle cx="163" cy="38" r="13" fill={sky.sun} opacity="0.75" style={{ animation: "seenSunGlow 6s ease-in-out infinite" }} />}
+          {sky.night && [0, 1, 2, 3, 4].map((i) => (
+            <circle key={i} cx={24 + i * 38} cy={22 + (i % 3) * 16} r="1.4" fill="#fff"
+              style={{ animation: `seenStarTwinkle ${2.4 + i * 0.4}s ease-in-out ${i * 0.3}s infinite` }} />
+          ))}
+          {/* drifting motes / pollen */}
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <circle key={`m${i}`} cx={26 + i * 30} cy={150 - (i % 4) * 22} r={1.6} fill={sky.night ? "#e2e8f0" : "#fef9c3"} opacity="0.85"
+              style={{ animation: `seenMoteDrift ${9 + i * 1.7}s linear ${i * 1.3}s infinite` }} />
+          ))}
+        </>
       )}
 
-      {/* young leaves along the stem */}
-      {showLeaves && [0.4, 0.68].map((f, i) => (
-        <g key={i} style={{ transformOrigin: `100px ${stemTopY + stemH * f}px`, animation: "seenLeafPop 700ms ease both", animationDelay: `${i * 120}ms` }}>
-          <ellipse cx={100 - 10} cy={stemTopY + stemH * f} rx="11" ry="6" fill="#4caf50" transform={`rotate(-28 ${100 - 10} ${stemTopY + stemH * f})`} />
-          <ellipse cx={100 + 10} cy={stemTopY + stemH * f - 6} rx="11" ry="6" fill="#43a047" transform={`rotate(28 ${100 + 10} ${stemTopY + stemH * f - 6})`} />
-        </g>
-      ))}
+      {/* soil mound — darkens while being watered */}
+      <ellipse cx="100" cy="182" rx="52" ry="12" fill={watering ? "#6b4423" : "#8b5e34"} style={{ transition: "fill 700ms ease" }} />
+      <ellipse cx="100" cy="180" rx="52" ry="9" fill={watering ? "#7d5330" : "#a06a3c"} style={{ transition: "fill 700ms ease" }} />
 
-      {/* canopy for trees */}
-      {showCanopy && (
-        <g style={{ transformOrigin: `100px ${stemTopY}px`, transition: "all 900ms cubic-bezier(0.34,1.2,0.64,1)" }}>
-          <circle cx="100" cy={stemTopY} r={canopyR} fill="#3f9d4f" />
-          <circle cx={100 - canopyR * 0.55} cy={stemTopY + canopyR * 0.15} r={canopyR * 0.7} fill="#4caf50" />
-          <circle cx={100 + canopyR * 0.55} cy={stemTopY + canopyR * 0.1} r={canopyR * 0.72} fill="#43a047" />
-          <circle cx="100" cy={stemTopY - canopyR * 0.4} r={canopyR * 0.7} fill="#4caf50" />
-        </g>
-      )}
+      {/* the whole plant lifts a touch as it drinks */}
+      <g style={{ transformOrigin: "100px 182px", transform: watering ? "scale(1.045)" : "scale(1)", transition: "transform 900ms cubic-bezier(0.34,1.4,0.64,1)" }}>
+        {/* seed (early) */}
+        {eff <= 1 && <ellipse cx="100" cy="176" rx="7" ry="9" fill="#6b4423" style={{ transformOrigin: "100px 176px", animation: eff >= 0.5 ? "seenSeedCrack 1.6s ease-in-out infinite" : "none" }} />}
 
-      {/* blossoms */}
-      {showBlossom && Array.from({ length: 7 }).map((_, i) => {
-        const ang = (i / 7) * Math.PI * 2;
-        const bx = 100 + Math.cos(ang) * canopyR * 0.7;
-        const by = stemTopY + Math.sin(ang) * canopyR * 0.7;
-        return <circle key={i} cx={bx} cy={by} r={3.4} fill={i % 2 ? "#f9a8d4" : "#fbcfe8"}
-          style={{ animation: "seenLeafPop 600ms ease both", animationDelay: `${i * 80}ms` }} />;
-      })}
+        {/* trunk / stem */}
+        {eff >= 1 && (
+          <rect x={100 - trunkW / 2} y={stemTopY} width={trunkW} height={stemH} rx={trunkW / 2}
+            fill={eff >= 6 ? "#7a5230" : "#3f9d4f"} style={{ transition: grow }} />
+        )}
 
-      {/* watering — droplets + a pouring stream */}
+        {/* young leaves along the stem */}
+        {showLeaves && [0.4, 0.68].map((f, i) => (
+          <g key={i} style={{ transformOrigin: `100px ${stemTopY + stemH * f}px`, animation: "seenLeafPop 700ms ease both", animationDelay: `${i * 120}ms` }}>
+            <ellipse cx={100 - 10} cy={stemTopY + stemH * f} rx="11" ry="6" fill="#4caf50" transform={`rotate(-28 ${100 - 10} ${stemTopY + stemH * f})`} />
+            <ellipse cx={100 + 10} cy={stemTopY + stemH * f - 6} rx="11" ry="6" fill="#43a047" transform={`rotate(28 ${100 + 10} ${stemTopY + stemH * f - 6})`} />
+          </g>
+        ))}
+
+        {/* canopy for trees */}
+        {showCanopy && (
+          <g style={{ transformOrigin: `100px ${stemTopY}px`, transition: grow }}>
+            <circle cx="100" cy={stemTopY} r={canopyR} fill="#3f9d4f" />
+            <circle cx={100 - canopyR * 0.55} cy={stemTopY + canopyR * 0.15} r={canopyR * 0.7} fill="#4caf50" />
+            <circle cx={100 + canopyR * 0.55} cy={stemTopY + canopyR * 0.1} r={canopyR * 0.72} fill="#43a047" />
+            <circle cx="100" cy={stemTopY - canopyR * 0.4} r={canopyR * 0.7} fill="#4caf50" />
+          </g>
+        )}
+
+        {/* blossoms */}
+        {showBlossom && Array.from({ length: 7 }).map((_, i) => {
+          const ang = (i / 7) * Math.PI * 2;
+          const bx = 100 + Math.cos(ang) * canopyR * 0.7;
+          const by = stemTopY + Math.sin(ang) * canopyR * 0.7;
+          return <circle key={i} cx={bx} cy={by} r={3.4} fill={i % 2 ? "#f9a8d4" : "#fbcfe8"}
+            style={{ animation: "seenLeafPop 600ms ease both", animationDelay: `${i * 80}ms` }} />;
+        })}
+
+        {/* butterflies visit a grown tree */}
+        {showButterflies && [0, 1].map((i) => (
+          <text key={i} x={i ? 44 : 148} y={i ? 96 : 74} fontSize="13"
+            style={{ animation: `seenButterfly ${7 + i * 2}s ease-in-out ${i * 2.2}s infinite` }}>🦋</text>
+        ))}
+      </g>
+
+      {/* watering — the can tips in, droplets arc down, then it soaks in */}
       {watering && (
         <g>
-          <text x="150" y="34" fontSize="26" style={{ transformOrigin: "150px 34px", animation: "seenWaterTilt 2s ease-in-out infinite" }}>💧</text>
-          {[0, 1, 2, 3].map((i) => (
-            <circle key={i} cx={92 + i * 6} cy="40" r="2.5" fill="#38bdf8"
-              style={{ animation: `seenWaterDrop 1.1s ease-in ${i * 0.22}s infinite` }} />
+          <text x="132" y="30" fontSize="24" style={{ transformOrigin: "132px 30px", animation: "seenCanTip 2.4s ease-in-out infinite" }}>🪣</text>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <circle key={i} cx={106 + i * 5} cy="40" r={2.6 - i * 0.15} fill="#38bdf8"
+              style={{ animation: `seenWaterDrop 1.1s ease-in ${i * 0.18}s infinite` }} />
           ))}
         </g>
       )}

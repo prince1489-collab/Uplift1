@@ -751,20 +751,24 @@ function dayNumber(date) {
 // Today's two: [kindness (one of the 14 areas, a different one each day), self (age-banded
 // self-care)]. The kindness area steps by one whole area per day so the rotation visits all
 // 14 in turn rather than repeating at random; the starting point differs per user.
-// `swaps[slot]` (0 or 1) shifts to the next prompt — the caller allows one swap per day.
+//
+// "Try another" (swaps[slot] = 1) behaves differently per slot, by design:
+//   kindness → moves to the NEXT AREA entirely, so you get a different kind of kindness.
+//   self     → stays in self-care and moves to a different suggestion within it.
 export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult" }) {
   const day = todayKey(date);
-  const area = HYT_AREAS[(dayNumber(date) + hytHash(uid)) % HYT_AREAS.length];
+  const areaShift = Math.min(1, swaps.kindness ?? 0);
+  const area = HYT_AREAS[(dayNumber(date) + hytHash(uid) + areaShift) % HYT_AREAS.length];
   const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
 
-  const pickFrom = (list, slot) => {
-    const offset = Math.min(1, swaps[slot] ?? 0);
-    const idx = (hytHash(`${uid}|${day}|${slot}`) + offset) % list.length;
-    return list[idx];
-  };
+  // Prompt within a list. The kindness slot passes offset 0 because its swap already
+  // changed the area; the self slot uses the swap to move along its own list.
+  const pickFrom = (list, slot, offset = 0) =>
+    list[(hytHash(`${uid}|${day}|${slot}`) + offset) % list.length];
 
   return [
     { slot: "kindness", areaId: area.id, emoji: area.emoji, label: area.label, text: pickFrom(area.prompts, "kindness") },
-    { slot: "self", areaId: SELF_META.id, emoji: SELF_META.emoji, label: SELF_META.label, text: pickFrom(selfList, "self") },
+    { slot: "self", areaId: SELF_META.id, emoji: SELF_META.emoji, label: SELF_META.label,
+      text: pickFrom(selfList, "self", Math.min(1, swaps.self ?? 0)) },
   ];
 }
