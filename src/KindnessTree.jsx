@@ -5,10 +5,11 @@
 // preview points. The growth is an animated inline SVG: soil → seed → stem → leaves →
 // blossom, with a watering animation when points are earned.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Droplets } from "lucide-react";
 import { getPoints } from "./points";
+import { playWatering } from "./sounds";
 
 export const TREE_STAGES = [
   { min: 0,          name: "Seed",          blurb: "Every forest starts exactly here." },
@@ -34,6 +35,10 @@ export function treeStageFor(balance) {
   return TREE_STAGES.reduce((s, t) => (balance >= t.min ? t : s), TREE_STAGES[0]);
 }
 
+// How long one full pour runs, start to finish. Single source of truth: every place that
+// flips `watering` on must clear it after exactly this, or the visual cuts off mid-pour.
+export const WATERING_MS = 7000;
+
 // Sky palette by time of day — the scene should feel like it belongs to the moment
 // the user opened it. [top, bottom].
 export function skyFor(hour = new Date().getHours()) {
@@ -44,10 +49,66 @@ export function skyFor(hour = new Date().getHours()) {
   return { sky: ["#312e81", "#1e293b"], sun: null, night: true, label: "night" };
 }
 
+// Owns one pour at a time. Awards can arrive back-to-back in a single tick — completing the
+// last daily Practice fires `practice` and `practiceAll` together — so a second trigger
+// mid-pour is coalesced rather than restarting: the tree still grows underneath, which reads
+// as the water working. Without this the first timeout would also cut the second pour short.
+export function useWatering(autoStart = false) {
+  const [watering, setWatering] = useState(autoStart);
+  const timer = useRef(0);
+
+  const startPour = useCallback(() => {
+    if (timer.current) return; // already pouring — let it finish
+    setWatering(true);
+    try { playWatering(WATERING_MS); } catch { /* ignore */ }
+    timer.current = setTimeout(() => { timer.current = 0; setWatering(false); }, WATERING_MS);
+  }, []);
+
+  useEffect(() => {
+    if (!autoStart) return;
+    timer.current = setTimeout(() => { timer.current = 0; setWatering(false); }, WATERING_MS);
+    try { playWatering(WATERING_MS); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return { watering, startPour };
+}
+
 // ── the animated SVG growth scene ─────────────────────────────────────────────
 // `growth` (0..1) overrides stageIdx for smooth continuous animation — used by the
 // grow-from-seed replay. `ambient` adds drifting motes, a time-of-day sky and
 // butterflies. `watering` plays the full pour → soak → push-up sequence.
+// The can is drawn upright and rotated by the keyframe. The rose therefore MOVES during the
+// tilt, so droplets must spawn where it ends up — not where it's drawn. Rotating the local
+// rose centre (68, 42) by POUR_DEG about the pivot (30, 44) lands it here.
+const CAN_PIVOT = { x: 30, y: 44 };
+const ROSE_LOCAL = { x: 68, y: 42 };
+const POUR_DEG = 34;
+const ROSE = (() => {
+  const r = (POUR_DEG * Math.PI) / 180;
+  const dx = ROSE_LOCAL.x - CAN_PIVOT.x, dy = ROSE_LOCAL.y - CAN_PIVOT.y;
+  return {
+    x: +(CAN_PIVOT.x + dx * Math.cos(r) - dy * Math.sin(r)).toFixed(1),
+    y: +(CAN_PIVOT.y + dx * Math.sin(r) + dy * Math.cos(r)).toFixed(1),
+  };
+})();
+
+// Each droplet: horizontal drift, fall distance, duration and stagger. Durations never share
+// a period, so the stream doesn't visibly loop across the ~4s pour.
+const SPRAY = [
+  { dx: -8, dy: 108, dur: 1.32, d: 0.00, r: 1.5 },
+  { dx:  2, dy: 110, dur: 1.24, d: 0.18, r: 1.3 },
+  { dx: 10, dy: 111, dur: 1.18, d: 0.34, r: 1.6 },
+  { dx: 18, dy: 111, dur: 1.28, d: 0.10, r: 1.4 },
+  { dx: 26, dy: 110, dur: 1.22, d: 0.46, r: 1.5 },
+  { dx: 33, dy: 109, dur: 1.36, d: 0.26, r: 1.3 },
+  { dx: 41, dy: 107, dur: 1.30, d: 0.58, r: 1.5 },
+  { dx: 49, dy: 105, dur: 1.42, d: 0.38, r: 1.2 },
+  { dx: 56, dy: 103, dur: 1.26, d: 0.66, r: 1.4 },
+  { dx: 63, dy: 100, dur: 1.38, d: 0.50, r: 1.2 },
+];
+
 export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour }) {
   const maxIdx = TREE_STAGES.length - 1;
   const eff = growth != null ? growth * maxIdx : stageIdx; // continuous stage position
@@ -90,12 +151,20 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
         </>
       )}
 
-      {/* soil mound — darkens while being watered */}
-      <ellipse cx="100" cy="182" rx="52" ry="12" fill={watering ? "#6b4423" : "#8b5e34"} style={{ transition: "fill 700ms ease" }} />
-      <ellipse cx="100" cy="180" rx="52" ry="9" fill={watering ? "#7d5330" : "#a06a3c"} style={{ transition: "fill 700ms ease" }} />
+      {/* Soil mound — darkens only once the water actually lands, so it runs on the pour's
+          own clock rather than flipping the instant `watering` goes true. */}
+      <ellipse cx="100" cy="182" rx="52" ry="12" fill="#8b5e34"
+        style={watering ? { "--soil": "#8b5e34", "--wet": "#553019", animation: `seenSoilSoak ${WATERING_MS}ms ease both` } : undefined} />
+      <ellipse cx="100" cy="180" rx="52" ry="9" fill="#a06a3c"
+        style={watering ? { "--soil": "#a06a3c", "--wet": "#6b4423", animation: `seenSoilSoak ${WATERING_MS}ms ease both` } : undefined} />
 
-      {/* the whole plant lifts a touch as it drinks */}
-      <g style={{ transformOrigin: "100px 182px", transform: watering ? "scale(1.045)" : "scale(1)", transition: "transform 900ms cubic-bezier(0.34,1.4,0.64,1)" }}>
+      {/* the whole plant lifts a touch as it drinks — two gentle gulps, same clock */}
+      <g style={{
+        transformOrigin: "100px 182px",
+        ...(watering
+          ? { animation: `seenPlantDrink ${WATERING_MS}ms ease both` }
+          : { transform: "scale(1)", transition: "transform 900ms cubic-bezier(0.34,1.4,0.64,1)" }),
+      }}>
         {/* seed (early) */}
         {eff <= 1 && <ellipse cx="100" cy="176" rx="7" ry="9" fill="#6b4423" style={{ transformOrigin: "100px 176px", animation: eff >= 0.5 ? "seenSeedCrack 1.6s ease-in-out infinite" : "none" }} />}
 
@@ -139,14 +208,49 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
         ))}
       </g>
 
-      {/* watering — the can tips in, droplets arc down, then it soaks in */}
+      {/* Watering — a can leans in from the top left, its rose sprays a fan of fine
+          droplets over the soil, then it rights itself and leaves. One-shot over
+          WATERING_MS; re-triggers mid-pour are coalesced by useWatering. */}
       {watering && (
         <g>
-          <text x="132" y="30" fontSize="24" style={{ transformOrigin: "132px 30px", animation: "seenCanTip 2.4s ease-in-out infinite" }}>🪣</text>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <circle key={i} cx={106 + i * 5} cy="40" r={2.6 - i * 0.15} fill="#38bdf8"
-              style={{ animation: `seenWaterDrop 1.1s ease-in ${i * 0.18}s infinite` }} />
-          ))}
+          {/* The can — drawn upright, tilted by the keyframe about CAN_PIVOT. */}
+          <g style={{ transformBox: "view-box", transformOrigin: `${CAN_PIVOT.x}px ${CAN_PIVOT.y}px`,
+            animation: `seenCanPour ${WATERING_MS}ms both` }}>
+            <path d="M15 20 Q30 2 45 20" fill="none" stroke="#38bdf8" strokeWidth="3.2" strokeLinecap="round" />
+            <rect x="9" y="18" width="42" height="27" rx="6" fill="#7dd3fc" />
+            <path d="M30 18 h21 v27 h-21 z" fill="#38bdf8" opacity="0.45" />
+            <rect x="7" y="15" width="46" height="6" rx="3" fill="#38bdf8" />
+            {/* spout out to the rose */}
+            <path d="M50 27 Q61 30 67 39" fill="none" stroke="#0ea5e9" strokeWidth="6" strokeLinecap="round" />
+            <path d="M50 27 Q61 30 67 39" fill="none" stroke="#7dd3fc" strokeWidth="2.6" strokeLinecap="round" />
+            {/* rose / shower head, angled across the spout */}
+            <g transform={`rotate(-48 ${ROSE_LOCAL.x} ${ROSE_LOCAL.y})`}>
+              <ellipse cx={ROSE_LOCAL.x} cy={ROSE_LOCAL.y + 1.4} rx="8.6" ry="5" fill="#0284c7" />
+              <ellipse cx={ROSE_LOCAL.x} cy={ROSE_LOCAL.y} rx="8.6" ry="5" fill="#38bdf8" />
+              {[-5, -2.5, 0, 2.5, 5].map((d) => (
+                <circle key={d} cx={ROSE_LOCAL.x + d} cy={ROSE_LOCAL.y + 1.6} r="0.85" fill="#075985" opacity="0.8" />
+              ))}
+            </g>
+            <path d="M14 24 Q15.5 33 17 42" fill="none" stroke="#e0f2fe" strokeWidth="2.2" strokeLinecap="round" opacity="0.7" />
+          </g>
+
+          {/* The spray. Drawn OUTSIDE the can group so it isn't dragged by the tilt, at the
+              point the rose actually reaches. The window group bounds the looping droplets
+              to the pour phase, so individual drops never need to be in phase with anything. */}
+          <g style={{ animation: `seenSprayWindow ${WATERING_MS}ms linear both` }}>
+            {SPRAY.map((s, i) => (
+              <g key={i} style={{ "--dx": `${s.dx}px`, animation: `seenSprayX ${s.dur}s linear ${s.d}s infinite` }}>
+                <ellipse cx={ROSE.x} cy={ROSE.y} rx={s.r} ry={s.r * 1.8} fill="#38bdf8"
+                  style={{ "--dy": `${s.dy}px`, animation: `seenSprayY ${s.dur}s cubic-bezier(0.42,0,0.9,0.55) ${s.d}s infinite` }} />
+              </g>
+            ))}
+            {/* little splashes where the fan lands */}
+            {[70, 92, 112, 130].map((x, i) => (
+              <path key={x} d={`M${x - 4} 174 Q${x} 168 ${x + 4} 174`} fill="none" stroke="#7dd3fc"
+                strokeWidth="1.5" strokeLinecap="round"
+                style={{ animation: `seenSplash 0.9s ease-out ${1.1 + i * 0.19}s infinite` }} />
+            ))}
+          </g>
         </g>
       )}
     </svg>
@@ -155,17 +259,12 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
 
 export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false }) {
   const [localPts, setLocalPts] = useState(() => getPoints());
-  const [watering, setWatering] = useState(autoWater);
+  const { watering, startPour } = useWatering(autoWater);
   useEffect(() => {
-    const onPts = () => { setLocalPts(getPoints()); setWatering(true); setTimeout(() => setWatering(false), 2600); };
+    const onPts = () => { setLocalPts(getPoints()); startPour(); };
     window.addEventListener("seen-points", onPts);
     return () => window.removeEventListener("seen-points", onPts);
-  }, []);
-  useEffect(() => {
-    if (!autoWater) return;
-    const t = setTimeout(() => setWatering(false), 4200);
-    return () => clearTimeout(t);
-  }, [autoWater]);
+  }, [startPour]);
 
   const balance = sparkBalance + localPts;
   const stage = treeStageFor(balance);

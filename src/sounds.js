@@ -13,6 +13,7 @@
 let ctx = null;
 let master = null;
 let ambient = null; // active world-map drone, or null
+let pour = null;    // active watering pour, or null — at most ONE ever sounds
 
 const SOUND_KEY = "seen_sound_on";
 
@@ -22,7 +23,7 @@ export function isSoundOn() {
 
 export function setSoundOn(on) {
   try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); } catch { /* ignore */ }
-  if (!on) stopMapAmbient();
+  if (!on) { stopMapAmbient(); stopWatering(); }
   else { try { getCtx(); } catch { /* ignore */ } } // warm up on enable (user gesture)
 }
 
@@ -41,7 +42,7 @@ function getCtx() {
 }
 
 // One soft note with an attack/decay envelope.
-function note(freq, { start = 0, dur = 0.3, type = "sine", peak = 0.22, attack = 0.012 } = {}) {
+function note(freq, { start = 0, dur = 0.3, type = "sine", peak = 0.22, attack = 0.012, dest = null } = {}) {
   const c = getCtx();
   if (!c || !master) return;
   const t0 = c.currentTime + start;
@@ -53,7 +54,7 @@ function note(freq, { start = 0, dur = 0.3, type = "sine", peak = 0.22, attack =
   g.gain.linearRampToValueAtTime(peak, t0 + attack);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   osc.connect(g);
-  g.connect(master);
+  g.connect(dest || master);
   osc.start(t0);
   osc.stop(t0 + dur + 0.05);
 }
@@ -128,10 +129,10 @@ export const playArcLand = guard(() => {                    // soft "bloom" as k
 // A soft, rounded note: pure sine + a sub-octave for body + a faint octave for glow, with
 // a SLOW click-free attack and a LONG decay so consecutive notes overlap into a legato wash
 // (no sharp edges — "velvet/silk").
-function warmNote(freq, { dur = 3.8, peak = 0.09, attack = 0.08 } = {}) {
+function warmNote(freq, { start = 0, dur = 3.8, peak = 0.09, attack = 0.08 } = {}) {
   const c = getCtx();
   if (!c || !master) return;
-  const t0 = c.currentTime;
+  const t0 = c.currentTime + start;
   [[1, 1], [0.5, 0.45], [2, 0.1]].forEach(([mult, amp]) => {
     const osc = c.createOscillator();
     const g = c.createGain();
@@ -211,3 +212,130 @@ export function stopMapAmbient() {
     ambient = null;
   } catch { /* ignore */ }
 }
+
+// ─────────────────────────────────────────────────────────────────
+// KINDNESS TREE — the pour, and the growth climb
+// ─────────────────────────────────────────────────────────────────
+
+// Water pouring. There is no noise source in this palette, so "breathy water" comes from
+// five mutually inharmonic sines beating against each other, each tremolo'd at its own
+// rate, through one swept lowpass. Gain fractions mirror the CSS keyframe, so the swell
+// rises as the can tips and fades as it rights itself.
+//
+// `pour` is a module singleton: My Journey's hero tree and the Kindness Tree overlay can
+// both be mounted at once (tapping the hero opens the panel), and both listen for
+// "seen-points". Without this guard that's two pours at double amplitude, phase-beating.
+const WATER_PEAK = 0.055; // sits under the map ambience (0.075–0.09)
+
+export const playWatering = guard((durationMs = 7000) => {
+  const c = getCtx();
+  if (!c || !master || pour) return; // already pouring — never stack
+  const T = durationMs / 1000;
+  const t0 = c.currentTime;
+  const at = (f) => t0 + T * f;
+
+  const bus = c.createGain();
+  const lp = c.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.Q.value = 0.7;
+  lp.frequency.setValueAtTime(600, t0);
+  lp.frequency.linearRampToValueAtTime(2300, at(0.30)); // opens as it pours
+  lp.frequency.linearRampToValueAtTime(2100, at(0.66));
+  lp.frequency.linearRampToValueAtTime(500, at(0.80));
+  lp.connect(bus);
+  bus.connect(master);
+
+  bus.gain.setValueAtTime(0.0001, t0);
+  bus.gain.setValueAtTime(0.0001, at(0.13));                    // silent while the can flies in
+  bus.gain.linearRampToValueAtTime(WATER_PEAK * 0.55, at(0.19)); // rises as it tips
+  bus.gain.linearRampToValueAtTime(WATER_PEAK, at(0.30));
+  bus.gain.linearRampToValueAtTime(WATER_PEAK * 0.88, at(0.62));
+  bus.gain.linearRampToValueAtTime(WATER_PEAK * 0.72, at(0.70)); // fades as it rights
+  bus.gain.exponentialRampToValueAtTime(0.0001, at(0.82));
+
+  const oscs = [];
+  [[1180, 0.22, 3.1], [1490, 0.20, 4.7], [1810, 0.19, 5.9], [2230, 0.16, 7.3], [2670, 0.13, 8.9]]
+    .forEach(([f, amp, lfoHz]) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * 0.94, t0);
+      o.frequency.linearRampToValueAtTime(f * 1.06, at(0.45)); // slow drift = movement
+      o.frequency.linearRampToValueAtTime(f * 0.96, at(0.80));
+      g.gain.value = amp;
+      const lfo = c.createOscillator(), lg = c.createGain();
+      lfo.type = "sine"; lfo.frequency.value = lfoHz; lg.gain.value = amp * 0.6;
+      lfo.connect(lg); lg.connect(g.gain);
+      o.connect(g); g.connect(lp);
+      o.start(t0); lfo.start(t0);
+      o.stop(at(0.85) + 0.2); lfo.stop(at(0.85) + 0.2);
+      oscs.push(o, lfo);
+    });
+  // low body — water meeting soil; bypasses the lowpass so it keeps its weight
+  [[66, "sine", 0.10], [132, "triangle", 0.07]].forEach(([f, type, amp]) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = f; g.gain.value = amp;
+    o.connect(g); g.connect(bus);
+    o.start(t0); o.stop(at(0.85) + 0.2);
+    oscs.push(o);
+  });
+
+  pour = { bus, oscs };
+  setTimeout(() => { if (pour && pour.bus === bus) pour = null; }, durationMs + 300);
+});
+
+// Stop a pour early (mute mid-pour). Same shape as stopMapAmbient.
+export function stopWatering() {
+  try {
+    if (!pour || !ctx) { pour = null; return; }
+    const { bus, oscs } = pour;
+    const now = ctx.currentTime;
+    bus.gain.cancelScheduledValues(now);
+    bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), now);
+    bus.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    oscs.forEach((o) => { try { o.stop(now + 0.15); } catch { /* already stopped */ } });
+    pour = null;
+  } catch { pour = null; }
+}
+
+// C-major pentatonic, one entry per tree stage — so stage 12 always sounds like stage 12,
+// whether you climbed 0→12 or 11→12.
+const GROWTH_SCALE = [
+  261.63, 293.66, 329.63, 392.00, 440.00,      // C4 D4 E4 G4 A4
+  523.25, 587.33, 659.25, 783.99, 880.00,      // C5 D5 E5 G5 A5
+  1046.50, 1174.66, 1318.51, 1567.98, 1760.00, // C6 D6 E6 G6 A6
+  2093.00, 2349.32,                            // C7 D7
+];
+
+// When does the grow-from-seed replay actually cross each stage? The replay eases with
+// easeOutCubic after a 12% hold, so the crossings are solvable rather than something to
+// watch for: stage k is passed when eased === k / stageIdx. Pre-scheduling beats polling
+// rAF because easeOutCubic puts several crossings inside a single frame near the start,
+// and rAF stalls entirely if the tab is backgrounded mid-replay.
+export function growthNoteTimes(stageIdx, durationMs, minGapMs = 190, cap = 9) {
+  if (!stageIdx || stageIdx < 1) return [];
+  const raw = [];
+  for (let k = 1; k <= stageIdx; k++) {
+    const u = 1 - Math.cbrt(1 - k / stageIdx); // invert easeOutCubic
+    raw.push({ k, t: (0.12 + 0.88 * u) * durationMs });
+  }
+  const last = raw[raw.length - 1];
+  const kept = [];
+  for (const n of raw.slice(0, -1)) {
+    if (!kept.length || n.t - kept[kept.length - 1].t >= minGapMs) kept.push(n);
+  }
+  while (kept.length > cap - 1) kept.splice(1, 1); // thin the dense head, keep the opener
+  kept.push(last);                                 // the arrival note is never dropped
+  return kept;
+}
+
+// One warm note per stage the tree passes during the replay, rising in pitch.
+export const playGrowthSwell = guard((stageIdx, durationMs = 4200) => {
+  growthNoteTimes(stageIdx, durationMs).forEach(({ k, t }) => {
+    warmNote(GROWTH_SCALE[Math.min(k, GROWTH_SCALE.length - 1)], {
+      start: t / 1000,
+      dur: Math.max(1.4, 2.9 - k * 0.09),        // higher notes ring shorter
+      peak: Math.max(0.038, 0.078 - k * 0.0024), // and quieter, so the top doesn't pierce
+      attack: 0.09,
+    });
+  });
+});

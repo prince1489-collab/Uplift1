@@ -567,15 +567,34 @@ export function PostComposer({ profile, myUid, onPosted, onClose }) {
 // ── Shared-journal announcement card — sits inline in whichever feed it belongs to ──
 export function SharedJournalCard({ story, onOpen, compact = false }) {
   const { likes, comments } = loadStoryEngagement(story.id);
+
+  // Worldwide rotator: a single line, since the slot is sized for two lines of message.
+  if (compact) {
+    return (
+      <button onClick={() => onOpen?.(story)}
+        className="flex w-full items-center gap-1.5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left"
+        style={{ animation: "seenFadeUp 400ms ease both" }}>
+        <span className="flex-shrink-0 text-sm">📔</span>
+        <p className="min-w-0 flex-1 truncate text-[12px] text-slate-600">
+          <strong className="text-slate-800">{storyAuthorLabel(story)}</strong> shared their reflection
+        </p>
+        {story.demo && (
+          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
+        )}
+        <span className="flex-shrink-0 text-[10px] font-bold text-amber-600">Read →</span>
+      </button>
+    );
+  }
+
   return (
     <button onClick={() => onOpen?.(story)}
-      className={`w-full text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white ${compact ? "px-3 py-2" : "mb-2 px-4 py-3"}`}
+      className="mb-2 w-full rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-3 text-left"
       style={{ animation: "seenFadeUp 400ms ease both" }}>
       <div className="flex items-center gap-1.5 mb-1">
         <span className="flex-shrink-0 text-base">📔</span>
         <p className="flex-1 text-[12px] leading-snug text-slate-600">
           <strong className="text-slate-800">{storyAuthorLabel(story)}</strong>
-          {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} has decided to share their reflection.
+          {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} shared their reflection.
         </p>
         {story.demo && (
           <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>

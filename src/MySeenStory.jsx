@@ -9,13 +9,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { collection, getDocs } from "firebase/firestore";
-import { Info, X } from "lucide-react";
-import { treeStageFor, TREE_STAGES, TreeScene } from "./KindnessTree";
+import { X } from "lucide-react";
+import { treeStageFor, TREE_STAGES, TreeScene, useWatering } from "./KindnessTree";
 import { getPoints } from "./points";
-import { playLevelUp } from "./sounds";
+import { playLevelUp, playGrowthSwell } from "./sounds";
 import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
+import { FLAG_MAP } from "./MicroAnimations";
 
 const STAGE_SEEN_KEY = "seen_v2_tree_stage_seen"; // highest stage already celebrated
+const REPLAY_MS = 4200;   // grow-from-seed replay — slowed to breathe alongside the 7s pour
+const MILESTONE_DELAY_MS = 4500; // lands just after the final growth note, not on top of it
 const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
@@ -26,19 +29,21 @@ const PERIODS = [
   { id: "all",   label: "All time" },
 ];
 
-// Count completed "Have you tried?" items across this device (localStorage).
+// Completed "Have you tried?" items on this device — the total, plus how many separate
+// days they were spread across, which is what makes the number mean something.
 function hytCompletedCount() {
-  let n = 0;
+  let total = 0, days = 0;
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith("seen_hyt_state_")) {
         const done = JSON.parse(localStorage.getItem(k) || "{}")?.done || {};
-        n += Object.values(done).filter(Boolean).length;
+        const n = Object.values(done).filter(Boolean).length;
+        if (n > 0) { total += n; days += 1; }
       }
     }
   } catch { /* ignore */ }
-  return n;
+  return { total, days };
 }
 
 // Small count-up hook — rolls a number from 0 → target on mount / change.
@@ -62,49 +67,46 @@ function useCountUp(target, duration = 900) {
   return val;
 }
 
-// ── what's actually behind each number ───────────────────────────────────────
-const METRIC_INFO = [
-  { emoji: "🌍", label: "Countries reached",
-    what: "How many different countries the people who hearted your messages were in.",
-    how: "Counted from the reactions on messages you sent, one per distinct country. It follows the period you've picked above." },
-  { emoji: "💫", label: "Ripple effect",
-    what: "Kindness that travelled beyond you.",
-    how: "Two things added together: people who reacted to one of your messages and then went on to send their own, plus the hearts those onward messages received. All-time, not per period." },
-  { emoji: "🤝", label: "Tried in real life",
-    what: "Practice suggestions you've ticked off.",
-    how: "Every prompt you've marked done in the Practice tab. Stored on this device, so it starts fresh on a new phone. All-time." },
-  { emoji: "🪞", label: "Reflections",
-    what: "Entries in your private journal.",
-    how: "The total number of reflections you've written in the Reflect tab. Only you can ever read them. All-time." },
-];
-
-function MetricsInfoSheet({ onClose }) {
+// One metric, opened up: a human line, then the actual data behind the figure.
+function MetricCard({ card, onClose }) {
+  if (!card) return null;
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+      <div className="relative sheet-slide-up flex max-h-[85dvh] flex-col rounded-t-3xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-          <div className="w-10 h-1 rounded-full bg-slate-200" />
-        </div>
-        <div className="px-5 pb-2 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">Where these numbers come from</h2>
+        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
+        <div className="flex items-center justify-between px-5 pb-1">
+          <h2 className="text-lg font-bold text-slate-800">{card.emoji} {card.label}</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
         </div>
-        <div className="overflow-y-auto overscroll-contain px-5 pb-8 pt-1 space-y-3">
-          {METRIC_INFO.map((m) => (
-            <div key={m.label} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-              <p className="text-sm font-bold text-slate-800">{m.emoji} {m.label}</p>
-              <p className="mt-0.5 text-[13px] text-slate-600 leading-relaxed">{m.what}</p>
-              <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">{m.how}</p>
+        <p className="px-5 pb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{card.basis}</p>
+
+        <div className="overflow-y-auto overscroll-contain px-5 pb-8 space-y-4">
+          <div className="rounded-2xl bg-gradient-to-br from-teal-50 to-sky-50 px-4 py-4 text-center">
+            <p className="text-4xl font-extrabold tabular-nums text-slate-800">{card.value.toLocaleString()}</p>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-slate-600">{card.line}</p>
+          </div>
+
+          {card.rows?.length > 0 && (
+            <div className="space-y-1">
+              <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{card.rowsTitle}</p>
+              {card.rows.map((r, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5">
+                  <span className="text-base">{r.icon}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{r.label}</span>
+                  {r.value != null && <span className="text-sm font-bold tabular-nums text-slate-500">{r.value}</span>}
+                </div>
+              ))}
             </div>
-          ))}
-          <p className="text-center text-[11px] text-slate-400 leading-relaxed pt-1">
-            These are a mirror, never a score. Nobody else sees them, and there's nothing to keep up.
-          </p>
+          )}
+
+          {card.empty && <p className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-400">{card.empty}</p>}
+
+          <p className="text-[12px] leading-relaxed text-slate-500">{card.how}</p>
           <button onClick={onClose}
-            className="w-full rounded-2xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors">
-            Got it
+            className="w-full rounded-2xl bg-teal-600 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-700">
+            Close
           </button>
         </div>
       </div>
@@ -143,15 +145,16 @@ function MilestoneOverlay({ stage, onDone }) {
   );
 }
 
-function MetricTile({ emoji, value, label, delay = 0 }) {
+function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
   const shown = useCountUp(value);
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center"
+    <button onClick={onOpen}
+      className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center transition-transform active:scale-[0.97]"
       style={{ animation: "seenFadeUp 500ms ease both", animationDelay: `${delay}ms` }}>
       <div className="text-2xl mb-1">{emoji}</div>
       <div className="text-2xl font-extrabold text-slate-800 tabular-nums leading-none">{shown.toLocaleString()}</div>
       <div className="text-[11px] text-slate-500 mt-1.5 leading-tight">{label}</div>
-    </div>
+    </button>
   );
 }
 
@@ -159,22 +162,36 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const [period, setPeriod] = useState("week");
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
-  const [watering, setWatering] = useState(false);
-  const [showMetricInfo, setShowMetricInfo] = useState(false);
+  const { watering, startPour } = useWatering();
+  const [openCard, setOpenCard] = useState(null); // which metric card is open
   const hytTried = useMemo(() => hytCompletedCount(), []);
 
-  // Live points → grow + water the hero tree.
+  // Live points → grow + water the hero tree (useWatering owns the pour timing + sound).
   useEffect(() => {
-    const onPts = () => { setLocalPts(getPoints()); setWatering(true); setTimeout(() => setWatering(false), 2600); };
+    const onPts = () => { setLocalPts(getPoints()); startPour(); };
     window.addEventListener("seen-points", onPts);
     return () => window.removeEventListener("seen-points", onPts);
-  }, []);
+  }, [startPour]);
 
+  // Keep enough of the journal docs to back the number up — when you started, and roughly
+  // how much you've written — rather than just the count.
+  const [journalFacts, setJournalFacts] = useState({ words: 0, firstDate: null });
   useEffect(() => {
     if (!db || !currentUser?.uid) return;
     let alive = true;
     getDocs(collection(db, "users", currentUser.uid, "journal"))
-      .then((snap) => { if (alive) setJournalCount(snap.size); })
+      .then((snap) => {
+        if (!alive) return;
+        setJournalCount(snap.size);
+        let words = 0, first = null;
+        snap.forEach((d) => {
+          const e = d.data() || {};
+          words += String(e.text || "").trim().split(/\s+/).filter(Boolean).length;
+          const when = e.date || null;
+          if (when && (!first || when < first)) first = when;
+        });
+        setJournalFacts({ words, firstDate: first });
+      })
       .catch(() => { if (alive) setJournalCount(0); });
     return () => { alive = false; };
   }, [db, currentUser?.uid]);
@@ -185,11 +202,74 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const { rippleCount, ripples } = useRippleData(db, currentUser);
   const onwardReach = useOnwardReach(db, currentUser, ripples);
 
-  // Countries reached — prefer live reaction countries, fall back to liveStats.
-  const reactCountries = reactData ? Object.keys(reactData.reactionByCountry || {}).length : 0;
-  const statCountries = period === "week" ? Number(liveStats?.countries7d ?? 0) : Number(liveStats?.countries30d ?? 0);
-  const countries = Math.max(reactCountries, statCountries);
+  // Countries reached = countries the people who hearted your messages were in.
+  // This used to take Math.max() with a figure from liveStats, but that counts every country
+  // appearing anywhere in the feed — including people with no connection to your messages —
+  // so the headline could exceed the real list and contradict the breakdown card below it.
+  const countryCounts = reactData?.reactionByCountry || {};
+  const countryRows = useMemo(
+    () => Object.entries(countryCounts).sort((a, b) => b[1] - a[1]),
+    [countryCounts]
+  );
+  const countries = countryRows.length;
   const ripple = rippleCount + onwardReach;
+
+  // Each metric opened up. Every card names its own basis, because only Countries follows
+  // the period selector — the other three are all-time however the segment is set.
+  const periodWord = period === "week" ? "This week" : period === "month" ? "This month" : "All time";
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const METRIC_CARDS = {
+    countries: {
+      emoji: "🌍", label: "Countries reached", value: countries, basis: periodWord,
+      line: countries === 0
+        ? "No hearts from abroad yet — they often arrive a little after you've forgotten you sent anything."
+        : `${plural(countries, "place", "places")} where someone opened their phone and found a stranger had thought of them.`,
+      rowsTitle: "Where they were",
+      rows: countryRows.map(([c, n]) => ({ icon: FLAG_MAP[c] || "🌍", label: c, value: n })),
+      empty: countries === 0 ? "Countries appear here once someone hearts a message you sent." : null,
+      how: "Counted from the reactions on messages you sent, one entry per country. Follows the period above.",
+    },
+    ripple: {
+      emoji: "💫", label: "Ripple effect", value: ripple, basis: "All time",
+      line: ripple === 0
+        ? "Nothing has rippled onward yet. It tends to start the moment someone reacts to you."
+        : "Kindness that carried on without you.",
+      rowsTitle: "How it breaks down",
+      rows: ripple === 0 ? [] : [
+        { icon: "🌱", label: `${plural(rippleCount, "person", "people")} you reached went on to send their own`, value: rippleCount },
+        { icon: "❤️", label: "Hearts those onward messages received", value: onwardReach },
+      ],
+      empty: ripple === 0 ? "This fills in when someone you reached goes on to be kind to somebody else." : null,
+      how: "The two figures added together. Always all-time, whatever period is selected above.",
+    },
+    tried: {
+      emoji: "🤝", label: "Tried in real life", value: hytTried.total, basis: "All time · this device",
+      line: hytTried.total === 0
+        ? "Nothing ticked off yet. One small thing counts."
+        : "Things that happened off this screen, because you decided to.",
+      rowsTitle: "The shape of it",
+      rows: hytTried.total === 0 ? [] : [
+        { icon: "✅", label: "Practice suggestions marked done", value: hytTried.total },
+        { icon: "📆", label: `Spread across ${plural(hytTried.days, "day", "separate days")}`, value: hytTried.days },
+      ],
+      empty: hytTried.total === 0 ? "Tick something off in Practice and it lands here." : null,
+      how: "Every prompt you've marked done in Practice. Stored on this device, so it starts fresh on a new phone.",
+    },
+    reflections: {
+      emoji: "🪞", label: "Reflections", value: journalCount ?? 0, basis: "All time · private",
+      line: (journalCount ?? 0) === 0
+        ? "Nothing written yet. A line or two is plenty."
+        : "Your own thinking, kept where only you can read it.",
+      rowsTitle: "What's in there",
+      rows: (journalCount ?? 0) === 0 ? [] : [
+        { icon: "✍️", label: "Reflections written", value: journalCount },
+        ...(journalFacts.words ? [{ icon: "📖", label: "Words, roughly", value: journalFacts.words.toLocaleString() }] : []),
+        ...(journalFacts.firstDate ? [{ icon: "🌱", label: "You started on", value: journalFacts.firstDate }] : []),
+      ],
+      empty: (journalCount ?? 0) === 0 ? "Write one in Reflect and it appears here." : null,
+      how: "Entries in your private journal. Nobody else can ever read them, including us.",
+    },
+  };
 
   const balance = sparkBalance + localPts;
   const stage = treeStageFor(balance);
@@ -209,7 +289,11 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   useEffect(() => {
     if (replayDoneRef.current || prefersReducedMotion()) { setReplay(null); return; }
     replayDoneRef.current = true;
-    const DURATION = 3000;
+    const DURATION = REPLAY_MS;
+    // One call schedules every growth note. Pre-scheduling beats watching the rAF loop:
+    // easeOutCubic crosses several stages inside a single frame near the start, and rAF
+    // stalls entirely if the tab is backgrounded part-way through.
+    playGrowthSwell(stageIdx, DURATION);
     let start = 0;
     const step = (ts) => {
       if (!start) start = ts;
@@ -237,7 +321,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
     const t = setTimeout(() => {
       setMilestone(TREE_STAGES[stageIdx]);
       try { playLevelUp(); } catch { /* ignore */ }
-    }, prefersReducedMotion() ? 200 : 3100);
+    }, prefersReducedMotion() ? 200 : MILESTONE_DELAY_MS);
     return () => clearTimeout(t);
   }, [stageIdx]);
 
@@ -293,16 +377,13 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
         {/* The four metrics */}
         <div className="flex items-center gap-2 px-1" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "180ms" }}>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex-1">The reach of your kindness</p>
-          <button onClick={() => setShowMetricInfo(true)} aria-label="Where these numbers come from"
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 hover:text-teal-600 hover:border-teal-200 active:scale-90 transition-all">
-            <Info size={12} />
-          </button>
+          <span className="text-[10px] font-semibold text-slate-300">tap any number</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
-          <MetricTile emoji="🌍" value={countries} label="Countries reached" delay={200} />
-          <MetricTile emoji="💫" value={ripple} label="Ripple effect" delay={280} />
-          <MetricTile emoji="🤝" value={hytTried} label="Tried in real life" delay={360} />
-          <MetricTile emoji="🪞" value={journalCount ?? 0} label="Reflections" delay={440} />
+          <MetricTile emoji="🌍" value={countries} label="Countries reached" delay={200} onOpen={() => setOpenCard("countries")} />
+          <MetricTile emoji="💫" value={ripple} label="Ripple effect" delay={280} onOpen={() => setOpenCard("ripple")} />
+          <MetricTile emoji="🤝" value={hytTried.total} label="Tried in real life" delay={360} onOpen={() => setOpenCard("tried")} />
+          <MetricTile emoji="🪞" value={journalCount ?? 0} label="Reflections" delay={440} onOpen={() => setOpenCard("reflections")} />
         </div>
 
         <p className="text-center text-[10px] text-slate-400 leading-relaxed pb-4"
@@ -311,7 +392,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
         </p>
       </div>
 
-      {showMetricInfo && <MetricsInfoSheet onClose={() => setShowMetricInfo(false)} />}
+      {openCard && <MetricCard card={METRIC_CARDS[openCard]} onClose={() => setOpenCard(null)} />}
     </main>
   );
 }
