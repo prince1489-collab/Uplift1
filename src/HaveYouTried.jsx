@@ -1,15 +1,16 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// HaveYouTried.jsx — the "Have you tried?" tab: three small real-life kindness
-// prompts a day (one from your focus areas, one rotating, one self-kindness).
-// Complete = tap (strike-through + soft chime). "Try another" swaps a prompt with
-// no penalty — an unfinished list must never feel like failure.
+// HaveYouTried.jsx — the "Practice" tab: two small real-life prompts a day. One from
+// the 14 areas of kindness (a different area each day), one self-care matched to your
+// age band. Complete = tap (strike-through + soft chime). "Try another" swaps one
+// prompt, once a day — an unfinished list must never feel like failure.
 //
 // v2-preview note: state lives in localStorage (per-device). Firestore wiring
 // (users/{uid}/haveYouTried) lands when Phase 1 ships for real, with a rules update.
 
 import React, { useMemo, useState } from "react";
-import { RefreshCw, Check } from "lucide-react";
+import { createPortal } from "react-dom";
+import { RefreshCw, Check, Info, X } from "lucide-react";
 import { HYT_AREAS, pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { playCheckIn } from "./sounds";
 import { awardPoints } from "./points";
@@ -30,73 +31,75 @@ function ageFromDob(dob) {
   return age >= 0 && age < 130 ? age : null;
 }
 
-const FOCUS_KEY = "seen_hyt_focus";
 const stateKey = (day) => `seen_hyt_state_${day}`;
+const SLOTS = ["kindness", "self"];
 
 const loadJSON = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
 };
 const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
 
-// ── first-open focus picker ──────────────────────────────────────────────────
-function FocusPicker({ onDone, initial = [] }) {
-  const [chosen, setChosen] = useState(initial);
-  const toggle = (id) =>
-    setChosen((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 3 ? [...prev, id] : prev));
-  const areas = HYT_AREAS.filter((a) => a.id !== "self"); // self-kindness is always included daily
-  const full = chosen.length >= 3;
-
-  return (
-    <div className="mx-auto w-full max-w-md px-4 py-6">
-      <h2 className="text-lg font-bold text-slate-800">Where would you like to practise kindness?</h2>
-      <p className="mt-1 text-sm text-slate-500 leading-relaxed">
-        Pick <strong>exactly 3 areas</strong> of your life. Each day you'll get three tiny, real-life
-        suggestions — one from your areas, one from somewhere new, and one just for you.
+// ── "how does this work?" sheet ──────────────────────────────────────────────
+function HowItWorksSheet({ onClose }) {
+  const Line = ({ emoji, title, body }) => (
+    <div className="flex gap-3">
+      <span className="text-lg flex-shrink-0 leading-none mt-0.5">{emoji}</span>
+      <p className="text-[13px] text-slate-600 leading-relaxed">
+        <strong className="text-slate-800">{title}</strong> {body}
       </p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        {areas.map((a) => {
-          const on = chosen.includes(a.id);
-          const disabled = !on && full;
-          return (
-            <button key={a.id} onClick={() => toggle(a.id)} disabled={disabled}
-              className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-                on ? "border-teal-400 bg-teal-50 text-teal-700"
-                  : disabled ? "border-slate-100 bg-slate-50 text-slate-300"
-                  : "border-slate-200 bg-white text-slate-600"
-              }`}>
-              <span className="text-base">{a.emoji}</span>
-              <span className="min-w-0 truncate">{a.label}</span>
-              {on && <Check size={14} className="ml-auto flex-shrink-0" />}
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-center text-[11px] font-semibold text-slate-400">{chosen.length} of 3 chosen</p>
-      <button
-        disabled={!full}
-        onClick={() => onDone(chosen)}
-        className="mt-2 w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-40">
-        {full ? "Start my daily three ✨" : `Pick ${3 - chosen.length} more`}
-      </button>
     </div>
+  );
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[85dvh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-5 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">🌱 How Practice works</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain px-5 pb-8 pt-1 space-y-3.5">
+          <Line emoji="✌️" title="Two ideas a day."
+            body="Small, real-life things you can actually do today — not big gestures." />
+          <Line emoji="🤝" title="The first is an act of kindness."
+            body={`It comes from a different one of the ${HYT_AREAS.length} areas of life each day — work, home, friends, neighbours, nature and more — so you're never stuck in the same corner.`} />
+          <Line emoji="🌤️" title="The second is for you."
+            body="A bit of self-care, matched to your stage of life. Being kind to yourself counts too." />
+          <Line emoji="🔄" title="Not feeling one? Try another."
+            body="You can swap a suggestion once a day. After that, today's two stay put — fresh ones arrive tomorrow." />
+          <Line emoji="✅" title="Tap to mark it done."
+            body="That's it. Each one waters your Kindness Tree in My Journey." />
+          <Line emoji="🕊️" title="Nothing to break."
+            body="No streaks, no scores, no guilt. Doing one is plenty. Doing none is fine too." />
+          <button onClick={onClose}
+            className="mt-2 w-full rounded-2xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors">
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
 // ── a single daily prompt card ───────────────────────────────────────────────
-function PromptCard({ item, done, swapped, onToggle, onSwap }) {
+function PromptCard({ item, done, swapped, canSwap, onToggle, onSwap }) {
   return (
     <div className={`rounded-2xl border bg-white px-4 py-3.5 transition-all ${done ? "border-teal-200" : "border-slate-200"}`}>
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="text-sm">{item.emoji}</span>
         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.label}</span>
-        {!done && !swapped && (
+        {!done && canSwap && (
           <button onClick={onSwap} title="Try another"
             className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
             <RefreshCw size={11} /> try another
           </button>
         )}
-        {!done && swapped && (
-          <span className="ml-auto text-[10px] font-semibold text-slate-300">that's today's — back tomorrow</span>
+        {!done && !canSwap && swapped && (
+          <span className="ml-auto text-[10px] font-semibold text-slate-300">swapped — back tomorrow</span>
         )}
       </div>
       <button onClick={onToggle} className="flex w-full items-start gap-3 text-left group">
@@ -120,32 +123,24 @@ export default function HaveYouTried({ currentUser, dob }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
-  const [focus, setFocus] = useState(() => loadJSON(FOCUS_KEY, null));
   const [state, setState] = useState(() => loadJSON(stateKey(day), { done: {}, swaps: {} }));
+  const [showHow, setShowHow] = useState(false);
 
   const items = useMemo(
-    () => pickDaily({ uid, focusIds: focus ?? [], swaps: state.swaps, ageBand }),
-    [uid, focus, state.swaps, day, ageBand]
+    () => pickDaily({ uid, swaps: state.swaps, ageBand }),
+    [uid, state.swaps, day, ageBand]
   );
 
-  if (!focus) {
-    return (
-      <main className="flex-1 overflow-y-auto bg-slate-50/60">
-        <FocusPicker initial={loadJSON(FOCUS_KEY, []) ?? []} onDone={(chosen) => { saveJSON(FOCUS_KEY, chosen); setFocus(chosen); }} />
-      </main>
-    );
-  }
-
   const update = (next) => { setState(next); saveJSON(stateKey(day), next); };
+
   const toggle = (slot) => {
     const nowDone = !state.done[slot];
     const nextDone = { ...state.done, [slot]: nowDone };
     if (nowDone) {
       try { playCheckIn(); } catch { /* ignore */ }
       awardPoints("practice");
-      // Bonus once when all three are complete for the day.
-      const nowAll = ["anchor", "rotate", "self"].every((s) => nextDone[s]);
-      if (nowAll && !state.bonus) {
+      // Bonus once when both of today's prompts are complete.
+      if (SLOTS.every((s) => nextDone[s]) && !state.bonus) {
         awardPoints("practiceAll");
         update({ ...state, done: nextDone, bonus: true });
         return;
@@ -153,23 +148,31 @@ export default function HaveYouTried({ currentUser, dob }) {
     }
     update({ ...state, done: nextDone });
   };
-  // One "try another" per slot — after that the button hides (see PromptCard).
+
+  // One "try another" per DAY, across both cards — not one per card.
+  const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0);
+  const canSwap = swapsUsed < 1;
   const swap = (slot) => {
-    if ((state.swaps[slot] ?? 0) >= 1) return;
+    if (!canSwap) return;
     update({ ...state, swaps: { ...state.swaps, [slot]: 1 } });
   };
 
   const doneCount = items.filter((i) => state.done[i.slot]).length;
-  const allDone = doneCount === 3;
+  const allDone = doneCount === SLOTS.length;
 
   return (
     <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4">
       <div className="mx-auto w-full max-w-md space-y-3">
         <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
-          <h2 className="text-sm font-bold text-slate-800">🌱 Today's three</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="flex-1 text-sm font-bold text-slate-800">🌱 Today's two</h2>
+            <button onClick={() => setShowHow(true)} aria-label="How Practice works"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-teal-200 bg-white text-teal-600 hover:bg-teal-100 active:scale-90 transition-all">
+              <Info size={14} />
+            </button>
+          </div>
           <p className="mt-0.5 text-[11px] text-slate-500 leading-relaxed">
-            Tiny acts of real-life kindness. Do what feels right — swap or skip freely; there's no
-            streak to break and no score to keep.
+            One act of kindness, one bit of self-care. Small and real — do what feels right.
           </p>
         </div>
 
@@ -178,7 +181,8 @@ export default function HaveYouTried({ currentUser, dob }) {
             key={item.slot}
             item={item}
             done={Boolean(state.done[item.slot])}
-            swapped={(state.swaps[item.slot] ?? 0) >= 1}
+            swapped={Boolean(state.swaps?.[item.slot])}
+            canSwap={canSwap}
             onToggle={() => toggle(item.slot)}
             onSwap={() => swap(item.slot)}
           />
@@ -191,16 +195,12 @@ export default function HaveYouTried({ currentUser, dob }) {
           </div>
         ) : (
           <p className="text-center text-[11px] text-slate-400 pt-1">
-            {doneCount === 0 ? "Whenever you're ready — one is plenty." : `${doneCount} of 3 — lovely.`}
+            {doneCount === 0 ? "Whenever you're ready — one is plenty." : "One done — lovely."}
           </p>
         )}
-
-        <button
-          onClick={() => { try { localStorage.removeItem(FOCUS_KEY); } catch { /* ignore */ } setFocus(null); }}
-          className="mx-auto block pt-2 text-[11px] font-semibold text-slate-400 hover:text-teal-600 transition-colors">
-          Change my focus areas
-        </button>
       </div>
+
+      {showHow && <HowItWorksSheet onClose={() => setShowHow(false)} />}
     </main>
   );
 }

@@ -743,18 +743,18 @@ export function todayKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Today's three: [anchor (one of the 3 focus areas), rotating (a different area from the
-// remaining 11), self (age-banded self-care)]. `swaps[slot]` (0 or 1) supports one "try
-// another" per slot — capped by the caller.
-export function pickDaily({ uid = "anon", date = new Date(), focusIds = [], swaps = {}, ageBand = "adult" }) {
-  const day = todayKey(date);
-  const byId = Object.fromEntries(HYT_AREAS.map((a) => [a.id, a]));
-  const validFocus = focusIds.filter((id) => byId[id]).slice(0, 3);
-  const focusPool = validFocus.length ? validFocus : HYT_AREAS.slice(0, 3).map((a) => a.id);
+// Whole days since the epoch, in local time — the counter that walks the area rotation.
+function dayNumber(date) {
+  return Math.floor(new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / 86400000);
+}
 
-  const anchorArea = byId[focusPool[hytHash(`${uid}|${day}|anchor`) % focusPool.length]];
-  const rotatingPool = HYT_AREAS.filter((a) => !focusPool.includes(a.id)); // the remaining 11
-  const rotatingArea = rotatingPool[hytHash(`${uid}|${day}|rotate`) % rotatingPool.length];
+// Today's two: [kindness (one of the 14 areas, a different one each day), self (age-banded
+// self-care)]. The kindness area steps by one whole area per day so the rotation visits all
+// 14 in turn rather than repeating at random; the starting point differs per user.
+// `swaps[slot]` (0 or 1) shifts to the next prompt — the caller allows one swap per day.
+export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult" }) {
+  const day = todayKey(date);
+  const area = HYT_AREAS[(dayNumber(date) + hytHash(uid)) % HYT_AREAS.length];
   const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
 
   const pickFrom = (list, slot) => {
@@ -764,8 +764,7 @@ export function pickDaily({ uid = "anon", date = new Date(), focusIds = [], swap
   };
 
   return [
-    { slot: "anchor", areaId: anchorArea.id, emoji: anchorArea.emoji, label: anchorArea.label, text: pickFrom(anchorArea.prompts, "anchor") },
-    { slot: "rotate", areaId: rotatingArea.id, emoji: rotatingArea.emoji, label: rotatingArea.label, text: pickFrom(rotatingArea.prompts, "rotate") },
+    { slot: "kindness", areaId: area.id, emoji: area.emoji, label: area.label, text: pickFrom(area.prompts, "kindness") },
     { slot: "self", areaId: SELF_META.id, emoji: SELF_META.emoji, label: SELF_META.label, text: pickFrom(selfList, "self") },
   ];
 }
