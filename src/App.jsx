@@ -3304,8 +3304,9 @@ export default function App() {
               onClick={() => { setActiveMessageId(null); }}
               onScroll={handleFeedScroll}>
               {/* Floating date pill — appears while scrolling, fades out when idle.
-                  height:0 so it overlays the feed instead of reserving vertical space. */}
-              <div className="pointer-events-none" style={{ position: "sticky", top: 10, zIndex: 20, height: 0, textAlign: "center" }}>
+                  height:0 so it overlays the feed instead of reserving vertical space.
+                  Sits below the pinned Focused Feed header rather than under it. */}
+              <div className="pointer-events-none" style={{ position: "sticky", top: 44, zIndex: 20, height: 0, textAlign: "center" }}>
                 <span style={{
                   display: "inline-block",
                   opacity: feedDateVisible ? 1 : 0,

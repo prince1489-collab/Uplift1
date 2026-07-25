@@ -405,9 +405,13 @@ export function FollowingPanel({ follows = [], messages = [], onSetLabel, onUnfo
 }
 
 // ── Focused-feed section header — the boundary between strangers and your people ──
+// Sticks to the top of the feed scroller so it stays visible while you scroll.
+// `-mx-3.5 px-3.5` cancels the scroller's horizontal padding so the pinned bar runs edge
+// to edge; `-top-2` with the matching `pt-3.5` cancels its `pt-2`, which would otherwise
+// leave an 8px sliver above the bar for messages to scroll through.
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
-    <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-1.5">
+    <div className="sticky -top-2 z-[25] -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 bg-slate-50/95 px-3.5 pb-1.5 pt-3.5 backdrop-blur">
       <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">👥 Focused Feed</p>
       <span className="text-[10px] font-semibold text-slate-400">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}
