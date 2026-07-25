@@ -3551,11 +3551,19 @@ export default function App() {
                     grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
                   }
                 });
+                // Moments flow inline with the messages, ordered by time like everything else,
+                // rather than sitting in a fixed block at the top of the feed.
+                const groupTs = (g) => Number(g.items[0]?.timestamp) || 0;
+                const entries = [
+                  ...grouped.map((g) => ({ kind: "group", ts: groupTs(g), key: g.items[0].id, group: g })),
+                  ...focusedMoments.map((km) => ({ kind: "moment", ts: Number(km.ts) || 0, key: km.id, moment: km })),
+                ].sort((a, b) => b.ts - a.ts);
                 return (
                   <>
                   <FocusedFeedHeader count={follows.length} onManage={() => setShowFollowing(true)} />
-                  {focusedMoments.map((km) => <KindMomentCard key={km.id} moment={km} />)}
-                  {grouped.map((group) => {
+                  {entries.map((entry) => {
+                  if (entry.kind === "moment") return <KindMomentCard key={entry.key} moment={entry.moment} />;
+                  const group = entry.group;
                   const mine = group.uid === currentUser.uid;
                   const isMulti = group.items.length > 1;
                   const firstId = group.items[0].id;

@@ -116,23 +116,30 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 const ROTATE_MS = 5000;
 export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments = [], onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
-  const strangers = useMemo(
-    () => messages.filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid)).slice(0, 25),
-    [messages, myUid, focusedSet]
-  );
+  // Strangers' messages and stranger-to-stranger kind moments share one rotation, so a
+  // moment takes its turn in the same slot instead of adding fixed height below it.
+  const items = useMemo(() => {
+    const msgs = messages
+      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid))
+      .slice(0, 25)
+      .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
+    const kms = moments.map((km) => ({ type: "moment", id: km.id, ts: Number(km.ts) || 0, moment: km }));
+    return [...msgs, ...kms].sort((a, b) => b.ts - a.ts);
+  }, [messages, myUid, focusedSet, moments]);
+
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
   const [idx, setIdx] = useState(0);
   const [open, setOpen] = useState(false); // actions revealed for the current message
 
   // Keep the index in range as the list changes.
-  useEffect(() => { if (idx >= strangers.length) setIdx(0); }, [strangers.length, idx]);
+  useEffect(() => { if (idx >= items.length) setIdx(0); }, [items.length, idx]);
 
   // Auto-rotate — paused while the actions are open so people can act without it moving.
   useEffect(() => {
-    if (open || strangers.length <= 1) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % strangers.length), ROTATE_MS);
+    if (open || items.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(t);
-  }, [open, strangers.length]);
+  }, [open, items.length]);
 
   const like = (id) => {
     const nowLiked = !likes[id];
@@ -140,21 +147,28 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments
     if (nowLiked) { try { awardPoints("like"); } catch { /* ignore */ } } // waters the tree (device-local)
   };
 
-  const m = strangers[Math.min(idx, Math.max(0, strangers.length - 1))];
+  const item = items[Math.min(idx, Math.max(0, items.length - 1))];
+  const m = item?.type === "message" ? item.msg : null;
   const following = m ? focusedSet.has(m.uid) : false;
+  // A moment has no author to act on, so it just displays for its turn.
+  useEffect(() => { if (item?.type === "moment" && open) setOpen(false); }, [item?.type, open]);
 
   return (
     <div className="border-b-2 border-sky-100 bg-sky-50/60 px-3 py-2 flex-shrink-0">
       <div className="flex items-center justify-between px-1 pb-1">
         <p className="text-[11px] font-bold uppercase tracking-wide text-sky-600">🌍 Worldwide Feed</p>
         <span className="text-[10px] font-semibold text-sky-400">
-          {strangers.length > 1 ? <span className="tabular-nums">{idx + 1}/{strangers.length}</span> : "from strangers"}
+          {items.length > 1 ? <span className="tabular-nums">{idx + 1}/{items.length}</span> : "from strangers"}
         </span>
       </div>
 
-      {!m ? (
+      {!item ? (
         <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] text-slate-500">
           💛 Kind messages from around the world will appear here.
+        </div>
+      ) : item.type === "moment" ? (
+        <div key={item.id} style={{ animation: "seenFadeUp 350ms ease both" }}>
+          <KindMomentCard moment={item.moment} compact />
         </div>
       ) : (
         <>
@@ -189,13 +203,6 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments
             </div>
           )}
         </>
-      )}
-
-      {/* Kind moments between two people you don't follow broadcast here. */}
-      {moments.length > 0 && (
-        <div className="mt-1.5 space-y-1.5">
-          {moments.slice(0, 2).map((km) => <KindMomentCard key={km.id} moment={km} compact />)}
-        </div>
       )}
     </div>
   );
