@@ -97,16 +97,20 @@ const ROSE = (() => {
 // Each droplet: horizontal drift, fall distance, duration and stagger. Durations never share
 // a period, so the stream doesn't visibly loop across the ~4s pour.
 const SPRAY = [
-  { dx: -8, dy: 108, dur: 1.32, d: 0.00, r: 1.5 },
-  { dx:  2, dy: 110, dur: 1.24, d: 0.18, r: 1.3 },
-  { dx: 10, dy: 111, dur: 1.18, d: 0.34, r: 1.6 },
-  { dx: 18, dy: 111, dur: 1.28, d: 0.10, r: 1.4 },
-  { dx: 26, dy: 110, dur: 1.22, d: 0.46, r: 1.5 },
-  { dx: 33, dy: 109, dur: 1.36, d: 0.26, r: 1.3 },
-  { dx: 41, dy: 107, dur: 1.30, d: 0.58, r: 1.5 },
-  { dx: 49, dy: 105, dur: 1.42, d: 0.38, r: 1.2 },
-  { dx: 56, dy: 103, dur: 1.26, d: 0.66, r: 1.4 },
-  { dx: 63, dy: 100, dur: 1.38, d: 0.50, r: 1.2 },
+  { dx: -8, dy: 108, dur: 1.32, d: 0.00, r: 2.0 },
+  { dx: -2, dy: 109, dur: 1.15, d: 0.62, r: 1.7 },
+  { dx:  2, dy: 110, dur: 1.24, d: 0.18, r: 1.8 },
+  { dx: 10, dy: 111, dur: 1.18, d: 0.34, r: 2.1 },
+  { dx: 14, dy: 111, dur: 1.45, d: 0.72, r: 1.7 },
+  { dx: 18, dy: 111, dur: 1.28, d: 0.10, r: 1.9 },
+  { dx: 26, dy: 110, dur: 1.22, d: 0.46, r: 2.0 },
+  { dx: 33, dy: 109, dur: 1.36, d: 0.26, r: 1.8 },
+  { dx: 37, dy: 108, dur: 1.10, d: 0.54, r: 1.6 },
+  { dx: 41, dy: 107, dur: 1.30, d: 0.58, r: 2.0 },
+  { dx: 49, dy: 105, dur: 1.42, d: 0.38, r: 1.7 },
+  { dx: 56, dy: 103, dur: 1.26, d: 0.66, r: 1.9 },
+  { dx: 60, dy: 101, dur: 1.48, d: 0.14, r: 1.6 },
+  { dx: 63, dy: 100, dur: 1.38, d: 0.50, r: 1.7 },
 ];
 
 export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour }) {
@@ -238,9 +242,16 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
               point the rose actually reaches. The window group bounds the looping droplets
               to the pour phase, so individual drops never need to be in phase with anything. */}
           <g style={{ animation: `seenSprayWindow ${WATERING_MS}ms linear both` }}>
+            {/* short jets right at the rose, so the shower head reads as pouring even
+                before the individual droplets have travelled anywhere */}
+            {[-9, 0, 9, 18].map((a, i) => (
+              <path key={a} d={`M${ROSE.x} ${ROSE.y} q ${4 + a * 0.35} 9 ${8 + a * 0.7} 19`}
+                fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" opacity="0.75"
+                style={{ animation: `seenJet 0.75s ease-in-out ${i * 0.12}s infinite` }} />
+            ))}
             {SPRAY.map((s, i) => (
               <g key={i} style={{ "--dx": `${s.dx}px`, animation: `seenSprayX ${s.dur}s linear ${s.d}s infinite` }}>
-                <ellipse cx={ROSE.x} cy={ROSE.y} rx={s.r} ry={s.r * 1.8} fill="#38bdf8"
+                <ellipse cx={ROSE.x} cy={ROSE.y} rx={s.r} ry={s.r * 1.8} fill="#0ea5e9"
                   style={{ "--dy": `${s.dy}px`, animation: `seenSprayY ${s.dur}s cubic-bezier(0.42,0,0.9,0.55) ${s.d}s infinite` }} />
               </g>
             ))}
@@ -259,7 +270,7 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
 
 export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false }) {
   const [localPts, setLocalPts] = useState(() => getPoints());
-  const { watering, startPour } = useWatering(autoWater);
+  const { watering, startPour } = useWatering(true); // always pour on open — this panel IS "tend your tree"
   useEffect(() => {
     const onPts = () => { setLocalPts(getPoints()); startPour(); };
     window.addEventListener("seen-points", onPts);

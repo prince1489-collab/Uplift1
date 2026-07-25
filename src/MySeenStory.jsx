@@ -17,8 +17,11 @@ import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
 
 const STAGE_SEEN_KEY = "seen_v2_tree_stage_seen"; // highest stage already celebrated
-const REPLAY_MS = 4200;   // grow-from-seed replay — slowed to breathe alongside the 7s pour
-const MILESTONE_DELAY_MS = 4500; // lands just after the final growth note, not on top of it
+const REPLAY_MS = 4200;      // grow-from-seed replay
+// The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
+// around here. Growth starts on that beat: water arrives, then the tree responds.
+const GROWTH_DELAY_MS = 2000;
+const MILESTONE_DELAY_MS = GROWTH_DELAY_MS + REPLAY_MS + 300; // just after the final growth note
 const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
@@ -162,7 +165,10 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const [period, setPeriod] = useState("week");
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
-  const { watering, startPour } = useWatering();
+  // Pour on open. Points are only ever awarded on Connect / Practice / Reflect, and this
+  // component isn't mounted then — so waiting for a "seen-points" event meant the watering
+  // animation could never actually play here. Opening the tab is the moment to show it.
+  const { watering, startPour } = useWatering(true);
   const [openCard, setOpenCard] = useState(null); // which metric card is open
   const hytTried = useMemo(() => hytCompletedCount(), []);
 
@@ -290,22 +296,25 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
     if (replayDoneRef.current || prefersReducedMotion()) { setReplay(null); return; }
     replayDoneRef.current = true;
     const DURATION = REPLAY_MS;
-    // One call schedules every growth note. Pre-scheduling beats watching the rAF loop:
-    // easeOutCubic crosses several stages inside a single frame near the start, and rAF
-    // stalls entirely if the tab is backgrounded part-way through.
-    playGrowthSwell(stageIdx, DURATION);
-    let start = 0;
-    const step = (ts) => {
-      if (!start) start = ts;
-      const p = Math.min(1, (ts - start) / DURATION);
-      // easeOutCubic, with a beat of stillness on the seed before it breaks
-      const eased = p < 0.12 ? 0 : 1 - Math.pow(1 - (p - 0.12) / 0.88, 3);
-      setReplay(eased * targetGrowth);
-      if (p < 1) replayRaf.current = requestAnimationFrame(step);
-      else setReplay(null); // hand back to the live stage view
-    };
-    replayRaf.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(replayRaf.current);
+    // Hold on bare soil until the first droplets actually land, so the sequence reads
+    // causally — water arrives, THEN the tree grows — rather than the two running at once.
+    const begin = setTimeout(() => {
+      // One call schedules every growth note. Pre-scheduling beats watching the rAF loop:
+      // easeOutCubic crosses several stages inside a single frame near the start, and rAF
+      // stalls entirely if the tab is backgrounded part-way through.
+      playGrowthSwell(stageIdx, DURATION);
+      let start = 0;
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min(1, (ts - start) / DURATION);
+        const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+        setReplay(eased * targetGrowth);
+        if (p < 1) replayRaf.current = requestAnimationFrame(step);
+        else setReplay(null); // hand back to the live stage view
+      };
+      replayRaf.current = requestAnimationFrame(step);
+    }, GROWTH_DELAY_MS);
+    return () => { clearTimeout(begin); cancelAnimationFrame(replayRaf.current); };
   }, [targetGrowth]);
 
   // ── Milestone moment ───────────────────────────────────────────────────────

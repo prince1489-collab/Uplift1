@@ -244,6 +244,11 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   86%  { opacity: 1; }
   100% { transform: translateY(var(--dy, 100px)) scaleY(1.3); opacity: 0; }
 }
+/* Short jets at the rose — the water leaving the shower head. */
+@keyframes seenJet {
+  0%, 100% { opacity: 0.35; transform: translateY(-1px); }
+  50%      { opacity: 0.9;  transform: translateY(1px); }
+}
 @keyframes seenSplash {
   0%   { transform: translateY(2px) scale(0.25); opacity: 0; }
   25%  { opacity: 0.9; }
@@ -302,7 +307,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   [style*="seenMoteDrift"], [style*="seenButterfly"], [style*="seenPetalFall"],
   [style*="seenStarTwinkle"], [style*="seenSunGlow"], [style*="seenCanPour"],
   [style*="seenSprayX"], [style*="seenSprayY"], [style*="seenSprayWindow"],
-  [style*="seenSplash"], [style*="seenPlantDrink"] { animation: none !important; }
+  [style*="seenSplash"], [style*="seenPlantDrink"], [style*="seenJet"] { animation: none !important; }
   /* seenSoilSoak is deliberately kept — a colour change is not motion, and it's the
      only remaining signal that the tree was watered. */
 }
