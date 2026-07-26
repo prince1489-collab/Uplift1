@@ -1400,6 +1400,7 @@ export default function App() {
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [wellbeingError, setWellbeingError] = useState("");
   // Buddy invite: detect ?add=UID in URL
   const [pendingBuddyUid] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
@@ -2841,7 +2842,6 @@ export default function App() {
     } catch (err) {
       console.error("Send failed:", err);
       setSendError("Couldn't send — please try again.");
-      setTimeout(() => setSendError(""), 4000);
       setIsSending(false);
     }
   };
@@ -3091,10 +3091,23 @@ export default function App() {
               </div>
               <div className="px-5 pb-8">
                 <p className="text-[13px] text-slate-500 leading-relaxed mb-3">Just for your own reflection — it's not a medical test, and you can look back on it over time.</p>
+                {wellbeingError && (
+                  <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{wellbeingError}</p>
+                )}
                 <WellbeingCheckin
                   submitLabel="Save check-in"
                   onComplete={async (scores) => {
-                    try { await saveCheckin(db, currentUser.uid, scores); await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores }, { merge: true }); } catch { /* ignore */ }
+                    // Only dismiss on success. This used to swallow the error and dismiss
+                    // regardless, so a failed save lost five answered questions AND stopped
+                    // the prompt ever returning.
+                    try {
+                      setWellbeingError("");
+                      await saveCheckin(db, currentUser.uid, scores);
+                      await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores }, { merge: true });
+                    } catch {
+                      setWellbeingError("Couldn't save your check-in — check your connection and try again.");
+                      return;
+                    }
                     setWellbeingPromptDismissed(true); safeLocalSet("seen_wellbeing_prompt_dismissed", "1");
                     setShowWellbeingSheet(false);
                   }}
@@ -3869,6 +3882,12 @@ export default function App() {
             {/* FAB-style footer — only on feed tab */}
             {activeTab === "feed" && (
             <footer className="border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
+              {/* A failed send must be visible. This used to sit inside the !pickerOpen
+                  branch below, but the picker is open at the moment you send — so a
+                  rejected write showed nothing at all and then cleared itself. */}
+              {sendError && (
+                <p className="mb-2 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
+              )}
               {todayMessageCount >= DAILY_GREETING_LIMIT ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
                   <span className="text-lg">🌙</span>
@@ -3879,9 +3898,6 @@ export default function App() {
                 </div>
               ) : !pickerOpen ? (
                 <>
-                  {sendError && (
-                    <p className="mb-2 text-center text-xs font-semibold text-red-500">{sendError}</p>
-                  )}
                   <button
                     data-tour="send"
                     onClick={() => { setPickerOpen(true); markCoachSeen(); }}
@@ -3931,6 +3947,13 @@ export default function App() {
                   className="relative z-10 rounded-t-3xl bg-white px-4 pt-3 pb-2 shadow-2xl"
                   style={{ animation: "seenSheetRise 400ms cubic-bezier(0.34,1.56,0.64,1) both", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+                  {/* The picker covers the footer, so a failed send has to report itself
+                      here — otherwise the only error message is behind this sheet. */}
+                  {sendError && (
+                    <p className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">
+                      {sendError}
+                    </p>
+                  )}
                   <GreetingPicker
                     profile={profile}
                     streak={streak}

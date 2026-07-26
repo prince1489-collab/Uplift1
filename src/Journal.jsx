@@ -289,6 +289,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const [date, setDate] = useState(todayStr());
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [entries, setEntries] = useState([]);
   const [celebrate, setCelebrate] = useState(false);
   const [expandPast, setExpandPast] = useState(false);
@@ -416,14 +417,20 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
         });
         try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
       }
+      setSaveError("");
       playCheckIn();
-    } catch (_) { /* best-effort */ }
+    } catch (_) {
+      // A reflection is something the user wrote. Losing it silently is the worst
+      // outcome here — keep the text in the box and tell them it didn't save.
+      setSaveError("Couldn't save that reflection — check your connection and try again.");
+    }
     setSaving(false);
   };
 
   const handleDelete = async (id) => {
     if (!db || !uid) return;
-    try { await deleteDoc(doc(db, "users", uid, "journal", id)); } catch (_) {}
+    try { setSaveError(""); await deleteDoc(doc(db, "users", uid, "journal", id)); }
+    catch (_) { setSaveError("Couldn't delete that entry — check your connection and try again."); }
   };
 
   const goalPct = Math.min(100, (reflectionsThisWeek / WEEKLY_GOAL) * 100);
@@ -519,6 +526,9 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             placeholder={activePrompt}
             className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-teal-400 focus:outline-none"
           />
+          {saveError && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{saveError}</p>
+          )}
           <button
             onClick={handleSave}
             disabled={saving || !text.trim() || (editingId && text.trim() === (entryForDate?.text ?? "").trim())}

@@ -348,7 +348,7 @@ export function PrivateReplySheet({ target, me, myUid, onDone, onClose }) {
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
           {sent && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] font-semibold text-amber-700">
-              Delivered ✓ — you both shared a kind moment ⭐ (preview)
+              Saved on this device — nothing was sent. Real private replies arrive with the full release. ⭐
             </div>
           )}
           <button onClick={send} disabled={!text.trim() || sent}

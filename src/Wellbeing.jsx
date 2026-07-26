@@ -241,8 +241,16 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
   const daysLeft = Math.max(0, Math.ceil((PERIOD_MS - msSince) / DAY_MS));
   const low = isLowWellbeing(current);
 
+  const [saveError, setSaveError] = useState("");
   const handleComplete = async (scores) => {
-    await saveCheckin(db, uid, scores);
+    try {
+      setSaveError("");
+      await saveCheckin(db, uid, scores);
+    } catch {
+      // Five answered questions is real effort — never drop it without saying so.
+      setSaveError("Couldn't save your check-in — check your connection and try again.");
+      return;
+    }
     playCheckIn();
     setCheckingIn(false);
   };
@@ -259,6 +267,9 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {saveError && (
+          <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{saveError}</p>
+        )}
         {checkingIn ? (
           <WellbeingCheckin
             intro="There are no right answers — just how things have actually been. We'll add this to your trend."
