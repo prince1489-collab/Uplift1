@@ -41,7 +41,11 @@ export const WATERING_MS = 7000;
 
 // Sky palette by time of day — the scene should feel like it belongs to the moment
 // the user opened it. [top, bottom].
-export function skyFor(hour = new Date().getHours()) {
+export function skyFor(hour = new Date().getHours(), darkMode = false) {
+  // In dark mode the scene is always night, whatever the clock says — a daylight sky
+  // inside an otherwise dark app is a bright rectangle, and it was what made the stage
+  // name unreadable (near-white text remapped onto a pale gradient).
+  if (darkMode) return { sky: ["#0b1120", "#111a2b"], sun: null, night: true, label: "night" };
   if (hour < 5)  return { sky: ["#1e293b", "#334155"], sun: null,      night: true,  label: "night" };
   if (hour < 8)  return { sky: ["#fed7aa", "#fef3c7"], sun: "#fbbf24", night: false, label: "dawn" };
   if (hour < 17) return { sky: ["#e0f2fe", "#f0fdfa"], sun: "#fde68a", night: false, label: "day" };
@@ -113,7 +117,7 @@ const SPRAY = [
   { dx: 63, dy: 100, dur: 1.38, d: 0.50, r: 1.7 },
 ];
 
-export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour }) {
+export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour, darkMode = false }) {
   const maxIdx = TREE_STAGES.length - 1;
   const eff = growth != null ? growth * maxIdx : stageIdx; // continuous stage position
   const t = Math.max(0, Math.min(1, eff / maxIdx));        // 0..1 growth
@@ -125,7 +129,7 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
   const showBlossom = eff >= 10;
   const showButterflies = ambient && eff >= 8;
   const trunkW = 3 + t * 9;
-  const sky = ambient ? skyFor(hour) : null;
+  const sky = ambient ? skyFor(hour, darkMode) : null;
   // While the replay is running we drive geometry frame by frame, so CSS transitions
   // would fight it and smear the motion.
   const grow = growth != null ? "none" : "all 900ms cubic-bezier(0.34,1.2,0.64,1)";
@@ -292,8 +296,8 @@ export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, 
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <div className="rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-4 pb-5 text-center overflow-hidden">
-          <div className="mx-auto" style={{ width: 200, height: 200 }}><TreeScene stageIdx={stageIdx} watering={watering} /></div>
+        <div className="seen-grad-hero rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-4 pb-5 text-center overflow-hidden">
+          <div className="mx-auto" style={{ width: 200, height: 200 }}><TreeScene stageIdx={stageIdx} watering={watering} darkMode={darkMode} /></div>
           <p className="mt-1 text-lg font-bold text-slate-800">{stage.name}</p>
           <p className="text-[12px] text-slate-500 mt-0.5">{stage.blurb}</p>
           <div className="mt-4 mx-auto max-w-xs">

@@ -1380,6 +1380,17 @@ export default function App() {
     try { localStorage.setItem("seen-theme", darkMode ? "dark" : "light"); } catch {}
   }, [darkMode]);
 
+  // Mirror the dark shell onto <body>. Every bottom sheet in the app renders with
+  // createPortal(…, document.body), which puts it OUTSIDE the app root — so none of the
+  // [data-dark-shell] remaps reached them and they opened fully white. Marking body means
+  // portals inherit the shell by construction, including any added later.
+  useEffect(() => {
+    const el = document.body;
+    if (darkMode) el.setAttribute("data-dark-shell", "");
+    else el.removeAttribute("data-dark-shell");
+    return () => el.removeAttribute("data-dark-shell");
+  }, [darkMode]);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -3554,7 +3565,7 @@ export default function App() {
                 <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setEchoToast(null); }}
-                    className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+                    className="seen-toast-violet w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
                     style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #c4b5fd", boxShadow: "0 8px 24px rgba(139,92,246,0.18)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🌟</span>
@@ -3603,7 +3614,7 @@ export default function App() {
                   requires navigating away to find a number. */}
               {DISTRESS_RE.test(myFeeling?.text || "") && (
                 <div
-                  className="w-full mb-4 rounded-2xl px-4 py-3.5"
+                  className="seen-crisis-banner w-full mb-4 rounded-2xl px-4 py-3.5"
                   style={{ background: "linear-gradient(135deg, #fef2f2, #fce7f3)", border: "1px solid #fbcfe8" }}
                 >
                   <div className="flex items-start gap-3">
@@ -3808,7 +3819,7 @@ export default function App() {
                                                   : isUnwrapped
                                                   ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
                                                   : isMystery
-                                                  ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
+                                                  ? "seen-grad-warm bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
                                                   : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
                                               } ${isBursting ? "mystery-burst" : ""} ${
                                                 hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""

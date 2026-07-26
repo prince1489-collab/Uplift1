@@ -158,15 +158,73 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    them was remapped LIGHT → light-on-light (the reported unclear-font bug), and
    dark accent titles (text-*-700) sat dark-on-dark. Darken the light accent
    backgrounds AND lighten the dark accent text so each island flips together. */
-[data-dark-shell] .bg-teal-50     { background-color: rgba(45,212,191,0.12) !important; }
-[data-dark-shell] .bg-teal-100    { background-color: rgba(45,212,191,0.16) !important; }
-[data-dark-shell] .bg-emerald-50  { background-color: rgba(16,185,129,0.12) !important; }
-[data-dark-shell] .bg-amber-50    { background-color: rgba(245,158,11,0.12) !important; }
-[data-dark-shell] .bg-violet-50   { background-color: rgba(139,92,246,0.14) !important; }
-[data-dark-shell] .bg-violet-100  { background-color: rgba(139,92,246,0.18) !important; }
-[data-dark-shell] .bg-rose-50     { background-color: rgba(244,63,94,0.12) !important; }
-[data-dark-shell] .bg-rose-100    { background-color: rgba(244,63,94,0.16) !important; }
-[data-dark-shell] .bg-blue-50     { background-color: rgba(59,130,246,0.12) !important; }
+/* Matched by TOKEN, not substring. `[class~="bg-teal-50"]` hits the exact class and
+   `[class*="bg-teal-50/"]` hits every opacity variant (/40, /60, …) — while `bg-teal-500`
+   and `bg-teal-100` correctly do NOT match, which a naive [class*="bg-teal-50"] would.
+   This replaces a hand-maintained list that had fallen 53 classes behind. */
+[data-dark-shell] [class~="bg-teal-50"],
+[data-dark-shell] [class*="bg-teal-50/"] { background-color: rgba(45,212,191,0.12) !important; }
+[data-dark-shell] [class~="bg-teal-100"],
+[data-dark-shell] [class*="bg-teal-100/"] { background-color: rgba(45,212,191,0.17) !important; }
+[data-dark-shell] [class*="border-teal-1"],
+[data-dark-shell] [class*="border-teal-2"],
+[data-dark-shell] [class*="border-teal-3"] { border-color: rgba(45,212,191,0.30) !important; }
+[data-dark-shell] [class~="bg-emerald-50"],
+[data-dark-shell] [class*="bg-emerald-50/"] { background-color: rgba(16,185,129,0.12) !important; }
+[data-dark-shell] [class~="bg-emerald-100"],
+[data-dark-shell] [class*="bg-emerald-100/"] { background-color: rgba(16,185,129,0.17) !important; }
+[data-dark-shell] [class*="border-emerald-1"],
+[data-dark-shell] [class*="border-emerald-2"],
+[data-dark-shell] [class*="border-emerald-3"] { border-color: rgba(16,185,129,0.30) !important; }
+[data-dark-shell] [class~="bg-amber-50"],
+[data-dark-shell] [class*="bg-amber-50/"] { background-color: rgba(245,158,11,0.12) !important; }
+[data-dark-shell] [class~="bg-amber-100"],
+[data-dark-shell] [class*="bg-amber-100/"] { background-color: rgba(245,158,11,0.17) !important; }
+[data-dark-shell] [class*="border-amber-1"],
+[data-dark-shell] [class*="border-amber-2"],
+[data-dark-shell] [class*="border-amber-3"] { border-color: rgba(245,158,11,0.30) !important; }
+[data-dark-shell] [class~="bg-violet-50"],
+[data-dark-shell] [class*="bg-violet-50/"] { background-color: rgba(139,92,246,0.12) !important; }
+[data-dark-shell] [class~="bg-violet-100"],
+[data-dark-shell] [class*="bg-violet-100/"] { background-color: rgba(139,92,246,0.17) !important; }
+[data-dark-shell] [class*="border-violet-1"],
+[data-dark-shell] [class*="border-violet-2"],
+[data-dark-shell] [class*="border-violet-3"] { border-color: rgba(139,92,246,0.30) !important; }
+[data-dark-shell] [class~="bg-rose-50"],
+[data-dark-shell] [class*="bg-rose-50/"] { background-color: rgba(244,63,94,0.12) !important; }
+[data-dark-shell] [class~="bg-rose-100"],
+[data-dark-shell] [class*="bg-rose-100/"] { background-color: rgba(244,63,94,0.17) !important; }
+[data-dark-shell] [class*="border-rose-1"],
+[data-dark-shell] [class*="border-rose-2"],
+[data-dark-shell] [class*="border-rose-3"] { border-color: rgba(244,63,94,0.30) !important; }
+[data-dark-shell] [class~="bg-blue-50"],
+[data-dark-shell] [class*="bg-blue-50/"] { background-color: rgba(59,130,246,0.12) !important; }
+[data-dark-shell] [class~="bg-blue-100"],
+[data-dark-shell] [class*="bg-blue-100/"] { background-color: rgba(59,130,246,0.17) !important; }
+[data-dark-shell] [class*="border-blue-1"],
+[data-dark-shell] [class*="border-blue-2"],
+[data-dark-shell] [class*="border-blue-3"] { border-color: rgba(59,130,246,0.30) !important; }
+[data-dark-shell] [class~="bg-sky-50"],
+[data-dark-shell] [class*="bg-sky-50/"] { background-color: rgba(56,189,248,0.12) !important; }
+[data-dark-shell] [class~="bg-sky-100"],
+[data-dark-shell] [class*="bg-sky-100/"] { background-color: rgba(56,189,248,0.17) !important; }
+[data-dark-shell] [class*="border-sky-1"],
+[data-dark-shell] [class*="border-sky-2"],
+[data-dark-shell] [class*="border-sky-3"] { border-color: rgba(56,189,248,0.30) !important; }
+[data-dark-shell] [class~="bg-red-50"],
+[data-dark-shell] [class*="bg-red-50/"] { background-color: rgba(239,68,68,0.12) !important; }
+[data-dark-shell] [class~="bg-red-100"],
+[data-dark-shell] [class*="bg-red-100/"] { background-color: rgba(239,68,68,0.17) !important; }
+[data-dark-shell] [class*="border-red-1"],
+[data-dark-shell] [class*="border-red-2"],
+[data-dark-shell] [class*="border-red-3"] { border-color: rgba(239,68,68,0.30) !important; }
+[data-dark-shell] [class~="bg-orange-50"],
+[data-dark-shell] [class*="bg-orange-50/"] { background-color: rgba(249,115,22,0.12) !important; }
+[data-dark-shell] [class~="bg-orange-100"],
+[data-dark-shell] [class*="bg-orange-100/"] { background-color: rgba(249,115,22,0.17) !important; }
+[data-dark-shell] [class*="border-orange-1"],
+[data-dark-shell] [class*="border-orange-2"],
+[data-dark-shell] [class*="border-orange-3"] { border-color: rgba(249,115,22,0.30) !important; }
 
 [data-dark-shell] .text-teal-700    { color: #5eead4 !important; }
 [data-dark-shell] .text-emerald-700 { color: #6ee7b7 !important; }
@@ -176,6 +234,44 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-violet-800  { color: #ddd6fe !important; }
 [data-dark-shell] .text-rose-700    { color: #fda4af !important; }
 [data-dark-shell] .text-blue-700    { color: #93c5fd !important; }
+
+/* Native form controls. color-scheme:dark alone leaves the UA painting its own light
+   chrome on some engines — the Reflect date field and textarea rendered mid-grey. Give
+   them an explicit dark surface so they match the cards around them. */
+[data-dark-shell] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-dark-shell] textarea,
+[data-dark-shell] select {
+  background-color: rgba(255,255,255,0.05) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+  color: #e2e8f0 !important;
+}
+[data-dark-shell] input::placeholder,
+[data-dark-shell] textarea::placeholder { color: #7c8798 !important; }
+/* The native date picker's calendar glyph is black-on-dark without this. */
+[data-dark-shell] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+
+/* Light gradients can't be remapped by class: the from- and to- utilities write
+   --tw-gradient-stops, so overriding the from/to custom property after the fact does
+   nothing. These named classes flatten the light gradients in use to a dark surface. */
+[data-dark-shell] .seen-grad-hero,
+[data-dark-shell] .seen-grad-warm,
+[data-dark-shell] .seen-grad-cool {
+  background-image: none !important;
+}
+[data-dark-shell] .seen-grad-hero { background-color: #121821 !important; }
+[data-dark-shell] .seen-grad-warm { background-color: rgba(245,158,11,0.10) !important; }
+[data-dark-shell] .seen-grad-cool { background-color: rgba(45,212,191,0.10) !important; }
+
+/* Crisis support banner — an inline pink gradient with remapped (near-white) text on top,
+   i.e. pale-on-pale in dark mode, on the highest-stakes surface in the app. */
+[data-dark-shell] .seen-crisis-banner {
+  background: rgba(244,63,94,0.14) !important;
+  border-color: rgba(244,63,94,0.38) !important;
+}
+[data-dark-shell] .seen-toast-violet {
+  background: rgba(139,92,246,0.16) !important;
+  border-color: rgba(139,92,246,0.38) !important;
+}
 
 /* Champion greeting cards (leaderboard + the community picker) use an inline cream
    gradient (uncatchable by class remaps); an !important rule still overrides the

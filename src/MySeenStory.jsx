@@ -81,7 +81,7 @@ function MetricCard({ card, onClose }) {
         <p className="px-5 pb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{card.basis}</p>
 
         <div className="overflow-y-auto overscroll-contain px-5 pb-8 space-y-4">
-          <div className="rounded-2xl bg-gradient-to-br from-teal-50 to-sky-50 px-4 py-4 text-center">
+          <div className="seen-grad-cool rounded-2xl bg-gradient-to-br from-teal-50 to-sky-50 px-4 py-4 text-center">
             <p className="text-4xl font-extrabold tabular-nums text-slate-800">{card.value.toLocaleString()}</p>
             <p className="mt-1.5 text-[14px] leading-relaxed text-slate-600">{card.line}</p>
           </div>
@@ -336,10 +336,10 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       <div className="mx-auto w-full max-w-md space-y-4">
         {/* Hero — the animated Kindness Tree (centrepiece) */}
         <button onClick={onOpenTree}
-          className="relative block w-full rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-5 pb-6 text-center overflow-hidden active:scale-[0.99] transition-transform"
+          className="relative block w-full seen-grad-hero rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-5 pb-6 text-center overflow-hidden active:scale-[0.99] transition-transform"
           style={{ animation: "seenFadeUp 600ms ease both", animationDelay: "80ms" }}>
           <div className="mx-auto" style={{ width: 210, height: 210 }}>
-            <TreeScene stageIdx={stageIdx} growth={replay} watering={watering} size={210} ambient />
+            <TreeScene stageIdx={stageIdx} growth={replay} watering={watering} size={210} ambient darkMode={darkMode} />
           </div>
           {milestone && <MilestoneOverlay stage={milestone} onDone={() => setMilestone(null)} />}
           <p className="mt-1 text-xl font-extrabold text-slate-800">{stage.name}</p>

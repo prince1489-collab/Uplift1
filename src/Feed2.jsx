@@ -298,7 +298,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
 // ── Kind-moment card (a consented "shared a kind moment") ─────────────────────
 export function KindMomentCard({ moment, compact = false }) {
   return (
-    <div className={`rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
+    <div className={`seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
       <span className={`flex-shrink-0 ${compact ? "text-base" : "text-lg"}`}>⭐</span>
       <p className="text-[12px] text-slate-600 leading-snug flex-1">
@@ -583,7 +583,7 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
   if (compact) {
     return (
       <button onClick={() => onOpen?.(story)}
-        className="flex w-full items-center gap-1.5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left active:scale-[0.99] transition-transform"
+        className="flex w-full items-center gap-1.5 seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left active:scale-[0.99] transition-transform"
         style={{ animation: "seenFadeUp 400ms ease both" }}>
         <span className="flex-shrink-0 text-sm">📔</span>
         {/* The whole announcement as one sentence. line-clamp-2 rather than truncate, so a
@@ -607,7 +607,7 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
 
   return (
     <button onClick={() => onOpen?.(story)}
-      className="mb-2 w-full rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-3 text-left"
+      className="mb-2 w-full seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-3 text-left"
       style={{ animation: "seenFadeUp 400ms ease both" }}>
       <div className="flex items-center gap-1.5 mb-1">
         <span className="flex-shrink-0 text-base">📔</span>

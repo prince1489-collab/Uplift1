@@ -279,7 +279,7 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
         ) : latest ? (
           <>
             {/* Current score */}
-            <div className="rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-5 py-5 text-center">
+            <div className="seen-grad-cool rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 px-5 py-5 text-center">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">How you've been feeling</p>
               <p className="text-5xl font-extrabold tabular-nums" style={{ color: scoreColour(current) }}>{current}<span className="text-lg text-slate-300">/100</span></p>
               {showDelta ? (
