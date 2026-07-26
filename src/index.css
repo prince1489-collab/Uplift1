@@ -111,6 +111,14 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .bg-slate-50\/80    { background-color: rgba(13,17,23,0.8) !important; }
 [data-dark-shell] .bg-slate-50\/60    { background-color: rgba(13,17,23,0.6) !important; }
 [data-dark-shell] .bg-slate-100\/80   { background-color: rgba(22,27,34,0.8) !important; }
+/* Slate surfaces by family, so a new opacity variant can't slip through — bg-slate-50/95
+   (the Focused Feed sticky header) was the one that did. NOT applied to bg-white/*: the
+   /10 /20 /30 /70 variants are deliberate translucent highlights on coloured buttons and
+   progress tracks, and darkening those would erase them. */
+[data-dark-shell] [class~="bg-slate-50"],
+[data-dark-shell] [class*="bg-slate-50/"]  { background-color: #0d1117 !important; }
+[data-dark-shell] [class~="bg-slate-100"],
+[data-dark-shell] [class*="bg-slate-100/"] { background-color: #161b22 !important; }
 
 /* Borders */
 [data-dark-shell] .border-slate-100  { border-color: rgba(255,255,255,0.07) !important; }
