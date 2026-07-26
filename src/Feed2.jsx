@@ -187,19 +187,28 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
 const ROTATE_MS = 5000;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately }) {
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
+  // Blocking has to hold here too. It used to be applied only to the Focused Feed, so a
+  // blocked person's messages kept rotating through the Worldwide strip.
+  const isBlocked = useMemo(() => {
+    const set = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
+    return (uid) => Boolean(uid) && set.has(uid);
+  }, [blockedUids]);
   // Strangers' messages and stranger-to-stranger kind moments share one rotation, so a
   // moment takes its turn in the same slot instead of adding fixed height below it.
   const items = useMemo(() => {
     const msgs = messages
-      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid))
+      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid) && !isBlocked(m.uid))
       .slice(0, 25)
       .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
-    const kms = moments.map((km) => ({ type: "moment", id: km.id, ts: Number(km.ts) || 0, moment: km }));
-    const sts = stories.map((s) => ({ type: "story", id: s.id, ts: Number(s.ts) || 0, story: s }));
+    // A blocked person must not surface via a kind moment or a shared reflection either.
+    const kms = moments.filter((km) => !isBlocked(km.aUid) && !isBlocked(km.bUid))
+      .map((km) => ({ type: "moment", id: km.id, ts: Number(km.ts) || 0, moment: km }));
+    const sts = stories.filter((s) => !isBlocked(s.authorUid))
+      .map((s) => ({ type: "story", id: s.id, ts: Number(s.ts) || 0, story: s }));
     return [...msgs, ...kms, ...sts].sort((a, b) => b.ts - a.ts);
-  }, [messages, myUid, focusedSet, moments, stories]);
+  }, [messages, myUid, focusedSet, isBlocked, moments, stories]);
 
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
   const [idx, setIdx] = useState(0);

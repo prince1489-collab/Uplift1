@@ -1723,6 +1723,8 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [busy, setBusy] = useState(false);           // a safety write is in flight
+  const [safetyError, setSafetyError] = useState(""); // shown when one fails
   const [showStickers, setShowStickers] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -1886,8 +1888,12 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     }
   };
 
+  // Confirm only once the write lands. These previously flipped to a tick BEFORE the
+  // write and swallowed the error, so a report or block that never persisted still
+  // showed as done — the user believed they were protected when they weren't.
   const handleReport = async (reason) => {
-    setReported(true);
+    if (busy) return;
+    setBusy(true); setSafetyError("");
     try {
       await addDoc(collection(db, "reports"), {
         messageId,
@@ -1896,32 +1902,44 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         reason,
         timestamp: Date.now(),
       });
-    } catch {}
-    setTimeout(() => onClose?.(), 1400);
+      setReported(true);
+      setTimeout(() => onClose?.(), 1400);
+    } catch {
+      setSafetyError("Couldn't send that report — check your connection and try again.");
+    }
+    setBusy(false);
   };
 
   // Block this author: hides all their content from this user's feed (users/{uid}/blockedUsers).
   const handleBlock = async () => {
-    if (!isOther || !db || blocked) return;
-    setBlocked(true);
+    if (!isOther || !db || blocked || busy) return;
+    setBusy(true); setSafetyError("");
     try {
       await setDoc(doc(db, "users", currentUser.uid, "blockedUsers", senderUid), {
         name: senderName ?? "Someone",
         blockedAt: Date.now(),
       });
-    } catch {}
-    setTimeout(() => onClose?.(), 1200);
+      setBlocked(true);
+      setTimeout(() => onClose?.(), 1200);
+    } catch {
+      setSafetyError("Couldn't block them — check your connection and try again.");
+    }
+    setBusy(false);
   };
 
   const canGift = isOther && !gifted && Number(profile?.sparkBalance ?? 0) >= QUICK_GIFT_AMOUNT;
 
   if (reporting) return (
-    <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
+    <div className="seen-qrb" onClick={(e) => e.stopPropagation()} style={{ flexWrap: "wrap" }}>
+      {safetyError && (
+        <p style={{ width: "100%", fontSize: 11, fontWeight: 600, color: "#ef4444", padding: "2px 6px" }}>{safetyError}</p>
+      )}
       <span style={{ fontSize: 11, color: "rgba(148,163,184,0.8)", padding: "0 4px", flexShrink: 0 }}>Report:</span>
       {["Harmful","Spam","Inappropriate","Other"].map((r) => (
         <button key={r}
           className="seen-qrb-btn"
-          style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34 }}
+          style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34, opacity: busy ? 0.5 : 1 }}
+          disabled={busy}
           onClick={() => handleReport(r)}>
           {reported ? "✅" : r}
         </button>
@@ -1932,9 +1950,10 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           <button
             className="seen-qrb-btn"
             title="Block this person"
-            style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34, fontWeight: 700, color: "#ef4444" }}
+            style={{ fontSize: 10, width: "auto", padding: "0 8px", height: 34, fontWeight: 700, color: "#ef4444", opacity: busy ? 0.5 : 1 }}
+            disabled={busy}
             onClick={handleBlock}>
-            {blocked ? "Blocked ✓" : "🚫 Block"}
+            {blocked ? "Blocked ✓" : busy ? "Blocking…" : "🚫 Block"}
           </button>
         </>
       )}

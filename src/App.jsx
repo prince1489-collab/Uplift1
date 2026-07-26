@@ -1941,16 +1941,22 @@ export default function App() {
   // A moment involving you or someone you follow belongs in the Focused Feed; a moment
   // between two strangers broadcasts in the Worldwide Feed.
   const { focused: focusedMoments, worldwide: worldwideMoments } = useMemo(
-    () => splitKindMoments(kindMoments, focusedUids, currentUser?.uid),
-    [kindMoments, focusedUids, currentUser?.uid]
+    // Blocked first, so a blocked person can't reach either feed via a kind moment.
+    () => splitKindMoments(
+      kindMoments.filter((km) => !blockedUids.has(km.aUid) && !blockedUids.has(km.bUid)),
+      focusedUids, currentUser?.uid),
+    [kindMoments, blockedUids, focusedUids, currentUser?.uid]
   );
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // shared journal being read
   // Shared journals route the same way as kind moments: yours or a followed author's go to
   // the Focused Feed; a stranger's broadcasts in the Worldwide Feed.
   const { focused: focusedStories, worldwide: worldwideStories } = useMemo(
-    () => splitStories(featuredStories, focusedUids, currentUser?.uid),
-    [featuredStories, focusedUids, currentUser?.uid]
+    // Same for shared reflections — blocking has to hold on every surface.
+    () => splitStories(
+      featuredStories.filter((st) => !blockedUids.has(st.authorUid)),
+      focusedUids, currentUser?.uid),
+    [featuredStories, blockedUids, focusedUids, currentUser?.uid]
   );
   useEffect(() => {
     const refresh = () => setFeaturedStories(loadLocalStories());
@@ -3358,6 +3364,7 @@ export default function App() {
                 messages={messages}
                 myUid={currentUser?.uid}
                 focusedUids={focusedUids}
+                blockedUids={blockedUids}
                 moments={worldwideMoments}
                 stories={worldwideStories}
                 onOpenStory={(s) => setOpenStory(s)}
