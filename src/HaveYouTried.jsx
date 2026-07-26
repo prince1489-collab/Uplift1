@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { RefreshCw, Check, Info, X } from "lucide-react";
 import { HYT_AREAS, pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { playCheckIn } from "./sounds";
-import { awardPoints } from "./points";
+import { awardPoints, POINTS } from "./points";
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.
 const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -86,9 +86,20 @@ function HowItWorksSheet({ onClose }) {
 }
 
 // ── a single daily prompt card ───────────────────────────────────────────────
-function PromptCard({ item, done, swapped, canSwap, onToggle, onSwap }) {
+function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, onSwap, children }) {
   return (
-    <div className={`rounded-2xl border bg-white px-4 py-3.5 transition-all ${done ? "border-teal-200" : "border-slate-200"}`}>
+    <div className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-3.5 transition-all ${done ? "border-teal-200" : "border-slate-200"}`}>
+      {/* A real-world act deserves more than a strike-through. Brief, then it gets out
+          of the way — the acknowledgement matters, lingering on it doesn't. */}
+      {celebrate && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl bg-teal-500/95 text-center"
+          style={{ animation: "seenPracticeDone 2200ms ease both" }}>
+          <p className="text-lg font-extrabold text-white">✨ +{drops} drops</p>
+          <p className="mt-0.5 px-6 text-[12px] font-medium leading-snug text-teal-50">
+            That happened off the screen. That counts.
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="text-sm">{item.emoji}</span>
         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.label}</span>
@@ -102,7 +113,9 @@ function PromptCard({ item, done, swapped, canSwap, onToggle, onSwap }) {
           <span className="ml-auto text-[10px] font-semibold text-slate-300">swapped — back tomorrow</span>
         )}
       </div>
-      <button onClick={onToggle} className="flex w-full items-start gap-3 text-left group">
+      <button onClick={onToggle} aria-pressed={done}
+        aria-label={`${done ? "Done" : "Mark done"}: ${item.text}`}
+        className="flex w-full items-start gap-3 text-left group">
         <span className={`mt-0.5 grid h-6 w-6 flex-shrink-0 place-items-center rounded-full border-2 transition-all ${
           done ? "border-teal-500 bg-teal-500 text-white" : "border-slate-300 text-transparent group-hover:border-teal-400"
         }`}>
@@ -114,6 +127,48 @@ function PromptCard({ item, done, swapped, canSwap, onToggle, onSwap }) {
           {item.text}
         </span>
       </button>
+      {children}
+    </div>
+  );
+}
+
+// ── steer to a different area when today's doesn't fit ───────────────────────
+// Deliberately not capped like "try another": this steers, it doesn't reroll. The prompt
+// inside a chosen area is still fixed by the day, so there's nothing to shop for.
+function AreaPicker({ current, onPick, onClear }) {
+  const [open, setOpen] = useState(false);
+  const areas = HYT_AREAS;
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="mt-2.5 w-full rounded-xl border border-dashed border-slate-200 py-1.5 text-[11px] font-semibold text-slate-400 hover:border-teal-300 hover:text-teal-600 transition-colors">
+        Doesn't fit today? Pick an area
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2.5 rounded-xl border border-slate-100 bg-slate-50 p-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
+      <div className="flex items-center gap-2 px-1 pb-1.5">
+        <p className="flex-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Choose an area</p>
+        <button onClick={() => setOpen(false)} className="text-[10px] font-semibold text-slate-400 hover:text-slate-600">Close</button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {areas.map((a) => (
+          <button key={a.id}
+            onClick={() => { onPick(a.id); setOpen(false); }}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+              current === a.id ? "border-teal-400 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}>
+            {a.emoji} {a.label}
+          </button>
+        ))}
+      </div>
+      {current && (
+        <button onClick={() => { onClear(); setOpen(false); }}
+          className="mt-2 w-full rounded-lg py-1 text-[10px] font-semibold text-slate-400 hover:text-teal-600">
+          Back to today's area
+        </button>
+      )}
     </div>
   );
 }
@@ -127,9 +182,10 @@ export default function HaveYouTried({ currentUser, dob }) {
   const [showHow, setShowHow] = useState(false);
 
   const items = useMemo(
-    () => pickDaily({ uid, swaps: state.swaps, ageBand }),
-    [uid, state.swaps, day, ageBand]
+    () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: state.area ?? null }),
+    [uid, state.swaps, state.area, day, ageBand]
   );
+  const [celebrating, setCelebrating] = useState(null); // slot showing its completion moment
 
   const update = (next) => { setState(next); saveJSON(stateKey(day), next); };
 
@@ -139,6 +195,8 @@ export default function HaveYouTried({ currentUser, dob }) {
     if (nowDone) {
       try { playCheckIn(); } catch { /* ignore */ }
       awardPoints("practice");
+      setCelebrating(slot);
+      setTimeout(() => setCelebrating((c) => (c === slot ? null : c)), 2200);
       // Bonus once when both of today's prompts are complete.
       if (SLOTS.every((s) => nextDone[s]) && !state.bonus) {
         awardPoints("practiceAll");
@@ -183,9 +241,20 @@ export default function HaveYouTried({ currentUser, dob }) {
             done={Boolean(state.done[item.slot])}
             swapped={Boolean(state.swaps?.[item.slot])}
             canSwap={canSwap}
+            celebrate={celebrating === item.slot}
+            drops={POINTS.practice}
             onToggle={() => toggle(item.slot)}
             onSwap={() => swap(item.slot)}
-          />
+          >
+            {/* Only the kindness slot has areas to choose between; self-care has one bank. */}
+            {item.slot === "kindness" && !state.done[item.slot] && (
+              <AreaPicker
+                current={state.area ?? null}
+                onPick={(id) => update({ ...state, area: id })}
+                onClear={() => update({ ...state, area: null })}
+              />
+            )}
+          </PromptCard>
         ))}
 
         {allDone ? (

@@ -755,10 +755,15 @@ function dayNumber(date) {
 // "Try another" (swaps[slot] = 1) behaves differently per slot, by design:
 //   kindness → moves to the NEXT AREA entirely, so you get a different kind of kindness.
 //   self     → stays in self-care and moves to a different suggestion within it.
-export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult" }) {
+// `chosenArea` lets the user steer to an area themselves when the day's rotation doesn't
+// fit. It steers, it doesn't reroll: the prompt inside the chosen area is still picked by
+// the day hash, so re-picking the same area always gives the same prompt and there is no
+// shopping for an easier one.
+export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null }) {
   const day = todayKey(date);
   const areaShift = Math.min(1, swaps.kindness ?? 0);
-  const area = HYT_AREAS[(dayNumber(date) + hytHash(uid) + areaShift) % HYT_AREAS.length];
+  const picked = chosenArea ? HYT_AREAS.find((a) => a.id === chosenArea) : null;
+  const area = picked || HYT_AREAS[(dayNumber(date) + hytHash(uid) + areaShift) % HYT_AREAS.length];
   const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
 
   // Prompt within a list. The kindness slot passes offset 0 because its swap already

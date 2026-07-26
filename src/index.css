@@ -243,6 +243,16 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-rose-700    { color: #fda4af !important; }
 [data-dark-shell] .text-blue-700    { color: #93c5fd !important; }
 
+/* Practice: the completion moment. Rises in, holds, then clears out of the way. */
+@keyframes seenPracticeDone {
+  0%        { opacity: 0; transform: scale(0.96); }
+  12%, 72%  { opacity: 1; transform: scale(1); }
+  100%      { opacity: 0; transform: scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="seenPracticeDone"] { animation-duration: 2200ms !important; transform: none !important; }
+}
+
 /* Native form controls. color-scheme:dark alone leaves the UA painting its own light
    chrome on some engines — the Reflect date field and textarea rendered mid-grey. Give
    them an explicit dark surface so they match the cards around them. */
