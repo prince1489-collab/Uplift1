@@ -238,6 +238,20 @@ const WATER_PEAK = 0.055; // sits under the map ambience (0.075–0.09)
 // peaceful outdoor ambiance, no background noise."
 // Keep it dry and loopable — it is looped to fill the pour and shaped by the envelope
 // below, so any fade or room tail baked into the file will fight that shaping.
+// Web Audio has no noise oscillator, but a buffer of random samples is one — and water is
+// broadband noise, so this is the difference between "sounds like water" and "sounds like
+// tuned sine tones". Generated once and reused.
+let noiseBuf = null;
+function noiseBuffer(c) {
+  if (noiseBuf && noiseBuf.sampleRate === c.sampleRate) return noiseBuf;
+  const len = Math.floor(c.sampleRate * 2);
+  const b = c.createBuffer(1, len, c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  noiseBuf = b;
+  return b;
+}
+
 const WATER_SRC = "/sounds/watering.mp3";
 let waterBuffer = null;
 let waterState = "idle"; // idle | loading | ready | absent
@@ -298,32 +312,52 @@ export const playWatering = guard((durationMs = 7000) => {
     return;
   }
 
-  // No recording available — synthesize one. Five mutually inharmonic sines beating
-  // against each other through the swept lowpass stand in for water noise.
-  [[1180, 0.22, 3.1], [1490, 0.20, 4.7], [1810, 0.19, 5.9], [2230, 0.16, 7.3], [2670, 0.13, 8.9]]
-    .forEach(([f, amp, lfoHz]) => {
-      const o = c.createOscillator(), g = c.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(f * 0.94, t0);
-      o.frequency.linearRampToValueAtTime(f * 1.06, at(0.45)); // slow drift = movement
-      o.frequency.linearRampToValueAtTime(f * 0.96, at(0.80));
-      g.gain.value = amp;
-      const lfo = c.createOscillator(), lg = c.createGain();
-      lfo.type = "sine"; lfo.frequency.value = lfoHz; lg.gain.value = amp * 0.6;
-      lfo.connect(lg); lg.connect(g.gain);
-      o.connect(g); g.connect(lp);
-      o.start(t0); lfo.start(t0);
-      o.stop(at(0.85) + 0.2); lfo.stop(at(0.85) + 0.2);
-      oscs.push(o, lfo);
-    });
-  // low body — water meeting soil; bypasses the lowpass so it keeps its weight
-  [[66, "sine", 0.10], [132, "triangle", 0.07]].forEach(([f, type, amp]) => {
-    const o = c.createOscillator(), g = c.createGain();
-    o.type = type; o.frequency.value = f; g.gain.value = amp;
-    o.connect(g); g.connect(bus);
-    o.start(t0); o.stop(at(0.85) + 0.2);
-    oscs.push(o);
+  // No recording available — synthesize the pour from filtered noise, which is what water
+  // actually is. Three layers through the swept lowpass above: the stream itself, a fine
+  // hiss where it hits leaves, and a low body where it meets soil. Plus discrete droplets.
+  const noise = noiseBuffer(c);
+  const endAt = at(0.85) + 0.2;
+  const layer = (type, freq, q, amp, dest) => {
+    const src = c.createBufferSource();
+    src.buffer = noise; src.loop = true;
+    const f = c.createBiquadFilter();
+    f.type = type; f.frequency.value = freq;
+    if (q != null) f.Q.value = q;
+    const g = c.createGain(); g.gain.value = amp;
+    src.connect(f); f.connect(g); g.connect(dest);
+    src.start(t0); src.stop(endAt);
+    oscs.push(src);
+    return f;
+  };
+
+  const stream = layer("bandpass", 1150, 0.8, 0.50, lp); // the pouring stream
+  layer("highpass", 3800, null, 0.13, lp);               // fine spray hitting leaves
+  layer("lowpass", 240, null, 0.28, bus);                // body of water meeting soil
+
+  // Wobble the stream's centre frequency so it burbles instead of sitting still.
+  [[0.7, 320], [2.3, 140]].forEach(([rate, depth]) => {
+    const lfo = c.createOscillator(), lg = c.createGain();
+    lfo.type = "sine"; lfo.frequency.value = rate; lg.gain.value = depth;
+    lfo.connect(lg); lg.connect(stream.frequency);
+    lfo.start(t0); lfo.stop(endAt);
+    oscs.push(lfo);
   });
+
+  // Individual droplets landing — short, sharp, randomly spaced through the pour.
+  for (let i = 0; i < 16; i++) {
+    const when = t0 + T * (0.17 + Math.random() * 0.46);
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    const f = c.createBiquadFilter();
+    f.type = "bandpass"; f.frequency.value = 900 + Math.random() * 1700; f.Q.value = 7;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(0.045 + Math.random() * 0.03, when + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.07 + Math.random() * 0.05);
+    src.connect(f); f.connect(g); g.connect(bus);
+    src.start(when); src.stop(when + 0.14);
+    oscs.push(src);
+  }
 
   pour = { bus, oscs };
   setTimeout(() => { if (pour && pour.bus === bus) pour = null; }, durationMs + 300);
