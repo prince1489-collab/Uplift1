@@ -2,76 +2,18 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
-import {
-  collection, onSnapshot, orderBy, query, limit, where,
-} from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { geoOrthographic, geoPath, geoGraticule, geoInterpolate } from "d3-geo";
 import { feature } from "topojson-client";
 import worldAtlas from "world-atlas/countries-110m.json";
 import "./WelcomeStep.css";
 
-const PRESENCE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — matches "today" label
 
 function useAnonymousAuth(auth) {
   useEffect(() => {
     if (!auth) return;
     signInAnonymously(auth).catch(() => {});
   }, [auth]);
-}
-
-// Real Firebase presence count — rolling 24h window, refreshes every minute.
-function useLiveCount(db) {
-  const [count, setCount] = useState(null);
-  const [cutoff, setCutoff] = useState(() => Date.now() - PRESENCE_TTL_MS);
-
-  // Slide the window forward every minute so old entries fall off naturally
-  useEffect(() => {
-    const id = setInterval(() => setCutoff(Date.now() - PRESENCE_TTL_MS), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (!db) return;
-    const q = query(collection(db, "presence"), where("lastSeen", ">=", cutoff));
-    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => setCount(0));
-    return unsub;
-  }, [db, cutoff]);
-
-  return count;
-}
-
-// Real messages from publicMessages collection
-function useRecentMessages(db) {
-  const [messages, setMessages] = useState([]);
-
-  useEffect(() => {
-    if (!db) return;
-    const q = query(
-      collection(db, "publicMessages"),
-      orderBy("timestamp", "desc"),
-      limit(12)
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const msgs = snap.docs
-          .map((d) => d.data())
-          .filter((m) => m.sender || m.country);
-        setMessages(msgs);
-      },
-      () => setMessages([])
-    );
-    return unsub;
-  }, [db]);
-
-  return messages;
-}
-
-function buildTickerText(msg) {
-  const name = (msg.sender || "Someone").split(" ")[0];
-  const country = msg.country || "the world";
-  return `${name} just sent kindness to someone in ${country}`;
 }
 
 const AFFIRMATIONS = [
@@ -117,54 +59,6 @@ function BackgroundAmbient() {
   );
 }
 
-// Activity ticker — uses real messages when available
-function ActivityTicker({ db }) {
-  const realMessages = useRecentMessages(db);
-  const items =
-    realMessages.length > 0
-      ? realMessages.map(buildTickerText)
-      : FALLBACK_TICKER;
-
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-  const idxRef = useRef(0);
-  const lenRef = useRef(items.length);
-
-  // When items switches from fallback→real, restart from 0
-  useEffect(() => {
-    if (lenRef.current !== items.length) {
-      lenRef.current = items.length;
-      idxRef.current = 0;
-      setIdx(0);
-      setVisible(true);
-    }
-  }, [items.length]);
-
-  useEffect(() => {
-    const rotate = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        idxRef.current = (idxRef.current + 1) % items.length;
-        setIdx(idxRef.current);
-        setVisible(true);
-      }, 300);
-    }, 3800);
-    return () => clearInterval(rotate);
-  }, [items.length]);
-
-  return (
-    <div className="welcome-ticker">
-      <span className="welcome-ticker__label">Live</span>
-      <span
-        className={`welcome-ticker__text${
-          visible ? " welcome-ticker__text--in" : " welcome-ticker__text--out"
-        }`}
-      >
-        {items[idx]}
-      </span>
-    </div>
-  );
-}
 
 // Improvement 1: Emotional feature cards
 const HIGHLIGHTS = [
