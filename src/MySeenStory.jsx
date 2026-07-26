@@ -90,10 +90,10 @@ function MetricCard({ card, onClose }) {
             <div className="space-y-1">
               <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{card.rowsTitle}</p>
               {card.rows.map((r, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5">
-                  <span className="text-base">{r.icon}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{r.label}</span>
-                  {r.value != null && <span className="text-sm font-bold tabular-nums text-slate-500">{r.value}</span>}
+                <div key={i} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5">
+                  <span className="flex-shrink-0 text-base leading-snug">{r.icon}</span>
+                  <span className="min-w-0 flex-1 text-sm leading-snug text-slate-700">{r.label}</span>
+                  {r.value != null && <span className="flex-shrink-0 text-sm font-bold tabular-nums leading-snug text-slate-500">{r.value}</span>}
                 </div>
               ))}
             </div>
@@ -238,8 +238,8 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
         : "Kindness that carried on without you.",
       rowsTitle: "How it breaks down",
       rows: ripple === 0 ? [] : [
-        { icon: "🌱", label: `${plural(rippleCount, "person", "people")} you reached went on to send their own`, value: rippleCount },
-        { icon: "❤️", label: "Hearts those onward messages received", value: onwardReach },
+        { icon: "🌱", label: "People you reached who went on to send their own kindness", value: rippleCount },
+        { icon: "❤️", label: "Hearts those onward messages went on to receive", value: onwardReach },
       ],
       empty: ripple === 0 ? "This fills in when someone you reached goes on to be kind to somebody else." : null,
       how: "The two figures added together, counted over your whole time in Seen.",
@@ -252,7 +252,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       rowsTitle: "The shape of it",
       rows: hytTried.total === 0 ? [] : [
         { icon: "✅", label: "Practice suggestions marked done", value: hytTried.total },
-        { icon: "📆", label: `Spread across ${plural(hytTried.days, "day", "separate days")}`, value: hytTried.days },
+        { icon: "📆", label: "Separate days you did one", value: hytTried.days },
       ],
       empty: hytTried.total === 0 ? "Tick something off in Practice and it lands here." : null,
       how: "Every prompt you've marked done in Practice. Stored on this device, so it starts fresh on a new phone.",
