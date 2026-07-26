@@ -329,11 +329,36 @@ const COUNTRY_ALIASES = {
   "u.s.a.": "United States", "america": "United States",
 };
 
+// Resolve a stored country string to a key in COUNTRY_RESOURCES, or null if we don't
+// cover it. Shared by getResources and getEmergency so both agree on aliases.
+export function resolveCountry(countryName) {
+  if (countryName && COUNTRY_RESOURCES[countryName]) return countryName;
+  const aliased = COUNTRY_ALIASES[(countryName || "").trim().toLowerCase()];
+  return aliased && COUNTRY_RESOURCES[aliased] ? aliased : null;
+}
+
+// Emergency service numbers for the countries we cover. Showing the wrong country's
+// emergency number is worse than showing none, so anything unresolved returns null and
+// the caller falls back to wording that works anywhere.
+export const EMERGENCY_NUMBERS = {
+  "United Kingdom": "999",
+  "United States": "911",
+  "Canada": "911",
+  "Australia": "000",
+  "India": "112",
+  "South Africa": "112",
+  "Ireland": "112",
+  "New Zealand": "111",
+  "Nigeria": "112",
+};
+export function getEmergency(countryName) {
+  const key = resolveCountry(countryName);
+  return key ? (EMERGENCY_NUMBERS[key] ?? null) : null;
+}
+
 export function getResources(countryName) {
-  if (countryName && COUNTRY_RESOURCES[countryName]) return COUNTRY_RESOURCES[countryName];
-  const norm = (countryName || "").trim().toLowerCase();
-  const aliased = COUNTRY_ALIASES[norm];
-  if (aliased && COUNTRY_RESOURCES[aliased]) return COUNTRY_RESOURCES[aliased];
+  const key = resolveCountry(countryName);
+  if (key) return COUNTRY_RESOURCES[key];
   return GLOBAL;
 }
 

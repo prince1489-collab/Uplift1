@@ -43,7 +43,7 @@ import {
 } from "./UpliftRetentionFeatures";
 
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
-import { getResources } from "./SupportData.js";
+import { getResources, getEmergency } from "./SupportData.js";
 import JournalPanel from "./Journal";
 import UserGlimpse from "./UserGlimpse";
 import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
@@ -2571,6 +2571,10 @@ export default function App() {
     [messages, currentUser]
   );
 
+  // Crisis routes for THIS user's country — see the banner below.
+  const crisisEmergency = useMemo(() => getEmergency(profile?.country), [profile?.country]);
+  const crisisLines = useMemo(() => (getResources(profile?.country).crisis || []).slice(0, 3), [profile?.country]);
+
   const liveImpact = useMemo(() => {
     const weekAgo = Date.now() - 7 * 86400000;
     const monthAgo = Date.now() - 30 * 86400000;
@@ -3589,11 +3593,28 @@ export default function App() {
                       <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                         Seen isn't a crisis service. If you need to talk to someone right now:
                       </p>
+                      {/* Routes must match the user's country. A UK 999 shown to someone in
+                          the US is worse than useless in the moment it matters most, so an
+                          unknown country falls back to wording that works anywhere. */}
                       <div className="mt-2 flex flex-col gap-1.5 text-xs">
-                        <a href="tel:999" className="font-bold text-red-600">🚨 In immediate danger? Call 999</a>
-                        <a href="tel:116123" className="font-semibold text-slate-700">📞 Samaritans — 116 123 (free, 24/7)</a>
-                        <a href="sms:85258?&body=SHOUT" className="font-semibold text-slate-700">💬 Text SHOUT to 85258</a>
-                        <a href="tel:111" className="font-semibold text-slate-700">📞 NHS 111 — choose the mental-health option</a>
+                        {crisisEmergency ? (
+                          <a href={`tel:${crisisEmergency}`} className="font-bold text-red-600">🚨 In immediate danger? Call {crisisEmergency}</a>
+                        ) : (
+                          <span className="font-bold text-red-600">🚨 In immediate danger? Call your local emergency number</span>
+                        )}
+                        {crisisLines.map((r) => (
+                          r.phone && /^[\d +]+$/.test(r.phone) ? (
+                            <a key={r.name} href={`tel:${r.phone.replace(/\s/g, "")}`} className="font-semibold text-slate-700">
+                              📞 {r.name} — {r.phone}{r.free ? " (free)" : ""}
+                            </a>
+                          ) : r.phone ? (
+                            <span key={r.name} className="font-semibold text-slate-700">💬 {r.name} — {r.phone}</span>
+                          ) : (
+                            <a key={r.name} href={r.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-700">
+                              🔗 {r.name}
+                            </a>
+                          )
+                        ))}
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); setActiveTab("support"); }}
                         className="mt-2 text-xs font-semibold text-teal-600">More support in Seen →</button>
