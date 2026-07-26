@@ -583,19 +583,24 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
   if (compact) {
     return (
       <button onClick={() => onOpen?.(story)}
-        className="w-full rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left active:scale-[0.99] transition-transform"
+        className="flex w-full items-center gap-1.5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-3 py-2 text-left active:scale-[0.99] transition-transform"
         style={{ animation: "seenFadeUp 400ms ease both" }}>
-        <div className="mb-0.5 flex items-center gap-1.5">
-          <span className="flex-shrink-0 text-sm">📔</span>
-          <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-500">{storyAuthorLabel(story)}</span>
-          {story.demo && (
-            <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
-          )}
-          <span className="flex-shrink-0 text-[10px] font-bold text-amber-600">Read →</span>
-        </div>
-        <p className="line-clamp-2 text-[13px] leading-snug text-slate-800">
-          <span className="font-medium">shared their reflection</span> — “{story.text}”
+        <span className="flex-shrink-0 text-sm">📔</span>
+        {/* The whole announcement as one sentence. line-clamp-2 rather than truncate, so a
+            long name wraps instead of cutting the sentence off mid-word — it fits on one
+            line in the ordinary case and never needs a third. The reflection's own words
+            are left for the reader; this is a notice, not a preview.
+            No EXAMPLE badge here: the sample author is literally named "Example member"
+            and the reader carries the explicit "not a real member" banner, so the badge
+            was only costing the line width that made the sentence wrap.
+            11px, not 12: measured, the sentence is 223px at 11px vs 243px at 12px, and a
+            340px phone leaves 231px — so 12px wrapped on small screens and 11px does not.
+            "Read" rather than "Read →" for the same reason: the arrow costs 12px, which is
+            the difference between one line and two on a 340px phone. */}
+        <p className="line-clamp-2 min-w-0 flex-1 text-[11px] leading-snug text-slate-600">
+          <strong className="font-semibold text-slate-800">{storyAuthorLabel(story)}</strong> shared their reflection
         </p>
+        <span className="flex-shrink-0 text-[10px] font-bold text-amber-600">Read</span>
       </button>
     );
   }
