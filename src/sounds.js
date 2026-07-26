@@ -24,7 +24,7 @@ export function isSoundOn() {
 export function setSoundOn(on) {
   try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); } catch { /* ignore */ }
   if (!on) { stopMapAmbient(); stopWatering(); }
-  else { try { getCtx(); } catch { /* ignore */ } } // warm up on enable (user gesture)
+  else { try { getCtx(); preloadWatering(); } catch { /* ignore */ } } // warm up on enable (user gesture)
 }
 
 function getCtx() {
@@ -227,9 +227,37 @@ export function stopMapAmbient() {
 // "seen-points". Without this guard that's two pours at double amplitude, phase-beating.
 const WATER_PEAK = 0.055; // sits under the map ambience (0.075–0.09)
 
+// A real pour recording, if one has been shipped. Drop a file here and it is used
+// automatically; if it is absent or fails to decode, the synthesized pour below plays
+// instead, so the app never depends on the asset being present.
+//
+//   public/sounds/watering.mp3   →   served at /sounds/watering.mp3
+//
+// Suggested source prompt: "Clean, high-fidelity close-up recording of a gentle garden
+// watering can pouring a soft, steady stream of water onto lush soil and green leaves,
+// peaceful outdoor ambiance, no background noise."
+// Keep it dry and loopable — it is looped to fill the pour and shaped by the envelope
+// below, so any fade or room tail baked into the file will fight that shaping.
+const WATER_SRC = "/sounds/watering.mp3";
+let waterBuffer = null;
+let waterState = "idle"; // idle | loading | ready | absent
+
+export function preloadWatering() {
+  if (waterState !== "idle") return;
+  const c = getCtx();
+  if (!c) return;
+  waterState = "loading";
+  fetch(WATER_SRC)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("no file"))))
+    .then((buf) => c.decodeAudioData(buf))
+    .then((decoded) => { waterBuffer = decoded; waterState = "ready"; })
+    .catch(() => { waterState = "absent"; }); // nothing shipped — the synth covers it
+}
+
 export const playWatering = guard((durationMs = 7000) => {
   const c = getCtx();
   if (!c || !master || pour) return; // already pouring — never stack
+  preloadWatering(); // first pour uses the synth; the recording is ready from then on
   const T = durationMs / 1000;
   const t0 = c.currentTime;
   const at = (f) => t0 + T * f;
@@ -254,6 +282,24 @@ export const playWatering = guard((durationMs = 7000) => {
   bus.gain.exponentialRampToValueAtTime(0.0001, at(0.82));
 
   const oscs = [];
+
+  if (waterBuffer) {
+    // Real recording: loop it to fill the pour and let the envelope above do the shaping,
+    // so it swells as the can tips and fades as it rights itself exactly like the synth.
+    const src = c.createBufferSource();
+    src.buffer = waterBuffer;
+    src.loop = true;
+    src.connect(lp);
+    src.start(t0);
+    src.stop(at(0.85) + 0.2);
+    oscs.push(src);
+    pour = { bus, oscs };
+    setTimeout(() => { if (pour && pour.bus === bus) pour = null; }, durationMs + 300);
+    return;
+  }
+
+  // No recording available — synthesize one. Five mutually inharmonic sines beating
+  // against each other through the swept lowpass stand in for water noise.
   [[1180, 0.22, 3.1], [1490, 0.20, 4.7], [1810, 0.19, 5.9], [2230, 0.16, 7.3], [2670, 0.13, 8.9]]
     .forEach(([f, amp, lfoHz]) => {
       const o = c.createOscillator(), g = c.createGain();
