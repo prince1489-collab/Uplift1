@@ -26,11 +26,6 @@ const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
 
-const PERIODS = [
-  { id: "week",  label: "This week" },
-  { id: "month", label: "This month" },
-  { id: "all",   label: "All time" },
-];
 
 // Completed "Have you tried?" items on this device — the total, plus how many separate
 // days they were spread across, which is what makes the number mean something.
@@ -162,7 +157,6 @@ function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
 }
 
 export default function MySeenStory({ db, currentUser, liveStats, profile, sparkBalance = 0, darkMode = false, onOpenTree }) {
-  const [period, setPeriod] = useState("week");
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
   // Pour on open. Points are only ever awarded on Connect / Practice / Reflect, and this
@@ -203,7 +197,10 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   }, [db, currentUser?.uid]);
 
   // Real impact hooks (same as MyImpact): countries reached + ripple effect.
-  const reactPeriod = period === "week" ? "7d" : "30d";
+  // The Week/Month/All-time selector is gone. It drove exactly one of the four numbers,
+  // and its "All time" was really 30 days — a control that changes one number in four,
+  // mislabelled, is worse than no control. Each metric now states its own true basis.
+  const reactPeriod = "30d"; // the widest window useReactionData supports
   const { data: reactData } = useReactionData(db, currentUser, reactPeriod);
   const { rippleCount, ripples } = useRippleData(db, currentUser);
   const onwardReach = useOnwardReach(db, currentUser, ripples);
@@ -220,9 +217,8 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const countries = countryRows.length;
   const ripple = rippleCount + onwardReach;
 
-  // Each metric opened up. Every card names its own basis, because only Countries follows
-  // the period selector — the other three are all-time however the segment is set.
-  const periodWord = period === "week" ? "This week" : period === "month" ? "This month" : "All time";
+  // Each metric opened up. Bases genuinely differ, so each card says which it is.
+  const periodWord = "Last 30 days";
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const METRIC_CARDS = {
     countries: {
@@ -233,7 +229,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       rowsTitle: "Where they were",
       rows: countryRows.map(([c, n]) => ({ icon: FLAG_MAP[c] || "🌍", label: c, value: n })),
       empty: countries === 0 ? "Countries appear here once someone hearts a message you sent." : null,
-      how: "Counted from the reactions on messages you sent, one entry per country. Follows the period above.",
+      how: "Counted from the reactions on messages you sent, one entry per country, over the last 30 days.",
     },
     ripple: {
       emoji: "💫", label: "Ripple effect", value: ripple, basis: "All time",
@@ -246,7 +242,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
         { icon: "❤️", label: "Hearts those onward messages received", value: onwardReach },
       ],
       empty: ripple === 0 ? "This fills in when someone you reached goes on to be kind to somebody else." : null,
-      how: "The two figures added together. Always all-time, whatever period is selected above.",
+      how: "The two figures added together, counted over your whole time in Seen.",
     },
     tried: {
       emoji: "🤝", label: "Tried in real life", value: hytTried.total, basis: "All time · this device",
@@ -338,18 +334,6 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
     <main {...(darkMode ? { "data-dark-shell": "" } : {})} className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4"
       style={{ background: darkMode ? "#0e1219" : undefined }}>
       <div className="mx-auto w-full max-w-md space-y-4">
-        {/* Period segments */}
-        <div className="flex gap-1 rounded-full bg-slate-100 p-1" style={{ animation: "seenFadeUp 400ms ease both" }}>
-          {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => setPeriod(p.id)}
-              className={`flex-1 rounded-full py-1.5 text-[12px] font-semibold transition-colors ${
-                period === p.id ? "bg-white text-teal-600 shadow-sm" : "text-slate-500"
-              }`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-
         {/* Hero — the animated Kindness Tree (centrepiece) */}
         <button onClick={onOpenTree}
           className="relative block w-full rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-5 pb-6 text-center overflow-hidden active:scale-[0.99] transition-transform"
