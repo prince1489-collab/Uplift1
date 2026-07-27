@@ -62,8 +62,16 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).end();
 
+  // Admin-init failure and a bad user token used to share one catch and both returned 401,
+  // which made a missing FIREBASE_SERVICE_ACCOUNT_JSON indistinguishable from a failed
+  // sign-in — the deployment looked fine and every caller just saw "unauthorised".
   try {
     initAdmin();
+  } catch (err) {
+    console.error("[moderate-message] admin init failed — is FIREBASE_SERVICE_ACCOUNT_JSON set?", err?.message);
+    return res.status(503).json({ error: "moderation_unavailable" });
+  }
+  try {
     const auth = req.headers["authorization"] || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token) return res.status(401).json({ error: "unauthorised" });

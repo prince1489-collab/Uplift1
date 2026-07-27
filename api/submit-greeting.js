@@ -102,6 +102,11 @@ export default async function handler(req, res) {
   let uid;
   try {
     initAdmin();
+  } catch (err) {
+    console.error("[submit-greeting] admin init failed — is FIREBASE_SERVICE_ACCOUNT_JSON set?", err?.message);
+    return res.status(503).json({ error: "moderation_unavailable" });
+  }
+  try {
     const auth = req.headers["authorization"] || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token) return res.status(401).json({ error: "unauthorised" });

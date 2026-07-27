@@ -160,7 +160,11 @@ export function FeelingComposer({ db, currentUser, profile, onClose }) {
           setBusy(false);
           return;
         }
-      } catch { /* unreachable moderation — allow */ }
+      } catch (err) {
+        // Fail OPEN by design (see above) — but say so, or a moderation outage means
+        // feelings publish unscreened with nothing anywhere recording that it happened.
+        console.error("[feelings] moderation unreachable — publishing unscreened:", err?.message);
+      }
 
       // Tailored suggestions — generated once, stored on the doc for every viewer.
       let suggestions = [];
