@@ -516,6 +516,17 @@ export function FocusedFeedHeader({ count = 0, onManage }) {
   );
 }
 
+// A failed API call has three quite different causes needing three different fixes, and
+// authedPost already attaches .status — so read it rather than collapsing all of them into
+// one "couldn't reach" line. The code is shown inline because this is a preview build and
+// knowing 503-vs-401 without opening Vercel is worth a little ugliness.
+function apiFailure(err, what) {
+  const status = err?.status ?? null;
+  if (status === 503) return { reason: `The ${what} isn't set up on this deployment (503). It needs its server keys.`, status };
+  if (status === 401) return { reason: `Your session has expired (401) — sign in again and retry.`, status };
+  return { reason: `We couldn't reach the ${what}${status ? ` (${status})` : ""}. Your words are safe here — try again in a moment.`, status };
+}
+
 // ── Post composer — a real post, screened before it goes out ──────────────────
 // Every post is reviewed by /api/moderate-message (the same endpoint that already guards
 // feeling statuses and custom replies) BEFORE it is written. Unlike the feelings path,
@@ -533,18 +544,23 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
   // inside the "Not sent" banner, which would read as though the post had been rejected.
   const [phrasing, setPhrasing] = useState("idle"); // idle | loading | ready | none
   const [ideas, setIdeas] = useState([]);
+  const [suggestNote, setSuggestNote] = useState("");
   const len = text.trim().length;
 
   const suggest = async () => {
     if (len < 8 || phrasing === "loading" || state === "checking" || state === "done") return;
     setPhrasing("loading");
     setIdeas([]);
+    setSuggestNote("");
     try {
       const r = await authedPost(currentUser, "/api/post-suggest", { text: text.trim() });
       const list = Array.isArray(r.suggestions) ? r.suggestions.filter(Boolean) : [];
       setIdeas(list);
       setPhrasing(list.length ? "ready" : "none");
-    } catch {
+    } catch (err) {
+      const f = apiFailure(err, "suggestions service");
+      console.error("[post] suggest call failed:", f.status ?? err?.message);
+      setSuggestNote(f.reason);
       setPhrasing("none");
     }
   };
@@ -561,7 +577,7 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
       const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "post" });
       if (!mod.checked) {
         setFailKind("unavailable");
-        setReason("We couldn't run the kindness check just now. Your words are safe here — try again in a moment.");
+        setReason("The kindness check couldn't give a verdict just now. Your words are safe here — try again in a moment.");
         setState("rejected");
         return;
       }
@@ -571,9 +587,14 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
         setState("rejected");
         return;
       }
-    } catch {
+    } catch (err) {
+      const f = apiFailure(err, "kindness check");
+      console.error("[post] moderation call failed:", f.status ?? err?.message);
       setFailKind("unavailable");
-      setReason("We couldn't reach the kindness check. Your words are safe here — try again in a moment.");
+      setReason(f.reason);
+      // Both endpoints depend on the same server keys, so once one is known unreachable
+      // don't keep offering a button that cannot work.
+      setPhrasing("none");
       setState("rejected");
       return;
     }
@@ -641,7 +662,7 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
           )}
           {phrasing === "none" && (
             <p className="text-center text-[11px] text-slate-400">
-              Couldn't fetch suggestions just now — your own words are good.
+              {suggestNote || "Couldn't fetch suggestions just now — your own words are good."}
             </p>
           )}
           <div className="flex items-center justify-between">
