@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 import { X, Send, Heart, Loader2, PenLine, Check } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
-import { apiUrl } from "./apiBase";
+import { apiUrl, authedPost } from "./apiBase";
 
 export const FEELING_MAX_LEN = 60;
 export const REPLY_MAX_LEN = 120;
@@ -38,17 +38,6 @@ function timeAgo(ms) {
   if (m < 60) return `${m}m ago`;
   const h = Math.round(m / 60);
   return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
-}
-
-async function authedPost(currentUser, path, body) {
-  const token = await currentUser.getIdToken();
-  const res = await fetch(apiUrl(path), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`http ${res.status}`);
-  return res.json();
 }
 
 function flagOf(country) {

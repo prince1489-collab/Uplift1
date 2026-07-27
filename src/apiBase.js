@@ -14,3 +14,24 @@ export function apiUrl(path) {
   } catch { /* Capacitor unavailable → treat as web */ }
   return path;
 }
+
+// Authenticated POST to one of our /api routes. Lives here rather than in a component so
+// every caller goes through apiUrl() — a relative fetch resolves to the local bundle in the
+// Capacitor build and never reaches Vercel.
+//
+// Throws an Error carrying `.status` so callers can tell "the checker is down" (503, or a
+// network failure with no status) from "you're not signed in" (401).
+export async function authedPost(currentUser, path, body) {
+  const token = await currentUser.getIdToken();
+  const res = await fetch(apiUrl(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = new Error(`http ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}

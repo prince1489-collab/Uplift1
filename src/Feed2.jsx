@@ -14,7 +14,7 @@ import { doc, getDoc, onSnapshot, collection, addDoc } from "firebase/firestore"
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
-import { apiUrl } from "./apiBase";
+import { apiUrl, authedPost } from "./apiBase";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -526,31 +526,36 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
   const [reason, setReason] = useState("");
+  // "flagged" means rephrase; "unavailable" means try again — different problems needing
+  // different things from the user, so they must not share one message.
+  const [failKind, setFailKind] = useState(null);
   const len = text.trim().length;
 
   const submit = async () => {
     if (!len || state === "checking" || !db || !currentUser) return;
     setState("checking");
     setReason("");
+    setFailKind(null);
     const clean = text.trim();
 
     // 1. Screen it. Any failure to get a clean verdict blocks the post.
     try {
-      const token = await currentUser.getIdToken();
-      const res = await fetch(apiUrl("/api/moderate-message"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: clean, context: "post" }),
-      });
-      if (!res.ok) throw new Error(`http ${res.status}`);
-      const mod = await res.json();
-      if (!mod.checked || !mod.ok) {
+      const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "post" });
+      if (!mod.checked) {
+        setFailKind("unavailable");
+        setReason("We couldn't run the kindness check just now. Your words are safe here — try again in a moment.");
+        setState("rejected");
+        return;
+      }
+      if (!mod.ok) {
+        setFailKind("flagged");
         setReason(mod.reason || "That didn't pass our kindness check. Try rephrasing it warmly.");
         setState("rejected");
         return;
       }
     } catch {
-      setReason("We couldn't run the kindness check just now — please try again in a moment.");
+      setFailKind("unavailable");
+      setReason("We couldn't reach the kindness check. Your words are safe here — try again in a moment.");
       setState("rejected");
       return;
     }
@@ -570,6 +575,7 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
         isPersonal: true, // routes it to the Focused Feed in v2; ignored by production
       });
     } catch {
+      setFailKind("unavailable");
       setReason("Couldn't share that — check your connection and try again.");
       setState("rejected");
       return;
@@ -601,9 +607,17 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
             <span className={`text-[11px] ${len > MAX_LEN - 10 ? "text-amber-600" : "text-slate-400"}`}>{len}/{MAX_LEN}</span>
           </div>
           {state === "rejected" && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5" role="alert">
-              <p className="text-[12px] font-semibold text-rose-700">Not sent 💛</p>
-              <p className="text-[11px] text-rose-500 mt-0.5">{reason}</p>
+            <div className={`rounded-xl border px-3 py-2.5 ${failKind === "unavailable" ? "border-amber-200 bg-amber-50" : "border-rose-200 bg-rose-50"}`} role="alert">
+              <p className={`text-[12px] font-semibold ${failKind === "unavailable" ? "text-amber-700" : "text-rose-700"}`}>
+                {failKind === "unavailable" ? "Not sent yet" : "Not sent 💛"}
+              </p>
+              <p className={`text-[11px] mt-0.5 ${failKind === "unavailable" ? "text-amber-600" : "text-rose-500"}`}>{reason}</p>
+              {failKind === "unavailable" && (
+                <button onClick={submit}
+                  className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors">
+                  Try again
+                </button>
+              )}
             </div>
           )}
           {state === "done" && (
