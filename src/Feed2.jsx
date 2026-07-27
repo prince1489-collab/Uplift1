@@ -3,14 +3,17 @@
 // Feed2.jsx — v2 "Connect" tab pieces. The Worldwide Feed shows strangers' messages
 // (people you haven't followed); the Focused Feed below it shows only the people you follow.
 //
-// Free-text posts ARE REAL: PostComposer screens each one via /api/moderate-message and
-// writes it to publicMessages, so it reaches the Focused Feed here and the single feed in
-// the production build. Likes, private replies and "kind moment" broadcasts are still
-// SIMULATED (localStorage only) so the preview doesn't leak those into the real feed.
+// REAL, all screened via /api/moderate-message before anything is written:
+//   - free-text posts   -> publicMessages   (feed; production renders them too)
+//   - shared reflections -> sharedReflections (readable by any signed-in member)
+//   - private replies    -> privateReplies  (readable ONLY by the two people involved)
+// Still SIMULATED (localStorage only): likes, and "kind moment" broadcasts — the latter
+// deliberately, because announcing that two named people exchanged a PRIVATE message
+// discloses the exchange itself. See the note on splitKindMoments.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { doc, getDoc, onSnapshot, collection, addDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc } from "firebase/firestore";
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
@@ -52,6 +55,12 @@ export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
 
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
 
+// NOTE (unresolved): a kind moment publicly names both people — "Mahiman and Vidhi shared a
+// kind moment". Now that private replies are real, generating one from a reply would
+// broadcast the existence of a private exchange to everyone following either person. The
+// content stays private, but the fact of it would not. Left device-local until that's a
+// deliberate product decision rather than a side effect.
+//
 // Route a kind moment to the right feed. A moment belongs in your Focused Feed when either
 // person in it is you or someone you follow; otherwise it's two strangers, so it broadcasts
 // in the Worldwide Feed. Legacy moments predate the uids and were always your own, so they
@@ -87,13 +96,35 @@ export function seedDemoKindMoments(messages = [], myUid) {
   writeJSON(MOMENTS_KEY, next);
   return next;
 }
-// Private replies *received* on one of my messages, keyed by messageId. Real inbound
-// replies are merge-time work — this store exists so the viewer is ready for them.
-const REPLIES_IN_KEY = "seen_v2_replies_received";
-export const loadRepliesReceived = (messageId) => {
-  const all = readJSON(REPLIES_IN_KEY, {});
-  return Array.isArray(all?.[messageId]) ? all[messageId] : [];
-};
+// Private replies received. Real now: they live in Firestore, readable only by the sender
+// and the recipient (see the privateReplies rule). Blocked senders are filtered out here as
+// well as by the rules, because blocking is device-local.
+export function useRepliesReceived(db, currentUser, messageId, blockedUids) {
+  const [replies, setReplies] = useState([]);
+  useEffect(() => {
+    if (!db || !currentUser?.uid) { setReplies([]); return; }
+    const q = query(
+      collection(db, "privateReplies"),
+      where("toUid", "==", currentUser.uid),
+      orderBy("ts", "desc"),
+      limit(50)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const blocked = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
+      setReplies(snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((r) => !blocked.has(r.fromUid))
+        .filter((r) => !messageId || r.messageId === messageId));
+    }, () => setReplies([]));
+    return unsub;
+  }, [db, currentUser?.uid, messageId, blockedUids]);
+  return replies;
+}
+
+// Everything addressed to me, newest first — powers the unread count and the inbox.
+export function useInboxReplies(db, currentUser, blockedUids) {
+  return useRepliesReceived(db, currentUser, null, blockedUids);
+}
 // ── Shared kindness journals ──────────────────────────────────────────────────
 export const loadLocalStories = () => readJSON(STORIES_KEY, []);
 // Add a shared journal (from a Reflect entry). Device-local; never Firestore.
@@ -318,25 +349,63 @@ export function KindMomentCard({ moment, compact = false }) {
 }
 
 // ── Private reply sheet (simulated) → creates a kind moment on send ───────────
-export function PrivateReplySheet({ target, me, myUid, onDone, onClose }) {
+export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, onDone, onClose }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
-  const send = () => {
-    if (!text.trim() || sent) return;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const blocked = blockedUids instanceof Set ? blockedUids.has(target?.uid) : false;
+
+  const send = async () => {
+    const clean = text.trim();
+    if (!clean || sent || busy || !db || !currentUser || !target?.uid) return;
+    if (target.uid === myUid) { setError("You can't reply privately to yourself."); return; }
+    if (blocked) { setError("You've blocked this person, so you can't message them."); return; }
+    setBusy(true);
+    setError("");
+
+    // Screened before delivery, like every other piece of free text. Fails CLOSED — a
+    // private message to a stranger on a mental-health app is the last place to let
+    // unreviewed text through because the checker happens to be down.
+    try {
+      const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "reply" });
+      if (!mod.checked || !mod.ok) {
+        setError(mod.reason || "That didn't pass our kindness check. Try rewording it.");
+        setBusy(false);
+        return;
+      }
+    } catch (err) {
+      const f = apiFailure(err, "kindness check");
+      setError(f.reason);
+      setBusy(false);
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "privateReplies"), {
+        fromUid: myUid ?? currentUser.uid,
+        fromName: firstName(me?.fullName) || "Someone",
+        fromCountry: me?.country ?? null,
+        toUid: target.uid,
+        messageId: target.id ?? null,
+        messageText: (target.text ?? "").slice(0, 120), // context for the recipient
+        text: clean,
+        ts: Date.now(),
+        read: false,
+      });
+    } catch {
+      setError("Couldn't send that — check your connection and try again.");
+      setBusy(false);
+      return;
+    }
+
     setSent(true);
-    // uids drive which feed the broadcast lands in (see splitKindMoments).
-    const moment = {
-      id: `km_${Date.now()}`,
-      aUid: myUid ?? null, aName: firstName(me?.fullName) || "You", aCountry: me?.country ?? null,
-      bUid: target?.uid ?? null, bName: firstName(target?.sender), bCountry: target?.country ?? null,
-      ts: Date.now(),
-    };
-    const next = [moment, ...loadKindMoments()].slice(0, 30);
-    writeJSON(MOMENTS_KEY, next);
-    try { awardPoints("reply"); } catch { /* ignore */ } // waters the tree (device-local)
-    onDone?.(next);
-    setTimeout(() => onClose?.(), 1000);
+    setBusy(false);
+    try { awardPoints("reply"); } catch { /* ignore */ }
+    onDone?.();
+    setTimeout(() => onClose?.(), 1200);
   };
+
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -348,30 +417,30 @@ export function PrivateReplySheet({ target, me, myUid, onDone, onClose }) {
         </div>
         <div className="px-5 pb-8 space-y-3">
           <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{target?.text}”</div>
-          {/* Stated up front, not after sending. The old note appeared only once the reply
-              was already written, by which point the user believes it has gone. */}
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-[12px] font-bold text-amber-800">⚠️ Preview — this won't reach them yet</p>
-            <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-              Private replies are still being built. What you write is saved on your device so you can see how it
-              works, but {firstName(target?.sender)} won't receive it.
+          {/* Real now — say who can see it, since "private" should mean something specific. */}
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+            <p className="text-[11px] text-sky-700 leading-relaxed">
+              Only {firstName(target?.sender)} can read this — it isn't shown in any feed. It's screened first,
+              and either of you can delete it.
             </p>
           </div>
           <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 120))} rows={2} autoFocus
             placeholder="A private word of kindness, just between you two…"
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+          {error && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{error}</p>
+          )}
           {sent && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] font-semibold text-amber-700">
-              Saved on this device — nothing was sent. Real private replies arrive with the full release. ⭐
+              Sent ✓ — only {firstName(target?.sender)} will see it.
             </div>
           )}
-          <button onClick={send} disabled={!text.trim() || sent}
-            className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
-            Send privately
+          <button onClick={send} disabled={!text.trim() || sent || busy}
+            className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+            {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : "Send privately"}
           </button>
           <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            Preview: private replies are simulated on this device. Only the two of you would see the message;
-            a small “shared a kind moment ⭐” note appears in the feed.
+            Screened before delivery. Nothing about this appears in any feed.
           </p>
         </div>
       </div>
@@ -942,10 +1011,20 @@ const timeAgo = (ts) => {
   return days < 7 ? `${days}d ago` : new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
-export function MessageReactionsPanel({ db, message, onClose }) {
+export function MessageReactionsPanel({ db, message, currentUser, blockedUids, onClose }) {
   const [reactors, setReactors] = useState(null); // null = loading
   const nameCache = useRef({});
-  const replies = useMemo(() => loadRepliesReceived(message?.id), [message?.id]);
+  // Real inbound replies for this message, live from Firestore.
+  const replies = useRepliesReceived(db, currentUser, message?.id, blockedUids);
+
+  // Opening the panel is the moment you read them, so clear the unread flag. Best-effort:
+  // the rules let the recipient change nothing but `read`, so a failure here is harmless.
+  useEffect(() => {
+    for (const r of replies) {
+      if (r.read) continue;
+      updateDoc(doc(db, "privateReplies", r.id), { read: true }).catch(() => {});
+    }
+  }, [db, replies]);
 
   useEffect(() => {
     if (!db || !message?.id) { setReactors([]); return; }

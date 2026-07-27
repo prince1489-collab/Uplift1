@@ -125,6 +125,33 @@ service cloud.firestore {
     }
 
     // ── Presence (ephemeral heartbeat) ──
+    // Private replies — a direct message from one member to another, in response to a
+    // specific feed message. The tightest read rule in this file: ONLY the two people
+    // involved can ever read it, unlike sharedReflections (any signed-in member) or
+    // publicMessages (world-readable).
+    //
+    // No update path for `text` — a reply cannot be edited after it has been delivered, so
+    // what the recipient reports is what was sent. The recipient may only flip `read`.
+    match /privateReplies/{replyId} {
+      allow read: if request.auth != null
+          && (resource.data.fromUid == request.auth.uid
+              || resource.data.toUid == request.auth.uid);
+      allow create: if request.auth != null
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.toUid is string
+          && request.resource.data.toUid != request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+      allow update: if request.auth != null
+          && resource.data.toUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if request.auth != null
+          && (resource.data.fromUid == request.auth.uid
+              || resource.data.toUid == request.auth.uid
+              || isAdmin());
+    }
+
     // Shared reflections — a journal entry the author chose to share to the feed.
     //
     // Readable by ANY signed-in user, deliberately: the follow graph lives in localStorage

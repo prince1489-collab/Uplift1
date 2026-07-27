@@ -3075,7 +3075,7 @@ export default function App() {
             onClose={() => setShowFollowing(false)} />
         )}
         {reactorsFor && (
-          <MessageReactionsPanel db={db} message={reactorsFor} onClose={() => setReactorsFor(null)} />
+          <MessageReactionsPanel db={db} message={reactorsFor} currentUser={currentUser} blockedUids={blockedUids} onClose={() => setReactorsFor(null)} />
         )}
 
         {glimpse && (
@@ -3104,6 +3104,9 @@ export default function App() {
             target={replyTarget}
             me={profile}
             myUid={currentUser?.uid}
+            currentUser={currentUser}
+            db={db}
+            blockedUids={blockedUids}
             onDone={(next) => setKindMoments(next)}
             onClose={() => setReplyTarget(null)} />
         )}
