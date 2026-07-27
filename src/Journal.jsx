@@ -13,7 +13,7 @@ import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt } from "./JournalPrompts";
 import { awardPoints } from "./points";
-import { addLocalStory } from "./Feed2";
+import { authedPost } from "./apiBase";
 
 const TYPES = [
   { id: "grateful", label: "Grateful", emoji: "🙏", color: "#f59e0b" },
@@ -208,26 +208,51 @@ const ENRICH_PROMPTS = [
   { key: "who", label: "Who was it for — and why them?" },
   { key: "feel", label: "How did it leave you feeling?" },
 ];
-function ShareStorySheet({ entry, authorName, country, authorUid, onShared, onClose }) {
+function ShareStorySheet({ entry, authorName, country, authorUid, db, currentUser, onShared, onClose }) {
   const [enrich, setEnrich] = useState({});
   const [anon, setAnon] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [shareError, setShareError] = useState("");
 
-  const share = () => {
+  const share = async () => {
     if (posting) return;
     setPosting(true);
     const extras = ENRICH_PROMPTS
       .map((p) => (enrich[p.key]?.trim() ? { q: p.label, a: enrich[p.key].trim() } : null))
       .filter(Boolean);
-    addLocalStory({
-      authorUid: authorUid ?? null,
-      text: entry.text,
-      enrich: extras,
-      anonymous: anon,
-      authorName: anon ? "Someone, somewhere" : (authorName || "A member"),
-      country: anon ? null : (country || null),
-      date: entry.date || null,
-    });
+    // Screened before anyone sees it, exactly like a feed post — a reflection is free text
+    // going to other members. Fails CLOSED: no clean verdict, nothing is shared.
+    try {
+      const mod = await authedPost(currentUser, "/api/moderate-message", { text: entry.text, context: "post" });
+      if (!mod.checked || !mod.ok) {
+        setShareError(mod.reason || "That didn't pass our kindness check. Try rewording it.");
+        setPosting(false);
+        return;
+      }
+    } catch (err) {
+      setShareError(err?.status === 503
+        ? "The kindness check isn't set up on this deployment (503)."
+        : "We couldn't run the kindness check just now — try again in a moment.");
+      setPosting(false);
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "sharedReflections"), {
+        authorUid: authorUid ?? currentUser?.uid ?? null,
+        text: entry.text,
+        enrich: extras,
+        anonymous: anon,
+        authorName: anon ? "Someone, somewhere" : (authorName || "A member"),
+        country: anon ? null : (country || null),
+        date: entry.date || null,
+        ts: Date.now(),
+      });
+    } catch {
+      setShareError("Couldn't share that — check your connection and try again.");
+      setPosting(false);
+      return;
+    }
     try { awardPoints("story"); } catch { /* ignore */ }
     try { playCheckIn(); } catch { /* ignore */ }
     onShared?.();
@@ -271,15 +296,19 @@ function ShareStorySheet({ entry, authorName, country, authorUid, onShared, onCl
               <span className="block text-[11px] text-slate-500">Your name and country won't be shown.</span>
             </span>
           </button>
-          {/* Above the button, at a readable size — the old 10px grey line below it was
-              missed entirely, and someone sharing a reflection believes it reached people. */}
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-[12px] font-bold text-amber-800">⚠️ Preview — nobody else sees this yet</p>
-            <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-              Shared reflections are still being built. Yours is saved on this device so you can see how it looks
-              in the feed, but the people who follow you won't see it.
+          {/* Says who can actually see it. The follow graph is device-local, so the server
+              cannot restrict this to followers — claiming otherwise would be a promise the
+              data model can't keep. */}
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+            <p className="text-[12px] font-bold text-sky-800">This will be visible to other members</p>
+            <p className="text-[11px] text-sky-700 mt-0.5 leading-relaxed">
+              It appears in the feed of people who follow you, and other members can read it too. It's screened
+              first, and you can delete it at any time. Share anonymously to hide your name and country.
             </p>
           </div>
+          {shareError && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{shareError}</p>
+          )}
           <button onClick={share} disabled={posting}
             className="w-full rounded-full bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
             {posting ? "Sharing…" : "Share to Featured Stories ✨"}
@@ -593,6 +622,8 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           authorName={profile?.fullName}
           country={profile?.country}
           authorUid={uid}
+          db={db}
+          currentUser={currentUser}
           onShared={() => setShareEntry(null)}
           onClose={() => setShareEntry(null)}
         />

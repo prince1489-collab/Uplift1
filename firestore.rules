@@ -125,6 +125,23 @@ service cloud.firestore {
     }
 
     // ── Presence (ephemeral heartbeat) ──
+    // Shared reflections — a journal entry the author chose to share to the feed.
+    //
+    // Readable by ANY signed-in user, deliberately: the follow graph lives in localStorage
+    // (seen_v2_follows), so "only the people who follow me" cannot be enforced server-side.
+    // The feed filters by follow client-side, and the share sheet says plainly that other
+    // members can see it rather than implying a privacy guarantee we cannot keep.
+    match /sharedReflections/{reflectionId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+      allow delete: if request.auth != null
+          && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+
     match /presence/{userId} {
       allow read: if true;
       allow create, update: if request.auth != null

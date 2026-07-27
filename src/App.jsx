@@ -1970,11 +1970,25 @@ export default function App() {
       focusedUids, currentUser?.uid),
     [featuredStories, blockedUids, focusedUids, currentUser?.uid]
   );
+  // Shared reflections are real now: they live in Firestore so they reach other members.
+  // Any device-local ones from before the switch (and the EXAMPLE seed) are merged in, so a
+  // tester's existing preview cards don't vanish.
   useEffect(() => {
-    const refresh = () => setFeaturedStories(loadLocalStories());
-    window.addEventListener("seen-points", refresh); // stories share the same award event
+    if (!db) return;
+    const q = query(collection(db, "sharedReflections"), orderBy("ts", "desc"), limit(40));
+    const unsub = onSnapshot(q, (snap) => {
+      const remote = snap.docs.map((d) => ({ id: d.id, ...d.data(), remote: true }));
+      setFeaturedStories([...remote, ...loadLocalStories()]);
+    }, () => setFeaturedStories(loadLocalStories()));
+    return unsub;
+  }, [db]);
+  useEffect(() => {
+    const refresh = () => setFeaturedStories((prev) => {
+      const remote = prev.filter((s2) => s2.remote);
+      return [...remote, ...loadLocalStories()];
+    });
     window.addEventListener("focus", refresh);
-    return () => { window.removeEventListener("seen-points", refresh); window.removeEventListener("focus", refresh); };
+    return () => window.removeEventListener("focus", refresh);
   }, []);
   // Preview-only: seed two stranger-to-stranger moments once real messages exist, so the
   // Worldwide Feed routing is testable (you're always a participant in your own moments).
