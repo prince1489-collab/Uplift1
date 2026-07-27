@@ -344,7 +344,7 @@ export function EncourageSheet({ db, currentUser, profile, feeling, onClose }) {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100"><Heart size={20} className="text-rose-500" /></div>
             <p className="text-sm font-bold text-slate-800">Your encouragement is on its way 💛</p>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Delivered privately, right when it's needed. <strong>+{RESPONDER_REWARD} sparks.</strong><br />
+              Delivered privately, right when it's needed. <strong>+{RESPONDER_REWARD} drops.</strong><br />
               If it helped them, you'll hear about it ✨
             </p>
             <button onClick={onClose}

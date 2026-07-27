@@ -17,6 +17,7 @@ export const POINTS = {
   like: 30,           // like a message
   reply: 200,         // private reply / kind moment
   story: 150,         // share a journal story
+  post: 150,          // write your own message for the feed (same effort as a reflection)
   dailyOpen: 50,      // first open of the day
 };
 

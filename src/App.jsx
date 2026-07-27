@@ -28,7 +28,7 @@ const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
 import {
-  useStreak, computeSparkReward,
+  useStreak, computeSparkReward, computeDropsGain,
   StreakBadge, StreakFreezeButton,
   SparkGiftButton,
   LiveGreeterCount, MessageReactions,
@@ -999,8 +999,8 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
               </p>
               <p className="text-[10px] text-slate-500">
                 {streak >= 3
-                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% spark bonus active`
-                  : streak > 0 ? "Keep it going — 3 days unlocks a spark bonus"
+                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% drop bonus active`
+                  : streak > 0 ? "Keep it going — 3 days unlocks a drop bonus"
                   : "Send a greeting today to begin"}
               </p>
             </div>
@@ -1188,8 +1188,8 @@ function MysteryGiftModal({ open, reward, onClose }) {
         </div>
         <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
         <h2 className="mt-2 font-display text-[28px] font-normal tracking-[-0.04em] text-slate-800">You unlocked a bonus!</h2>
-        <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Sparks ✨</p>
-        <p className="mt-2 text-sm text-slate-500">Your Spark balance has been boosted.</p>
+        <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Drops 💧</p>
+        <p className="mt-2 text-sm text-slate-500">Your Drops balance has been boosted.</p>
         <button type="button" onClick={onClose}
           className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700">
           Awesome!
@@ -1298,7 +1298,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, onPerso
                   <div className="relative">
                     <span className={`text-sm font-semibold ${isSending ? "text-slate-400" : "text-slate-800"}`}>{greeting.text}</span>
                     <span className="ml-2 text-xs text-teal-600">
-                      +{computeSparkReward(greeting.sparkReward, streak)} sparks
+                      +{computeDropsGain(greeting.sparkReward, streak)} drops
                       {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
                     </span>
                   </div>
@@ -1318,7 +1318,7 @@ function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, onPerso
               }`}>
               <span>{greeting.text}</span>
               <span className="ml-2 text-xs text-teal-600">
-                +{computeSparkReward(greeting.sparkReward, streak)} sparks
+                +{computeDropsGain(greeting.sparkReward, streak)} drops
                 {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
               </span>
             </button>
@@ -2817,7 +2817,7 @@ export default function App() {
         setTimeout(() => { anim.triggerStreakConfetti(); playStreak(); }, 300);
       }
       if (greeting.isMystery) {
-        setMysteryReward(computeSparkReward(greeting.sparkReward, streak));
+        setMysteryReward(computeDropsGain(greeting.sparkReward, streak));
         setTimeout(() => { setShowGiftModal(true); playMystery(); }, 1000);
       }
 
@@ -3082,6 +3082,7 @@ export default function App() {
             myUid={currentUser?.uid}
             currentUser={currentUser}
             db={db}
+            streak={streak}
             onClose={() => setPostComposerOpen(false)} />
         )}
         {replyTarget && (

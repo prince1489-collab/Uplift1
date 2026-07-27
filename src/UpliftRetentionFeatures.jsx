@@ -35,6 +35,7 @@ import { startCheckout } from "./payments";
 import { StickerPicker } from "./StickerReactions";
 import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
 import { apiUrl } from "./apiBase";
+import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
 import {
@@ -106,6 +107,18 @@ export function thisWeeksMystery() {
   return MYSTERY_POOL[isoWeek() % MYSTERY_POOL.length];
 }
 
+// What the Kindness Tree will ACTUALLY gain from an action: the Firestore reward
+// (streak-multiplied) plus the device-local tree points awarded alongside it.
+//
+// The picker used to advertise only the first half, so sending a greeting read "+20" while
+// the tree moved by 120 — and Practice separately advertised "+150 drops" for ticking a
+// box, making a checkbox look worth seven greetings. Both halves are drops in the same
+// tree; showing the sum is simply the honest number, and needs no fudge factor to keep in
+// step with either ledger.
+export function computeDropsGain(baseReward, streakDays = 0, action = "send") {
+  return computeSparkReward(baseReward, streakDays) + (POINTS[action] ?? 0);
+}
+
 export function computeSparkReward(baseReward, streakDays = 0) {
   const multiplier =
     streakDays >= 30 ? 2.0 :
@@ -163,7 +176,7 @@ export function useStreak(db, uid, profile) {
       });
       return { ok: true };
     } catch (e) {
-      return { error: e.message === "insufficient_sparks" ? "Not enough sparks." : "Failed." };
+      return { error: e.message === "insufficient_sparks" ? "Not enough drops." : "Failed." };
     }
   }, [db, uid]);
 
@@ -239,14 +252,14 @@ export function StreakFreezeButton({ freezes, sparkBalance, onBuy, onSell }) {
     <div className="relative flex-shrink-0" ref={ref}>
       <button type="button" onClick={() => freezes > 0 ? setOpen(v => !v) : onBuy?.()}
         disabled={!canAfford && freezes === 0}
-        title={freezes > 0 ? "Click to manage" : canAfford ? `Buy freeze for ${FREEZE_COST} sparks` : "Not enough sparks"}
+        title={freezes > 0 ? "Click to manage" : canAfford ? `Buy freeze for ${FREEZE_COST} drops` : "Not enough drops"}
         className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
           freezes > 0 ? "border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-300"
           : canAfford ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
           : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
         }`}>
         <Shield size={11} />
-        {freezes > 0 ? `${freezes} ❄️ freeze${freezes > 1 ? "s" : ""}` : `Freeze (${FREEZE_COST}✨)`}
+        {freezes > 0 ? `${freezes} ❄️ freeze${freezes > 1 ? "s" : ""}` : `Freeze (${FREEZE_COST}💧)`}
       </button>
 
       {/* Dropdown for freeze management */}
@@ -260,11 +273,11 @@ export function StreakFreezeButton({ freezes, sparkBalance, onBuy, onSell }) {
           <div className="border-t border-slate-100 pt-1">
             <button onClick={() => { onBuy?.(); setOpen(false); }} disabled={!canAfford}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-40">
-              <span>➕</span> Buy another ({FREEZE_COST}✨)
+              <span>➕</span> Buy another ({FREEZE_COST}💧)
             </button>
             <button onClick={() => { onSell?.(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-red-500 hover:bg-red-50">
-              <span>↩️</span> Undo — refund {FREEZE_COST}✨
+              <span>↩️</span> Undo — refund {FREEZE_COST}💧
             </button>
           </div>
         </div>
@@ -553,12 +566,12 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
             : "border-slate-100 text-slate-300 cursor-not-allowed"
         }`}>
         <Gift size={10} />
-        {sent ? `Gifted! 🎉` : sending ? "…" : `Gift ${GIFT_AMOUNT} ✨`}
+        {sent ? `Gifted! 🎉` : sending ? "…" : `Gift ${GIFT_AMOUNT} 💧`}
       </button>
       {/* Tooltip */}
       {!sent && (
         <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-[10px] text-white opacity-0 shadow-lg transition-opacity group-hover/gift:opacity-100 z-50">
-          {canGift ? `Send ${GIFT_AMOUNT} sparks from your balance` : `You need ${GIFT_AMOUNT} sparks to gift`}
+          {canGift ? `Send ${GIFT_AMOUNT} drops from your balance` : `You need ${GIFT_AMOUNT} drops to gift`}
           <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
         </div>
       )}
@@ -1541,7 +1554,7 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
               <div className="rounded-2xl bg-white/20 p-3 text-center">
                 <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
                 <p className="text-xl font-extrabold">{sparkBalance}</p>
-                <p className="text-[10px] text-white/70">sparks</p>
+                <p className="text-[10px] text-white/70">drops</p>
               </div>
               <div className="rounded-2xl bg-white/20 p-3 text-center">
                 <Star size={16} className="mx-auto mb-1 text-white/80" />

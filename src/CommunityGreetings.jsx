@@ -13,6 +13,7 @@ import {
 import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { apiUrl } from "./apiBase";
+import { computeDropsGain } from "./UpliftRetentionFeatures";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 export const COMMUNITY_SPARK_REWARD = 12;  // sender earns this (scaled by streak)
@@ -268,7 +269,7 @@ export function SubmitGreetingModal({ db, currentUser, profile, onClose }) {
             </div>
             <p className="text-sm font-bold text-slate-800">It's live! 💛</p>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Your greeting is on the leaderboard now — you've earned <strong>{APPROVAL_REWARD} sparks</strong> ✨,
+              Your greeting is on the leaderboard now — you've earned <strong>{APPROVAL_REWARD} drops</strong> 💧,
               plus a bonus every time someone sends it. Get votes to reach this week's Top 5!
             </p>
             <button onClick={onClose}
@@ -293,7 +294,7 @@ export function SubmitGreetingModal({ db, currentUser, profile, onClose }) {
               <span className={`text-[11px] font-semibold ${len > MAX_LEN ? "text-red-500" : "text-slate-400"}`}>
                 {len}/{MAX_LEN}
               </span>
-              <span className="text-[11px] text-teal-600 font-semibold">+{APPROVAL_REWARD} sparks if approved</span>
+              <span className="text-[11px] text-teal-600 font-semibold">+{APPROVAL_REWARD} drops if approved</span>
             </div>
             {error && (
               <p className="text-xs font-semibold text-red-500 bg-red-50 rounded-xl px-3 py-2 mt-2">{error}</p>
@@ -371,7 +372,7 @@ export function CommunityGreetingRow({ greeting, streak, computeSparkReward, cur
           {greeting.text}
         </span>
         <span className="ml-2 text-xs text-teal-600">
-          +{computeSparkReward(greeting.sparkReward, streak)} sparks
+          +{computeDropsGain(greeting.sparkReward, streak)} drops
           {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
         </span>
       </button>

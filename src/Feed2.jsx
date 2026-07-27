@@ -14,6 +14,7 @@ import { doc, getDoc, onSnapshot, collection, addDoc } from "firebase/firestore"
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
+import { computeSparkReward } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 
 const POSTS_KEY = "seen_v2_local_posts";
@@ -23,6 +24,7 @@ const MOMENTS_KEY = "seen_v2_kind_moments";
 const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
 const MAX_LEN = 80;
+const POST_SPARK_REWARD = 25; // base, before the streak multiplier
 
 const readJSON = (k, fb) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)); } catch { return fb; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
@@ -532,7 +534,7 @@ function apiFailure(err, what) {
 // feeling statuses and custom replies) BEFORE it is written. Unlike the feelings path,
 // which allows a post through when moderation is unreachable, this one fails CLOSED: a
 // feeling is 60 chars inside a constrained flow, this is free text going to a feed.
-export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClose }) {
+export function PostComposer({ profile, myUid, currentUser, db, streak = 0, onPosted, onClose }) {
   const [text, setText] = useState("");
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
@@ -610,7 +612,9 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
         country: anon ? null : (profile?.country ?? null),
         isMystery: false,
         isPremium: true,
-        sparkReward: 0,
+        // Writing your own words is more effort than tapping a preset (base 20), so it earns
+        // slightly more; still below a mystery (35-50). Streak-multiplied like every other send.
+        sparkReward: computeSparkReward(POST_SPARK_REWARD, streak),
         isPersonal: true, // routes it to the Focused Feed in v2; ignored by production
       });
     } catch {
@@ -620,6 +624,9 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
       return;
     }
 
+    // Waters the Kindness Tree, same as a reflection. This was missing entirely — the post
+    // previously earned nothing on either ledger.
+    try { awardPoints("post"); } catch { /* ignore */ }
     setState("done");
     onPosted?.();
     setTimeout(() => onClose?.(), 900);
