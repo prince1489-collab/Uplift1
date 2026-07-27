@@ -40,9 +40,21 @@ function localDay(timezone, now) {
 }
 
 export default async function handler(req, res) {
-  // Vercel cron injects Authorization: Bearer <CRON_SECRET> automatically
+  // Vercel cron injects Authorization: Bearer <CRON_SECRET> automatically — and only when
+  // CRON_SECRET is defined for that project.
+  //
+  // This used to read `if (secret && ...)`, so an UNSET secret skipped the check entirely
+  // and left the endpoint callable by anyone. That matters more than it looks: this handler
+  // pushes a notification to every user holding an FCM token, and vercel.json schedules it
+  // 24x a day on every project the repo is deployed to. A preview project sharing
+  // production's Firestore would therefore send a second copy of every reminder to every
+  // real user — and a stranger who guessed the URL could fire one on demand.
+  //
+  // Failing closed also makes the preview safe by construction: production sets CRON_SECRET
+  // so Vercel injects it and reminders send; preview does not set it, so no header is
+  // injected and every call is refused. Do not set CRON_SECRET on a preview project.
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers["authorization"] !== `Bearer ${secret}`) {
+  if (!secret || req.headers["authorization"] !== `Bearer ${secret}`) {
     return res.status(401).end();
   }
 
