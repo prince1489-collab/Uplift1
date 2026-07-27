@@ -271,11 +271,19 @@ function ShareStorySheet({ entry, authorName, country, authorUid, onShared, onCl
               <span className="block text-[11px] text-slate-500">Your name and country won't be shown.</span>
             </span>
           </button>
+          {/* Above the button, at a readable size — the old 10px grey line below it was
+              missed entirely, and someone sharing a reflection believes it reached people. */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-[12px] font-bold text-amber-800">⚠️ Preview — nobody else sees this yet</p>
+            <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+              Shared reflections are still being built. Yours is saved on this device so you can see how it looks
+              in the feed, but the people who follow you won't see it.
+            </p>
+          </div>
           <button onClick={share} disabled={posting}
             className="w-full rounded-full bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
             {posting ? "Sharing…" : "Share to Featured Stories ✨"}
           </button>
-          <p className="text-center text-[10px] text-slate-400">Preview: stories stay on this device only.</p>
         </div>
       </div>
     </div>,

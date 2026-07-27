@@ -348,6 +348,15 @@ export function PrivateReplySheet({ target, me, myUid, onDone, onClose }) {
         </div>
         <div className="px-5 pb-8 space-y-3">
           <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{target?.text}”</div>
+          {/* Stated up front, not after sending. The old note appeared only once the reply
+              was already written, by which point the user believes it has gone. */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-[12px] font-bold text-amber-800">⚠️ Preview — this won't reach them yet</p>
+            <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+              Private replies are still being built. What you write is saved on your device so you can see how it
+              works, but {firstName(target?.sender)} won't receive it.
+            </p>
+          </div>
           <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 120))} rows={2} autoFocus
             placeholder="A private word of kindness, just between you two…"
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
