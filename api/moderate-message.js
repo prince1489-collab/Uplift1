@@ -73,7 +73,8 @@ export default async function handler(req, res) {
   }
 
   const text = String(req.body?.text ?? "").trim().slice(0, MAX_LEN);
-  const context = req.body?.context === "feeling" ? "feeling" : "reply";
+  const raw = req.body?.context;
+  const context = raw === "feeling" || raw === "post" ? raw : "reply";
   if (!text) return res.status(400).json({ error: "missing text" });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -87,7 +88,9 @@ export default async function handler(req, res) {
     const client = new Anthropic({ apiKey });
     const role = context === "feeling"
       ? "a short public status about how they're feeling"
-      : "a short private encouragement message to someone who shared a difficult feeling";
+      : context === "post"
+        ? "a short message in their own words, shared to the public kindness feed where anyone can read it"
+        : "a short private encouragement message to someone who shared a difficult feeling";
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 150,

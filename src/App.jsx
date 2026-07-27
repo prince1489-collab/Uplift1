@@ -3080,7 +3080,8 @@ export default function App() {
           <PostComposer
             profile={profile}
             myUid={currentUser?.uid}
-            onPosted={(next) => setLocalPosts(next)}
+            currentUser={currentUser}
+            db={db}
             onClose={() => setPostComposerOpen(false)} />
         )}
         {replyTarget && (

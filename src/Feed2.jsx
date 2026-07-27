@@ -1,17 +1,20 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// Feed2.jsx — v2 "Connect" tab pieces (PREVIEW). The Worldwide Feed shows strangers'
-// messages (people you haven't followed); the Focused Feed below it shows only the
-// people you follow. Likes, private replies and "kind moment" broadcasts
-// are SIMULATED (localStorage only, never written to Firestore) so the preview never leaks
-// content into the real feed production testers see. Real moderation/DMs are merge-time work.
+// Feed2.jsx — v2 "Connect" tab pieces. The Worldwide Feed shows strangers' messages
+// (people you haven't followed); the Focused Feed below it shows only the people you follow.
+//
+// Free-text posts ARE REAL: PostComposer screens each one via /api/moderate-message and
+// writes it to publicMessages, so it reaches the Focused Feed here and the single feed in
+// the production build. Likes, private replies and "kind moment" broadcasts are still
+// SIMULATED (localStorage only) so the preview doesn't leak those into the real feed.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { doc, getDoc, onSnapshot, collection } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, collection, addDoc } from "firebase/firestore";
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
+import { apiUrl } from "./apiBase";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -20,7 +23,6 @@ const MOMENTS_KEY = "seen_v2_kind_moments";
 const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
 const MAX_LEN = 80;
-const BLOCKLIST = ["hate", "kill", "stupid", "ugly", "idiot", "loser"];
 
 const readJSON = (k, fb) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)); } catch { return fb; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
@@ -199,7 +201,8 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   // moment takes its turn in the same slot instead of adding fixed height below it.
   const items = useMemo(() => {
     const msgs = messages
-      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid) && !isBlocked(m.uid))
+      // Personal posts are routed to the Focused Feed, so they never join this rotation.
+      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !m.isPersonal && !focusedSet.has(m.uid) && !isBlocked(m.uid))
       .slice(0, 25)
       .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
     // A blocked person must not surface via a kind moment or a shared reflection either.
@@ -513,22 +516,70 @@ export function FocusedFeedHeader({ count = 0, onManage }) {
   );
 }
 
-// ── Post composer (simulated free-text) ───────────────────────────────────────
-export function PostComposer({ profile, myUid, onPosted, onClose }) {
+// ── Post composer — a real post, screened before it goes out ──────────────────
+// Every post is reviewed by /api/moderate-message (the same endpoint that already guards
+// feeling statuses and custom replies) BEFORE it is written. Unlike the feelings path,
+// which allows a post through when moderation is unreachable, this one fails CLOSED: a
+// feeling is 60 chars inside a constrained flow, this is free text going to a feed.
+export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClose }) {
   const [text, setText] = useState("");
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
+  const [reason, setReason] = useState("");
   const len = text.trim().length;
+
   const submit = async () => {
-    if (!len || state === "checking") return;
+    if (!len || state === "checking" || !db || !currentUser) return;
     setState("checking");
-    await new Promise((r) => setTimeout(r, 650));
-    if (BLOCKLIST.some((w) => text.toLowerCase().includes(w))) { setState("rejected"); return; }
-    const post = { id: `local_${Date.now()}`, uid: myUid ?? null, text: text.trim(), anon, sender: anon ? "Anonymous" : firstName(profile?.fullName), country: anon ? null : (profile?.country ?? null), timestamp: Date.now(), preview: true };
-    const next = [post, ...loadLocalPosts()];
-    saveLocalPosts(next); setState("done"); onPosted?.(next);
+    setReason("");
+    const clean = text.trim();
+
+    // 1. Screen it. Any failure to get a clean verdict blocks the post.
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch(apiUrl("/api/moderate-message"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: clean, context: "post" }),
+      });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      const mod = await res.json();
+      if (!mod.checked || !mod.ok) {
+        setReason(mod.reason || "That didn't pass our kindness check. Try rephrasing it warmly.");
+        setState("rejected");
+        return;
+      }
+    } catch {
+      setReason("We couldn't run the kindness check just now — please try again in a moment.");
+      setState("rejected");
+      return;
+    }
+
+    // 2. Publish. Same field shape the rest of the app writes, so the production build —
+    //    which reads publicMessages unfiltered — renders it with no changes of its own.
+    try {
+      await addDoc(collection(db, "publicMessages"), {
+        uid: myUid ?? currentUser.uid,
+        sender: anon ? "Anonymous" : (profile?.fullName ?? "Someone"),
+        text: clean,
+        timestamp: Date.now(),
+        country: anon ? null : (profile?.country ?? null),
+        isMystery: false,
+        isPremium: true,
+        sparkReward: 0,
+        isPersonal: true, // routes it to the Focused Feed in v2; ignored by production
+      });
+    } catch {
+      setReason("Couldn't share that — check your connection and try again.");
+      setState("rejected");
+      return;
+    }
+
+    setState("done");
+    onPosted?.();
     setTimeout(() => onClose?.(), 900);
   };
+
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -545,26 +596,27 @@ export function PostComposer({ profile, myUid, onPosted, onClose }) {
           <div className="flex items-center justify-between">
             <button onClick={() => setAnon((a) => !a)}
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${anon ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-500"}`}>
-              {anon ? "🕶️ Posting anonymously" : "👤 Posting as you"}
+              {anon ? "🕶️ Name hidden" : "👤 Posting as you"}
             </button>
             <span className={`text-[11px] ${len > MAX_LEN - 10 ? "text-amber-600" : "text-slate-400"}`}>{len}/{MAX_LEN}</span>
           </div>
           {state === "rejected" && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
-              <p className="text-[12px] font-semibold text-rose-700">Let's keep it kind 💛</p>
-              <p className="text-[11px] text-rose-500 mt-0.5">That message didn't pass our kindness check. Try rephrasing it warmly.</p>
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5" role="alert">
+              <p className="text-[12px] font-semibold text-rose-700">Not sent 💛</p>
+              <p className="text-[11px] text-rose-500 mt-0.5">{reason}</p>
             </div>
           )}
           {state === "done" && (
-            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-[12px] font-semibold text-teal-700">Shared ✓ (preview — only you can see it)</div>
+            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-[12px] font-semibold text-teal-700">Shared ✓ — it's in the feed now</div>
           )}
           <button onClick={submit} disabled={!len || state === "checking"}
             className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
             {state === "checking" ? (<><Loader2 size={16} className="animate-spin" /> Checking kindness…</>) : "Share"}
           </button>
           <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            Preview: your post is screened by a (mock) kindness check and saved only on this device. The live
-            version will screen every post with AI moderation before anyone sees it.
+            {anon
+              ? "Your name and country won't be shown. Posts are still linked to your account so they can be moderated, so this isn't fully anonymous."
+              : "Every post is screened before anyone sees it. You can delete yours at any time."}
           </p>
         </div>
       </div>
