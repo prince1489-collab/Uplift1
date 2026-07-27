@@ -529,7 +529,25 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
   // "flagged" means rephrase; "unavailable" means try again — different problems needing
   // different things from the user, so they must not share one message.
   const [failKind, setFailKind] = useState(null);
+  // Phrasing help runs on its own state. Sharing `state` would render a suggestion error
+  // inside the "Not sent" banner, which would read as though the post had been rejected.
+  const [phrasing, setPhrasing] = useState("idle"); // idle | loading | ready | none
+  const [ideas, setIdeas] = useState([]);
   const len = text.trim().length;
+
+  const suggest = async () => {
+    if (len < 8 || phrasing === "loading" || state === "checking" || state === "done") return;
+    setPhrasing("loading");
+    setIdeas([]);
+    try {
+      const r = await authedPost(currentUser, "/api/post-suggest", { text: text.trim() });
+      const list = Array.isArray(r.suggestions) ? r.suggestions.filter(Boolean) : [];
+      setIdeas(list);
+      setPhrasing(list.length ? "ready" : "none");
+    } catch {
+      setPhrasing("none");
+    }
+  };
 
   const submit = async () => {
     if (!len || state === "checking" || !db || !currentUser) return;
@@ -599,6 +617,33 @@ export function PostComposer({ profile, myUid, currentUser, db, onPosted, onClos
           <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, MAX_LEN))} rows={3} autoFocus
             placeholder="Write something kind, hopeful, or honest…"
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+
+          {/* Phrasing help — rewrites of your own words. Tapping one fills the box to edit;
+              it never sends, and the result is still screened on submit like anything else. */}
+          {state !== "done" && (
+            <button onClick={suggest} disabled={len < 8 || phrasing === "loading" || state === "checking"}
+              className="w-full rounded-xl border border-dashed border-violet-200 py-2 text-[12px] font-semibold text-violet-500 hover:border-violet-300 hover:bg-violet-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors flex items-center justify-center gap-1.5">
+              {phrasing === "loading"
+                ? (<><Loader2 size={13} className="animate-spin" /> Finding the words…</>)
+                : "✨ Help me say this"}
+            </button>
+          )}
+          {phrasing === "ready" && ideas.length > 0 && (
+            <div className="space-y-1.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
+              <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Tap one to use it — you can still edit</p>
+              {ideas.map((s2, i) => (
+                <button key={i} onClick={() => { setText(s2.slice(0, MAX_LEN)); setPhrasing("idle"); setIdeas([]); }}
+                  className="w-full rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-left text-[13px] leading-snug text-slate-700 hover:bg-violet-50 active:scale-[0.99] transition-all">
+                  {s2}
+                </button>
+              ))}
+            </div>
+          )}
+          {phrasing === "none" && (
+            <p className="text-center text-[11px] text-slate-400">
+              Couldn't fetch suggestions just now — your own words are good.
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <button onClick={() => setAnon((a) => !a)}
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${anon ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-500"}`}>
