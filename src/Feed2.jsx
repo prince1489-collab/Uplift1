@@ -81,26 +81,6 @@ export function splitKindMoments(moments = [], focusedUids = [], myUid) {
   return { focused, worldwide };
 }
 
-// Preview-only: two-stranger moments can't arise on a single device (you're always one of
-// the pair), so seed one purely so the Worldwide Feed routing is testable.
-//
-// As with sample reflections, this must never name real members — an earlier version paired
-// two real feed authors, which read as a private exchange that never happened. Fictional
-// uids only, labelled EXAMPLE. Device-local, never Firestore.
-export function seedDemoKindMoments(messages = [], myUid) {
-  const existing = loadKindMoments();
-  if (existing.some((km) => km.demo)) return existing;
-  const demo = {
-    id: "km_example",
-    aUid: "example_not_a_real_member_a", aName: "An example member", aCountry: null,
-    bUid: "example_not_a_real_member_b", bName: "another example member", bCountry: null,
-    demo: true,
-    ts: Date.now() - 3600000,
-  };
-  const next = [...existing, demo].slice(0, 30);
-  writeJSON(MOMENTS_KEY, next);
-  return next;
-}
 // Private replies received. Real now: they live in Firestore, readable only by the sender
 // and the recipient (see the privateReplies rule). Blocked senders are filtered out here as
 // well as by the rules, because blocking is device-local.
@@ -156,39 +136,19 @@ export function splitStories(stories = [], focusedUids = [], myUid) {
   return { focused, worldwide };
 }
 
-// Preview-only: you can't receive someone else's shared reflection on a single device, so
-// seed one purely to make the Worldwide routing testable.
+// Sample reflections and kind moments used to be seeded here so the Worldwide-vs-Focused
+// routing could be tested on a single device, where a real stranger's content can never
+// appear. The app is live now, and fiction shown as content is worse than an empty feed.
 //
-// IMPORTANT: sample content must NEVER be attributed to a real member. An earlier version
-// borrowed a real feed author's name, which read as though that person had actually shared
-// something — it hadn't happened. The example uses a fictional uid that can't collide with
-// a real account, and is labelled EXAMPLE wherever it appears.
-const EXAMPLE_UID = "example_not_a_real_member";
-export function seedDemoStories(messages = [], myUid) {
-  const existing = loadLocalStories();
-  if (existing.some((s) => s.demo)) return existing;
-  const demo = {
-    id: "story_example",
-    authorUid: EXAMPLE_UID, authorName: "Example member", country: null,
-    anonymous: false, demo: true,
-    text: "I nearly didn't send anything today. I did, and a stranger wrote back within the hour. I've read it about six times since.",
-    enrich: [{ q: "What made this matter to you?", a: "It landed on a day I'd convinced myself nobody would notice either way." }],
-    ts: Date.now() - 5400000,
-  };
-  const next = [...existing, demo].slice(0, 20);
-  writeJSON(STORIES_KEY, next);
-  return next;
-}
-
-// Drop any sample content that was attributed to a real member before the fix above.
-export function purgeMisattributedDemos() {
-  const stories = loadLocalStories();
-  const cleanStories = stories.filter((s) => !s.demo || s.authorUid === EXAMPLE_UID);
-  if (cleanStories.length !== stories.length) writeJSON(STORIES_KEY, cleanStories);
-  const moments = loadKindMoments();
-  const cleanMoments = moments.filter((km) => !km.demo || km.aUid === `${EXAMPLE_UID}_a`);
-  if (cleanMoments.length !== moments.length) writeJSON(MOMENTS_KEY, cleanMoments);
-  return { stories: cleanStories, moments: cleanMoments };
+// Both seeders are gone. This runs in their place: testers already have the seeded rows in
+// localStorage, so deleting the seeders alone would have left the example cards on their
+// devices permanently.
+export function purgeDemoContent() {
+  const stories = loadLocalStories().filter((s) => !s.demo);
+  writeJSON(STORIES_KEY, stories);
+  const moments = loadKindMoments().filter((km) => !km.demo);
+  writeJSON(MOMENTS_KEY, moments);
+  return { stories, moments };
 }
 
 // ── Likes + comments on a shared journal (device-local) ──────────────────────
@@ -346,9 +306,6 @@ export function KindMomentCard({ moment, compact = false }) {
         <strong className="text-slate-800">{moment.aName} {flagFor(moment.aCountry)}</strong> and{" "}
         <strong className="text-slate-800">{moment.bName} {flagFor(moment.bCountry)}</strong> shared a kind moment.
       </p>
-      {moment.demo && (
-        <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
-      )}
     </div>
   );
 }
@@ -825,9 +782,6 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
             long name wraps instead of cutting the sentence off mid-word — it fits on one
             line in the ordinary case and never needs a third. The reflection's own words
             are left for the reader; this is a notice, not a preview.
-            No EXAMPLE badge here: the sample author is literally named "Example member"
-            and the reader carries the explicit "not a real member" banner, so the badge
-            was only costing the line width that made the sentence wrap.
             11px, not 12: measured, the sentence is 223px at 11px vs 243px at 12px, and a
             340px phone leaves 231px — so 12px wrapped on small screens and 11px does not.
             "Read" rather than "Read →" for the same reason: the arrow costs 12px, which is
@@ -850,9 +804,6 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
           <strong className="text-slate-800">{storyAuthorLabel(story)}</strong>
           {!story.anonymous && story.country ? ` ${flagFor(story.country)}` : ""} shared their reflection.
         </p>
-        {story.demo && (
-          <span className="flex-shrink-0 rounded-full bg-white/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500">example</span>
-        )}
       </div>
       <p className="text-[13px] leading-snug text-slate-700 line-clamp-2 italic">“{story.text}”</p>
       <div className="mt-1.5 flex items-center gap-3 text-[10px] font-semibold text-amber-600">
@@ -899,27 +850,17 @@ export function FeaturedStoryReader({ story, me, db, currentUser, onClose, onCha
             </div>
           </div>
 
-          {story.demo && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2.5">
-              <p className="text-[12px] font-bold text-amber-700">Example card — not a real member</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-amber-700/80">
-                Sample content showing how a shared reflection looks. Nobody actually wrote this.
-              </p>
-            </div>
-          )}
           <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">“{story.text}”</p>
           {/* Reflections are real UGC now, so they need the same report/block path as
-              messages. Never on the EXAMPLE card — there is no real member to report. */}
-          {!story.demo && (
-            <ReportBlockBar
-              db={db}
-              currentUser={currentUser}
-              targetUid={story.authorUid}
-              targetName={storyAuthorLabel(story)}
-              contentId={story.id}
-              contentKind="reflection"
-            />
-          )}
+              messages. */}
+          <ReportBlockBar
+            db={db}
+            currentUser={currentUser}
+            targetUid={story.authorUid}
+            targetName={storyAuthorLabel(story)}
+            contentId={story.id}
+            contentKind="reflection"
+          />
           {Array.isArray(story.enrich) && story.enrich.map((e, i) => (
             <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">{e.q}</p>

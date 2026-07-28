@@ -17,13 +17,13 @@ import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
 import { StickerDisplay } from "./StickerReactions";
-import { isSoundOn, setSoundOn, playSend, playHeart, playEncourage, playLevelUp, playStreak, playFirstSend, playMystery, startMapAmbient, stopMapAmbient } from "./sounds";
+import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, seedDemoKindMoments, loadLocalStories, splitStories, seedDemoStories, purgeMisattributedDemos } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -42,7 +42,7 @@ import {
   QuickReactBar,
 } from "./UpliftRetentionFeatures";
 
-import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
+import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources, getEmergency } from "./SupportData.js";
 import JournalPanel from "./Journal";
 import ModerationQueue from "./ModerationQueue";
@@ -77,7 +77,6 @@ import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS } from "./nativePush";
 import { apiUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
-import { FeelingsStrip, FeelingComposer, EncourageSheet, MyFeelingPanel, useActiveFeelings, useFeelingToasts } from "./Feelings";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -212,41 +211,8 @@ function InputRow({ icon, children, rightIcon = null }) {
   );
 }
 
-const MOOD_TAGLINES = {
-  grateful:   "feeling grateful",
-  hopeful:    "feeling hopeful",
-  tired:      "a little tired",
-  happy:      "feeling happy",
-  struggling: "going through it",
-  peaceful:   "at peace",
-  energised:  "full of energy",
-  lonely:     "feeling a bit lonely",
-};
-
-function getMoodBubbleStyle(moodTag, isMine) {
-  if (!moodTag) return null;
-  const MINE = {
-    grateful:   { background: "linear-gradient(135deg,#87a87a,#6b8f6b)", borderColor: "#6b8f6b", boxShadow: "0 4px 14px rgba(107,143,107,0.35)" },
-    hopeful:    { background: "linear-gradient(135deg,#fcd34d,#eab308)", borderColor: "#eab308", boxShadow: "0 4px 14px rgba(234,179,8,0.35)"    },
-    tired:      { background: "linear-gradient(135deg,#94a3b8,#64748b)", borderColor: "#64748b", boxShadow: "0 4px 14px rgba(100,116,139,0.35)"  },
-    happy:      { background: "linear-gradient(135deg,#fb923c,#f97316)", borderColor: "#f97316", boxShadow: "0 4px 14px rgba(249,115,22,0.35)"   },
-    struggling: { background: "linear-gradient(135deg,#c9899a,#a86778)", borderColor: "#a86778", boxShadow: "0 4px 14px rgba(168,103,120,0.35)"  },
-    peaceful:   { background: "linear-gradient(135deg,#7dd3fc,#38bdf8)", borderColor: "#38bdf8", boxShadow: "0 4px 14px rgba(56,189,248,0.28)"   },
-    energised:  { background: "linear-gradient(135deg,#f87171,#ef4444)", borderColor: "#ef4444", boxShadow: "0 4px 14px rgba(239,68,68,0.35)"    },
-    lonely:     { background: "linear-gradient(135deg,#7c3aed,#4c1d95)", borderColor: "#4c1d95", boxShadow: "0 4px 14px rgba(76,29,149,0.35)"    },
-  };
-  const THEIRS = {
-    grateful:   { backgroundColor: "#f0f4ef", borderColor: "#b5cdb5", color: "#3d6e3d" },
-    hopeful:    { backgroundColor: "#fefce8", borderColor: "#fde047", color: "#713f12" },
-    tired:      { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1", color: "#334155" },
-    happy:      { backgroundColor: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" },
-    struggling: { backgroundColor: "#fdf2f5", borderColor: "#f0c4cf", color: "#8b3547" },
-    peaceful:   { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" },
-    energised:  { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" },
-    lonely:     { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" },
-  };
-  return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
-}
+// Mood taglines and the per-mood bubble palette lived here. Both belonged to the
+// "how you're feeling" feature, retired in the V2 review pass.
 
 function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
@@ -769,15 +735,6 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const [ripplesSeenAt, setRipplesSeenAt] = useState(() => {
     try { return Number(localStorage.getItem("seen-ripples-at")) || 0; } catch { return 0; }
   });
-  // Kindness-loop rows: encouragement replies to my feeling + "your words helped" echoes
-  const [freplyRows, setFreplyRows] = useState([]);
-  const [frepliesSeenAt, setFrepliesSeenAt] = useState(() => {
-    try { return Number(localStorage.getItem("seen-freplies-at")) || 0; } catch { return 0; }
-  });
-  const [echoRows, setEchoRows] = useState([]);
-  const [echoesSeenAt, setEchoesSeenAt] = useState(() => {
-    try { return Number(localStorage.getItem("seen-echoes-at")) || 0; } catch { return 0; }
-  });
   const prevWaveIdsRef = useRef(new Set());
   const prevLikeIdsRef = useRef(new Set());
   const likeNameCacheRef = useRef({});
@@ -884,35 +841,8 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
     try { localStorage.setItem("seen-ripples-at", String(newest)); } catch (_) {}
   }, [open, rippleRows]);
 
-  // Encouragement replies to my feeling status (kindness loop, poster side).
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const q = query(collection(db, "users", currentUser.uid, "feelingReplies"), orderBy("createdAt", "desc"), limit(5));
-    return onSnapshot(q, (snap) => {
-      setFreplyRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    }, () => {});
-  }, [db, currentUser]);
-  useEffect(() => {
-    if (!open || freplyRows.length === 0) return;
-    const newest = freplyRows.reduce((m, r) => Math.max(m, r.createdAt ?? 0), frepliesSeenAt);
-    setFrepliesSeenAt(newest);
-    try { localStorage.setItem("seen-freplies-at", String(newest)); } catch (_) {}
-  }, [open, freplyRows]);
-
-  // Kindness echoes — the poster confirmed my encouragement helped (responder side).
-  useEffect(() => {
-    if (!db || !currentUser) return;
-    const q = query(collection(db, "users", currentUser.uid, "kindnessEchoes"), orderBy("createdAt", "desc"), limit(5));
-    return onSnapshot(q, (snap) => {
-      setEchoRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    }, () => {});
-  }, [db, currentUser]);
-  useEffect(() => {
-    if (!open || echoRows.length === 0) return;
-    const newest = echoRows.reduce((m, r) => Math.max(m, r.createdAt ?? 0), echoesSeenAt);
-    setEchoesSeenAt(newest);
-    try { localStorage.setItem("seen-echoes-at", String(newest)); } catch (_) {}
-  }, [open, echoRows]);
+  // The feelingReplies and kindnessEchoes listeners lived here. Both belonged to the
+  // "how you're feeling" kindness loop, retired in the V2 review pass.
 
   const dismissWave = async (id) => {
     if (!db) return;
@@ -926,16 +856,12 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   const visibleWaves = waves.filter((w) => sinceVisit(w.createdAt));
   const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id) && sinceVisit(l.at));
   const visibleRipples = rippleRows.filter((r) => sinceVisit(r.createdAt));
-  const visibleFreplies = freplyRows.filter((r) => sinceVisit(r.createdAt));
-  const visibleEchoes = echoRows.filter((r) => sinceVisit(r.createdAt));
 
   // The badge counts what's in the list and not yet looked at — so it can never exceed
   // the number of rows the user will actually see.
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = visibleRipples.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
-  const newFreplyCount = visibleFreplies.filter((r) => (r.createdAt ?? 0) > frepliesSeenAt).length;
-  const newEchoCount = visibleEchoes.filter((r) => (r.createdAt ?? 0) > echoesSeenAt).length;
-  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + newFreplyCount + newEchoCount;
+  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount;
 
   // Everything merges into ONE list, newest first, each row stamped with its age. Grouping by
   // type meant an older ripple could sit above a fresh like, and with no timestamps at all
@@ -968,17 +894,8 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
         ? <><span className="font-semibold">{g.n} people</span> you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>
         : <>Someone you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>,
     }));
-    visibleFreplies.forEach((r) => out.push({
-      id: r.id, ts: Number(r.createdAt) || 0, icon: "💛", tint: "bg-amber-50/60", fresh: (r.createdAt ?? 0) > frepliesSeenAt,
-      text: <><span className="font-semibold">{(r.responderName || "Someone").split(" ")[0]}</span>{r.responderCountry ? <> from <span className="font-semibold">{r.responderCountry}</span></> : null} sent you encouragement</>,
-    }));
-    visibleEchoes.forEach((r) => out.push({
-      id: r.id, ts: Number(r.createdAt) || 0, icon: "🌟", tint: "bg-violet-50/60", fresh: (r.createdAt ?? 0) > echoesSeenAt,
-      text: <>{r.posterName ? <span className="font-semibold">{r.posterName.split(" ")[0]}</span> : "Someone"} said your encouragement <span className="font-semibold">helped</span></>,
-    }));
     return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
-  }, [visibleWaves, visibleLikes, visibleRipples, visibleFreplies, visibleEchoes,
-      likesSeenAt, ripplesSeenAt, frepliesSeenAt, echoesSeenAt]);
+  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt]);
   // Honest, transparently system-authored reassurance: if you've shared kindness but no one
   // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
   // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
@@ -1181,27 +1098,6 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           <a href="/child-safety.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Child Safety Standards</a>.
         </p>
       </form>
-    </div>
-  );
-}
-
-function MysteryGiftModal({ open, reward, onClose }) {
-  if (!open) return null;
-  return (
-    <div className="absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-3xl border border-white/40 bg-white/95 p-6 text-center shadow-2xl">
-        <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-amber-100 text-amber-600">
-          <Gift className="animate-bounce" size={30} />
-        </div>
-        <p className="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase">Mystery Gift</p>
-        <h2 className="mt-2 font-display text-[28px] font-normal tracking-[-0.04em] text-slate-800">You unlocked a bonus!</h2>
-        <p className="mt-3 text-lg font-bold text-emerald-600">+{reward} Drops 💧</p>
-        <p className="mt-2 text-sm text-slate-500">Your Drops balance has been boosted.</p>
-        <button type="button" onClick={onClose}
-          className="mt-6 w-full rounded-2xl bg-teal-600 px-4 py-3 font-semibold text-white transition hover:bg-teal-700">
-          Awesome!
-        </button>
-      </div>
     </div>
   );
 }
@@ -1491,11 +1387,6 @@ export default function App() {
   const [rippleToast, setRippleToast] = useState(null); // { id, country } — a kindness chain just grew
   const [sentToast, setSentToast] = useState(""); // brief giving-focused send confirmation (message lands at the top of the feed)
   // Kindness loop (feeling statuses)
-  const [feelingComposerOpen, setFeelingComposerOpen] = useState(false);
-  const [encourageFeeling, setEncourageFeeling] = useState(null); // feeling being encouraged
-  const [myFeelingPanel, setMyFeelingPanel] = useState(null); // snapshot of my feeling — stays mounted through ack + pass-forward
-  const [, setEncReadTick] = useState(0); // bump to re-hide the "you've been encouraged" pill after reading
-  const [echoToast, setEchoToast] = useState(null); // { id, name } — "your words helped"
   const [hometownPingTime, setHometownPingTime] = useState(0); // last same-country event timestamp for globe ripple
   const [newRippleCountry, setNewRippleCountry] = useState(null); // last responder's country for ripple arc on globe
   const reactObservedRef = useRef(new Set());
@@ -1505,14 +1396,6 @@ export default function App() {
   const [unauthScreen, setUnauthScreen] = useState(
     localStorage.getItem("seen_intro_v1") ? "welcome" : "intro"
   );
-  const [showGiftModal, setShowGiftModal] = useState(false);
-  const [mysteryReward, setMysteryReward] = useState(0);
-  // Mystery unwrap: { [messageId]: revealedText } persisted to localStorage
-  const [unwrappedMysteries, setUnwrappedMysteries] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}"); }
-    catch (_) { return {}; }
-  });
-  const [burstingMystery, setBurstingMystery] = useState(null);
   const [showProfileCard, setShowProfileCard] = useState(false);
   // Account sub-options now live under "Person behind the Kindness" (ProfileCard)
   const [showBlockedApp, setShowBlockedApp] = useState(false);
@@ -1891,37 +1774,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [rippleToast]);
 
-  // Kindness loop: live feelings (one shared listener → strip + pass-it-forward) and
-  // fresh-event toasts (encouragement arrived / "your words helped" echo).
-  const { myFeeling, others: otherFeelings } = useActiveFeelings(db, currentUser);
-  // Encouragement replies now surface only in the 🔔 bell (no feed banner). The "your words helped"
-  // echo still pops as a feed banner (a rewarding moment), so we keep that toast callback.
-  useFeelingToasts(
-    db, currentUser,
-    () => playEncourage(),   // someone encouraged your feeling — a warm "you were seen" cue
-    (e) => { playEncourage(); setEchoToast({ id: `${e.fromUid}_${e.createdAt}`, name: e.posterName ? e.posterName.split(" ")[0] : null }); }
-  );
-  // Persistent "you've been encouraged" pill (sits where the 💬 bubble does, by the name).
-  // Unread = live replyCount on my feeling − the count I last read. localStorage read-marker,
-  // keyed per feeling; opening the replies reader marks it read so the pill re-hides.
-  const encReadKey = currentUser?.uid && myFeeling?.createdAt
-    ? `seen_freplies_${currentUser.uid}_${myFeeling.createdAt}`
-    : null;
-  const encReadCount = (() => {
-    if (!encReadKey) return 0;
-    try { return Number(localStorage.getItem(encReadKey) || 0); } catch { return 0; }
-  })();
-  const unreadEnc = myFeeling ? Math.max(0, (myFeeling.replyCount ?? 0) - encReadCount) : 0;
-  const showEncPill = !!myFeeling && unreadEnc > 0;
-  const markEncouragementRead = () => {
-    try { if (encReadKey) localStorage.setItem(encReadKey, String(myFeeling?.replyCount ?? 0)); } catch { /* ignore */ }
-    setEncReadTick((t) => t + 1);
-  };
-  useEffect(() => {
-    if (!echoToast) return;
-    const t = setTimeout(() => setEchoToast(null), 7000);
-    return () => clearTimeout(t);
-  }, [echoToast]);
   const [showMap, setShowMap] = useState(false);
   const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
   const [autoWaterTree, setAutoWaterTree] = useState(false); // v2: first-send routes globe→tree with a watering animation
@@ -1997,18 +1849,16 @@ export default function App() {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, []);
-  // Preview-only: seed two stranger-to-stranger moments once real messages exist, so the
-  // Worldwide Feed routing is testable (you're always a participant in your own moments).
-  const demoSeededRef = useRef(false);
+  // Sample kind moments and reflections used to be seeded here for preview testing. The app
+  // is live, so they're gone — this sweeps them off devices that already have them.
+  const demoPurgedRef = useRef(false);
   useEffect(() => {
-    if (demoSeededRef.current || !currentUser?.uid || messages.length < 2) return;
-    demoSeededRef.current = true;
-    // Clear out sample cards that an earlier build attributed to real members before
-    // seeding the clearly-labelled example ones.
-    purgeMisattributedDemos();
-    setKindMoments(seedDemoKindMoments(messages, currentUser.uid));
-    setFeaturedStories(seedDemoStories(messages, currentUser.uid));
-  }, [messages, currentUser?.uid]);
+    if (demoPurgedRef.current || !currentUser?.uid) return;
+    demoPurgedRef.current = true;
+    const { stories, moments } = purgeDemoContent();
+    setKindMoments(moments);
+    setFeaturedStories(stories);
+  }, [currentUser?.uid]);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
@@ -2065,8 +1915,6 @@ export default function App() {
   useBackLayer(menuOpen, () => setMenuOpen(false));
   useBackLayer(showLevels, () => setShowLevels(false));
   useBackLayer(showUpgrade, () => setShowUpgrade(false));
-  useBackLayer(Boolean(encourageFeeling), () => setEncourageFeeling(null));
-  useBackLayer(Boolean(myFeelingPanel), () => setMyFeelingPanel(null));
   useBackLayer(showMap, () => setShowMap(false));
   useBackLayer(showGlimpseSheet, () => setShowGlimpseSheet(false));
   useBackLayer(activeTab !== "feed", () => setActiveTab("feed"));
@@ -2285,13 +2133,6 @@ export default function App() {
       title: "Welcome to Seen 👋",
       body: "Send a kind greeting to a real stranger somewhere in the world. They'll feel seen — and so will you.",
       before: () => { setPickerOpen(false); setReactionBarId(null); },
-    },
-    {
-      key: "feeling",
-      target: '[data-tour="feeling"]',
-      title: "Share how you're feeling 💬",
-      body: "Tap the flashing 💬 bubble by your name to share how you're feeling in a few words. Others send you encouragement — and you can thank each of them back. You can encourage them too, right from the feed.",
-      before: () => { setPickerOpen(false); },
     },
     {
       key: "categories",
@@ -2549,7 +2390,11 @@ export default function App() {
     const q = query(publicMessagesRef, where("timestamp", ">", cutoff), orderBy("timestamp", "desc"), limit(100));
     const unsubscribe = onSnapshot(q,
       (snap) => {
-        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Legacy mystery greetings are dropped rather than rendered. Their stored `text` was
+        // only ever the placeholder "🎁 Mystery Greeting" — the warm line was picked on the
+        // reader's device at unwrap time and never written down. With the feature gone there
+        // is nothing behind these documents to show.
+        const live = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.isMystery);
         const finalMessages = live.length ? live : [{ id: "welcome", sender: "Seen", text: "Welcome! Chat is live and ready ✨", uid: "system", timestamp: Date.now() }];
         const prevIds = new Set(prevMessagesRef.current.map((m) => m.id));
         const brandNewIds = new Set(finalMessages.filter((m) => !prevIds.has(m.id)).map((m) => m.id));
@@ -2610,6 +2455,18 @@ export default function App() {
     messages.filter((m) => m.uid === currentUser?.uid && m.timestamp > startOfToday()).length,
     [messages, currentUser]
   );
+
+  // What this user has written in their own words recently, joined into one string for the
+  // distress check behind the crisis banner. Only their own personal posts, only the last
+  // 24 hours — a canned greeting isn't self-report, and a bad day from last week shouldn't
+  // keep the banner pinned to the top of the feed.
+  const recentOwnWriting = useMemo(() => {
+    const dayAgo = Date.now() - 86400000;
+    return messages
+      .filter((m) => m.isPersonal && m.uid === currentUser?.uid && (Number(m.timestamp) || 0) > dayAgo)
+      .map((m) => m.text || "")
+      .join(" ");
+  }, [messages, currentUser]);
 
   // Crisis routes for THIS user's country — see the banner below.
   const crisisEmergency = useMemo(() => getEmergency(profile?.country), [profile?.country]);
@@ -2701,21 +2558,6 @@ export default function App() {
   const DAILY_GREETING_LIMIT = 50;
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
-  const handleUnwrapMystery = (messageId) => {
-    if (unwrappedMysteries[messageId]) return;
-    const msg = MYSTERY_MESSAGES[Math.floor(Math.random() * MYSTERY_MESSAGES.length)];
-    try {
-      const saved = JSON.parse(localStorage.getItem("seen-mystery-reveals") || "{}");
-      saved[messageId] = msg;
-      localStorage.setItem("seen-mystery-reveals", JSON.stringify(saved));
-    } catch (_) {}
-    setUnwrappedMysteries((prev) => ({ ...prev, [messageId]: msg }));
-    setBurstingMystery(messageId);
-    triggerReactionBurst("🎁");
-    haptic([10, 25, 10, 25, 10]);
-    setTimeout(() => setBurstingMystery(null), 600);
-  };
-
   // Ripple attribution: convert my recent reactions into "ripple" credits for the
   // people whose greetings I reacted to. Only reactions within the window count, and
   // each original sender is credited at most once (doc id = my uid). Best-effort.
@@ -2796,7 +2638,9 @@ export default function App() {
         // moodTag (health-adjacent, special-category) is no longer written into the world-readable
         // public feed — it stays on the private profile doc only.
         country: profile?.country ?? null,
-        isMystery: greeting.isMystery ?? false,
+        // Always false. The mystery greeting is gone, but the field stays on new documents
+        // so old and new rows in publicMessages keep the same shape.
+        isMystery: false,
         isPremium: isPremium,
         sparkReward: earnedSparks,
       });
@@ -2838,10 +2682,6 @@ export default function App() {
       if ([3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => { anim.triggerStreakConfetti(); playStreak(); }, 300);
       }
-      if (greeting.isMystery) {
-        setMysteryReward(computeDropsGain(greeting.sparkReward, streak));
-        setTimeout(() => { setShowGiftModal(true); playMystery(); }, 1000);
-      }
 
       // Bookkeeping runs in the background — doesn't block the UI
       const refDoc = userProfileRef(currentUser.uid);
@@ -2855,7 +2695,6 @@ export default function App() {
             // Durable lifetime "messages sent" tally (transactional, can't lose increments) —
             // powers the Board's accurate "Messages sent" circle without a composite index.
             greetingsSentCount: Number(profileData?.greetingsSentCount ?? 0) + 1,
-            ...(greeting.isMystery ? { lastMysteryGiftAt: nowMs() } : {}),
           }, { merge: true });
         }),
         recordGreetingDay(),
@@ -3061,10 +2900,9 @@ export default function App() {
           this is what stopped the whole "app box" being draggable on Android/iOS. */}
       <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-none sm:h-[90vh] sm:rounded-3xl" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
-        <MysteryGiftModal open={showGiftModal} reward={mysteryReward} onClose={() => setShowGiftModal(false)} />
 
         {showProfileCard && (
-          <ProfileCard profile={profile} streak={streak} sparkBalance={sparkBalance} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
+          <ProfileCard profile={profile} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
             onOpenBlocked={() => setShowBlockedApp(true)}
             onOpenChangePassword={() => setShowChangePasswordApp(true)} />
         )}
@@ -3091,17 +2929,13 @@ export default function App() {
         )}
 
         {glimpse && (
-          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} moodTag={glimpse.moodTag} onClose={() => setGlimpse(null)} />
+          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} onClose={() => setGlimpse(null)} />
         )}
 
 
         {!isNativeIOS() && showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
         {/* Kindness loop sheets */}
-        {feelingComposerOpen && (
-          <FeelingComposer db={db} currentUser={currentUser} profile={profile}
-            onClose={() => setFeelingComposerOpen(false)} />
-        )}
         {postComposerOpen && (
           <PostComposer
             profile={profile}
@@ -3169,16 +3003,6 @@ export default function App() {
             }}
             onClose={() => setShowGlimpseSheet(false)}
           />
-        )}
-        {encourageFeeling && (
-          <EncourageSheet db={db} currentUser={currentUser} profile={profile}
-            feeling={encourageFeeling} onClose={() => setEncourageFeeling(null)} />
-        )}
-        {myFeelingPanel && (
-          <MyFeelingPanel db={db} currentUser={currentUser} feeling={myFeelingPanel}
-            othersFeelings={otherFeelings}
-            onClose={() => { markEncouragementRead(); setMyFeelingPanel(null); }}
-            onEncourage={(f) => setEncourageFeeling(f)} />
         )}
 
         {/* v2: green welcome-moment screen removed (onboarding is near-zero friction now) */}
@@ -3250,7 +3074,6 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
-                    {/* v2: flashing status/feeling button removed (feelings feature retired) */}
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -3597,25 +3420,6 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {/* Kindness echo — the person I encouraged said it helped */}
-              {echoToast && (
-                <div className="sticky z-30" style={{ top: "8px" }} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEchoToast(null); }}
-                    className="seen-toast-violet w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #c4b5fd", boxShadow: "0 8px 24px rgba(139,92,246,0.18)", animation: "seenToastDown 0.35s ease both" }}
-                  >
-                    <span className="text-2xl">🌟</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-violet-800">
-                        {echoToast.name ? `${echoToast.name} says your words helped` : "Your words helped someone"}
-                      </p>
-                      <p className="text-xs mt-0.5 text-violet-500">Right when they were needed. That was you 💛</p>
-                    </div>
-                    <span className="p-1 flex-shrink-0 text-violet-300">✕</span>
-                  </button>
-                </div>
-              )}
               {/* v2: deferred glimpse invitation — appears a couple of days in, once,
                   only while the profile still has no glimpse lines. */}
               {!glimpsePromptDismissed && profile && !profile.mostDays && !profile.anotherLife &&
@@ -3646,10 +3450,16 @@ export default function App() {
                     className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
                 </div>
               )}
-              {/* Crisis-support banner — surfaced when your shared feeling reads as distressed.
-                  Shows live helplines inline (not just a deep-link) so a heavy moment never
-                  requires navigating away to find a number. */}
-              {DISTRESS_RE.test(myFeeling?.text || "") && (
+              {/* Crisis-support banner — surfaced when something you have written in your own
+                  words reads as distressed. Shows live helplines inline (not just a deep-link)
+                  so a heavy moment never requires navigating away to find a number.
+
+                  This used to watch your shared "feeling". That feature is gone, so it now
+                  watches your own personal posts from the last day — the surface that replaced
+                  it, and the only place you still write freely about yourself in the feed.
+                  Dropping the check along with the feature would have quietly removed the one
+                  automatic route to a helpline in the app. */}
+              {DISTRESS_RE.test(recentOwnWriting) && (
                 <div
                   className="seen-crisis-banner w-full mb-4 rounded-2xl px-4 py-3.5"
                   style={{ background: "linear-gradient(135deg, #fef2f2, #fce7f3)", border: "1px solid #fbcfe8" }}
@@ -3708,7 +3518,7 @@ export default function App() {
                   if (sameSender && sameDay) {
                     last.items.push(m);
                   } else {
-                    grouped.push({ uid: m.uid, sender: m.sender, moodTag: m.uid === currentUser.uid ? (profile?.moodTag ?? m.moodTag) : m.moodTag, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
+                    grouped.push({ uid: m.uid, sender: m.sender, items: [m], dayLabel: formatDayLabel(m.timestamp), showDaySep: lastDay !== null && !sameDay });
                   }
                 });
                 // Everything that belongs to your people — messages, kind moments, shared
@@ -3753,7 +3563,7 @@ export default function App() {
                             ) : (
                               <>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null, name: group.sender, moodTag: group.moodTag ?? null }); }}
+                                  onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: group.uid, country: group.items[0].country ?? null, name: group.sender }); }}
                                   className="font-semibold text-slate-500 hover:text-teal-600 active:text-teal-700 transition-colors">
                                   {group.sender}
                                 </button>
@@ -3770,7 +3580,6 @@ export default function App() {
                               {group.items.map((m, idx) => {
                                 const isFirst = idx === 0;
                                 const isLast = idx === group.items.length - 1;
-                                const isMystery = Boolean(m.isMystery);
                                 const topRadius = isFirst ? "rounded-t-2xl" : "rounded-t-lg";
                                 const botRadius = isLast ? "rounded-b-2xl" : "rounded-b-lg";
                                 const tailClass = "";
@@ -3836,53 +3645,28 @@ export default function App() {
                                         e.stopPropagation();
                                         if (longPressTriggered.current) { longPressTriggered.current = false; return; }
                                         if (reactionBarId === m.id) { setReactionBarId(null); return; }
-                                        // Mystery tap: first tap unwraps, subsequent taps toggle timestamp
-                                        if (isMystery && !mine && !unwrappedMysteries[m.id]) {
-                                          handleUnwrapMystery(m.id); return;
-                                        }
                                         setActiveMessageId(isActive ? null : m.id);
                                       }}>
                                       <div className="relative">
-                                        {(() => {
-                                          const isUnwrapped = isMystery && !mine && !!unwrappedMysteries[m.id];
-                                          const isBursting = burstingMystery === m.id;
-                                          const moodStyle = getMoodBubbleStyle(group.moodTag, mine);
-                                          const hasMood = Boolean(moodStyle);
-                                          return (
-                                            <div
-                                              className={`border px-3.5 py-2.5 text-[14px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
-                                                mine
-                                                  ? (hasMood ? "text-white border-transparent" : "bg-teal-600 text-white border-teal-600")
-                                                  : isUnwrapped
-                                                  ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-200 text-teal-900"
-                                                  : isMystery
-                                                  ? "seen-grad-warm bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 text-amber-900 mystery-invite"
-                                                  : (hasMood ? "border" : "bg-white border-slate-200 text-slate-800")
-                                              } ${isBursting ? "mystery-burst" : ""} ${
-                                                hasMood && mine ? "seen-mood-dynamic relative overflow-hidden" : hasMood ? "seen-heartbeat" : ""
-                                              }`}
-                                              style={
-                                                hasMood && !isUnwrapped && !(isMystery && !mine)
-                                                  ? moodStyle
-                                                  : isUnwrapped
-                                                  ? { boxShadow: "0 0 0 1px rgba(255,107,107,0.25), 0 2px 12px rgba(255,107,107,0.12)" }
-                                                  : isMystery && !mine
-                                                  ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
-                                                  : {}
-                                              }>
-                                              {isMystery && !mine ? (
-                                                isUnwrapped ? (
-                                                  <span className="mystery-reveal">{unwrappedMysteries[m.id]}</span>
-                                                ) : (
-                                                  <span>🎁 Tap to unwrap</span>
-                                                )
-                                              ) : (
-                                                <>{isMystery && <span className="mr-1.5">🎁</span>}{m.text}</>
-                                              )}
-                                              {hasMood && mine && <span className="seen-mood-shimmer" aria-hidden="true" />}
-                                            </div>
-                                          );
-                                        })()}
+                                        {/* Bubble fill. Both sides are light tints of the sunset ramp rather
+                                            than one white and one saturated coral — a solid fill at full
+                                            saturation was the "too bright" the review flagged, and it also
+                                            forced white body text, which is the harder of the two to read.
+                                            Yours is the warmer tint (emerald-100 = #FFEAD8), theirs the
+                                            cooler one (teal-50 = #FFF1F0), so the two are still telling
+                                            apart at a glance without either shouting.
+
+                                            Dark mode needs nothing here: index.css already remaps
+                                            bg-teal-50 / bg-emerald-100 to low-alpha tints of the same hues,
+                                            and the text-*-900 remaps sit next to them. */}
+                                        <div
+                                          className={`border px-3.5 py-2.5 text-[14px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                            mine
+                                              ? "bg-emerald-100 border-emerald-200 text-emerald-900"
+                                              : "bg-teal-50 border-teal-200 text-teal-900"
+                                          }`}>
+                                          {m.text}
+                                        </div>
                                         <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
                                       <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
@@ -3960,23 +3744,15 @@ export default function App() {
                       textShadow: "0 1px 1px rgba(184,95,29,0.4)",
                     }}>
                     {!isSending && <span aria-hidden="true" className="send-kindness-shine" />}
+                    {/* Just the words, centred. The ✨ glyph, the 🔥 streak-bonus chip and the
+                        "N left" counter all used to ride along here. Between them they pushed
+                        the label off-centre and turned the one button everything depends on
+                        into a status readout. The streak bonus is still shown in the bell,
+                        and the daily limit still announces itself when you actually reach it
+                        (the branch above this one). */}
                     {isSending
                       ? <Loader2 size={16} className="text-white animate-spin" />
-                      : <>
-                          <span>✨ Send kindness</span>
-                          {(streak >= 3 || todayMessageCount > 0) && (
-                            <span className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold opacity-90">
-                              {streak >= 3 && (
-                                <span className="rounded-full bg-white/20 px-2 py-0.5">
-                                  🔥 +{streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}%
-                                </span>
-                              )}
-                              {todayMessageCount > 0 && (
-                                <span className="rounded-full bg-white/20 px-2 py-0.5">{DAILY_GREETING_LIMIT - todayMessageCount} left</span>
-                              )}
-                            </span>
-                          )}
-                        </>}
+                      : <span>Send Message</span>}
                   </button>
                 </>
               ) : null}

@@ -104,11 +104,7 @@ export const playFirstSend = guard(() => {                  // memorable first-k
     note(f, { start: i * 0.1, dur: 0.6, peak: 0.18, type: "triangle" }));
 });
 
-export const playMystery = guard(() => {                    // reveal sparkle
-  note(880, { dur: 0.3, peak: 0.12, type: "triangle" });
-  note(1318.51, { start: 0.08, dur: 0.4, peak: 0.1, type: "triangle" });
-  note(1760, { start: 0.16, dur: 0.4, peak: 0.08 });
-});
+// playMystery lived here — the reveal sparkle for the mystery greeting, now removed.
 
 export const playCheckIn = guard(() => {                    // grounding resolve (wellbeing/journal)
   note(392, { dur: 0.6, peak: 0.16 });

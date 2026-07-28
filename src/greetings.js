@@ -363,7 +363,6 @@ export const ALL_GREETINGS = [
   { id: "afternoon", text: "Afternoon check-in — you doing okay? 💛",            sparkReward: 10, isMystery: false, category: "core", isPremium: false },
   { id: "evening",   text: "Evening. Time to breathe and let the day go 🌆",     sparkReward: 10, isMystery: false, category: "core", isPremium: false },
   { id: "night",     text: "Good night. You showed up today and that counts 🌙", sparkReward: 10, isMystery: false, category: "core", isPremium: false },
-  { id: "mystery",   text: "🎁 Mystery Greeting",                                sparkReward: 25, isMystery: true,  category: "core", isPremium: false },
 
   // ─── FREE: Warmth ──────────────────────────────────────────────────────────
   { id: "w1", text: "Thinking of you today 💭",                                 sparkReward: 12, isMystery: false, category: "warmth", isPremium: false },
@@ -502,12 +501,5 @@ export function getGreetingsByCategory(isPremium = false) {
   }).filter(cat => cat.greetings.length > 0);
 }
 
-export const MYSTERY_MESSAGES = [
-  "You are someone's reason to smile today 🌟",
-  "The world is genuinely better with you in it 💛",
-  "Someone out there is rooting for you right now 🤝",
-  "You matter more than you'll ever know ✨",
-  "You bring something to this world no one else can 🌍",
-  "Today, someone thought of you and smiled 😊",
-  "You are seen. You are valued. You are enough 🙏",
-];
+// MYSTERY_MESSAGES lived here — the pool a mystery greeting revealed on tap. The whole
+// mystery greeting was removed in the V2 review pass.

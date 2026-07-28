@@ -236,6 +236,13 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 
 [data-dark-shell] .text-teal-700    { color: #FFA09A !important; }
 [data-dark-shell] .text-emerald-700 { color: #FFBC85 !important; }
+/* Feed message bubbles. In light mode these are the darkest ends of the coral and warm-orange
+   ramps on their own pale tints; on the dark ground they have to invert, or the body of every
+   message goes near-black on near-black. Values picked to clear 4.5:1 against the bubble fill
+   the dark shell actually paints (a 12–17% tint of the same hue over #0d1117), not against
+   pure black — see the contrast check in the commit that introduced them. */
+[data-dark-shell] .text-teal-900    { color: #FFD9D6 !important; }
+[data-dark-shell] .text-emerald-900 { color: #FFE3C9 !important; }
 [data-dark-shell] .text-amber-700   { color: #fbbf24 !important; }
 [data-dark-shell] .text-amber-800   { color: #fcd34d !important; }
 [data-dark-shell] .text-violet-700  { color: #c4b5fd !important; }
@@ -655,40 +662,7 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
   color: #fbbf24;
 }
 
-/* ─── Mystery Greeting unwrap animations ────────────────────────────── */
-
-/* Pre-unwrap: pulse ring on the gift bubble to invite tapping */
-@keyframes mysteryInvite {
-  0%   { box-shadow: 0 0 0 0   rgba(251,146,60,0.55); }
-  65%  { box-shadow: 0 0 0 10px rgba(251,146,60,0); }
-  100% { box-shadow: 0 0 0 0   rgba(251,146,60,0); }
-}
-.mystery-invite {
-  animation: mysteryInvite 2.2s ease-out infinite;
-}
-
-/* Burst: the moment of unwrap — scale pop + brightness flash */
-@keyframes mysteryBurst {
-  0%   { transform: scale(1);    filter: brightness(1); }
-  22%  { transform: scale(1.11); filter: brightness(1.35); }
-  55%  { transform: scale(0.96); filter: brightness(1.1); }
-  78%  { transform: scale(1.03); }
-  100% { transform: scale(1);    filter: brightness(1); }
-}
-.mystery-burst {
-  animation: mysteryBurst 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-/* Revealed text springs in after burst */
-@keyframes mysteryReveal {
-  0%   { opacity: 0; transform: scale(0.82) translateY(5px); }
-  60%  { opacity: 1; transform: scale(1.04) translateY(-1px); }
-  100% { opacity: 1; transform: scale(1)    translateY(0); }
-}
-.mystery-reveal {
-  display: inline-block;
-  animation: mysteryReveal 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
-}
+/* The mystery-greeting unwrap animations lived here — feature removed. */
 
 /* Send button bounce (Suggestion 5) */
 @keyframes seenSendBounce {

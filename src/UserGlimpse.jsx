@@ -1,7 +1,7 @@
 // UserGlimpse.jsx — the "glimpse" card shown when you tap someone's name in the feed.
-// Low-exposure by design: their location, current mood, and two self-described lines
+// Low-exposure by design: their location and two self-described lines
 // (💛 Most days, I'm… / ✨ In another life, I'd be…). No photo or stats. The feed itself
-// stays uncluttered — mood and country live HERE, not next to the name.
+// stays uncluttered — country lives HERE, not next to the name.
 // Fetches the author's profile on open (any authenticated user may read user docs).
 
 import React, { useState, useEffect } from "react";
@@ -9,9 +9,8 @@ import { createPortal } from "react-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { X, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
-import { MoodPill } from "./UpliftRetentionFeatures";
 
-export default function UserGlimpse({ db, uid, country, name, moodTag, onClose }) {
+export default function UserGlimpse({ db, uid, country, name, onClose }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
 
@@ -26,8 +25,6 @@ export default function UserGlimpse({ db, uid, country, name, moodTag, onClose }
 
   const land = country ?? data?.country ?? null;
   const flag = land ? FLAG_MAP[land] : null;
-  // Prefer their live mood from the profile; fall back to the mood on the tapped message.
-  const mood = data?.moodTag ?? moodTag ?? null;
   const mostDays = (data?.mostDays || "").trim();
   const anotherLife = (data?.anotherLife || "").trim();
   const hasGlimpse = mostDays || anotherLife;
@@ -54,15 +51,10 @@ export default function UserGlimpse({ db, uid, country, name, moodTag, onClose }
           </div>
         ) : (
           <>
-            {(land || mood) && (
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                {land && (
-                  <p className="text-sm font-semibold text-slate-700">
-                    {flag ? `${flag} ` : "🌍 "}{land}
-                  </p>
-                )}
-                {mood && <MoodPill mood={mood} />}
-              </div>
+            {land && (
+              <p className="mb-3 text-sm font-semibold text-slate-700">
+                {flag ? `${flag} ` : "🌍 "}{land}
+              </p>
             )}
             {hasGlimpse ? (
               <div className="space-y-3">

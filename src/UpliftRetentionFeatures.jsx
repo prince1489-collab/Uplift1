@@ -33,7 +33,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { startCheckout } from "./payments";
 import { StickerPicker } from "./StickerReactions";
-import { useActiveFeelings, FeelingComposer, MyFeelingPanel } from "./Feelings";
 import { apiUrl } from "./apiBase";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
@@ -1392,9 +1391,7 @@ const LEVEL_THRESHOLDS = [
   { min: 600, title: "Guardian of Joy" },
 ];
 
-function getLevelForBalance(balance) {
-  return LEVEL_THRESHOLDS.reduce((l, t) => (balance >= t.min ? t : l), LEVEL_THRESHOLDS[0]);
-}
+// getLevelForBalance lived here — its only caller was the profile card's level tile.
 
 // ─────────────────────────────────────────────────────────────────
 // EDIT PROFILE SHEET
@@ -1573,20 +1570,14 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
 // PROFILE CARD
 // ─────────────────────────────────────────────────────────────────
 
-export function ProfileCard({ profile, streak, sparkBalance, onClose, db, currentUser, onOpenBlocked, onOpenChangePassword }) {
+// `streak` and `sparkBalance` are no longer props: the tiles that displayed them are gone.
+export function ProfileCard({ profile, onClose, db, currentUser, onOpenBlocked, onOpenChangePassword }) {
   const cardRef = useRef(null);
   const [copying, setCopying] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [localProfile, setLocalProfile] = useState(profile);
-  // Permanent "how are you feeling?" box — update your shared feeling anytime from here.
-  const { myFeeling, others: otherFeelings } = useActiveFeelings(db, currentUser);
-  const [showFeelingComposer, setShowFeelingComposer] = useState(false);
-  const [showFeelingReplies, setShowFeelingReplies] = useState(false);
 
   useEffect(() => { setLocalProfile(profile); }, [profile]);
-
-  const level = getLevelForBalance(sparkBalance);
-  const mood = MOOD_OPTIONS.find((m) => m.id === localProfile?.moodTag);
 
   const handleShare = async () => {
     setCopying(true);
@@ -1626,7 +1617,6 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
               <div className="flex-1 min-w-0">
                 <p className="text-lg font-extrabold truncate">{localProfile?.fullName}</p>
                 <p className="text-sm text-white/80 truncate">{localProfile?.country}</p>
-                {mood && <p className="text-xs text-white/70 mt-0.5">{mood.emoji} {mood.label}</p>}
               </div>
               {db && currentUser && (
                 <button
@@ -1637,52 +1627,18 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="rounded-2xl bg-white/20 p-3 text-center">
-                <Flame size={16} className="mx-auto mb-1 text-orange-200" />
-                <p className="text-xl font-extrabold">{streak ?? 0}</p>
-                <p className="text-[10px] text-white/70">day streak</p>
-              </div>
-              <div className="rounded-2xl bg-white/20 p-3 text-center">
-                <Sparkles size={16} className="mx-auto mb-1 text-yellow-200" />
-                <p className="text-xl font-extrabold">{sparkBalance}</p>
-                <p className="text-[10px] text-white/70">drops</p>
-              </div>
-              <div className="rounded-2xl bg-white/20 p-3 text-center">
-                <Star size={16} className="mx-auto mb-1 text-white/80" />
-                <p className="text-[11px] font-extrabold leading-tight">{level.title}</p>
-                <p className="text-[10px] text-white/70">level</p>
-              </div>
-            </div>
+            {/* The streak / drops / level tiles used to sit here. They were removed in the
+                V2 review pass: the card is meant to say who you are, and three scoreboard
+                numbers turned it into a stats readout. The same figures still live on
+                My Journey, which is where someone goes when they actually want them. */}
             <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
               <Heart size={12} className="text-pink-200" />
               <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>
             </div>
           </div>
 
-          {/* Permanent feeling box — outside cardRef so it isn't baked into the shared image */}
-          {db && currentUser && (
-            <div className="mt-3 rounded-2xl bg-white px-4 py-3 shadow-lg">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">💭 How you're feeling</p>
-              {myFeeling ? (
-                <p className="text-[13px] font-semibold text-slate-700 leading-snug mt-0.5">“{myFeeling.text}”</p>
-              ) : (
-                <p className="text-[12px] text-slate-500 mt-0.5">You haven't shared today — let others send you a little warmth.</p>
-              )}
-              <div className="mt-2 flex gap-2">
-                <button onClick={() => setShowFeelingComposer(true)}
-                  className="flex-1 rounded-full bg-teal-600 py-1.5 text-[12px] font-semibold text-white hover:bg-teal-700 transition-colors">
-                  {myFeeling ? "Update" : "Share how you feel"}
-                </button>
-                {myFeeling && myFeeling.replyCount > 0 && (
-                  <button onClick={() => setShowFeelingReplies(true)}
-                    className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors">
-                    💛 {myFeeling.replyCount} · read
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {/* The "How you're feeling" box lived here. The whole feelings feature is retired —
+              see the note at the top of src/Feelings.jsx for what it was and why it went. */}
 
           {/* Actions */}
           <div className="mt-3 flex gap-2">
@@ -1742,17 +1698,6 @@ export function ProfileCard({ profile, streak, sparkBalance, onClose, db, curren
           onClose={() => setShowEdit(false)}
           onSaved={(updates) => setLocalProfile(p => ({ ...p, ...updates }))}
         />
-      )}
-
-      {showFeelingComposer && (
-        <FeelingComposer db={db} currentUser={currentUser} profile={localProfile}
-          onClose={() => setShowFeelingComposer(false)} />
-      )}
-      {showFeelingReplies && myFeeling && (
-        <MyFeelingPanel db={db} currentUser={currentUser} feeling={myFeeling}
-          othersFeelings={otherFeelings}
-          onClose={() => setShowFeelingReplies(false)}
-          onEncourage={() => setShowFeelingReplies(false)} />
       )}
     </>
   );

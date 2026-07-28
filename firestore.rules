@@ -94,33 +94,18 @@ service cloud.firestore {
         allow update, delete: if request.auth != null && request.auth.uid == userId;
       }
 
-      // Encouragement replies to my feeling status — written by the responder,
-      // read only by me (replies are private; the feed shows just a counter).
+      // Encouragement replies and kindness echoes — both belonged to the "how you're
+      // feeling" loop, removed in the V2 review pass. Reads stay open to the owner because
+      // the Kindness Board still builds their history from these documents; creates are
+      // closed because nothing writes them any more.
       match /feelingReplies/{replyId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow create: if request.auth != null
-            && request.resource.data.responderUid == request.auth.uid
-            && request.resource.data.text is string
-            && request.resource.data.text.size() <= 120;
-        // The reply id is deterministic (one per responder per feeling), so re-sending overwrites
-        // the SAME doc — that's an update, not a create. Let the original responder revise their
-        // own reply so a repeat send never fails with "couldn't send".
-        allow update: if request.auth != null
-            && resource.data.responderUid == request.auth.uid
-            && request.resource.data.responderUid == request.auth.uid
-            && request.resource.data.text is string
-            && request.resource.data.text.size() <= 120;
-        allow delete: if request.auth != null && request.auth.uid == userId || isAdmin();
+        allow write: if request.auth != null && request.auth.uid == userId;
       }
 
-      // Kindness echoes — "your encouragement helped". Written by the feeling's
-      // poster when they acknowledge, read only by the responder it belongs to.
       match /kindnessEchoes/{echoId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow create: if request.auth != null
-            && request.resource.data.fromUid == request.auth.uid
-            && request.resource.data.ownerUid == userId;
-        allow delete: if request.auth != null && request.auth.uid == userId || isAdmin();
+        allow write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
@@ -212,28 +197,13 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // ── Feeling statuses (the Kindness Loop's "see a real need") ──
-    // One active feeling per user: the doc id IS the poster's uid, so posting again
-    // overwrites. Everyone signed-in can read (the feed strip); only the owner can
-    // create/update their status — except responders, who may bump replyCount only.
+    // ── Feeling statuses ──
+    // The "how you're feeling" feature was removed in the V2 review pass. Writes are closed
+    // so no new status can be created, but existing docs stay readable by their owner (and
+    // admin) rather than being orphaned behind a rule that denies everything.
     match /feelings/{posterUid} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-          && request.auth.uid == posterUid
-          && request.resource.data.uid == posterUid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() <= 60
-          && request.resource.data.visibility in ['open', 'anon'];
-      allow update: if request.auth != null && (
-          (request.auth.uid == posterUid
-            && request.resource.data.uid == posterUid
-            && request.resource.data.text is string
-            && request.resource.data.text.size() <= 60
-            && request.resource.data.visibility in ['open', 'anon'])
-          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
-      );
-      allow delete: if request.auth != null
-          && (request.auth.uid == posterUid || isAdmin());
+      allow read: if request.auth != null && (request.auth.uid == posterUid || isAdmin());
+      allow write: if isAdmin();
     }
 
     // ── App-wide state (reset signal etc.) ──
