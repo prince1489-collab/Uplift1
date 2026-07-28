@@ -13,6 +13,18 @@ workflows:
     name: Seen iOS (Capacitor)
     instance_type: mac_mini_m2
     max_build_duration: 60
+    triggering:
+      # Pin the branch. Without this the branch is a per-build dropdown in the Codemagic UI,
+      # and selecting the old claude/improve-app-design-HJrCm would quietly ship V1 to
+      # TestFlight — a mistake invisible until a tester reported it. v2-preview is what
+      # production deploys, so it is what should be packaged.
+      events:
+        - push
+      branch_patterns:
+        - pattern: v2-preview
+          include: true
+          source: true
+      cancel_previous_builds: true
     integrations:
       app_store_connect: CodemagicASCKey   # <-- name of your App Store Connect API key integration
     environment:
@@ -132,6 +144,18 @@ workflows:
     name: Seen Android (Capacitor)
     instance_type: linux_x2
     max_build_duration: 60
+    triggering:
+      # Pin the branch. Without this the branch is a per-build dropdown in the Codemagic UI,
+      # and selecting the old claude/improve-app-design-HJrCm would quietly ship V1 to
+      # TestFlight — a mistake invisible until a tester reported it. v2-preview is what
+      # production deploys, so it is what should be packaged.
+      events:
+        - push
+      branch_patterns:
+        - pattern: v2-preview
+          include: true
+          source: true
+      cancel_previous_builds: true
     environment:
       android_signing:
         - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
