@@ -331,6 +331,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const [celebrate, setCelebrate] = useState(false);
   const [expandPast, setExpandPast] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false); // v2: calendar collapsed by default to reclaim space
+  const [showDatePicker, setShowDatePicker] = useState(false); // dates other than today are the rare case
   const [shareEntry, setShareEntry] = useState(null); // entry being shared as a Featured Story
   const [openFolders, setOpenFolders] = useState(null); // Set of open folder keys (null → init to newest)
   const prevWeekly = useRef(null);
@@ -346,7 +347,23 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
 
   const activeType = TYPES.find((t) => t.id === type) ?? TYPES[0];
   // Prompt rotates automatically once every 24h (local-midnight day number in JournalPrompts).
-  const prompt = pickDailyPrompt(uid, type, 0);
+  //
+  // The offset lets someone step to a different prompt when today's doesn't land. It used to
+  // be hard-coded to 0, so a prompt that didn't speak to you was a dead end for the day —
+  // and the whole point of the tab is to get someone writing. Stored per-day so stepping
+  // away and coming back doesn't lose your place, and so it resets on its own tomorrow.
+  const offsetKey = `seen_reflect_offset_${todayStr()}`;
+  const [promptOffset, setPromptOffset] = useState(() => {
+    try { return Number(localStorage.getItem(offsetKey)) || 0; } catch { return 0; }
+  });
+  const nextPrompt = () => {
+    setPromptOffset((n) => {
+      const next = n + 1;
+      try { localStorage.setItem(offsetKey, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  const prompt = pickDailyPrompt(uid, type, promptOffset);
 
   // Derived stats
   const counts = {};
@@ -488,6 +505,72 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Today's reflection — writes a new one, or edits the day's existing entry */}
+        <div className={`rounded-2xl border p-3 space-y-3 ${editingId ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-slate-50/60"}`}>
+          {/* The standing explainer that used to sit here is gone. It said the same two lines
+              every single day above the one thing the tab is for, and pushed the prompt below
+              the fold. The editing-state messages stay — those actually tell you something. */}
+          {editingId && (
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              {date === todayStr()
+                ? "You've written today's reflection. You can keep editing it — one a day is plenty."
+                : "You already reflected on this day. Edit it below, or pick another date."}
+            </p>
+          )}
+
+          {/* The prompt is the hero of this tab, so it's set as a question rather than as a
+              labelled field. While editing, it shows the prompt that entry was actually
+              written against rather than today's rotating one. */}
+          <div className="rounded-xl bg-white border border-slate-200 px-3.5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
+              {editingId ? "You answered" : "Today's prompt"}
+            </p>
+            <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
+            {!editingId && (
+              <button onClick={nextPrompt}
+                className="mt-2 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
+                Ask me something else →
+              </button>
+            )}
+          </div>
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            /* Not the prompt again — it's already directly above, and repeating it verbatim
+               made the card read as though it had asked twice. */
+            placeholder="Write whatever comes…"
+            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-teal-400 focus:outline-none"
+          />
+
+          {/* Almost every reflection is for today, so the date picker is folded away behind a
+              line of text rather than sitting open as a permanent field. */}
+          {showDatePicker ? (
+            <input
+              type="date"
+              value={date}
+              max={todayStr()}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-teal-400 focus:outline-none"
+            />
+          ) : (
+            <button onClick={() => setShowDatePicker(true)}
+              className="text-[11px] text-slate-400 hover:text-teal-600">
+              {date === todayStr() ? "Writing for today · change date" : `Writing for ${fmtDate(date)} · change`}
+            </button>
+          )}
+          {saveError && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{saveError}</p>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving || !text.trim() || (editingId && text.trim() === (entryForDate?.text ?? "").trim())}
+            className="w-full rounded-full bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
+            {saving ? "Saving…" : editingId ? "Save changes" : "Add reflection"}
+          </button>
+        </div>
+
         {/* v2: numeric stats now live in "My Journey". Reflect stays a calm writing space.
             A slim, non-numeric weekly-cadence line keeps the gentle rhythm without a stats block. */}
         {entries.length > 0 && (
@@ -529,50 +612,6 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             </p>
           </button>
         )}
-
-        {/* Today's reflection — writes a new one, or edits the day's existing entry */}
-        <div className={`rounded-2xl border p-3 space-y-3 ${editingId ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-slate-50/60"}`}>
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            {editingId
-              ? (date === todayStr()
-                  ? "You've written today's reflection. You can keep editing it — one a day is plenty."
-                  : "You already reflected on this day. Edit it below, or pick another date.")
-              : "A gentle space to reflect — a few times a week is plenty. Just follow the prompt and write what comes."}
-          </p>
-
-          {/* One journal, one daily prompt. While editing, this shows the prompt that entry
-              was written against rather than today's rotating one. */}
-          <div className="rounded-xl bg-white border border-slate-200 px-3 py-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
-              {editingId ? "You answered" : "Today's prompt"}
-            </p>
-            <p className="text-sm text-slate-700 mt-1 leading-snug">{activePrompt}</p>
-          </div>
-
-          <input
-            type="date"
-            value={date}
-            max={todayStr()}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-teal-400 focus:outline-none"
-          />
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={3}
-            placeholder={activePrompt}
-            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-teal-400 focus:outline-none"
-          />
-          {saveError && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{saveError}</p>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving || !text.trim() || (editingId && text.trim() === (entryForDate?.text ?? "").trim())}
-            className="w-full rounded-full bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
-            {saving ? "Saving…" : editingId ? "Save changes" : "Add reflection"}
-          </button>
-        </div>
 
         {/* Log — tidied into Year → Month → Week folders */}
         <div>
