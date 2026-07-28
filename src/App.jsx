@@ -45,6 +45,7 @@ import {
 import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, MYSTERY_MESSAGES, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
 import { getResources, getEmergency } from "./SupportData.js";
 import JournalPanel from "./Journal";
+import ModerationQueue from "./ModerationQueue";
 import UserGlimpse from "./UserGlimpse";
 import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
 import {
@@ -247,7 +248,7 @@ function getMoodBubbleStyle(moodTag, isMine) {
   return isMine ? (MINE[moodTag] || null) : (THEIRS[moodTag] || null);
 }
 
-function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -386,6 +387,12 @@ function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrad
                     <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
                     {/* Community greetings are now AI-moderated at submit; the weekly champion
                         rotation runs automatically via cron — no manual admin steps needed. */}
+                    <Row
+                      onClick={() => { onAdminReports?.(); close(); }}
+                      icon={<IconBox className="bg-rose-50"><Shield size={15} className="text-rose-500" /></IconBox>}
+                      label="Reported content"
+                      sub="Review and action member reports"
+                    />
                     <Row
                       onClick={() => { onAdminClearFeed?.(); close(); }}
                       danger
@@ -2068,6 +2075,7 @@ export default function App() {
   // v2 preview: award the daily first-open once per day (defined after isRealSignedInUser to avoid TDZ)
   useEffect(() => { if (isRealSignedInUser) awardPoints("dailyOpen", { oncePerDay: true }); }, [isRealSignedInUser]);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const [showReports, setShowReports] = useState(false);
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
   const [adminClearing, setAdminClearing] = useState(false);
   const [adminClearError, setAdminClearError] = useState("");
@@ -3078,6 +3086,10 @@ export default function App() {
           <MessageReactionsPanel db={db} message={reactorsFor} currentUser={currentUser} blockedUids={blockedUids} onClose={() => setReactorsFor(null)} />
         )}
 
+        {showReports && isAdmin && (
+          <ModerationQueue db={db} darkMode={darkMode} onClose={() => setShowReports(false)} />
+        )}
+
         {glimpse && (
           <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} moodTag={glimpse.moodTag} onClose={() => setGlimpse(null)} />
         )}
@@ -3301,6 +3313,7 @@ export default function App() {
                       streak={streak}
                       sparkBalance={sparkBalance}
                       isAdmin={isAdmin}
+                      onAdminReports={() => setShowReports(true)}
                       onAdminClearFeed={() => setAdminConfirm(true)}
                       onAdminFullReset={() => setAdminResetConfirm(true)}
                     />
