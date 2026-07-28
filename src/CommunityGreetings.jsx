@@ -7,8 +7,7 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import {
-  addDoc, collection, doc, getDocs, onSnapshot, query,
-  runTransaction, updateDoc, where,
+  collection, doc, increment, onSnapshot, query, runTransaction, updateDoc, where,
 } from "firebase/firestore";
 import { X, Loader2, ThumbsUp, Flag, Sparkles, Trophy, Send, Info, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
@@ -175,13 +174,11 @@ export async function recordCommunitySend(db, greeting, senderUid) {
       if (!snap.exists()) return;
       tx.update(subRef, { sentCount: (snap.data().sentCount ?? 0) + 1 });
     });
+    // increment() rather than read-then-add: concurrency-safe, and it needs no READ of
+    // another member's `users` doc, which is what allows that collection to stay closed to
+    // everyone but its owner. See src/publicProfile.js.
     if (greeting.authorUid && greeting.authorUid !== senderUid) {
-      const authorRef = doc(db, "users", greeting.authorUid);
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(authorRef);
-        const bal = Number(snap.exists() ? snap.data().sparkBalance ?? 0 : 0);
-        tx.set(authorRef, { sparkBalance: bal + AUTHOR_SEND_BONUS }, { merge: true });
-      });
+      await updateDoc(doc(db, "users", greeting.authorUid), { sparkBalance: increment(AUTHOR_SEND_BONUS) });
     }
   } catch (_) { /* rewards are best-effort */ }
 }
@@ -196,12 +193,7 @@ export async function approveSubmission(db, submission) {
   // Author approval reward (cross-user sparkBalance write, same pattern as gifting).
   if (submission.authorUid) {
     try {
-      const authorRef = doc(db, "users", submission.authorUid);
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(authorRef);
-        const bal = Number(snap.exists() ? snap.data().sparkBalance ?? 0 : 0);
-        tx.set(authorRef, { sparkBalance: bal + APPROVAL_REWARD }, { merge: true });
-      });
+      await updateDoc(doc(db, "users", submission.authorUid), { sparkBalance: increment(APPROVAL_REWARD) });
     } catch (_) { /* reward best-effort */ }
   }
 }

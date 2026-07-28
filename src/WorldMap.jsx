@@ -10,11 +10,11 @@
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
-  collection, doc, getDoc, limit,
-  onSnapshot, orderBy, query, where,
+  collection, limit, onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { X } from "lucide-react";
 import { playArcLaunch, playArcLand } from "./sounds";
+import { readPublicProfile } from "./publicProfile";
 
 // ── Country centroids [longitude, latitude] ──────────────────────
 export const COUNTRY_COORDS = {
@@ -865,8 +865,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const docs = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
       const withCountries = await Promise.all(docs.map(async (p) => {
         try {
-          const ud = await getDoc(doc(db, "users", p.uid));
-          return { uid: p.uid, country: ud.exists() ? ud.data().country : null };
+          const pub = await readPublicProfile(db, p.uid);
+          return { uid: p.uid, country: pub?.country ?? null };
         } catch { return { uid: p.uid, country: null }; }
       }));
       setActiveUsers(withCountries.filter(u => u.country && COUNTRY_COORDS[u.country]));
@@ -889,7 +889,8 @@ export default function WorldMap({ db, currentUser, profile, onClose, onSendKind
       const uids = [...new Set(waves.map(w => w.fromUid).filter(Boolean))];
       const profiles = {};
       await Promise.all(uids.map(async (uid) => {
-        try { const d = await getDoc(doc(db, "users", uid)); if (d.exists()) profiles[uid] = d.data(); } catch {}
+        const pub = await readPublicProfile(db, uid);
+        if (pub) profiles[uid] = pub;
       }));
       setMyWaveProfiles(profiles);
     }, () => {});

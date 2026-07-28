@@ -23,6 +23,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
+import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -66,8 +67,8 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, getFirestore,
-  limit, onSnapshot, orderBy, query,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
+  increment, limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
@@ -800,9 +801,9 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
             name = likeNameCacheRef.current[r.reactorUid];
           } else {
             try {
-              const us = await getDoc(doc(db, "users", r.reactorUid));
-              name = (us.data()?.fullName || "").trim().split(" ")[0] || "Someone";
-              if (!country) country = us.data()?.country || "";
+              const us = await readPublicProfile(db, r.reactorUid);
+              name = (us?.fullName || "").trim().split(" ")[0] || "Someone";
+              if (!country) country = us?.country || "";
               likeNameCacheRef.current[r.reactorUid] = name;
             } catch { name = "Someone"; }
           }
@@ -1561,8 +1562,8 @@ export default function App() {
               if (!country) {
                 // Fallback: fetch country from users doc (handles reactions written by older app
                 // builds that didn't store the countries map, or when profile was null at react time).
-                getDoc(doc(db, "users", uid)).then(snap => {
-                  const c = snap.data()?.country;
+                readPublicProfile(db, uid).then(pub => {
+                  const c = pub?.country;
                   if (!c) return;
                   const at2 = reactedAt[uid] ?? msgTs;
                   setReactedCountries(prev => {
@@ -1656,8 +1657,8 @@ export default function App() {
           });
         };
         if (data.country) applyCountry(data.country);
-        else getDoc(doc(db, "users", reactorUid))
-          .then((s) => applyCountry(s.data()?.country))
+        else readPublicProfile(db, reactorUid)
+          .then((pub) => applyCountry(pub?.country))
           .catch((e) => console.warn("[reactionsReceived] country fallback failed", e));
 
         // Toast once per message+user+emoji — shared dedupe with the listener above
@@ -1912,6 +1913,18 @@ export default function App() {
       return next;
     });
   };
+  // Follow from search. Separate from toggleFocus because that one toggles from a message
+  // and this must never un-follow — the button in the results list already reads "Following"
+  // and is disabled once they're in the list, so a toggle here could only ever be a misfire.
+  const followProfile = ({ uid, name, country }) => {
+    if (!uid) return;
+    setFollows((prev) => {
+      if (prev.some((f) => f.uid === uid)) return prev;
+      const next = [...prev, { uid, name: name || "", country: country ?? null, label: null }];
+      saveFollows(next);
+      return next;
+    });
+  };
   const setFollowLabel = (uid, label) => {
     setFollows((prev) => {
       const next = prev.map((f) => (f.uid === uid ? { ...f, label } : f));
@@ -2098,6 +2111,10 @@ export default function App() {
           const nextProfile = snap.exists() ? snap.data() : null;
           const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
           setProfile(nextProfile);
+          // Backfill publicProfiles for accounts that predate the split, and repair drift if
+          // a profile was ever edited without the mirror being written. Reads only this
+          // user's own documents and no-ops when already in step.
+          if (done) ensurePublicProfile(db, currentUser.uid);
           setHasCompletedOnboarding(done); setOnboardingStep(done ? "done" : "details");
           // Remember on this device that onboarding is done, so a future cold start never
           // flashes the onboarding screen even if the profile read is momentarily empty.
@@ -2621,6 +2638,13 @@ export default function App() {
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
       }, { merge: true });
 
+      // Publish the readable subset so other members can see (and search for) this person
+      // without `users` having to be world-readable. See src/publicProfile.js.
+      syncPublicProfile(db, user.uid, {
+        fullName: data.fullName, country: data.country, profilePhotoUrl,
+        mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
+      });
+
       // Wellbeing baseline — recorded from the onboarding check-in step
       if (data.wellbeing) {
         try { await saveCheckin(db, user.uid, data.wellbeing); } catch (_) {}
@@ -2633,16 +2657,20 @@ export default function App() {
           const referralDocRef = doc(db, "referrals", user.uid);
           const newUserRef = userProfileRef(user.uid);
           const referrerRef = doc(db, "users", pendingRef);
+          // The referrer's balance is bumped with increment() rather than read-then-add.
+          // Two reasons: it's the correct concurrency-safe primitive anyway, and it means the
+          // referral reward needs no READ of another member's `users` doc — which is what
+          // lets that collection close to its owner. `update` on a missing document throws,
+          // so an invalid referrer still aborts the transaction exactly as the old
+          // `referrerSnap.exists()` check did.
           await runTransaction(db, async (tx) => {
-            const [existing, referrerSnap, newUserSnap] = await Promise.all([
-              tx.get(referralDocRef), tx.get(referrerRef), tx.get(newUserRef),
+            const [existing, newUserSnap] = await Promise.all([
+              tx.get(referralDocRef), tx.get(newUserRef),
             ]);
             if (existing.exists()) return; // already rewarded
-            if (!referrerSnap.exists()) return; // invalid referrer
-            const referrerSparks = referrerSnap.data().sparkBalance ?? 0;
             const newUserSparks = newUserSnap.exists() ? (newUserSnap.data().sparkBalance ?? 0) : 0;
             tx.set(referralDocRef, { referrerUid: pendingRef, newUserUid: user.uid, awardedAt: serverTimestamp() });
-            tx.update(referrerRef, { sparkBalance: referrerSparks + 50 });
+            tx.update(referrerRef, { sparkBalance: increment(50) });
             tx.set(newUserRef, { sparkBalance: newUserSparks + 50 }, { merge: true });
           });
           localStorage.removeItem("seen_ref");
@@ -3020,8 +3048,12 @@ export default function App() {
           <FollowingPanel
             follows={follows}
             messages={messages}
+            db={db}
+            currentUser={currentUser}
+            blockedUids={blockedUids}
             onSetLabel={setFollowLabel}
             onUnfollow={unfollow}
+            onFollow={followProfile}
             onClose={() => setShowFollowing(false)} />
         )}
         {reactorsFor && (
@@ -3103,6 +3135,7 @@ export default function App() {
             initial={{ mostDays: profile?.mostDays, anotherLife: profile?.anotherLife }}
             onSave={async (fields) => {
               await setDoc(userProfileRef(currentUser.uid), fields, { merge: true });
+              syncPublicProfile(db, currentUser.uid, { ...profile, ...fields });
               setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1");
             }}
             onClose={() => setShowGlimpseSheet(false)}

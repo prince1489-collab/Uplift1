@@ -10,23 +10,7 @@ import React, {
 import { createPortal } from "react-dom";
 
 import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  arrayUnion,
-  arrayRemove,
-  addDoc,
+  collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, arrayUnion, arrayRemove, addDoc, increment,
 } from "firebase/firestore";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -36,6 +20,7 @@ import { StickerPicker } from "./StickerReactions";
 import { apiUrl } from "./apiBase";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
+import { syncPublicProfile, readPublicProfile } from "./publicProfile";
 
 import {
   Bell,
@@ -472,8 +457,8 @@ export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOp
 
   useEffect(() => {
     if (!db || buddyUids.length === 0) { setBuddyProfiles([]); return; }
-    Promise.all(buddyUids.slice(0, 5).map((uid) => getDoc(doc(db, "users", uid))))
-      .then((docs) => setBuddyProfiles(docs.filter((d) => d.exists()).map((d) => ({ uid: d.id, ...d.data() }))));
+    Promise.all(buddyUids.slice(0, 5).map((uid) => readPublicProfile(db, uid).then((p) => (p ? { uid, ...p } : null))))
+      .then((rows) => setBuddyProfiles(rows.filter(Boolean)));
   }, [db, JSON.stringify(buddyUids)]);
 
   const handleShareInvite = async () => {
@@ -493,9 +478,9 @@ export function BuddyPanel({ db, currentUser, profile, compact = false, onChatOp
       const extractedUid = inviteInput.includes("?add=")
         ? inviteInput.split("?add=")[1].split("&")[0]
         : inviteInput.trim();
-      const snap = await getDoc(doc(db, "users", extractedUid));
-      if (!snap.exists()) setSearchError("No user found.");
-      else setSearchResult({ uid: snap.id, ...snap.data() });
+      const pub = await readPublicProfile(db, extractedUid);
+      if (!pub) setSearchError("No user found.");
+      else setSearchResult({ uid: extractedUid, ...pub });
     } catch { setSearchError("Lookup failed."); }
     finally { setSearching(false); }
   };
@@ -632,13 +617,15 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
     try {
       const sRef = doc(db, "users", currentUser.uid);
       const rRef = doc(db, "users", senderUid);
+      // Only the SENDER's balance is read — to check they can afford it. The recipient's is
+      // bumped with increment(), which needs no read, so a gift never requires reading
+      // another member's private profile. See src/publicProfile.js.
       await runTransaction(db, async (tx) => {
-        const [sSnap, rSnap] = await Promise.all([tx.get(sRef), tx.get(rRef)]);
+        const sSnap = await tx.get(sRef);
         const sB = Number(sSnap.exists() ? sSnap.data().sparkBalance ?? 0 : 0);
         if (sB < GIFT_AMOUNT) throw new Error("insufficient");
-        const rB = Number(rSnap.exists() ? rSnap.data().sparkBalance ?? 0 : 0);
         tx.set(sRef, { sparkBalance: sB - GIFT_AMOUNT }, { merge: true });
-        tx.set(rRef, { sparkBalance: rB + GIFT_AMOUNT }, { merge: true });
+        tx.set(rRef, { sparkBalance: increment(GIFT_AMOUNT) }, { merge: true });
       });
       setSent(true);
       if (onGift) onGift("🎁"); // 🎁 trigger gift burst animation
@@ -1212,12 +1199,11 @@ export function WaveNotifications({ db, currentUser }) {
       setWaves(incoming);
       const unknownUids = incoming.map((w) => w.fromUid).filter((uid) => uid && !senderNames[uid]);
       if (unknownUids.length > 0) {
-        const profiles = await Promise.all(unknownUids.map((uid) => getDoc(doc(db, "users", uid))));
+        const profiles = await Promise.all(unknownUids.map((uid) => readPublicProfile(db, uid).then((p) => ({ uid, p }))));
         const newNames = {};
-        profiles.forEach((p) => {
-          if (p.exists()) {
-            const data = p.data();
-            newNames[p.id] = data.country ? `Someone in ${data.country}` : "Someone";
+        profiles.forEach(({ uid, p: data }) => {
+          if (data) {
+            newNames[uid] = data.country ? `Someone in ${data.country}` : "Someone";
           }
         });
         setSenderNames((prev) => ({ ...prev, ...newNames }));
@@ -1428,14 +1414,18 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
         await uploadBytes(photoRef, photoFile, { contentType: photoFile.type });
         profilePhotoUrl = await getDownloadURL(photoRef);
       }
-      await updateDoc(doc(db, "users", currentUser.uid), {
+      const fields = {
         fullName: name.trim(),
         country,
         mostDays: mostDays.trim(),
         anotherLife: anotherLife.trim(),
         profilePhotoUrl,
-      });
-      onSaved?.({ fullName: name.trim(), country, mostDays: mostDays.trim(), anotherLife: anotherLife.trim(), profilePhotoUrl });
+      };
+      await updateDoc(doc(db, "users", currentUser.uid), fields);
+      // Keep the readable copy in step. Every one of these fields is public, so an edit that
+      // updated only `users` would leave other members — and search — seeing the old name.
+      syncPublicProfile(db, currentUser.uid, fields);
+      onSaved?.(fields);
       onClose();
     } catch (err) {
       console.error("Profile update error:", err);
@@ -1810,12 +1800,13 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
       await runTransaction(db, async (tx) => {
         const fromRef = doc(db, "users", currentUser.uid);
         const toRef   = doc(db, "users", senderUid);
-        const [fSnap, tSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+        // Sender's balance is read (to check they can afford it); the recipient's is
+        // incremented, so no read of another member's private profile is needed.
+        const fSnap = await tx.get(fromRef);
         const fromBal = Number(fSnap.data()?.sparkBalance ?? 0);
-        const toBal   = Number(tSnap.data()?.sparkBalance ?? 0);
         if (fromBal < QUICK_GIFT_AMOUNT) throw new Error("low");
         tx.set(fromRef, { sparkBalance: fromBal - QUICK_GIFT_AMOUNT }, { merge: true });
-        tx.set(toRef,   { sparkBalance: toBal   + QUICK_GIFT_AMOUNT }, { merge: true });
+        tx.set(toRef,   { sparkBalance: increment(QUICK_GIFT_AMOUNT) }, { merge: true });
       });
       // Record gift in subcollection (uid as doc ID = idempotent, one gift per user)
       // Requires Firestore rule: match /gifts/{giftId} { allow create: if giftId == request.auth.uid }

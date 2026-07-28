@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "flags": "node scripts/gen-flag-map.cjs",
     "check:flags": "node scripts/check-flags.cjs && node scripts/gen-flag-map.cjs --check",
+    "check:privacy": "node scripts/check-privacy.cjs",
+    "check": "npm run check:flags && npm run check:privacy && npm run lint",
     "preview": "vite preview",
     "ios:sync": "vite build && cap sync ios"
   },

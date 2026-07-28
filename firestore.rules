@@ -32,8 +32,16 @@ service cloud.firestore {
     }
 
     // ── User profiles ──
+    // The private profile. Holds email, date of birth, WHO-5 wellbeing scores, FCM push
+    // token and timezone — so reads are the OWNER only (plus admin). This used to be
+    // readable by any signed-in account, which was survivable only while there was no way
+    // to enumerate members. Search-to-follow removes that, so the fields other people
+    // legitimately need moved to /publicProfiles and this one closed.
+    //
+    // Cross-user WRITES of sparkBalance still work (gifts, referral and community-greeting
+    // rewards): they use increment(), which needs no read. See src/publicProfile.js.
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       allow create: if request.auth != null
           && request.auth.uid == userId;
       // Owner can update freely. Another authenticated user may update only the
@@ -204,6 +212,21 @@ service cloud.firestore {
     match /feelings/{posterUid} {
       allow read: if request.auth != null && (request.auth.uid == posterUid || isAdmin());
       allow write: if isAdmin();
+    }
+
+    // ── Public profiles ──
+    // The readable projection of a member's profile: display name, country, avatar, the two
+    // glimpse lines, and the reactions-received tally. Every one of those is already shown
+    // in the app to anyone who can see one of your messages — the point of this collection
+    // is that nothing ELSE travels with them.
+    //
+    // Readable by any signed-in member (that's what makes search and the glimpse card work);
+    // writable only by its owner, and only with their own uid on the document.
+    match /publicProfiles/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+          && request.auth.uid == uid
+          && request.resource.data.uid == uid;
     }
 
     // ── App-wide state (reset signal etc.) ──

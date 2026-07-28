@@ -2,13 +2,14 @@
 // Low-exposure by design: their location and two self-described lines
 // (💛 Most days, I'm… / ✨ In another life, I'd be…). No photo or stats. The feed itself
 // stays uncluttered — country lives HERE, not next to the name.
-// Fetches the author's profile on open (any authenticated user may read user docs).
+// Reads publicProfiles/{uid}, NOT users/{uid} — see src/publicProfile.js for why the
+// readable fields were split out of the private profile document.
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { doc, getDoc } from "firebase/firestore";
 import { X, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { readPublicProfile } from "./publicProfile";
 
 export default function UserGlimpse({ db, uid, country, name, onClose }) {
   const [loading, setLoading] = useState(true);
@@ -17,8 +18,8 @@ export default function UserGlimpse({ db, uid, country, name, onClose }) {
   useEffect(() => {
     let alive = true;
     if (!db || !uid) { setLoading(false); return; }
-    getDoc(doc(db, "users", uid))
-      .then((snap) => { if (alive) { setData(snap.exists() ? snap.data() : {}); setLoading(false); } })
+    readPublicProfile(db, uid)
+      .then((pub) => { if (alive) { setData(pub ?? {}); setLoading(false); } })
       .catch(() => { if (alive) { setData({}); setLoading(false); } });
     return () => { alive = false; };
   }, [db, uid]);

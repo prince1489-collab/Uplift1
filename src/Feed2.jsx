@@ -13,9 +13,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { doc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc } from "firebase/firestore";
-import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
+import {
+  doc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc,
+} from "firebase/firestore";
+import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
+import { readPublicProfile, searchProfiles } from "./publicProfile";
 import { awardPoints } from "./points";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
@@ -426,10 +429,40 @@ export function FocusedFeedEmpty() {
 }
 
 // ── People you follow — review, label and unfollow (⋯ menu) ───────────────────
-export function FollowingPanel({ follows = [], messages = [], onSetLabel, onUnfollow, onClose }) {
+export function FollowingPanel({ follows = [], messages = [], db, currentUser, blockedUids,
+  onSetLabel, onUnfollow, onFollow, onClose }) {
   const [editing, setEditing] = useState(null); // uid whose label chips are open
   const [customFor, setCustomFor] = useState(null); // uid typing a custom label
   const [customText, setCustomText] = useState("");
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  // Until now the only way to follow anyone was to wait for one of their messages to appear
+  // in the Worldwide Feed and press it — so a new member's Focused Feed stayed empty unless
+  // a stranger happened to post while they were looking.
+  //
+  // This searches publicProfiles, never `users`: see src/publicProfile.js for why that
+  // distinction matters. Prefix match on a lowercased name, so it behaves like looking
+  // someone up rather than browsing a directory.
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState(null); // null = idle, [] = searched and found nothing
+  const [searching, setSearching] = useState(false);
+  const followedUids = useMemo(() => new Set(follows.map((f) => f.uid)), [follows]);
+
+  useEffect(() => {
+    const q = term.trim();
+    if (q.length < 2) { setResults(null); setSearching(false); return; }
+    setSearching(true);
+    // Debounced: a query per keystroke would be a read per keystroke, billed and rate-limited.
+    let alive = true;
+    const t = setTimeout(async () => {
+      const found = await searchProfiles(db, q, {
+        excludeUid: currentUser?.uid ?? null,
+        blockedUids,
+      });
+      if (alive) { setResults(found); setSearching(false); }
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [term, db, currentUser?.uid, blockedUids]);
 
   // Follows saved before names were denormalized fall back to a live-message lookup.
   const nameFor = (f) => {
@@ -461,12 +494,67 @@ export function FollowingPanel({ follows = [], messages = [], onSetLabel, onUnfo
           Only these people appear in your Focused Feed. Add a label to keep them organised — it's private to you.
         </p>
 
+        <div className="px-5 pb-3">
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder="Search by name to follow someone"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none"
+            />
+            {term && (
+              <button onClick={() => setTerm("")} aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-500">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Results replace the follow list while searching, rather than sitting above it —
+            two scrolling lists of people in one sheet is hard to tell apart. */}
+        {results !== null ? (
+          <div className="overflow-y-auto overscroll-contain px-3 pb-8">
+            {searching ? (
+              <p className="py-8 text-center text-[13px] text-slate-400">Searching…</p>
+            ) : results.length === 0 ? (
+              <div className="py-8 text-center text-[13px] text-slate-400">
+                Nobody found matching “{term.trim()}”.
+                <p className="mt-1 text-[11px]">Names are matched from the start, so try their first name.</p>
+              </div>
+            ) : (
+              results.map((p) => {
+                const already = followedUids.has(p.uid);
+                return (
+                  <div key={p.uid} className="flex items-center gap-2.5 rounded-2xl px-2.5 py-2.5 hover:bg-slate-50">
+                    <span style={{ fontSize: "15px" }}>{flagFor(p.country)}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">{p.fullName || "Someone"}</p>
+                      {p.country && <p className="truncate text-[11px] text-slate-400">{p.country}</p>}
+                    </div>
+                    <button
+                      disabled={already}
+                      onClick={() => onFollow?.({ uid: p.uid, name: p.fullName || "", country: p.country ?? null })}
+                      className={`flex-shrink-0 rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors ${
+                        already ? "bg-slate-100 text-slate-400" : "bg-teal-600 text-white hover:bg-teal-700"
+                      }`}>
+                      {already ? "Following" : "Follow"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
         <div className="overflow-y-auto overscroll-contain px-3 pb-8">
           {follows.length === 0 ? (
             <div className="py-10 text-center text-sm text-slate-400">
               <div className="text-3xl mb-2">🕊️</div>
               You're not following anyone yet.
-              <p className="mt-1 text-[12px] text-slate-400">Tap <strong>Follow</strong> on a message in the Worldwide Feed.</p>
+              <p className="mt-1 text-[12px] text-slate-400">
+                Search for someone by name above, or tap <strong>Follow</strong> on a message in the Worldwide Feed.
+              </p>
             </div>
           ) : (
             follows.map((f) => {
@@ -530,6 +618,7 @@ export function FollowingPanel({ follows = [], messages = [], onSetLabel, onUnfo
           )}
           <p className="pt-3 text-center text-[10px] text-slate-400">Preview: your follows and labels stay on this device.</p>
         </div>
+        )}
       </div>
     </div>,
     document.body
@@ -1010,10 +1099,10 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
       const resolved = await Promise.all(rows.map(async (r) => {
         if (nameCache.current[r.uid]) return { ...r, name: nameCache.current[r.uid] };
         try {
-          const us = await getDoc(doc(db, "users", r.uid));
-          const name = (us.data()?.fullName || "").trim() || "Someone";
+          const us = await readPublicProfile(db, r.uid);
+          const name = (us?.fullName || "").trim() || "Someone";
           nameCache.current[r.uid] = name;
-          return { ...r, name, country: r.country || us.data()?.country || null };
+          return { ...r, name, country: r.country || us?.country || null };
         } catch { return { ...r, name: "Someone" }; }
       }));
       if (alive) setReactors(resolved);

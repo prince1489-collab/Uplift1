@@ -1,9 +1,12 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, limit, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection, limit, onSnapshot, query, where,
+} from "firebase/firestore";
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
+import { readPublicProfile } from "./publicProfile";
 
 // ── Theme tokens ──────────────────────────────────────────────────
 export const DARK = {
@@ -227,7 +230,7 @@ export function useOnwardReach(db, currentUser, ripples) {
     let cancelled = false;
     const uids = [...new Set(ripples.map(r => r.responderUid).filter(Boolean))];
     Promise.all(uids.map(uid =>
-      getDoc(doc(db, "users", uid)).then(s => s.data()?.reactionsReceivedCount ?? 0).catch(() => 0)
+      readPublicProfile(db, uid).then(p => p?.reactionsReceivedCount ?? 0).catch(() => 0)
     )).then(counts => {
       if (cancelled) return;
       const total = counts.reduce((a, b) => a + b, 0);
