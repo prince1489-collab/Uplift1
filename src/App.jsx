@@ -1013,8 +1013,14 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   })();
   const tooYoung = age !== null && age < 13;
   // v2: the glimpse questions are no longer asked at signup — they arrive as a gentle
-  // in-app prompt a couple of days in (GlimpsePromptCard). Signup = country/email/DOB only.
-  const valid = Boolean(form.country) && Boolean(form.email) && dobComplete && !tooYoung;
+  // in-app prompt a couple of days in (GlimpsePromptCard).
+  //
+  // A name is required. It used to be optional, which meant an account could exist with no
+  // name at all — and the name is what every other member sees above your messages, what the
+  // header greets you by, and what search will look you up by. "Someone" everywhere is worse
+  // for the person who skipped it than the one extra field.
+  const nameGiven = form.fullName.trim().length > 0;
+  const valid = Boolean(form.country) && nameGiven && Boolean(form.email) && dobComplete && !tooYoung;
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -1041,15 +1047,25 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
         </InputRow>
 
         <InputRow icon={User}>
-          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Full Name (optional)"
+          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Your name"
+            autoComplete="name"
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
         </InputRow>
+        {/* Only once they've started filling the form in, so the very first thing a new
+            person sees isn't an error about a field they haven't reached. */}
+        {!nameGiven && (form.country || form.dobMonth) && (
+          <p className="px-1 -mt-1 text-xs font-semibold" style={{ color: "#B85F1D" }}>
+            Add a name so people know who's saying hello.
+          </p>
+        )}
 
         {initialEmail ? (
           // Signed in via a provider: the email can't change, so show it as a quiet caption
           // instead of a greyed-out input (QA: the readOnly grey-on-grey field was hard to read).
-          <p className="px-1 pb-1 text-sm text-slate-500">
-            Signed in as <span className="font-semibold text-slate-700">{form.email}</span>
+          // Warm neutrals rather than Tailwind's slate: slate is a blue-grey, and next to the
+          // sunset ramp it reads as a leftover from the old palette.
+          <p className="px-1 pb-1 text-sm" style={{ color: "#7A6558" }}>
+            Signed in as <span className="font-semibold" style={{ color: "#5C4A3E" }}>{form.email}</span>
           </p>
         ) : (
           <InputRow icon={Mail}>
@@ -1092,7 +1108,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"} disabled:cursor-not-allowed`}>
           Continue <ArrowRight size={18} />
         </button>
-        <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-400">
+        <p className="pt-1 text-center text-[11px] leading-relaxed" style={{ color: "#7A6558" }}>
           You must be 13 or older to use Seen. By continuing you agree to our{" "}
           <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Privacy Policy</a>{" "}and{" "}
           <a href="/child-safety.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Child Safety Standards</a>.
