@@ -160,11 +160,81 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
       )}
 
       {/* Soil mound — darkens only once the water actually lands, so it runs on the pour's
-          own clock rather than flipping the instant `watering` goes true. */}
-      <ellipse cx="100" cy="182" rx="52" ry="12" fill="#8b5e34"
+          own clock rather than flipping the instant `watering` goes true.
+
+          The lower ellipse is deeper than the upper one (ry 16 vs 9). That difference is the
+          earth the roots live in: the upper ellipse is the visible surface, the lower one the
+          cross-section below it, and the root clip path uses exactly these lower-ellipse
+          numbers — change one and you must change the other. Before roots existed both were
+          shallow and the mound read as a flat disc, which is the "unfinished" edge the
+          review picked up on. */}
+      <ellipse cx="100" cy="183" rx="54" ry="16" fill="#8b5e34"
         style={watering ? { "--soil": "#8b5e34", "--wet": "#553019", animation: `seenSoilSoak ${WATERING_MS}ms ease both` } : undefined} />
       <ellipse cx="100" cy="180" rx="52" ry="9" fill="#a06a3c"
         style={watering ? { "--soil": "#a06a3c", "--wet": "#6b4423", animation: `seenSoilSoak ${WATERING_MS}ms ease both` } : undefined} />
+
+      {/* ── Roots ──────────────────────────────────────────────────────────────
+          "For strong growth you need a strong base" — so the root system is driven by the
+          same `t` as the canopy and thickens in step with it, from the first stem onward.
+
+          A root is a FILLED WEDGE, not a stroke. Strokes cannot taper, and the first attempt
+          at this drew strokes: the result was a starburst of even-width spokes radiating from
+          one point, which read as a scratch in the soil rather than as roots. Each root now
+          runs from a wide base to a point, leaves the trunk from a slightly different spot
+          along the base, and curves as it goes.
+
+          Two other deliberate choices:
+          · Drawn OUTSIDE the drink group below. The plant lifts as it takes water; roots are
+            anchored in the earth, and lifting them too would look like the tree hopping out
+            of the ground.
+          · Clipped to the soil ellipse, so no matter how the numbers are tuned a root can
+            never poke out of the mound. Depths are set to finish just inside that boundary
+            anyway — a root cut flat by the clip looks like a mistake, so the clip is a
+            backstop rather than the mechanism. */}
+      {eff >= 1 && (() => {
+        const depth = 8 + t * 13;    // vertical reach of the deepest root
+        const spread = 5 + t * 19;   // horizontal reach of the widest lateral
+        const w = 1.6 + t * 4.0;     // half-width where the taproot meets the trunk
+        const Y = 176;               // just under the surface, so roots emerge from the soil
+        // Wedge: down one side of a quadratic to the tip, back up the other. The control
+        // point is pulled in on the way out and pushed out on the way back, which is what
+        // gives the taper its slight belly rather than a straight cone.
+        const wedge = (x0, y0, cx, cy, x1, y1, hw) =>
+          `M ${x0 - hw} ${y0} Q ${cx - hw * 0.35} ${cy} ${x1} ${y1} Q ${cx + hw * 0.35} ${cy} ${x0 + hw} ${y0} Z`;
+        return (
+          <g clipPath="url(#seenSoilClip)" style={{ transition: grow }}>
+            <defs>
+              <clipPath id="seenSoilClip">
+                <ellipse cx="100" cy="183" rx="54" ry="16" />
+              </clipPath>
+            </defs>
+            {/* Taproot — a half-pixel off centre so it isn't hidden dead behind the trunk. */}
+            <path d={wedge(100, Y, 101, Y + depth * 0.6, 100.5, Y + depth, w * 0.95)}
+              fill="#C98A52" opacity="0.9" />
+            {[-1, 1].map((dir) => (
+              <g key={dir}>
+                {/* Outer lateral: the long one, bowing down as it reaches out. */}
+                <path d={wedge(100 + dir * w * 0.9, Y + 1,
+                  100 + dir * spread * 0.5, Y + depth * 0.35,
+                  100 + dir * spread, Y + depth * 0.9, w * 0.75)}
+                  fill="#C98A52" opacity="0.85" />
+                {/* Inner lateral: steeper and shorter, so the pair never runs parallel. */}
+                <path d={wedge(100 + dir * w * 0.3, Y + 2,
+                  100 + dir * spread * 0.15, Y + depth * 0.6,
+                  100 + dir * spread * 0.45, Y + depth * 0.95, w * 0.5)}
+                  fill="#B87A45" opacity="0.85" />
+                {/* A branchlet off the outer lateral, once there's a tree worth supporting. */}
+                {t > 0.45 && (
+                  <path d={wedge(100 + dir * spread * 0.62, Y + depth * 0.55,
+                    100 + dir * spread * 0.95, Y + depth * 0.5,
+                    100 + dir * spread * 1.25, Y + depth * 0.45, w * 0.28)}
+                    fill="#D9A066" opacity="0.75" />
+                )}
+              </g>
+            ))}
+          </g>
+        );
+      })()}
 
       {/* the whole plant lifts a touch as it drinks — two gentle gulps, same clock */}
       <g style={{
