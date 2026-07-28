@@ -19,6 +19,7 @@ import {
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile, searchProfiles } from "./publicProfile";
+import { writeFailure } from "./writeFailure";
 import { awardPoints } from "./points";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
@@ -358,8 +359,8 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
         ts: Date.now(),
         read: false,
       });
-    } catch {
-      setError("Couldn't send that — check your connection and try again.");
+    } catch (err) {
+      setError(writeFailure(err, "Your reply"));
       setBusy(false);
       return;
     }
@@ -749,9 +750,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
         sparkReward: computeSparkReward(POST_SPARK_REWARD, streak),
         isPersonal: true, // routes it to the Focused Feed in v2; ignored by production
       });
-    } catch {
+    } catch (err) {
       setFailKind("unavailable");
-      setReason("Couldn't share that — check your connection and try again.");
+      setReason(writeFailure(err, "Your post"));
       setState("rejected");
       return;
     }

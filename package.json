@@ -10,9 +10,11 @@
     "flags": "node scripts/gen-flag-map.cjs",
     "check:flags": "node scripts/check-flags.cjs && node scripts/gen-flag-map.cjs --check",
     "check:privacy": "node scripts/check-privacy.cjs",
-    "check": "npm run check:flags && npm run check:privacy && npm run lint",
+    "check:rules": "node scripts/check-rules.cjs",
+    "check": "npm run check:flags && npm run check:privacy && npm run check:rules && npm run lint",
     "preview": "vite preview",
-    "ios:sync": "vite build && cap sync ios"
+    "ios:sync": "vite build && cap sync ios",
+    "deploy:rules": "firebase deploy --only firestore:rules"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

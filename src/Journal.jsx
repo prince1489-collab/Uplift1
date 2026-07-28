@@ -12,6 +12,7 @@ import { collection, addDoc, updateDoc, onSnapshot, query, orderBy, deleteDoc, d
 import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt } from "./JournalPrompts";
+import { writeFailure } from "./writeFailure";
 import { awardPoints } from "./points";
 import { authedPost } from "./apiBase";
 
@@ -473,10 +474,11 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
       }
       setSaveError("");
       playCheckIn();
-    } catch (_) {
+    } catch (err) {
       // A reflection is something the user wrote. Losing it silently is the worst
-      // outcome here — keep the text in the box and tell them it didn't save.
-      setSaveError("Couldn't save that reflection — check your connection and try again.");
+      // outcome here — keep the text in the box and tell them it didn't save, and say
+      // WHY, so a rules problem isn't mistaken for a bad signal.
+      setSaveError(writeFailure(err, "That reflection"));
     }
     setSaving(false);
   };
@@ -484,7 +486,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const handleDelete = async (id) => {
     if (!db || !uid) return;
     try { setSaveError(""); await deleteDoc(doc(db, "users", uid, "journal", id)); }
-    catch (_) { setSaveError("Couldn't delete that entry — check your connection and try again."); }
+    catch (err) { setSaveError(writeFailure(err, "That delete")); }
   };
 
   const goalPct = Math.min(100, (reflectionsThisWeek / WEEKLY_GOAL) * 100);

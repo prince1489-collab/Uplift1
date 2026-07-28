@@ -214,6 +214,29 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Referrals ──
+    // A one-time "this account was referred, and the reward has been paid" marker. The doc id
+    // IS the new user's uid, which is what makes it idempotent — the award transaction reads
+    // it first and bails if it exists.
+    //
+    // This collection had NO rule until scripts/check-rules.cjs went looking, which means the
+    // referral reward transaction has been denied for every user who ever arrived through an
+    // invite link. It failed into a console.error and nobody saw it.
+    //
+    // Create only, only by the account being referred, and only naming itself. No update and
+    // no delete: this document existing is the thing that stops a referral paying out twice,
+    // so letting anyone edit or remove it would reopen exactly that.
+    match /referrals/{newUserUid} {
+      allow read: if request.auth != null && request.auth.uid == newUserUid;
+      allow create: if request.auth != null
+          && request.auth.uid == newUserUid
+          && request.resource.data.newUserUid == newUserUid
+          && request.resource.data.referrerUid is string
+          && request.resource.data.referrerUid != newUserUid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // ── Public profiles ──
     // The readable projection of a member's profile: display name, country, avatar, the two
     // glimpse lines, and the reactions-received tally. Every one of those is already shown

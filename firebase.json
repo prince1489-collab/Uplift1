@@ -1,0 +1,6 @@
+{
+  "//": "Exists so firestore.rules can actually be deployed. Before this file, the rules lived in the repo with no path to Firebase at all — they had to be pasted into the console by hand, and anything added to them since the last paste was silently inert. Deploy with: npm run deploy:rules",
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
