@@ -28,6 +28,11 @@ const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
 const MAX_LEN = 80;
 const POST_SPARK_REWARD = 25; // base, before the streak multiplier
+// Anonymous posting is level-gated per the roadmap: a brand-new account cannot immediately
+// post without a name attached. 150 is level 3 ("It's Giving Kind") — roughly a week of
+// ordinary use, low enough not to block real members, high enough that a throwaway account
+// created to post anonymously has to earn it first.
+const ANON_MIN_BALANCE = 150;
 
 const readJSON = (k, fb) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)); } catch { return fb; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
@@ -612,7 +617,7 @@ function apiFailure(err, what) {
 // feeling statuses and custom replies) BEFORE it is written. Unlike the feelings path,
 // which allows a post through when moderation is unreachable, this one fails CLOSED: a
 // feeling is 60 chars inside a constrained flow, this is free text going to a feed.
-export function PostComposer({ profile, myUid, currentUser, db, streak = 0, onPosted, onClose }) {
+export function PostComposer({ profile, myUid, currentUser, db, streak = 0, sparkBalance = 0, onPosted, onClose }) {
   const [text, setText] = useState("");
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
@@ -626,6 +631,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, onPo
   const [ideas, setIdeas] = useState([]);
   const [suggestNote, setSuggestNote] = useState("");
   const len = text.trim().length;
+  const canAnon = Number(sparkBalance) >= ANON_MIN_BALANCE;
 
   const suggest = async () => {
     if (len < 8 || phrasing === "loading" || state === "checking" || state === "done") return;
@@ -654,7 +660,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, onPo
 
     // 1. Screen it. Any failure to get a clean verdict blocks the post.
     try {
-      const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "post" });
+      // Anonymous posts get a stricter review: less accountability, higher bar.
+      const mod = await authedPost(currentUser, "/api/moderate-message",
+        { text: clean, context: anon ? "post_anonymous" : "post" });
       if (!mod.checked) {
         setFailKind("unavailable");
         setReason("The kindness check couldn't give a verdict just now. Your words are safe here — try again in a moment.");
@@ -751,12 +759,22 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, onPo
             </p>
           )}
           <div className="flex items-center justify-between">
-            <button onClick={() => setAnon((a) => !a)}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${anon ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-500"}`}>
-              {anon ? "🕶️ Name hidden" : "👤 Posting as you"}
+            <button onClick={() => { if (canAnon) setAnon((a) => !a); }} disabled={!canAnon}
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                !canAnon ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                : anon ? "border-violet-300 bg-violet-50 text-violet-700"
+                : "border-slate-200 bg-white text-slate-500"}`}>
+              {!canAnon ? "🔒 Posting as you" : anon ? "🕶️ Name hidden" : "👤 Posting as you"}
             </button>
             <span className={`text-[11px] ${len > MAX_LEN - 10 ? "text-amber-600" : "text-slate-400"}`}>{len}/{MAX_LEN}</span>
           </div>
+          {/* Say why it's locked rather than leaving a dead button. */}
+          {!canAnon && (
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Posting without your name unlocks at {ANON_MIN_BALANCE} drops — it's held back for new accounts
+              because there's less to trace if it's misused.
+            </p>
+          )}
           {state === "rejected" && (
             <div className={`rounded-xl border px-3 py-2.5 ${failKind === "unavailable" ? "border-amber-200 bg-amber-50" : "border-rose-200 bg-rose-50"}`} role="alert">
               <p className={`text-[12px] font-semibold ${failKind === "unavailable" ? "text-amber-700" : "text-rose-700"}`}>

@@ -3109,6 +3109,7 @@ export default function App() {
             currentUser={currentUser}
             db={db}
             streak={streak}
+            sparkBalance={sparkBalance}
             onClose={() => setPostComposerOpen(false)} />
         )}
         {replyTarget && (
