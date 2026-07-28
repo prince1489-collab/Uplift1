@@ -713,7 +713,12 @@ function resolveVisitStart() {
   return start;
 }
 
-function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
+// `nudges` are guidance rows the app wants to surface once — "finish your profile",
+// "here's how the Focused Feed works". They differ from everything else in here in two ways:
+// they are device-local rather than Firestore events, and they are NOT filtered by the
+// since-your-last-visit boundary. A nudge is a standing invitation, not something that
+// happened; expiring it after one visit would mean nobody ever reads it.
+function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [] }) {
   const [open, setOpen] = useState(false);
   // Resolved once per mount — the boundary must not move under the user mid-session.
   const [visitStart] = useState(resolveVisitStart);
@@ -861,7 +866,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
   // the number of rows the user will actually see.
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = visibleRipples.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
-  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount;
+  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + nudges.length;
 
   // Everything merges into ONE list, newest first, each row stamped with its age. Grouping by
   // type meant an older ripple could sit above a fresh like, and with no timestamps at all
@@ -894,8 +899,12 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
         ? <><span className="font-semibold">{g.n} people</span> you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>
         : <>Someone you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>,
     }));
+    nudges.forEach((n) => out.push({
+      id: n.id, ts: n.ts, icon: n.icon, tint: "bg-amber-50/60", fresh: true,
+      text: n.text, onClick: n.onClick, onDismiss: n.onDismiss,
+    }));
     return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
-  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt]);
+  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges]);
   // Honest, transparently system-authored reassurance: if you've shared kindness but no one
   // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
   // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
@@ -930,7 +939,12 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
             </div>
           </div>
           <div className="border-b border-slate-100 px-4 py-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Since your last visit</p>
+            {/* Only claim "since your last visit" when that's actually what the list is.
+                Nudges deliberately survive across visits, so with one in the list the header
+                would be describing something the rows don't do. */}
+            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+              {nudges.length > 0 ? "For you" : "Since your last visit"}
+            </p>
           </div>
           <div className="max-h-72 overflow-y-auto">
             {rows.length === 0 && !showSeenAck ? (
@@ -949,7 +963,16 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting }) {
                 {rows.map((r) => (
                   <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${r.fresh ? r.tint : ""} hover:bg-slate-50`}>
                     <span className="text-base flex-shrink-0">{r.icon}</span>
-                    <p className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">{r.text}</p>
+                    {/* A row that can act is a button; one that only reports stays a paragraph,
+                        so nothing looks tappable that isn't. */}
+                    {r.onClick ? (
+                      <button onClick={() => { setOpen(false); r.onClick(); }}
+                        className="min-w-0 flex-1 text-left text-[11px] leading-snug text-slate-700">
+                        {r.text}
+                      </button>
+                    ) : (
+                      <p className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">{r.text}</p>
+                    )}
                     <span className="flex-shrink-0 text-[10px] tabular-nums text-slate-400">{shortAgo(r.ts)}</span>
                     {r.onDismiss && (
                       <button onClick={r.onDismiss}
@@ -1908,9 +1931,74 @@ export default function App() {
     () => Object.fromEntries(follows.filter((f) => f.label).map((f) => [f.uid, f.label])),
     [follows]
   );
-  // v2: deferred glimpse questions — sheet + one-time dismissible feed card
+  // v2: deferred glimpse questions — sheet, invited from the 🔔 bell (see `bellNudges`)
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
   const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
+
+  // ── Bell nudges ──────────────────────────────────────────────────────────────
+  // Two standing invitations that the bell surfaces rather than the feed. Both are
+  // device-local; neither is a Firestore event.
+  //
+  // First feed visit is stamped once so the follow nudge has a timestamp to sort by and a
+  // three-day clock to measure against — otherwise "3 days of use" has no origin for
+  // accounts that predate this code.
+  const FIRST_VISIT_KEY = "seen_first_feed_visit_at";
+  const [firstFeedVisitAt] = useState(() => {
+    const existing = Number(safeLocalGet(FIRST_VISIT_KEY)) || 0;
+    if (existing) return existing;
+    const now = Date.now();
+    safeLocalSet(FIRST_VISIT_KEY, String(now));
+    return now;
+  });
+  const [followNudgeDismissed, setFollowNudgeDismissed] = useState(() => safeLocalGet("seen_follow_nudge_dismissed") === "1");
+
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  const bellNudges = useMemo(() => {
+    const out = [];
+    if (!profile) return out;
+
+    // Nobody knows the Focused Feed exists — it's new, and the only way to populate it is to
+    // follow someone. Shown on the first visit, and only while the list is genuinely empty:
+    // once they've followed anyone, they've found the feature and the nudge is noise.
+    if (!followNudgeDismissed && follows.length === 0) {
+      out.push({
+        id: "nudge_follow",
+        ts: firstFeedVisitAt,
+        icon: "👥",
+        text: (
+          <>
+            <span className="font-semibold">Follow someone to fill your Focused Feed</span> — their
+            messages sit together, away from the worldwide feed
+          </>
+        ),
+        onClick: () => setShowFollowing(true),
+        onDismiss: () => { setFollowNudgeDismissed(true); safeLocalSet("seen_follow_nudge_dismissed", "1"); },
+      });
+    }
+
+    // The profile invitation, moved out of the feed and delayed to three days. It used to
+    // appear on day one, mid-feed, before anyone had a reason to care about their profile.
+    const since = typeof profile.onboardingCompletedAt === "number"
+      ? profile.onboardingCompletedAt
+      : firstFeedVisitAt;
+    const dueAt = since + THREE_DAYS_MS;
+    if (!glimpsePromptDismissed && !profile.mostDays && !profile.anotherLife && Date.now() >= dueAt) {
+      out.push({
+        id: "nudge_glimpse",
+        ts: dueAt,
+        icon: "💛",
+        text: (
+          <>
+            <span className="font-semibold">Help people see the person behind the kindness</span> —
+            add two playful lines to your profile
+          </>
+        ),
+        onClick: () => setShowGlimpseSheet(true),
+        onDismiss: () => { setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1"); },
+      });
+    }
+    return out;
+  }, [profile, follows.length, followNudgeDismissed, glimpsePromptDismissed, firstFeedVisitAt]);
   // v2: wellbeing check-in moved out of onboarding to a post-login prompt
   const [showWellbeingSheet, setShowWellbeingSheet] = useState(false);
   const [wellbeingPromptDismissed, setWellbeingPromptDismissed] = useState(() => safeLocalGet("seen_wellbeing_prompt_dismissed") === "1");
@@ -3112,7 +3200,7 @@ export default function App() {
                     </button>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent} />
+                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent} nudges={bellNudges} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
@@ -3436,23 +3524,10 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {/* v2: deferred glimpse invitation — appears a couple of days in, once,
-                  only while the profile still has no glimpse lines. */}
-              {!glimpsePromptDismissed && profile && !profile.mostDays && !profile.anotherLife &&
-                (typeof profile.onboardingCompletedAt === "number"
-                  ? Date.now() - profile.onboardingCompletedAt > 48 * 60 * 60 * 1000
-                  : hasSent) && (
-                <div className="w-full mb-3 flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
-                  <span className="text-xl flex-shrink-0">💛</span>
-                  <button onClick={() => setShowGlimpseSheet(true)} className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-bold text-slate-800">Help people see the person behind the kindness</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Add two playful lines to your profile →</p>
-                  </button>
-                  <button
-                    onClick={() => { setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1"); }}
-                    className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
-                </div>
-              )}
+              {/* The "help people see the person behind the kindness" card used to sit here.
+                  It now arrives through the 🔔 bell after three days — see `nudges` below.
+                  It was landing on day one, in the middle of the feed, before anyone had a
+                  reason to care about their profile. */}
               {/* v2: post-login wellbeing check-in prompt (moved out of onboarding) */}
               {!wellbeingPromptDismissed && profile && !profile.wellbeing && (
                 <div className="w-full mb-3 flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
