@@ -14,14 +14,19 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
     triggering:
-      # Pin the branch. Without this the branch is a per-build dropdown in the Codemagic UI,
-      # and selecting the old claude/improve-app-design-HJrCm would quietly ship V1 to
-      # TestFlight — a mistake invisible until a tester reported it. v2-preview is what
-      # production deploys, so it is what should be packaged.
+      # Pin the branch. Without this it is a per-build dropdown in the Codemagic UI, and
+      # picking the wrong entry ships the wrong code to TestFlight — a mistake invisible
+      # until a tester reports it.
+      #
+      # This pin used to name v2-preview, back when it and claude/improve-app-design-HJrCm
+      # were different codebases (V2 preview vs frozen V1). They were merged, the two
+      # branches became identical, and v2-preview was retired. Everything now ships from
+      # claude/improve-app-design-HJrCm, which is also what Vercel deploys — the branch that
+      # goes to the web and the branch that gets packaged must not be allowed to drift.
       events:
         - push
       branch_patterns:
-        - pattern: v2-preview
+        - pattern: claude/improve-app-design-HJrCm
           include: true
           source: true
       cancel_previous_builds: true
@@ -145,14 +150,19 @@ workflows:
     instance_type: linux_x2
     max_build_duration: 60
     triggering:
-      # Pin the branch. Without this the branch is a per-build dropdown in the Codemagic UI,
-      # and selecting the old claude/improve-app-design-HJrCm would quietly ship V1 to
-      # TestFlight — a mistake invisible until a tester reported it. v2-preview is what
-      # production deploys, so it is what should be packaged.
+      # Pin the branch. Without this it is a per-build dropdown in the Codemagic UI, and
+      # picking the wrong entry ships the wrong code to TestFlight — a mistake invisible
+      # until a tester reports it.
+      #
+      # This pin used to name v2-preview, back when it and claude/improve-app-design-HJrCm
+      # were different codebases (V2 preview vs frozen V1). They were merged, the two
+      # branches became identical, and v2-preview was retired. Everything now ships from
+      # claude/improve-app-design-HJrCm, which is also what Vercel deploys — the branch that
+      # goes to the web and the branch that gets packaged must not be allowed to drift.
       events:
         - push
       branch_patterns:
-        - pattern: v2-preview
+        - pattern: claude/improve-app-design-HJrCm
           include: true
           source: true
       cancel_previous_builds: true

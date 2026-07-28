@@ -5,7 +5,8 @@
 // age band. Complete = tap (strike-through + soft chime). "Try another" swaps one
 // prompt, once a day — an unfinished list must never feel like failure.
 //
-// v2-preview note: state lives in localStorage (per-device). Firestore wiring
+// State lives in localStorage, so it is per-device: your two prompts, what you've ticked and
+// whether you've used today's swap do not follow you to another phone. Firestore wiring
 // (users/{uid}/haveYouTried) lands when Phase 1 ships for real, with a rules update.
 
 import React, { useMemo, useState } from "react";

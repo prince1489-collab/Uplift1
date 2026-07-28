@@ -19,9 +19,15 @@ This happened: `api/post-suggest.js` took the count to 13, the build failed, and
 subsequent commits went out believing they were live when they weren't.
 `api/lifehacks.js` was deleted to make room — it had no callers on either branch.
 
-Do **not** delete `api/goodnews.js` to free a slot. It has no caller on `v2-preview`, but
-production's frozen `src/GoodNews.jsx` still calls it, so removing it breaks Good News at
-merge time.
+`api/goodnews.js` used to carry a "do not delete" warning: it had no caller on the V2 preview
+branch, but production's frozen `src/GoodNews.jsx` still called it, so removing it would have
+broken Good News at merge time. That merge has happened. `src/GoodNews.jsx` no longer exists
+on any branch and the endpoint has no caller left in `src/`.
+
+It is kept anyway, because at 10 of 12 slots there is no pressure to reclaim one, and an
+endpoint with no caller in this repo is not proof of an endpoint with no caller — anything
+already pointed at the deployed URL would break silently. Retiring it is a deliberate
+decision to make on its own, not a slot-freeing convenience.
 
 ## Environment variables
 
