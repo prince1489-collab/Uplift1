@@ -112,3 +112,92 @@ workflows:
         auth: integration
         submit_to_testflight: true
         # submit_to_app_store: false   # flip to true (with a release type) when ready to ship publicly
+
+  # ── Android (Capacitor) ─────────────────────────────────────────────────────
+  # Replaces the PWABuilder TWA with a real Android app that BUNDLES the web build,
+  # rather than a WebView pointing at seenapp.app. That distinction is the point: a
+  # thin wrapper around a URL is exactly the profile Play's minimum-functionality
+  # rules target, whereas this ships dist/ inside the package like the iOS build does.
+  #
+  # Trade-off, accepted deliberately: web deploys no longer reach Android users
+  # instantly. Each one needs a Play release.
+  #
+  # PREREQUISITES — see android-config/README.md. Both are outside this file:
+  #   1. android-config/google-services.json committed (Firebase → Android app,
+  #      package app.seenapp.twa). Without it, push notifications do nothing.
+  #   2. The PWABuilder upload key added in Codemagic as `seen_upload`, or an upload
+  #      key reset requested in Play Console. A package-name match is NOT enough —
+  #      Play rejects a key mismatch.
+  android-capacitor:
+    name: Seen Android (Capacitor)
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      android_signing:
+        - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
+      vars:
+        PACKAGE_NAME: "app.seenapp.twa"   # the package Play already knows; do NOT mint a new one
+      node: 20
+      java: 21
+    scripts:
+      - name: Install npm dependencies
+        script: npm ci --legacy-peer-deps
+      - name: Build the web app (dist/)
+        script: npm run build
+      - name: Add Android platform if missing, then sync
+        script: |
+          # The native folder is NOT committed — same as ios/. It is generated per build,
+          # so every patch below has to be re-applied each time.
+          if [ ! -d "android" ]; then npx cap add android; fi
+          npx cap sync android
+      - name: Set the Android package name
+        script: |
+          # capacitor.config.json's single appId is app.seenapp.ios and must stay that way,
+          # or the iOS bundle identifier moves out from under the App Store listing. The
+          # Android package is therefore set here instead.
+          set -e
+          GRADLE="android/app/build.gradle"
+          sed -i "s/applicationId \"[^\"]*\"/applicationId \"$PACKAGE_NAME\"/" "$GRADLE"
+          sed -i "s/^\s*namespace \"[^\"]*\"/    namespace \"$PACKAGE_NAME\"/" "$GRADLE"
+          echo "── applicationId / namespace ──"
+          grep -E "applicationId|namespace" "$GRADLE"
+          # Fail loudly rather than shipping a package Play will not accept.
+          grep -q "applicationId \"$PACKAGE_NAME\"" "$GRADLE" || { echo "applicationId not set"; exit 1; }
+      - name: Inject google-services.json
+        script: |
+          if [ -f "android-config/google-services.json" ]; then
+            cp android-config/google-services.json android/app/google-services.json
+            echo "google-services.json injected"
+          else
+            echo "!! android-config/google-services.json is MISSING."
+            echo "!! Push notifications will not work. See android-config/README.md."
+          fi
+      - name: Generate app icon & splash from assets/ (non-fatal)
+        script: |
+          # Same source as iOS: assets/icon.png, which carries the Phase 5 eye mark.
+          if [ -f "assets/icon.png" ]; then npx @capacitor/assets generate --android || true; fi
+      - name: Set a unique, incrementing build number
+        script: |
+          # Play rejects a versionCode it has already seen.
+          BUILD_NUMBER=$(($(google-play get-latest-build-number --package-name "$PACKAGE_NAME" 2>/dev/null || echo 0) + 1))
+          echo "versionCode -> $BUILD_NUMBER"
+          sed -i "s/versionCode [0-9]*/versionCode $BUILD_NUMBER/" android/app/build.gradle
+      - name: Build signed release AAB
+        script: |
+          cd android
+          ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/**/mapping.txt
+    publishing:
+      # Deliberately left commented: the closed test is mid-run and its 14-day clock
+      # restarts if the track is disturbed. Upload the first AAB by hand, confirm it
+      # installs and the package/key are accepted, then enable this.
+      #
+      # google_play:
+      #   credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT
+      #   track: internal
+      #   submit_as_draft: true
+      email:
+        recipients:
+          - prince1489@googlemail.com

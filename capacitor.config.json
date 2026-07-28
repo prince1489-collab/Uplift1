@@ -8,13 +8,24 @@
     "scrollEnabled": false,
     "backgroundColor": "#ffffff"
   },
+  "android": {
+    "backgroundColor": "#FFF6EF",
+    "webContentsDebuggingEnabled": false
+  },
   "plugins": {
     "PushNotifications": {
-      "presentationOptions": ["alert", "sound", "badge"]
+      "presentationOptions": [
+        "alert",
+        "sound",
+        "badge"
+      ]
     },
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
-      "providers": ["google.com", "apple.com"]
+      "providers": [
+        "google.com",
+        "apple.com"
+      ]
     }
   }
 }
