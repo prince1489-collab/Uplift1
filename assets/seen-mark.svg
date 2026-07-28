@@ -1,49 +1,60 @@
-<!-- Seen — the sun-on-horizon "eye" mark.
+<!-- Seen — an eye with a star in it.
 
-     The roadmap's preferred candidate: a semicircle sun sitting on a horizon line, where
-     the two together also read as an open eye — sunset and "seen" in one shape.
+     The name is the brief: being seen. So the eye reads first and the sparkle sits where
+     the pupil would be, as the thing looking back at you.
 
-     Hand-written geometry rather than designed artwork: honest about what it is, and good
-     enough to render icons from. Worth a designer's pass before it becomes the brand
-     proper.
+     Supersedes the earlier sun-on-horizon mark, which was the roadmap's first logo
+     candidate. That one worked, but the sun read first and the eye second — backwards for
+     an app called Seen. This is closer to the roadmap's third candidate (the ✦ spark inside
+     a warm disc). The four-point sparkle rather than a five-point star is deliberate: it
+     matches the ✨ used throughout the app and echoes the ✦ spark mark being retired, so
+     this reads as continuity rather than a fresh start.
 
-     Colours are the Phase 5 sunset ramp: coral -> warm orange, on warm sand.
-     Everything is drawn on a 512 grid so the PNG renders are exact multiples. -->
+     Colours are the Phase 5 sunset ramp. Drawn on a 512 grid so the PNG renders are exact.
+
+     GEOMETRY NOTES (so the next person doesn't have to reverse-engineer the curves):
+       · The almond is two cubic curves meeting at points (56,256) and (456,256). A cubic's
+         apex is 64 + 0.75·Cy, so the controls at y=136/376 put the lids at y=166/346 —
+         180px tall against 400 wide, about 2.2:1. An earlier pass used y=40/472, which
+         gave a 1.2:1 lens that read as a leaf rather than an eye.
+       · Symmetric rather than a naturalistic lid-over-lid eye. A real eye has a flatter
+         lower lid, but the asymmetry reads as a mistake at 32px; the lens shape survives.
+       · The iris is clipped to the almond, so it can never spill past the lids no matter
+         how the radius is tuned.
+       · The sparkle's concave points come from quadratic arcs whose control point is the
+         centre — that pinch is what makes a ✦ rather than a diamond. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
      role="img" aria-label="Seen">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="#FFF6EF"/>
-      <stop offset="100%" stop-color="#FFE0DE"/>
-    </linearGradient>
-    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="#FF9E57"/>
-      <stop offset="55%" stop-color="#FF6B6B"/>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#FF9E57"/>
+      <stop offset="55%"  stop-color="#FF6B6B"/>
       <stop offset="100%" stop-color="#D24341"/>
     </linearGradient>
-    <!-- The sun is clipped to its own top half, so its flat edge IS the horizon. -->
-    <clipPath id="above">
-      <rect x="0" y="0" width="512" height="300"/>
+    <clipPath id="lids">
+      <path d="M 56 256 C 152 136 360 136 456 256 C 360 376 152 376 56 256 Z"/>
     </clipPath>
   </defs>
 
-  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <rect width="512" height="512" rx="112" fill="#FFF6EF"/>
 
-  <!-- Sun: a full circle clipped at the horizon, leaving a clean semicircle. Its curve is
-       the upper lid of the eye. -->
-  <g clip-path="url(#above)">
-    <circle cx="256" cy="300" r="132" fill="url(#sun)"/>
+  <!-- Iris fills the whole eye rather than floating inside it: at launcher size a small
+       iris on a pale ground loses the eye entirely. -->
+  <g clip-path="url(#lids)">
+    <rect x="40" y="40" width="432" height="432" fill="url(#iris)"/>
   </g>
 
-  <!-- Horizon: the lower lid. Extends past the sun on both sides so the shape reads as a
-       landscape as well as an eye. -->
-  <rect x="112" y="291" width="288" height="18" rx="9" fill="#D24341"/>
+  <!-- Lid outline, drawn over the iris so the eye keeps a crisp edge against the sand. -->
+  <path d="M 56 256 C 152 136 360 136 456 256 C 360 376 152 376 56 256 Z"
+        fill="none" stroke="#A82E2C" stroke-width="20" stroke-linejoin="round"/>
 
-  <!-- Pupil: only enough to tip the reading toward "eye" without losing the sun. -->
-  <circle cx="256" cy="252" r="40" fill="#FFF6EF" opacity="0.92"/>
-  <circle cx="256" cy="252" r="20" fill="#A82E2C"/>
-
-  <!-- No rays: they read as protrusions rather than light, and turned the silhouette into
-       something closer to a hat. The sun-over-horizon shape is stronger unadorned, and
-       survives being shrunk to 48px far better. -->
+  <!-- The star: ~116px across against a 180px-tall eye, so it fills roughly two thirds of
+       the opening. Deliberately large — the previous mark's fine detail vanished entirely
+       when scaled to a launcher icon. -->
+  <path d="M 256 198
+           Q 256 256 314 256
+           Q 256 256 256 314
+           Q 256 256 198 256
+           Q 256 256 256 198 Z"
+        fill="#FFF6EF"/>
 </svg>
