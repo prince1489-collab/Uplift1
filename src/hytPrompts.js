@@ -5,6 +5,83 @@
 // self-care bank for the daily "Self" slot. Deterministic daily selection (date + uid),
 // so no server/cron is needed.
 
+// ── The everyday bank ───────────────────────────────────────────
+// Where the daily kindness prompt comes from. It exists because of a plain finding in the
+// V2 review: the prompts were not too *hard*, they were too *situational*. Screening all 560
+// found "Work life" was 68% workplace-dependent — and that whole area came round in the
+// rotation for everyone, employed or not. Roughly one day in seven handed someone a task
+// they simply could not do, and a prompt you cannot do reads as a small daily failure.
+//
+// Every line here passes five tests:
+//   1. under five minutes          2. costs nothing        3. no specific place
+//   4. no specific relationship — it works if you live alone and work alone
+//   5. not embarrassing to do in public
+//
+// The 14 themed areas below are still here and still good. They are now reached deliberately
+// through "Pick an area" by someone who knows they fit, rather than assigned at random.
+export const HYT_EVERYDAY = [
+  "Have you tried… replying to the message you've been putting off?",
+  "Have you tried… saying thank you to someone who was just doing their job?",
+  "Have you tried… letting one person go ahead of you today?",
+  "Have you tried… telling someone the specific thing they did that helped?",
+  "Have you tried… asking someone how they are, and waiting for the real answer?",
+  "Have you tried… sending a message to someone you thought about but never told?",
+  "Have you tried… letting someone finish their sentence when you already knew the ending?",
+  "Have you tried… paying someone a compliment you would normally only think?",
+  "Have you tried… putting your phone face down while someone is talking to you?",
+  "Have you tried… thanking someone for a thing nobody ever thanks them for?",
+  "Have you tried… letting a small annoyance go without mentioning it?",
+  "Have you tried… asking someone about the thing they love talking about?",
+  "Have you tried… telling someone you were wrong, before they have to raise it?",
+  "Have you tried… answering a question you find tedious patiently, one more time?",
+  "Have you tried… messaging someone the moment you think of them, rather than later?",
+  "Have you tried… giving someone your whole attention for one entire conversation?",
+  "Have you tried… saying “that sounds hard” instead of offering a solution?",
+  "Have you tried… thanking someone in front of other people rather than privately?",
+  "Have you tried… asking a follow-up question instead of changing the subject?",
+  "Have you tried… letting someone be right about something small?",
+  "Have you tried… noticing when someone has gone quiet, and checking in?",
+  "Have you tried… saying yes to a small request you would normally deflect?",
+  "Have you tried… telling someone what you would miss about them if they left?",
+  "Have you tried… making room for someone without being asked to?",
+  "Have you tried… greeting someone by name that you would usually just nod at?",
+  "Have you tried… apologising without adding “but” on the end of it?",
+  "Have you tried… asking someone what they need, instead of guessing?",
+  "Have you tried… waiting a beat before replying to something that annoyed you?",
+  "Have you tried… telling someone their work made your day easier?",
+  "Have you tried… sharing something useful with the one person it would help most?",
+  "Have you tried… checking on someone who is fine, precisely because they always say fine?",
+  "Have you tried… letting someone help you, when refusing would have been easier?",
+  "Have you tried… saying the encouraging thing out loud instead of assuming they know?",
+  "Have you tried… being the one who breaks the silence after a disagreement?",
+  "Have you tried… asking someone older than you to tell you about something they know?",
+  "Have you tried… noticing one thing someone got right today, and saying so?",
+  "Have you tried… leaving something a little tidier than you found it?",
+  "Have you tried… forgiving someone quietly, without them ever knowing you had to?",
+  "Have you tried… telling someone you are proud of them, and saying why?",
+  "Have you tried… asking permission before giving advice?",
+  "Have you tried… making space in a conversation for the person who has not spoken?",
+  "Have you tried… saying “I don't know” instead of filling the gap?",
+  "Have you tried… thanking someone for their patience with you?",
+  "Have you tried… reaching out to the person you assume has plenty of people already?",
+  "Have you tried… letting someone tell you a story you have already heard?",
+  "Have you tried… being warm to someone who was short with you?",
+  "Have you tried… telling someone the good thing you heard said about them?",
+  "Have you tried… asking what went well in someone's day, not just what went wrong?",
+  "Have you tried… choosing the kinder interpretation of what someone just did?",
+  "Have you tried… saying goodbye properly rather than drifting off?",
+  "Have you tried… telling someone they do not have to explain themselves to you?",
+  "Have you tried… giving someone the benefit of a doubt you would want yourself?",
+  "Have you tried… asking someone to teach you the thing they are good at?",
+  "Have you tried… ending a message with something warm rather than just the facts?",
+  "Have you tried… letting someone change their mind without pointing out that they did?",
+  "Have you tried… saying the thing you have been meaning to say for weeks?",
+  "Have you tried… sitting with someone in a quiet moment without filling it?",
+  "Have you tried… asking someone what they are looking forward to?",
+  "Have you tried… thanking the person who taught you something you now do without thinking?",
+  "Have you tried… telling someone that what they said stayed with you?",
+];
+
 export const HYT_AREAS = [
   { id: "work", emoji: "💼", label: "Work life", prompts: [
     "Have you tried… telling a colleague specifically what they did well this week?",
@@ -743,36 +820,39 @@ export function todayKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Whole days since the epoch, in local time — the counter that walks the area rotation.
-function dayNumber(date) {
-  return Math.floor(new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / 86400000);
-}
+// dayNumber() lived here — it walked the daily area rotation, which no longer exists.
 
-// Today's two: [kindness (one of the 14 areas, a different one each day), self (age-banded
-// self-care)]. The kindness area steps by one whole area per day so the rotation visits all
-// 14 in turn rather than repeating at random; the starting point differs per user.
+// Today's two: [kindness, self (age-banded self-care)].
 //
-// "Try another" (swaps[slot] = 1) behaves differently per slot, by design:
-//   kindness → moves to the NEXT AREA entirely, so you get a different kind of kindness.
-//   self     → stays in self-care and moves to a different suggestion within it.
-// `chosenArea` lets the user steer to an area themselves when the day's rotation doesn't
-// fit. It steers, it doesn't reroll: the prompt inside the chosen area is still picked by
-// the day hash, so re-picking the same area always gives the same prompt and there is no
-// shopping for an easier one.
+// The kindness prompt comes from HYT_EVERYDAY by default — see the note on that bank for
+// why. It used to rotate through the 14 themed areas, one per day, which meant everyone got
+// "Work life" every fortnight whether or not they had a workplace. The themed areas are now
+// opt-in: `chosenArea` selects one, and only then does the prompt come from it.
+//
+// "Try another" (swaps[slot] = 1) moves along whichever list is in play — a different
+// everyday prompt, a different prompt inside the chosen area, or a different self-care line.
+// Picking an area steers, it doesn't reroll: the prompt inside a chosen area is still fixed
+// by the day hash, so re-picking the same area always gives the same prompt and there is
+// nothing to shop for. The one-a-day cap on swapping lives in HaveYouTried.jsx.
 export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null }) {
   const day = todayKey(date);
-  const areaShift = Math.min(1, swaps.kindness ?? 0);
-  const picked = chosenArea ? HYT_AREAS.find((a) => a.id === chosenArea) : null;
-  const area = picked || HYT_AREAS[(dayNumber(date) + hytHash(uid) + areaShift) % HYT_AREAS.length];
+  const area = chosenArea ? HYT_AREAS.find((a) => a.id === chosenArea) : null;
+  const kindnessList = area ? area.prompts : HYT_EVERYDAY;
   const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
 
-  // Prompt within a list. The kindness slot passes offset 0 because its swap already
-  // changed the area; the self slot uses the swap to move along its own list.
+  // Prompt within a list. Both slots use their swap as an offset along whichever list they
+  // are drawing from.
   const pickFrom = (list, slot, offset = 0) =>
     list[(hytHash(`${uid}|${day}|${slot}`) + offset) % list.length];
 
   return [
-    { slot: "kindness", areaId: area.id, emoji: area.emoji, label: area.label, text: pickFrom(area.prompts, "kindness") },
+    {
+      slot: "kindness",
+      areaId: area ? area.id : "everyday",
+      emoji: area ? area.emoji : "🌱",
+      label: area ? area.label : "Everyday kindness",
+      text: pickFrom(kindnessList, "kindness", Math.min(1, swaps.kindness ?? 0)),
+    },
     { slot: "self", areaId: SELF_META.id, emoji: SELF_META.emoji, label: SELF_META.label,
       text: pickFrom(selfList, "self", Math.min(1, swaps.self ?? 0)) },
   ];

@@ -40,15 +40,19 @@ const loadJSON = (k, fallback) => {
 const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
 
 // ── "how does this work?" sheet ──────────────────────────────────────────────
+// Line sits outside the sheet rather than inside it: a component defined during render is a
+// new component type every pass, so React remounts the whole list on each render instead of
+// updating it.
+const Line = ({ emoji, title, body }) => (
+  <div className="flex gap-3">
+    <span className="text-lg flex-shrink-0 leading-none mt-0.5">{emoji}</span>
+    <p className="text-[13px] text-slate-600 leading-relaxed">
+      <strong className="text-slate-800">{title}</strong> {body}
+    </p>
+  </div>
+);
+
 function HowItWorksSheet({ onClose }) {
-  const Line = ({ emoji, title, body }) => (
-    <div className="flex gap-3">
-      <span className="text-lg flex-shrink-0 leading-none mt-0.5">{emoji}</span>
-      <p className="text-[13px] text-slate-600 leading-relaxed">
-        <strong className="text-slate-800">{title}</strong> {body}
-      </p>
-    </div>
-  );
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -65,11 +69,13 @@ function HowItWorksSheet({ onClose }) {
           <Line emoji="✌️" title="Two ideas a day."
             body="Small, real-life things you can actually do today — not big gestures." />
           <Line emoji="🤝" title="The first is an act of kindness."
-            body={`It comes from a different one of the ${HYT_AREAS.length} areas of life each day — work, home, friends, neighbours, nature and more — so you're never stuck in the same corner.`} />
+            body="Something anyone can do, wherever they are — no special place, no money, no particular person needed." />
           <Line emoji="🌤️" title="The second is for you."
             body="A bit of self-care, matched to your stage of life. Being kind to yourself counts too." />
           <Line emoji="🔄" title="Not feeling one? Try another."
-            body="You can swap a suggestion once a day. After that, today's two stay put — fresh ones arrive tomorrow." />
+            body="One swap a day — either a different suggestion, or a different area entirely. After that today's two stay put, and fresh ones arrive tomorrow." />
+          <Line emoji="🎯" title="Want something more specific?"
+            body={`"Pick an area" opens ${HYT_AREAS.length} themed sets — work, home, friends, neighbours, nature and more — for when you know what kind of kindness you're in the mood for.`} />
           <Line emoji="✅" title="Tap to mark it done."
             body="That's it. Each one waters your Kindness Tree in My Journey." />
           <Line emoji="🕊️" title="Nothing to break."
@@ -135,14 +141,23 @@ function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, 
 // ── steer to a different area when today's doesn't fit ───────────────────────
 // Deliberately not capped like "try another": this steers, it doesn't reroll. The prompt
 // inside a chosen area is still fixed by the day, so there's nothing to shop for.
-function AreaPicker({ current, onPick, onClear }) {
+function AreaPicker({ current, canPick, onPick, onClear }) {
   const [open, setOpen] = useState(false);
   const areas = HYT_AREAS;
+  // Nothing to offer once the day's swap is spent and no area is active — say so rather than
+  // showing a control that would do nothing.
+  if (!canPick && !current) {
+    return (
+      <p className="mt-2.5 text-center text-[10px] text-slate-300">
+        Today's swap is used — a fresh suggestion arrives tomorrow.
+      </p>
+    );
+  }
   if (!open) {
     return (
       <button onClick={() => setOpen(true)}
         className="mt-2.5 w-full rounded-xl border border-dashed border-slate-200 py-1.5 text-[11px] font-semibold text-slate-400 hover:border-teal-300 hover:text-teal-600 transition-colors">
-        Doesn't fit today? Pick an area
+        {current ? "Change area, or go back to everyday" : "Doesn't fit today? Pick an area"}
       </button>
     );
   }
@@ -153,20 +168,30 @@ function AreaPicker({ current, onPick, onClear }) {
         <button onClick={() => setOpen(false)} className="text-[10px] font-semibold text-slate-400 hover:text-slate-600">Close</button>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {areas.map((a) => (
-          <button key={a.id}
-            onClick={() => { onPick(a.id); setOpen(false); }}
-            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-              current === a.id ? "border-teal-400 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            }`}>
-            {a.emoji} {a.label}
-          </button>
-        ))}
+        {areas.map((a) => {
+          const active = current === a.id;
+          // Once the swap is spent you can still see where you are and step back to
+          // everyday, but you cannot hop between areas.
+          const disabled = !canPick && !active;
+          return (
+            <button key={a.id} disabled={disabled}
+              onClick={() => { onPick(a.id); setOpen(false); }}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                active
+                  ? "border-teal-400 bg-teal-50 text-teal-700"
+                  : disabled
+                  ? "border-slate-100 bg-white text-slate-300"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}>
+              {a.emoji} {a.label}
+            </button>
+          );
+        })}
       </div>
       {current && (
         <button onClick={() => { onClear(); setOpen(false); }}
           className="mt-2 w-full rounded-lg py-1 text-[10px] font-semibold text-slate-400 hover:text-teal-600">
-          Back to today's area
+          Back to everyday kindness
         </button>
       )}
     </div>
@@ -207,13 +232,24 @@ export default function HaveYouTried({ currentUser, dob }) {
     update({ ...state, done: nextDone });
   };
 
-  // One "try another" per DAY, across both cards — not one per card.
-  const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0);
+  // ONE swap per day, full stop — and picking an area counts as that swap.
+  //
+  // The review put it as "either swap the category, or swap a different suggestion in the
+  // same category… only one swap a day". Previously "try another" was capped at one but the
+  // area picker was uncapped, so the cap could be walked around by steering instead. Both
+  // now draw on the same single allowance.
+  const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0)
+    + (state.area ? 1 : 0);
   const canSwap = swapsUsed < 1;
   const swap = (slot) => {
     if (!canSwap) return;
     update({ ...state, swaps: { ...state.swaps, [slot]: 1 } });
   };
+  // Steering to an area spends the day's swap. Clearing it back to Everyday refunds it —
+  // that's a correction, not a second bite, and leaving someone stuck in an area they picked
+  // by accident would be the opposite of the point.
+  const pickArea = (id) => { if (canSwap) update({ ...state, area: id }); };
+  const clearArea = () => update({ ...state, area: null });
 
   const doneCount = items.filter((i) => state.done[i.slot]).length;
   const allDone = doneCount === SLOTS.length;
@@ -250,8 +286,9 @@ export default function HaveYouTried({ currentUser, dob }) {
             {item.slot === "kindness" && !state.done[item.slot] && (
               <AreaPicker
                 current={state.area ?? null}
-                onPick={(id) => update({ ...state, area: id })}
-                onClear={() => update({ ...state, area: null })}
+                canPick={canSwap}
+                onPick={pickArea}
+                onClear={clearArea}
               />
             )}
           </PromptCard>
