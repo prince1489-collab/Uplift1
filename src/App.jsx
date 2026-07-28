@@ -3329,7 +3329,11 @@ export default function App() {
               <FeaturedStoryReader
                 story={openStory}
                 me={{ uid: currentUser?.uid, name: profile?.fullName, country: profile?.country }}
-                onChanged={() => setFeaturedStories(loadLocalStories())}
+                db={db}
+                currentUser={currentUser}
+                // Keep the Firestore-backed reflections; only the device-local half is
+                // re-read. Resetting to loadLocalStories() alone dropped every remote one.
+                onChanged={() => setFeaturedStories((prev) => [...prev.filter((s2) => s2.remote), ...loadLocalStories()])}
                 onClose={() => setOpenStory(null)} />
             )}
 

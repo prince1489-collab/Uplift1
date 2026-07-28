@@ -115,6 +115,98 @@ export function thisWeeksMystery() {
 // box, making a checkbox look worth seven greetings. Both halves are drops in the same
 // tree; showing the sum is simply the honest number, and needs no fudge factor to keep in
 // step with either ledger.
+// Report + block for the UGC surfaces that aren't the message action bar — shared
+// reflections and received private replies. Play expects reporting and blocking on EVERY
+// user-generated surface, and until now only feed messages had either.
+//
+// Deliberately its own component rather than a refactor of QuickReactBar: that bar is the
+// main message action row (reactions, gifts, waves, replies) and is well exercised. The
+// handlers below mirror its fixed behaviour — await the write, confirm only on success,
+// surface the failure — rather than optimistically claiming it worked.
+export function ReportBlockBar({ db, currentUser, targetUid, targetName, contentId, contentKind }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null); // "reported" | "blocked"
+  const [error, setError] = useState("");
+  const isOther = targetUid && currentUser?.uid && targetUid !== currentUser.uid;
+  if (!isOther || !db) return null;
+
+  const report = async (reason) => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      await addDoc(collection(db, "reports"), {
+        kind: contentKind,          // "reflection" | "reply" — the admin queue needs to know
+        contentId: contentId ?? null,
+        messageId: contentKind === "message" ? contentId ?? null : null, // legacy field
+        reporterUid: currentUser.uid,
+        reportedUid: targetUid,
+        reason,
+        status: "open",
+        timestamp: Date.now(),
+      });
+      setDone("reported");
+    } catch {
+      setError("Couldn't send that report — check your connection and try again.");
+    }
+    setBusy(false);
+  };
+
+  const block = async () => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      await setDoc(doc(db, "users", currentUser.uid, "blockedUsers", targetUid), {
+        name: targetName ?? "Someone",
+        blockedAt: Date.now(),
+      });
+      setDone("blocked");
+    } catch {
+      setError("Couldn't block them — check your connection and try again.");
+    }
+    setBusy(false);
+  };
+
+  if (done) {
+    return (
+      <p className="text-[11px] font-semibold text-teal-600">
+        {done === "reported" ? "Reported — thank you. We'll review it." : `Blocked. You won't see ${targetName ?? "them"} again.`}
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="text-[11px] font-semibold text-slate-400 hover:text-rose-500 transition-colors">
+        Report or block
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 space-y-1.5">
+      {error && <p className="text-[11px] font-semibold text-rose-600" role="alert">{error}</p>}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Report:</span>
+        {["Harmful", "Spam", "Inappropriate", "Other"].map((r) => (
+          <button key={r} onClick={() => report(r)} disabled={busy}
+            className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            {r}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={block} disabled={busy}
+          className="rounded-full px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+          🚫 Block {targetName ?? "them"}
+        </button>
+        <button onClick={() => setOpen(false)} className="ml-auto text-[11px] font-semibold text-slate-400">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export function computeDropsGain(baseReward, streakDays = 0, action = "send") {
   return computeSparkReward(baseReward, streakDays) + (POINTS[action] ?? 0);
 }

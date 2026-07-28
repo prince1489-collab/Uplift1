@@ -17,7 +17,7 @@ import { doc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, lim
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { awardPoints } from "./points";
-import { computeSparkReward } from "./UpliftRetentionFeatures";
+import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 
 const POSTS_KEY = "seen_v2_local_posts";
@@ -848,7 +848,7 @@ export function SharedJournalCard({ story, onOpen, compact = false }) {
 
 // The shared journal opened up: read it, heart it, leave a comment. The author gets an
 // extra row to see exactly who did. All device-local.
-export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
+export function FeaturedStoryReader({ story, me, db, currentUser, onClose, onChanged }) {
   const [engage, setEngage] = useState(() => (story ? loadStoryEngagement(story.id) : { likes: [], comments: [] }));
   const [draft, setDraft] = useState("");
   const [showWho, setShowWho] = useState(false);
@@ -890,6 +890,18 @@ export function FeaturedStoryReader({ story, me, onClose, onChanged }) {
             </div>
           )}
           <p className="text-lg leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">“{story.text}”</p>
+          {/* Reflections are real UGC now, so they need the same report/block path as
+              messages. Never on the EXAMPLE card — there is no real member to report. */}
+          {!story.demo && (
+            <ReportBlockBar
+              db={db}
+              currentUser={currentUser}
+              targetUid={story.authorUid}
+              targetName={storyAuthorLabel(story)}
+              contentId={story.id}
+              contentKind="reflection"
+            />
+          )}
           {Array.isArray(story.enrich) && story.enrich.map((e, i) => (
             <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">{e.q}</p>
@@ -1108,14 +1120,28 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
               </div>
             ) : (
               <div className="space-y-1">
-                {replies.map((rep, i) => (
-                  <div key={i} className="rounded-2xl border border-amber-100 bg-amber-50/60 px-3.5 py-2.5">
+                {replies.map((rep) => (
+                  <div key={rep.id} className="rounded-2xl border border-amber-100 bg-amber-50/60 px-3.5 py-2.5">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-sm">{flagFor(rep.country)}</span>
-                      <span className="text-[11px] font-semibold text-slate-500 flex-1 truncate">{firstName(rep.name)}</span>
+                      {/* fromName/fromCountry — the Firestore shape. The old localStorage
+                          preview used name/country, so both are read for older entries. */}
+                      <span className="text-sm">{flagFor(rep.fromCountry ?? rep.country)}</span>
+                      <span className="text-[11px] font-semibold text-slate-500 flex-1 truncate">{firstName(rep.fromName ?? rep.name)}</span>
                       <span className="text-[10px] text-slate-400">{timeAgo(rep.ts)}</span>
                     </div>
                     <p className="text-[13px] text-slate-700 leading-snug">“{rep.text}”</p>
+                    {/* A private message from a stranger with no way to report it was the
+                        sharpest gap in the UGC surface. */}
+                    <div className="mt-1.5">
+                      <ReportBlockBar
+                        db={db}
+                        currentUser={currentUser}
+                        targetUid={rep.fromUid}
+                        targetName={firstName(rep.fromName ?? rep.name)}
+                        contentId={rep.id}
+                        contentKind="reply"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
