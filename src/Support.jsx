@@ -14,7 +14,7 @@ function ProgressDots({ total, current }) {
           style={{
             width: i === current ? 20 : 8,
             height: 8,
-            background: i <= current ? "#14b8a6" : "#e2e8f0",
+            background: i <= current ? "#FF6B6B" : "#e2e8f0",
           }}
         />
       ))}
@@ -167,7 +167,7 @@ function AssessmentScreen({ condition, onDone, onBack, country }) {
           <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${progress * 100}%`, background: "#14b8a6" }}
+              style={{ width: `${progress * 100}%`, background: "#FF6B6B" }}
             />
           </div>
         </div>
@@ -232,7 +232,7 @@ function ResultsScreen({ condition, answers, onViewResources, onBack }) {
           This is personal self-reflection, not an assessment or screen. */}
       <div
         className="rounded-2xl p-5 mb-4 text-white"
-        style={{ background: "linear-gradient(135deg, #14b8a6, #0d9488)" }}
+        style={{ background: "linear-gradient(135deg, #FF6B6B, #D24341)" }}
       >
         <p className="text-xs font-semibold opacity-80 mb-1">{conditionLabel}</p>
         <p className="text-lg font-bold mb-1">Thank you for checking in 💚</p>
@@ -261,7 +261,7 @@ function ResultsScreen({ condition, answers, onViewResources, onBack }) {
       <button
         onClick={() => onViewResources(conditionId, severity)}
         className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition-all active:scale-[0.98]"
-        style={{ background: "linear-gradient(135deg, #14b8a6, #0d9488)" }}
+        style={{ background: "linear-gradient(135deg, #FF6B6B, #D24341)" }}
       >
         See resources &amp; apps →
       </button>

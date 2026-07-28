@@ -8,8 +8,11 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0e1219",
-  "theme_color": "#0d9488",
-  "categories": ["social", "lifestyle"],
+  "theme_color": "#D24341",
+  "categories": [
+    "social",
+    "lifestyle"
+  ],
   "related_applications": [
     {
       "platform": "play",

@@ -283,15 +283,15 @@ export default function KindnessBoard({ db, currentUser, liveStats, streak, prof
         {startedLabel && <p className="text-[10px] mt-0.5" style={{ color: T.textDim }}>began {startedLabel}</p>}
       </div>
       <div className="flex items-start justify-between gap-1.5">
-        <StatCircle value={messagesSent} label="Messages sent" color="#14b8a6" dark={darkMode} />
+        <StatCircle value={messagesSent} label="Messages sent" color="#FF6B6B" dark={darkMode} />
         <StatCircle value={usersReached} label="Users reached" color="#f59e0b" dark={darkMode} />
         <StatCircle value={countriesCount} label="Countries reached" color="#6366f1" dark={darkMode} />
-        <StatCircle value={rippleEffect} label="Ripple effect" color="#10b981" dark={darkMode} />
+        <StatCircle value={rippleEffect} label="Ripple effect" color="#FF9E57" dark={darkMode} />
       </div>
 
       {/* ── Chapters: collapsible Year → Month → Week ── */}
       {!tree ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" style={{ color: T.accent ?? "#14b8a6" }} size={26} /></div>
+        <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" style={{ color: T.accent ?? "#FF6B6B" }} size={26} /></div>
       ) : tree.length === 0 ? (
         <div className="rounded-2xl px-4 py-8 text-center mt-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
           <p className="text-3xl mb-2">📖</p>

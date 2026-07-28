@@ -1355,7 +1355,7 @@ function SparkRing({ value, max, percent, initial = "✨" }) {
         <defs>
           <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#f59e0b" />
-            <stop offset="100%" stopColor="#2dd4bf" />
+            <stop offset="100%" stopColor="#FF8580" />
           </linearGradient>
         </defs>
       </svg>
@@ -3362,7 +3362,7 @@ export default function App() {
                 </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button onClick={handleInstall} style={{
-                    fontSize: 12, fontWeight: 600, color: "#0d9488",
+                    fontSize: 12, fontWeight: 600, color: "#D24341",
                     background: "none", border: "none", cursor: "pointer", padding: "2px 0",
                   }}>Install</button>
                   <button onClick={dismissInstallBanner} style={{
@@ -3521,7 +3521,7 @@ export default function App() {
                 <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[250] flex justify-center px-4">
                   <div
                     className="flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white"
-                    style={{ background: "linear-gradient(135deg, #34d399, #10b981)", boxShadow: "0 8px 24px rgba(16,185,129,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+                    style={{ background: "linear-gradient(135deg, #FFAD6E, #FF9E57)", boxShadow: "0 8px 24px rgba(16,185,129,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
                     <span className="text-base">💛</span> {sentToast}
                   </div>
                 </div>
@@ -3953,7 +3953,7 @@ export default function App() {
                     className={`w-full relative overflow-hidden rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
                     style={{
                       background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%)",
+                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #059669 100%)",
                       border: "1px solid rgba(5,150,105,0.55)",
                       boxShadow:
                         "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(4,120,87,0.45), 0 4px 16px rgba(16,185,129,0.45)",

@@ -156,7 +156,7 @@ const KEYFRAMES = `
   /* 15. Live count tick */
   @keyframes seenLiveTick {
     0%   { transform: scale(1); color: inherit; }
-    40%  { transform: scale(1.35); color: #10b981; }
+    40%  { transform: scale(1.35); color: #FF9E57; }
     100% { transform: scale(1); color: inherit; }
   }
 
@@ -401,7 +401,7 @@ function WaveRing({ p }) {
   return (
     <div style={{ position:"fixed", left:`${p.x}%`, top:`${p.y}%`,
       transform:"translate(-50%,-50%)", width:"8px", height:"8px", borderRadius:"50%",
-      border:"2px solid #14b8a6", animationName:"seenRippleRing", animationDuration:"800ms",
+      border:"2px solid #FF6B6B", animationName:"seenRippleRing", animationDuration:"800ms",
       animationDelay:`${p.delay}ms`, animationTimingFunction:"ease-out",
       animationFillMode:"forwards", opacity:0, pointerEvents:"none", zIndex:9999 }} />
   );
@@ -495,7 +495,7 @@ export function SendingIndicator({ visible }) {
   return (
     <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:"8px" }}>
       <div style={{ display:"inline-flex", alignItems:"center", gap:"4px",
-        background:"#0d9488", borderRadius:"16px 16px 2px 16px",
+        background:"#D24341", borderRadius:"16px 16px 2px 16px",
         padding:"8px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.1)" }}>
         {[0, 1, 2].map((i) => (
           <div key={i} style={{ width:"6px", height:"6px", borderRadius:"50%", background:"rgba(255,255,255,0.8)",
@@ -657,7 +657,7 @@ export function LiveCountTick({ count }) {
       borderRadius:"999px", background:"#f0fdf4", padding:"4px 8px",
       fontSize:"11px", fontWeight:600, color:"#15803d" }}>
       <span style={{ width:"6px", height:"6px", borderRadius:"50%",
-        background:"#10b981", flexShrink:0, animation:"seenTypingDot 2s ease-in-out infinite" }} />
+        background:"#FF9E57", flexShrink:0, animation:"seenTypingDot 2s ease-in-out infinite" }} />
       <span style={{ animation: ticking ? "seenLiveTick 450ms ease-out" : "none",
         display:"inline-block" }}>
         {count}

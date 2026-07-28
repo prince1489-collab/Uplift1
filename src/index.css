@@ -171,19 +171,19 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    and `bg-teal-100` correctly do NOT match, which a naive [class*="bg-teal-50"] would.
    This replaces a hand-maintained list that had fallen 53 classes behind. */
 [data-dark-shell] [class~="bg-teal-50"],
-[data-dark-shell] [class*="bg-teal-50/"] { background-color: rgba(45,212,191,0.12) !important; }
+[data-dark-shell] [class*="bg-teal-50/"] { background-color: rgba(255,107,107,0.12) !important; }
 [data-dark-shell] [class~="bg-teal-100"],
-[data-dark-shell] [class*="bg-teal-100/"] { background-color: rgba(45,212,191,0.17) !important; }
+[data-dark-shell] [class*="bg-teal-100/"] { background-color: rgba(255,107,107,0.17) !important; }
 [data-dark-shell] [class*="border-teal-1"],
 [data-dark-shell] [class*="border-teal-2"],
-[data-dark-shell] [class*="border-teal-3"] { border-color: rgba(45,212,191,0.30) !important; }
+[data-dark-shell] [class*="border-teal-3"] { border-color: rgba(255,107,107,0.30) !important; }
 [data-dark-shell] [class~="bg-emerald-50"],
-[data-dark-shell] [class*="bg-emerald-50/"] { background-color: rgba(16,185,129,0.12) !important; }
+[data-dark-shell] [class*="bg-emerald-50/"] { background-color: rgba(255,158,87,0.12) !important; }
 [data-dark-shell] [class~="bg-emerald-100"],
-[data-dark-shell] [class*="bg-emerald-100/"] { background-color: rgba(16,185,129,0.17) !important; }
+[data-dark-shell] [class*="bg-emerald-100/"] { background-color: rgba(255,158,87,0.17) !important; }
 [data-dark-shell] [class*="border-emerald-1"],
 [data-dark-shell] [class*="border-emerald-2"],
-[data-dark-shell] [class*="border-emerald-3"] { border-color: rgba(16,185,129,0.30) !important; }
+[data-dark-shell] [class*="border-emerald-3"] { border-color: rgba(255,158,87,0.30) !important; }
 [data-dark-shell] [class~="bg-amber-50"],
 [data-dark-shell] [class*="bg-amber-50/"] { background-color: rgba(245,158,11,0.12) !important; }
 [data-dark-shell] [class~="bg-amber-100"],
@@ -199,12 +199,12 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] [class*="border-violet-2"],
 [data-dark-shell] [class*="border-violet-3"] { border-color: rgba(139,92,246,0.30) !important; }
 [data-dark-shell] [class~="bg-rose-50"],
-[data-dark-shell] [class*="bg-rose-50/"] { background-color: rgba(244,63,94,0.12) !important; }
+[data-dark-shell] [class*="bg-rose-50/"] { background-color: rgba(220,38,38,0.12) !important; }
 [data-dark-shell] [class~="bg-rose-100"],
-[data-dark-shell] [class*="bg-rose-100/"] { background-color: rgba(244,63,94,0.17) !important; }
+[data-dark-shell] [class*="bg-rose-100/"] { background-color: rgba(220,38,38,0.17) !important; }
 [data-dark-shell] [class*="border-rose-1"],
 [data-dark-shell] [class*="border-rose-2"],
-[data-dark-shell] [class*="border-rose-3"] { border-color: rgba(244,63,94,0.30) !important; }
+[data-dark-shell] [class*="border-rose-3"] { border-color: rgba(220,38,38,0.30) !important; }
 [data-dark-shell] [class~="bg-blue-50"],
 [data-dark-shell] [class*="bg-blue-50/"] { background-color: rgba(59,130,246,0.12) !important; }
 [data-dark-shell] [class~="bg-blue-100"],
@@ -213,12 +213,12 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] [class*="border-blue-2"],
 [data-dark-shell] [class*="border-blue-3"] { border-color: rgba(59,130,246,0.30) !important; }
 [data-dark-shell] [class~="bg-sky-50"],
-[data-dark-shell] [class*="bg-sky-50/"] { background-color: rgba(56,189,248,0.12) !important; }
+[data-dark-shell] [class*="bg-sky-50/"] { background-color: rgba(244,114,182,0.12) !important; }
 [data-dark-shell] [class~="bg-sky-100"],
-[data-dark-shell] [class*="bg-sky-100/"] { background-color: rgba(56,189,248,0.17) !important; }
+[data-dark-shell] [class*="bg-sky-100/"] { background-color: rgba(244,114,182,0.17) !important; }
 [data-dark-shell] [class*="border-sky-1"],
 [data-dark-shell] [class*="border-sky-2"],
-[data-dark-shell] [class*="border-sky-3"] { border-color: rgba(56,189,248,0.30) !important; }
+[data-dark-shell] [class*="border-sky-3"] { border-color: rgba(244,114,182,0.30) !important; }
 [data-dark-shell] [class~="bg-red-50"],
 [data-dark-shell] [class*="bg-red-50/"] { background-color: rgba(239,68,68,0.12) !important; }
 [data-dark-shell] [class~="bg-red-100"],
@@ -278,13 +278,13 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 }
 [data-dark-shell] .seen-grad-hero { background-color: #121821 !important; }
 [data-dark-shell] .seen-grad-warm { background-color: rgba(245,158,11,0.10) !important; }
-[data-dark-shell] .seen-grad-cool { background-color: rgba(45,212,191,0.10) !important; }
+[data-dark-shell] .seen-grad-cool { background-color: rgba(255,107,107,0.10) !important; }
 
 /* Crisis support banner — an inline pink gradient with remapped (near-white) text on top,
    i.e. pale-on-pale in dark mode, on the highest-stakes surface in the app. */
 [data-dark-shell] .seen-crisis-banner {
-  background: rgba(244,63,94,0.14) !important;
-  border-color: rgba(244,63,94,0.38) !important;
+  background: rgba(220,38,38,0.14) !important;
+  border-color: rgba(220,38,38,0.38) !important;
 }
 [data-dark-shell] .seen-toast-violet {
   background: rgba(139,92,246,0.16) !important;
@@ -312,7 +312,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 }
 [data-dark-shell] .seen-react-badge.is-mine {
   background-color: #14352f !important;
-  border-color: rgba(45,212,191,0.5) !important;
+  border-color: rgba(255,107,107,0.5) !important;
   color: #5eead4 !important;
 }
 
@@ -491,7 +491,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(45,212,191,0.55);
+  background: rgba(255,107,107,0.55);
   vertical-align: middle;
   flex-shrink: 0;
 }
@@ -549,8 +549,8 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 
 /* Currently-picked emoji ring */
 .seen-qrb-btn--picked {
-  background: rgba(45,212,191,0.14) !important;
-  box-shadow: inset 0 0 0 1.5px rgba(45,212,191,0.45);
+  background: rgba(255,107,107,0.14) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(255,107,107,0.45);
 }
 
 /* Done (waved/gifted) */

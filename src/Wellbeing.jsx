@@ -97,8 +97,8 @@ export function useWellbeingHistory(db, uid) {
 
 // 0–100 colour bands.
 function scoreColour(score) {
-  if (score >= 75) return "#10b981";
-  if (score >= 50) return "#14b8a6";
+  if (score >= 75) return "#FF9E57";
+  if (score >= 50) return "#FF6B6B";
   if (score >= 30) return "#f59e0b";
   return "#fb7185";
 }
@@ -212,7 +212,7 @@ function TrendBars({ history }) {
             style={{
               height: `${pct}%`,
               background: last
-                ? "linear-gradient(180deg,#0d9488,#10b981)"
+                ? "linear-gradient(180deg,#D24341,#FF9E57)"
                 : "linear-gradient(180deg,#99f6e4,#5eead4)",
             }} />
         );
@@ -337,7 +337,7 @@ export function WellbeingPanel({ db, currentUser, onClose, onSupport }) {
                   <div key={q.key} className="flex items-center gap-2">
                     <span className="text-[12px] w-28 flex-shrink-0 text-slate-600">{q.emoji} {q.metric}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${now * 20}%`, background: "linear-gradient(90deg,#14b8a6,#10b981)" }} />
+                      <div className="h-full rounded-full" style={{ width: `${now * 20}%`, background: "linear-gradient(90deg,#FF6B6B,#FF9E57)" }} />
                     </div>
                     <span className="text-[11px] font-semibold tabular-nums text-slate-500 w-8 text-right">{now}/5</span>
                     {d !== null && (

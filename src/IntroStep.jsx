@@ -126,7 +126,7 @@ export default function IntroStep({ onDone }) {
           onClick={e => { e.stopPropagation(); finish(); }}
           className="flex items-center gap-2 rounded-full px-9 py-3.5 text-sm font-bold text-white transition-all hover:scale-105 active:scale-95"
           style={{
-            background: "linear-gradient(135deg, #14b8a6, #10b981)",
+            background: "linear-gradient(135deg, #FF6B6B, #FF9E57)",
             boxShadow: "0 0 32px rgba(20,184,166,0.35), 0 4px 16px rgba(0,0,0,0.3)",
           }}>
           Enter &rarr;

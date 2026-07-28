@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Seen" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#0d9488" />
+    <meta name="theme-color" content="#D24341" />
     <title>Seen</title>
     <meta name="description" content="Kindness is addictive. Spread kind greetings in real time." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,12 +25,43 @@
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // ── Phase 5 rebrand: the LA-sunset palette ────────────────────────────
+      // The app's colour lives almost entirely in Tailwind utility classes
+      // (bg-teal-600, text-teal-700, …), so the whole re-skin happens here by
+      // redefining the scales rather than rewriting hundreds of class names.
+      //   teal    -> coral        the one primary accent
+      //   emerald -> warm orange  pairs with coral in gradients
+      //   sky     -> dusky pink   so sky+teal gradients read as a sunset
+      //   rose    -> a deeper, cooler red, kept DELIBERATELY distinct from coral
+      //             so "primary action" and "something went wrong" never blur
       tailwind.config = {
         theme: {
           extend: {
             fontFamily: {
               sans: ["Inter", "system-ui", "sans-serif"],
               display: ["DM Serif Display", "Georgia", "serif"],
+            },
+            colors: {
+              teal: {
+                50:"#FFF1F0",100:"#FFE0DE",200:"#FFC4C0",300:"#FFA09A",400:"#FF8580",
+                500:"#FF6B6B",600:"#D24341",700:"#A82E2C",800:"#962B2A",900:"#762322",
+                950:"#451212",
+              },
+              emerald: {
+                50:"#FFF6EF",100:"#FFEAD8",200:"#FFD4B0",300:"#FFBC85",400:"#FFAD6E",
+                500:"#FF9E57",600:"#E07C33",700:"#B85F1D",800:"#914A18",900:"#733B15",
+                950:"#421F08",
+              },
+              sky: {
+                50:"#FEF2F8",100:"#FDE4F0",200:"#FBCBE2",300:"#F9A8CE",400:"#F68CBF",
+                500:"#F472B6",600:"#DB4E97",700:"#B93878",900:"#7C2450",800:"#962E61",
+                950:"#4A122E",
+              },
+              rose: {
+                50:"#FEF2F2",100:"#FEE2E2",200:"#FECACA",300:"#FCA5A5",400:"#F26B6B",
+                500:"#DC2626",600:"#C41B1B",700:"#9F1717",800:"#821717",900:"#6D1818",
+                950:"#450A0A",
+              },
             },
           },
         },

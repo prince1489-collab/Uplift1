@@ -1,0 +1,49 @@
+<!-- Seen — the sun-on-horizon "eye" mark.
+
+     The roadmap's preferred candidate: a semicircle sun sitting on a horizon line, where
+     the two together also read as an open eye — sunset and "seen" in one shape.
+
+     Hand-written geometry rather than designed artwork: honest about what it is, and good
+     enough to render icons from. Worth a designer's pass before it becomes the brand
+     proper.
+
+     Colours are the Phase 5 sunset ramp: coral -> warm orange, on warm sand.
+     Everything is drawn on a 512 grid so the PNG renders are exact multiples. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="Seen">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#FFF6EF"/>
+      <stop offset="100%" stop-color="#FFE0DE"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#FF9E57"/>
+      <stop offset="55%" stop-color="#FF6B6B"/>
+      <stop offset="100%" stop-color="#D24341"/>
+    </linearGradient>
+    <!-- The sun is clipped to its own top half, so its flat edge IS the horizon. -->
+    <clipPath id="above">
+      <rect x="0" y="0" width="512" height="300"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+
+  <!-- Sun: a full circle clipped at the horizon, leaving a clean semicircle. Its curve is
+       the upper lid of the eye. -->
+  <g clip-path="url(#above)">
+    <circle cx="256" cy="300" r="132" fill="url(#sun)"/>
+  </g>
+
+  <!-- Horizon: the lower lid. Extends past the sun on both sides so the shape reads as a
+       landscape as well as an eye. -->
+  <rect x="112" y="291" width="288" height="18" rx="9" fill="#D24341"/>
+
+  <!-- Pupil: only enough to tip the reading toward "eye" without losing the sun. -->
+  <circle cx="256" cy="252" r="40" fill="#FFF6EF" opacity="0.92"/>
+  <circle cx="256" cy="252" r="20" fill="#A82E2C"/>
+
+  <!-- No rays: they read as protrusions rather than light, and turned the silhouette into
+       something closer to a hat. The sun-over-horizon shape is stronger unadorned, and
+       survives being shrunk to 48px far better. -->
+</svg>

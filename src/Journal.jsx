@@ -17,7 +17,7 @@ import { authedPost } from "./apiBase";
 
 const TYPES = [
   { id: "grateful", label: "Grateful", emoji: "🙏", color: "#f59e0b" },
-  { id: "kindness", label: "Kindness", emoji: "💚", color: "#10b981" },
+  { id: "kindness", label: "Kindness", emoji: "💚", color: "#FF9E57" },
 ];
 
 const WEEKLY_GOAL = 3; // a gentle "few times a week" target — never punitive
@@ -170,7 +170,7 @@ function MonthHeatmap({ counts }) {
   const startWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = now.getDate();
-  const tint = (c) => (c >= 3 ? "#0d9488" : c === 2 ? "#2dd4bf" : c === 1 ? "#99f6e4" : "#f1f5f9");
+  const tint = (c) => (c >= 3 ? "#D24341" : c === 2 ? "#FF8580" : c === 1 ? "#99f6e4" : "#f1f5f9");
   const keyFor = (d) => `${year}-${pad(month + 1)}-${pad(d)}`;
   const cells = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
@@ -191,7 +191,7 @@ function MonthHeatmap({ counts }) {
             style={{
               background: tint(counts[keyFor(d)] || 0),
               color: (counts[keyFor(d)] || 0) >= 2 ? "#fff" : "#94a3b8",
-              outline: d === today ? "2px solid #0d9488" : "none",
+              outline: d === today ? "2px solid #D24341" : "none",
               outlineOffset: "-2px",
             }}>
             {d}
