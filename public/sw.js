@@ -43,7 +43,10 @@ self.addEventListener("notificationclick", (event) => {
 
 // ── PWA shell cache (network-first, offline fallback) ────────────────────────
 
-const CACHE = "seen-shell-v5";
+// Bumped v5 -> v6 so the activate handler purges the old shell cache. A device that
+// precached the V1 shell keeps serving it as the offline fallback until the cache name
+// changes, which is the second half of why seenapp.app could still show V1.
+const CACHE = "seen-shell-v6";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/badge-96.png"];
 
 self.addEventListener("install", (event) => {
