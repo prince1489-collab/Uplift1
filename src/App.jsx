@@ -2111,16 +2111,25 @@ export default function App() {
           const nextProfile = snap.exists() ? snap.data() : null;
           const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
           setProfile(nextProfile);
-          // Backfill publicProfiles for accounts that predate the split, and repair drift if
-          // a profile was ever edited without the mirror being written. Reads only this
-          // user's own documents and no-ops when already in step.
-          if (done) ensurePublicProfile(db, currentUser.uid);
           setHasCompletedOnboarding(done); setOnboardingStep(done ? "done" : "details");
           // Remember on this device that onboarding is done, so a future cold start never
           // flashes the onboarding screen even if the profile read is momentarily empty.
           if (done) safeLocalSet(onboardedKey, "1");
           attempts = 0;
           setProfileLoadError(""); setProfileChecked(true); setIsProfileLoading(false);
+
+          // Backfill publicProfiles for accounts that predate the split, and repair drift if
+          // a profile was ever edited without the mirror being written. Reads only this
+          // user's own documents and no-ops when already in step.
+          //
+          // Two things about the placement, both learned the hard way. It uses `user` (this
+          // subscription's own argument), NOT the `currentUser` state — this effect has an
+          // empty dependency array, so its closure holds `currentUser` as it was on the first
+          // render, which is null. And it runs AFTER the setters above rather than before:
+          // this is best-effort work, and nothing best-effort may sit on the path to
+          // setProfileChecked(true). It did, it threw on null.uid, and every already-onboarded
+          // user was left on the loading spinner forever.
+          if (done) { try { ensurePublicProfile(db, user.uid); } catch { /* best-effort */ } }
         },
         (error) => {
           // A profile read can transiently fail on cold start (e.g. auth token not yet
