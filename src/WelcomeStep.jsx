@@ -159,20 +159,20 @@ function GlobePreview() {
       // Graticule
       ctx.beginPath();
       pathGen(_GRATICULE);
-      ctx.strokeStyle = "rgba(77,255,176,0.1)";
+      ctx.strokeStyle = "rgba(255,133,128,0.1)";
       ctx.lineWidth = 0.4;
       ctx.stroke();
 
       // Land fill
       ctx.beginPath();
       pathGen(_LAND);
-      ctx.fillStyle = "rgba(77,255,176,0.22)";
+      ctx.fillStyle = "rgba(255,133,128,0.22)";
       ctx.fill();
 
       // Country borders — all batched into one stroke call
       ctx.beginPath();
       _COUNTRIES.features.forEach(f => pathGen(f));
-      ctx.strokeStyle = "rgba(77,255,176,0.38)";
+      ctx.strokeStyle = "rgba(255,133,128,0.38)";
       ctx.lineWidth = 0.35;
       ctx.stroke();
 
@@ -193,7 +193,7 @@ function GlobePreview() {
         // Soft glow
         ctx.beginPath();
         pathGen(arcFeat);
-        ctx.strokeStyle = `rgba(77,255,176,${0.22 * alpha})`;
+        ctx.strokeStyle = `rgba(255,133,128,${0.22 * alpha})`;
         ctx.lineWidth = 7;
         ctx.lineCap = "round";
         ctx.stroke();
@@ -201,7 +201,7 @@ function GlobePreview() {
         // Bright core
         ctx.beginPath();
         pathGen(arcFeat);
-        ctx.strokeStyle = `rgba(77,255,176,${alpha})`;
+        ctx.strokeStyle = `rgba(255,133,128,${alpha})`;
         ctx.lineWidth = 2;
         ctx.lineCap = "round";
         ctx.stroke();
@@ -215,11 +215,11 @@ function GlobePreview() {
             const dotA  = alpha * Math.max(0, 1 - pulse * 0.6);
             ctx.beginPath();
             ctx.arc(pt[0], pt[1], dotR, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(77,255,176,${dotA})`;
+            ctx.fillStyle = `rgba(255,133,128,${dotA})`;
             ctx.fill();
             ctx.beginPath();
             ctx.arc(pt[0], pt[1], 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(77,255,176,${alpha})`;
+            ctx.fillStyle = `rgba(255,133,128,${alpha})`;
             ctx.fill();
           }
         }
@@ -227,8 +227,8 @@ function GlobePreview() {
 
       // Atmosphere halo
       const atm = ctx.createRadialGradient(CX, CY, R * 0.88, CX, CY, R * 1.1);
-      atm.addColorStop(0, "rgba(77,255,176,0)");
-      atm.addColorStop(1, "rgba(77,255,176,0.15)");
+      atm.addColorStop(0, "rgba(255,133,128,0)");
+      atm.addColorStop(1, "rgba(255,133,128,0.15)");
       ctx.beginPath();
       ctx.arc(CX, CY, R * 1.1, 0, Math.PI * 2);
       ctx.fillStyle = atm;
@@ -237,7 +237,7 @@ function GlobePreview() {
       // Sphere outline
       ctx.beginPath();
       pathGen({ type: "Sphere" });
-      ctx.strokeStyle = "rgba(77,255,176,0.28)";
+      ctx.strokeStyle = "rgba(255,133,128,0.28)";
       ctx.lineWidth = 0.8;
       ctx.stroke();
 

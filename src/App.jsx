@@ -1104,7 +1104,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-teal-600" /></div>;
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
+    <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
       <form className="mx-auto w-full max-w-sm space-y-3"
         onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: (form.dobMonth && form.dobDay && form.dobYear) ? `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` : "" }); }}>
         <div className="flex justify-center pb-3">
@@ -1364,7 +1364,7 @@ function SparkRing({ value, max, percent, initial = "✨" }) {
         <span style={{
           fontSize: isLetter ? "17px" : "11px",
           fontWeight: isLetter ? 700 : 700,
-          color: isLetter ? "#e2e8f0" : "#0f766e",
+          color: isLetter ? "#e2e8f0" : "#A82E2C",
           lineHeight: 1,
           fontFamily: isLetter ? "Inter, sans-serif" : "inherit",
         }}>{initial}</span>
@@ -3213,7 +3213,7 @@ export default function App() {
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
               ) : pendingOnboardingDetails ? (
-                <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
+                <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
                   <div className="mx-auto w-full max-w-sm">
                     <div className="flex justify-center pb-3">
                       <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md"><Sparkles size={24} /></div>
@@ -3354,8 +3354,8 @@ export default function App() {
             {showInstallBanner && deferredInstallRef.current && (
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "8px 14px", background: "rgba(13,148,136,0.1)",
-                borderBottom: "1px solid rgba(13,148,136,0.15)", flexShrink: 0,
+                padding: "8px 14px", background: "rgba(210,67,65,0.1)",
+                borderBottom: "1px solid rgba(210,67,65,0.15)", flexShrink: 0,
               }}>
                 <span style={{ fontSize: 13, color: darkMode ? "rgba(255,255,255,0.8)" : "#0f172a" }}>
                   Install Seen for the best experience
@@ -3521,7 +3521,7 @@ export default function App() {
                 <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[250] flex justify-center px-4">
                   <div
                     className="flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white"
-                    style={{ background: "linear-gradient(135deg, #FFAD6E, #FF9E57)", boxShadow: "0 8px 24px rgba(16,185,129,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+                    style={{ background: "linear-gradient(135deg, #FFAD6E, #FF9E57)", boxShadow: "0 8px 24px rgba(255,158,87,0.45)", animation: "seenQrbIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
                     <span className="text-base">💛</span> {sentToast}
                   </div>
                 </div>
@@ -3555,21 +3555,21 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setHometownToast(null); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #0a2e1a, #133d24)", border: "1px solid rgba(80,200,120,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
+                    style={{ background: "linear-gradient(135deg, #3B1A18, #4E211F)", border: "1px solid rgba(255,196,192,0.5)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🏠</span>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm" style={{ color: "#80e8a0" }}>
+                      <p className="font-bold text-sm" style={{ color: "#FFC4C0" }}>
                         A neighbour just {REACTION_WORD[hometownToast.emoji] ? `sent you a ${REACTION_WORD[hometownToast.emoji]}` : "reacted"}!
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: "rgba(128,232,160,0.7)" }}>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(255,196,192,0.7)" }}>
                         Someone from your own country felt your kindness {hometownToast.emoji}
                       </p>
                     </div>
                     <span
                       onClick={(e) => { e.stopPropagation(); setHometownToast(null); }}
                       className="p-1 flex-shrink-0"
-                      style={{ color: "rgba(128,232,160,0.5)" }}
+                      style={{ color: "rgba(255,196,192,0.5)" }}
                     >✕</span>
                   </button>
                 </div>
@@ -3580,19 +3580,19 @@ export default function App() {
                   <button
                     onClick={(e) => { e.stopPropagation(); setRippleToast(null); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
-                    style={{ background: "linear-gradient(135deg, #042f2e, #0c4a42)", border: "1px solid rgba(45,212,191,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
+                    style={{ background: "linear-gradient(135deg, #451212, #5C1A19)", border: "1px solid rgba(255,133,128,0.45)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", animation: "seenToastDown 0.35s ease both" }}
                   >
                     <span className="text-2xl">🌱</span>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm" style={{ color: "#5eead4" }}>
+                      <p className="font-bold text-sm" style={{ color: "#FFA09A" }}>
                         Kindness chain! Someone you reached{rippleToast.country ? ` in ${rippleToast.country}` : ""} just greeted someone else.
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: "rgba(94,234,212,0.7)" }}>Your kindness is multiplying — watch the ripple →</p>
+                      <p className="text-xs mt-0.5" style={{ color: "rgba(255,160,154,0.7)" }}>Your kindness is multiplying — watch the ripple →</p>
                     </div>
                     <span
                       onClick={(e) => { e.stopPropagation(); setRippleToast(null); }}
                       className="p-1 flex-shrink-0"
-                      style={{ color: "rgba(94,234,212,0.5)" }}
+                      style={{ color: "rgba(255,160,154,0.5)" }}
                     >✕</span>
                   </button>
                 </div>
@@ -3865,7 +3865,7 @@ export default function App() {
                                                 hasMood && !isUnwrapped && !(isMystery && !mine)
                                                   ? moodStyle
                                                   : isUnwrapped
-                                                  ? { boxShadow: "0 0 0 1px rgba(20,184,166,0.25), 0 2px 12px rgba(20,184,166,0.12)" }
+                                                  ? { boxShadow: "0 0 0 1px rgba(255,107,107,0.25), 0 2px 12px rgba(255,107,107,0.12)" }
                                                   : isMystery && !mine
                                                   ? { boxShadow: "0 0 0 1px rgba(251,146,60,0.2), 0 2px 8px rgba(251,146,60,0.08)" }
                                                   : {}
@@ -3953,11 +3953,11 @@ export default function App() {
                     className={`w-full relative overflow-hidden rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
                     style={{
                       background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #059669 100%)",
-                      border: "1px solid rgba(5,150,105,0.55)",
+                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #E07C33 100%)",
+                      border: "1px solid rgba(224,124,51,0.55)",
                       boxShadow:
-                        "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(4,120,87,0.45), 0 4px 16px rgba(16,185,129,0.45)",
-                      textShadow: "0 1px 1px rgba(4,120,87,0.4)",
+                        "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(184,95,29,0.45), 0 4px 16px rgba(255,158,87,0.45)",
+                      textShadow: "0 1px 1px rgba(184,95,29,0.4)",
                     }}>
                     {!isSending && <span aria-hidden="true" className="send-kindness-shine" />}
                     {isSending

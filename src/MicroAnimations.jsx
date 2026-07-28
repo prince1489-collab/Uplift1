@@ -102,9 +102,9 @@ const KEYFRAMES = `
 
   /* 6. Globe pulse ring */
   @keyframes seenGlobePulseRing {
-    0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
-    70%  { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
-    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    0%   { box-shadow: 0 0 0 0 rgba(255,158,87,0.7); }
+    70%  { box-shadow: 0 0 0 10px rgba(255,158,87,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,158,87,0); }
   }
   .seen-globe-pulse {
     animation: seenGlobePulseRing 0.8s ease-out 3;
@@ -260,8 +260,8 @@ const KEYFRAMES = `
 
   /* Flashing attention pulse (the "how are you feeling?" chat bubble by the name) */
   @keyframes seenBubbleFlash {
-    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(20,184,166,0.55); }
-    50%      { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(20,184,166,0); }
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(255,107,107,0.55); }
+    50%      { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(255,107,107,0); }
   }
 `;
 
@@ -617,9 +617,9 @@ export function ReactionButton({ emoji, count, mine, onClick }) {
     <button onClick={handleClick}
       style={{
         display:"inline-flex", alignItems:"center", gap:"2px",
-        borderRadius:"999px", border:`1px solid ${mine ? "#99f6e4" : "#e2e8f0"}`,
-        background: mine ? "#f0fdfa" : "#ffffff", padding:"2px 6px",
-        fontSize:"11px", color: mine ? "#0f766e" : "#475569",
+        borderRadius:"999px", border:`1px solid ${mine ? "#FFC4C0" : "#e2e8f0"}`,
+        background: mine ? "#FFF1F0" : "#ffffff", padding:"2px 6px",
+        fontSize:"11px", color: mine ? "#A82E2C" : "#475569",
         cursor:"pointer", transition:"border-color 0.15s",
         transform: beating ? "scale(1)" : "scale(1)",
         animation: beating ? "seenReactionBeat 350ms cubic-bezier(0.34,1.56,0.64,1)" : "none",
@@ -654,8 +654,8 @@ export function LiveCountTick({ count }) {
 
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:"5px",
-      borderRadius:"999px", background:"#f0fdf4", padding:"4px 8px",
-      fontSize:"11px", fontWeight:600, color:"#15803d" }}>
+      borderRadius:"999px", background:"#FFF1F0", padding:"4px 8px",
+      fontSize:"11px", fontWeight:600, color:"#A82E2C" }}>
       <span style={{ width:"6px", height:"6px", borderRadius:"50%",
         background:"#FF9E57", flexShrink:0, animation:"seenTypingDot 2s ease-in-out infinite" }} />
       <span style={{ animation: ticking ? "seenLiveTick 450ms ease-out" : "none",

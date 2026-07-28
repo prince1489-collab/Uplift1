@@ -50,14 +50,14 @@ export default function IntroStep({ onDone }) {
   return (
     <div
       className="fixed inset-0 z-[300] flex flex-col items-center justify-center select-none overflow-hidden"
-      style={{ background: "linear-gradient(135deg, #020617 0%, #0f172a 55%, #042f2e 100%)" }}
+      style={{ background: "linear-gradient(135deg, #020617 0%, #0f172a 55%, #451212 100%)" }}
       onClick={finish}>
 
       {/* Ambient teal glow */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(20,184,166,0.07) 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(255,107,107,0.07) 0%, transparent 70%)" }}
       />
 
       {/* Subtle floating particles */}
@@ -127,7 +127,7 @@ export default function IntroStep({ onDone }) {
           className="flex items-center gap-2 rounded-full px-9 py-3.5 text-sm font-bold text-white transition-all hover:scale-105 active:scale-95"
           style={{
             background: "linear-gradient(135deg, #FF6B6B, #FF9E57)",
-            boxShadow: "0 0 32px rgba(20,184,166,0.35), 0 4px 16px rgba(0,0,0,0.3)",
+            boxShadow: "0 0 32px rgba(255,107,107,0.35), 0 4px 16px rgba(0,0,0,0.3)",
           }}>
           Enter &rarr;
         </button>

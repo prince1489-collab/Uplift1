@@ -170,7 +170,7 @@ function MonthHeatmap({ counts }) {
   const startWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = now.getDate();
-  const tint = (c) => (c >= 3 ? "#D24341" : c === 2 ? "#FF8580" : c === 1 ? "#99f6e4" : "#f1f5f9");
+  const tint = (c) => (c >= 3 ? "#D24341" : c === 2 ? "#FF8580" : c === 1 ? "#FFC4C0" : "#f1f5f9");
   const keyFor = (d) => `${year}-${pad(month + 1)}-${pad(d)}`;
   const cells = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);

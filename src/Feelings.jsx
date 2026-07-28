@@ -109,8 +109,8 @@ export function FeelingsStrip({ others, onEncourage, myUid, onOpenMine }) {
       <button key={`${current.uid}_${current.createdAt}`} onClick={() => (mine ? onOpenMine?.() : (!sent && onEncourage(current)))}
         className="seen-feeling-strip w-full rounded-xl px-3 py-2 text-left active:scale-[0.99] transition-transform flex items-center gap-2"
         style={{
-          background: mine ? "linear-gradient(135deg, #ecfdf5, #f0fdfa)" : "linear-gradient(135deg, #fffbeb, #fef3f2)",
-          border: mine ? "1px solid #99f6e4" : "1px solid #fde68a",
+          background: mine ? "linear-gradient(135deg, #FFF6EF, #FFF1F0)" : "linear-gradient(135deg, #fffbeb, #fef3f2)",
+          border: mine ? "1px solid #FFC4C0" : "1px solid #fde68a",
           animation: "seenFadeUp 400ms ease both",
         }}>
         <div className="flex-1 min-w-0">

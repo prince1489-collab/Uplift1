@@ -213,7 +213,7 @@ function TrendBars({ history }) {
               height: `${pct}%`,
               background: last
                 ? "linear-gradient(180deg,#D24341,#FF9E57)"
-                : "linear-gradient(180deg,#99f6e4,#5eead4)",
+                : "linear-gradient(180deg,#FFC4C0,#FFA09A)",
             }} />
         );
       })}

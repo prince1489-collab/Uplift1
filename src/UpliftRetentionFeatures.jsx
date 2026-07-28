@@ -2085,7 +2085,7 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           <button
             className="seen-qrb-btn"
             title="Reply privately"
-            style={{ fontSize: 11, fontWeight: 700, width: "auto", padding: "0 10px", height: 34, color: "#0f766e" }}
+            style={{ fontSize: 11, fontWeight: 700, width: "auto", padding: "0 10px", height: 34, color: "#A82E2C" }}
             onClick={() => { onReply(); onClose?.(); }}>
             💬 Reply
           </button>

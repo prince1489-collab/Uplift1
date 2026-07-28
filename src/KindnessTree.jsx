@@ -48,7 +48,7 @@ export function skyFor(hour = new Date().getHours(), darkMode = false) {
   if (darkMode) return { sky: ["#0b1120", "#111a2b"], sun: null, night: true, label: "night" };
   if (hour < 5)  return { sky: ["#1e293b", "#334155"], sun: null,      night: true,  label: "night" };
   if (hour < 8)  return { sky: ["#fed7aa", "#fef3c7"], sun: "#fbbf24", night: false, label: "dawn" };
-  if (hour < 17) return { sky: ["#e0f2fe", "#f0fdfa"], sun: "#fde68a", night: false, label: "day" };
+  if (hour < 17) return { sky: ["#e0f2fe", "#FFF1F0"], sun: "#fde68a", night: false, label: "day" };
   if (hour < 20) return { sky: ["#fecaca", "#fed7aa"], sun: "#fb923c", night: false, label: "dusk" };
   return { sky: ["#312e81", "#1e293b"], sun: null, night: true, label: "night" };
 }

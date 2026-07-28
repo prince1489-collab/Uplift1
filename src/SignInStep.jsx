@@ -69,7 +69,7 @@ export default function SignInStep({
   };
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-[#edf5f6] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+    <div className="h-full w-full bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
       <div className="mx-auto w-full max-w-sm">
         <div className="flex justify-center pb-4">
           <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
