@@ -2086,6 +2086,8 @@ export default function App() {
   useEffect(() => {
     let unsubscribeProfile = null;
     let retryTimer = null;
+    let profileWatchdog = null;
+    let profileSettled = false; // success or give-up reached; watchdog is a no-op after this
     let attempts = 0;
 
     // Consume any pending Google redirect sign-in so the session is established on load
@@ -2098,8 +2100,31 @@ export default function App() {
     // don't trap the user on an infinite loading spinner — degrade to the sign-in screen after 6s.
     const authFailsafe = setTimeout(() => setIsAuthLoading(false), 6000);
 
+    // Second failsafe, for the profile read rather than auth. The one above only covers
+    // onAuthStateChanged never firing; once it HAS fired for a signed-in user the loading
+    // gate is held by `profileChecked`, and nothing was watching that.
+    //
+    // A Firestore *error* is handled — it retries, then lands on the "Having trouble loading
+    // your profile · Reload" screen. A thrown *exception* in the success handler is not: it
+    // skips setProfileChecked(true), no error state is ever set, and the app sits on a
+    // spinner forever with no way out but reinstalling. That happened, in 0d197c9, from a
+    // one-word mistake. The specific bug is fixed; this makes the whole shape of it
+    // survivable, by routing any silent stall into the recoverable screen that already exists.
+    const armProfileWatchdog = () => {
+      clearTimeout(profileWatchdog);
+      profileWatchdog = setTimeout(() => {
+        if (profileSettled) return;
+        // Still waiting after 12s with nothing to show for it — surface the Reload screen.
+        // A plain flag rather than reading state: a setState updater must be pure, and this
+        // needs a side effect. The flag also can't go stale the way a closed-over state
+        // value would, which matters in an effect with an empty dependency array.
+        setProfileLoadError("timeout"); setIsProfileLoading(false);
+      }, 12000);
+    };
+
     const subscribeProfile = (user) => {
       const onboardedKey = "seen_onboarded_" + user.uid;
+      armProfileWatchdog();
       // includeMetadataChanges so the server's confirmation fires even when the cached
       // "no document" matches it — otherwise a brand-new user could hang on the loader.
       unsubscribeProfile = onSnapshot(userProfileRef(user.uid), { includeMetadataChanges: true },
@@ -2116,6 +2141,7 @@ export default function App() {
           // flashes the onboarding screen even if the profile read is momentarily empty.
           if (done) safeLocalSet(onboardedKey, "1");
           attempts = 0;
+          profileSettled = true; clearTimeout(profileWatchdog);
           setProfileLoadError(""); setProfileChecked(true); setIsProfileLoading(false);
 
           // Backfill publicProfiles for accounts that predate the split, and repair drift if
@@ -2143,6 +2169,7 @@ export default function App() {
             }, Math.min(8000, 1000 * 2 ** (attempts - 1)));
           } else {
             // Exhausted retries: surface a recoverable error instead of hanging forever.
+            profileSettled = true; clearTimeout(profileWatchdog);
             setProfileLoadError(error?.code || "unknown"); setIsProfileLoading(false);
           }
         }
@@ -2162,11 +2189,13 @@ export default function App() {
         setProfileChecked(true); setIsProfileLoading(false); return;
       }
       setKnownOnboarded(safeLocalGet("seen_onboarded_" + user.uid) === "1");
+      profileSettled = false;
       setProfileChecked(false); setProfileLoadError(""); setIsProfileLoading(true);
       subscribeProfile(user);
     });
     return () => {
       clearTimeout(authFailsafe);
+      clearTimeout(profileWatchdog);
       if (unsubscribeProfile) unsubscribeProfile();
       if (retryTimer) clearTimeout(retryTimer);
       unsubscribeAuth();
