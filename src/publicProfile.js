@@ -28,10 +28,34 @@ export const PUBLIC_FIELDS = [
   "reactionsReceivedCount", // powers "onward reach" in My Impact
 ];
 
-// Firestore has no substring search, so the searchable form is a lowercased name and the
-// query is a prefix range. "starts with" is the right shape for finding a person anyway —
-// nobody looks someone up by the middle of their name.
+// Firestore has no substring search. The first version of this stored one lowercased name
+// and did a prefix range over it, which meant searching a surname found nobody: "rathore"
+// could never match "Mahiman S Rathore", because the range only ever tests the START of the
+// whole string. If you know someone's name, that is a strange thing for search not to find.
+//
+// So each profile also stores every prefix of every word in the name, and search is a single
+// array-contains against that. "rath" matches "Rathore"; "mah" matches "Mahiman". The cost is
+// a handful of short strings per profile — a three-word name produces about fifteen.
 export const searchKey = (name) => String(name || "").trim().toLowerCase();
+
+const MIN_TOKEN = 2;   // one letter would match most of the directory
+const MAX_TOKEN = 12;  // longer than this and people are typing the whole name anyway
+const MAX_WORDS = 4;   // guards against a pathological "name" of many words
+
+export function searchTokens(name) {
+  const words = searchKey(name)
+    // Punctuation becomes a space, so "o'brien" indexes as two words and is findable by
+    // "brien". Not by "obrien" — a trade accepted rather than special-cased.
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, MAX_WORDS);
+  const out = new Set();
+  for (const w of words) {
+    for (let i = MIN_TOKEN; i <= Math.min(w.length, MAX_TOKEN); i++) out.add(w.slice(0, i));
+  }
+  return [...out];
+}
 
 function projection(profile) {
   const out = {};
@@ -39,6 +63,7 @@ function projection(profile) {
     if (profile?.[f] !== undefined && profile?.[f] !== null) out[f] = profile[f];
   }
   out.nameLower = searchKey(profile?.fullName);
+  out.nameTokens = searchTokens(profile?.fullName);
   return out;
 }
 
@@ -66,7 +91,12 @@ export async function ensurePublicProfile(db, uid) {
     ]);
     if (!mine.exists()) return;
     const profile = mine.data();
-    if (pub.exists() && pub.data()?.nameLower === searchKey(profile?.fullName)) return;
+    // Re-sync when the name changed OR when the document predates nameTokens — otherwise
+    // profiles written before search existed would stay permanently unfindable.
+    const cur = pub.exists() ? pub.data() : null;
+    const upToDate = cur?.nameLower === searchKey(profile?.fullName)
+      && Array.isArray(cur?.nameTokens) && cur.nameTokens.length > 0;
+    if (upToDate) return;
     await syncPublicProfile(db, uid, profile);
   } catch { /* best-effort */ }
 }
@@ -89,21 +119,27 @@ export async function searchProfiles(db, term, { excludeUid = null, blockedUids 
   if (!db || key.length < 2) return [];
   const blocked = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
   try {
-    const q = query(
+    // array-contains on the prefix tokens: matches any WORD of the name, not just the first.
+    // No orderBy, so this needs only Firestore's automatic array index — sorting happens
+    // below, where it is free.
+    const snap = await getDocs(query(
       collection(db, "publicProfiles"),
-      where("nameLower", ">=", key),
-      // U+F8FF is the last character in the Unicode BMP private-use area, so this bounds
-      // the range to "keys beginning with `key`".
-      where("nameLower", "<=", `${key}\uf8ff`),
-      orderBy("nameLower"),
-      limit(max + 10)
-    );
-    const snap = await getDocs(q);
+      where("nameTokens", "array-contains", key),
+      limit(max + 25)
+    ));
     return snap.docs
       .map((d) => ({ uid: d.id, ...d.data() }))
       .filter((p) => p.uid !== excludeUid && !blocked.has(p.uid))
+      // Names that START with what was typed first — someone searching "mah" almost
+      // certainly wants Mahiman ahead of a Rathore whose middle name happens to match.
+      .sort((a, b) => {
+        const aStarts = (a.nameLower || "").startsWith(key) ? 0 : 1;
+        const bStarts = (b.nameLower || "").startsWith(key) ? 0 : 1;
+        return aStarts - bStarts || (a.nameLower || "").localeCompare(b.nameLower || "");
+      })
       .slice(0, max);
-  } catch {
+  } catch (err) {
+    console.error("[search] failed:", err?.code, err?.message);
     return [];
   }
 }

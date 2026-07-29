@@ -24,7 +24,7 @@ import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1842,7 +1842,9 @@ export default function App() {
   };
   // `follows` is the source of truth ({uid, name, country, label}); the feed filter and the
   // Worldwide rotator only need the uids, so those are derived.
-  const [follows, setFollows] = useState(() => loadFollows());
+  // Follows live in Firestore now (users/{uid}/follows), so they follow the account rather
+  // than the device. localStorage is a read-through cache behind this hook, not the source.
+  const follows = useFollows(db, currentUser);
   const focusedUids = useMemo(() => follows.map((f) => f.uid), [follows]);
   const [showFollowing, setShowFollowing] = useState(false);
   useBackLayer(showFollowing, () => setShowFollowing(false));
@@ -1903,43 +1905,20 @@ export default function App() {
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
-  // Follow/unfollow from the Worldwide Feed — denormalizes the name + country so the
-  // "People you follow" panel can render without extra reads.
+  // Follow/unfollow from the Worldwide Feed. These write one Firestore document each and
+  // let the follows listener update state — no local copy is kept, so every device the
+  // account is signed in on converges on the same list. The name and country are
+  // denormalized onto the document so "People you follow" renders without extra reads.
   const toggleFocus = (m) => {
-    setFollows((prev) => {
-      const next = prev.some((f) => f.uid === m.uid)
-        ? prev.filter((f) => f.uid !== m.uid)
-        : [...prev, { uid: m.uid, name: m.sender || "", country: m.country ?? null, label: null }];
-      saveFollows(next);
-      return next;
-    });
+    if (follows.some((f) => f.uid === m.uid)) unfollowUser(db, currentUser, m.uid);
+    else followUser(db, currentUser, { uid: m.uid, name: m.sender || "", country: m.country ?? null });
   };
   // Follow from search. Separate from toggleFocus because that one toggles from a message
   // and this must never un-follow — the button in the results list already reads "Following"
   // and is disabled once they're in the list, so a toggle here could only ever be a misfire.
-  const followProfile = ({ uid, name, country }) => {
-    if (!uid) return;
-    setFollows((prev) => {
-      if (prev.some((f) => f.uid === uid)) return prev;
-      const next = [...prev, { uid, name: name || "", country: country ?? null, label: null }];
-      saveFollows(next);
-      return next;
-    });
-  };
-  const setFollowLabel = (uid, label) => {
-    setFollows((prev) => {
-      const next = prev.map((f) => (f.uid === uid ? { ...f, label } : f));
-      saveFollows(next);
-      return next;
-    });
-  };
-  const unfollow = (uid) => {
-    setFollows((prev) => {
-      const next = prev.filter((f) => f.uid !== uid);
-      saveFollows(next);
-      return next;
-    });
-  };
+  const followProfile = ({ uid, name, country }) => followUser(db, currentUser, { uid, name, country });
+  const setFollowLabel = (uid, label) => setFollowLabelRemote(db, currentUser, uid, label);
+  const unfollow = (uid) => unfollowUser(db, currentUser, uid);
   // uid → label, for the chip beside a sender's name in the Focused Feed
   const followLabelByUid = useMemo(
     () => Object.fromEntries(follows.filter((f) => f.label).map((f) => [f.uid, f.label])),
@@ -3244,7 +3223,14 @@ export default function App() {
             {/* ── HEADER ── v2: no longer collapsible. The expanding drawer only ever held the
                  tree chip (now in Growth) and two self-hiding banners, so tapping the name
                  just opened an empty gap. Banners render inline below instead. */}
-            <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+            {/* z-[35], not z-10. `backdrop-blur` makes this header its own stacking context, so
+                the notification dropdown's z-50 only ranks it against its siblings INSIDE the
+                header — against the page, the whole thing sat at z-10. The feed's sticky
+                section headers are z-[25] and z-30, so they painted straight over the open
+                dropdown, which is why "Focused Feed · Manage" appeared between its rows.
+                35 clears those two and still sits under the greeting picker at z-40, which is
+                a full-screen sheet and should cover the header. */}
+            <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-[35] flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
               <div className="flex items-center justify-between px-4 py-2.5 select-none">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">

@@ -15,6 +15,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   doc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc,
+  setDoc, deleteDoc,
 } from "firebase/firestore";
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
@@ -48,8 +49,12 @@ const saveLocalPosts = (l) => writeJSON(POSTS_KEY, l.slice(0, 30));
 // Suggested labels; users can also type their own via "Custom…".
 export const FOLLOW_LABELS = ["Family", "Friend", "Work", "Neighbour"];
 
-// Reads the follow list, migrating the legacy bare-uid array on first run so existing
+// Reads the cached follow list, migrating the legacy bare-uid array on first run so existing
 // testers keep everyone they already followed.
+//
+// localStorage is now a CACHE, not the source of truth — see useFollows below. It is kept so
+// the Focused Feed paints instantly on open rather than flashing empty while Firestore
+// connects, and so the app still works offline.
 export function loadFollows() {
   const stored = readJSON(FOLLOWS_KEY, null);
   if (Array.isArray(stored)) return stored;
@@ -61,6 +66,82 @@ export function loadFollows() {
   return migrated;
 }
 export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
+
+// ── Follows, synced ──────────────────────────────────────────────────────────
+// Who you follow used to live only in localStorage, which meant signing in on a second
+// device gave you an empty Focused Feed and no way to recover the list except rebuilding it
+// by hand. Follows are an account fact, not a device fact.
+//
+// They live at users/{uid}/follows/{followedUid} — the same owner-only subcollection shape
+// as blockedUsers, so nobody can see who you follow. The doc id IS the followed uid, which
+// makes follow/unfollow idempotent: following twice writes the same document rather than
+// creating a duplicate.
+//
+// localStorage stays as a read-through cache so the feed paints immediately on open.
+export function useFollows(db, currentUser) {
+  const [follows, setFollows] = useState(() => loadFollows());
+  const uid = currentUser?.uid ?? null;
+
+  useEffect(() => {
+    if (!db || !uid) return;
+    const col = collection(db, "users", uid, "follows");
+
+    // One-time lift of whatever this device already had. Without it, the first device to
+    // load after this change would find an empty collection and silently wipe a follow list
+    // the user spent time building.
+    let migrated = false;
+    const migrateOnce = async (serverIsEmpty) => {
+      if (migrated || !serverIsEmpty) return;
+      migrated = true;
+      const local = loadFollows();
+      if (!local.length) return;
+      await Promise.all(local.slice(0, 200).map((f) =>
+        setDoc(doc(col, f.uid), {
+          uid: f.uid,
+          name: f.name || "",
+          country: f.country ?? null,
+          label: f.label ?? null,
+          ts: Date.now(),
+        }).catch(() => {})
+      ));
+    };
+
+    const unsub = onSnapshot(col, (snap) => {
+      const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+      if (snap.empty && !snap.metadata.fromCache) { migrateOnce(true); return; }
+      setFollows(rows);
+      saveFollows(rows); // keep the cache warm for the next cold start
+    }, (err) => {
+      // Falling back to the cache is the right failure: a transient read error should not
+      // look like "you follow nobody".
+      console.error("[follows] listener failed:", err?.code, err?.message);
+    });
+    return unsub;
+  }, [db, uid]);
+
+  return follows;
+}
+
+// Follow / unfollow / relabel. Each writes one document and lets the listener update state,
+// so every device converges on the same list without any of them holding a private copy.
+export async function followUser(db, currentUser, { uid, name, country, label = null }) {
+  if (!db || !currentUser?.uid || !uid || uid === currentUser.uid) return;
+  await setDoc(doc(db, "users", currentUser.uid, "follows", uid), {
+    uid, name: name || "", country: country ?? null, label, ts: Date.now(),
+  }, { merge: true }).catch((err) => console.error("[follows] follow failed:", err?.code));
+}
+
+export async function unfollowUser(db, currentUser, uid) {
+  if (!db || !currentUser?.uid || !uid) return;
+  await deleteDoc(doc(db, "users", currentUser.uid, "follows", uid))
+    .catch((err) => console.error("[follows] unfollow failed:", err?.code));
+}
+
+export async function setFollowLabelRemote(db, currentUser, uid, label) {
+  if (!db || !currentUser?.uid || !uid) return;
+  await setDoc(doc(db, "users", currentUser.uid, "follows", uid), { label }, { merge: true })
+    .catch((err) => console.error("[follows] label failed:", err?.code));
+}
 
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
 
@@ -614,7 +695,9 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
             ) : results.length === 0 ? (
               <div className="py-8 text-center text-[13px] text-slate-400">
                 Nobody found matching “{term.trim()}”.
-                <p className="mt-1 text-[11px]">Names are matched from the start, so try their first name.</p>
+                <p className="mt-1 text-[11px]">
+                  Try the start of any part of their name. People appear here once they've opened the app.
+                </p>
               </div>
             ) : (
               results.map((p) => {

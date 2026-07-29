@@ -84,6 +84,19 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
+      // Who I follow — private to the owner only, same shape as blockedUsers.
+      //
+      // Follows used to live in localStorage, which meant signing in on a second device gave
+      // you an empty Focused Feed and no way to get the list back. They are an account fact,
+      // not a device fact.
+      //
+      // Owner-only reads matter: who you choose to follow is not something other members
+      // should be able to enumerate. The doc id is the followed uid, so following twice
+      // overwrites rather than duplicating.
+      match /follows/{followedUid} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
       // Gratitude & kindness journal — private to the owner only
       match /journal/{entryId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
