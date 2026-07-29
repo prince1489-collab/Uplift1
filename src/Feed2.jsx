@@ -64,12 +64,69 @@ export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
 
 export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
 
-// NOTE (unresolved): a kind moment publicly names both people — "Mahiman and Vidhi shared a
-// kind moment". Now that private replies are real, generating one from a reply would
-// broadcast the existence of a private exchange to everyone following either person. The
-// content stays private, but the fact of it would not. Left device-local until that's a
-// deliberate product decision rather than a side effect.
+// ── Kind moments ─────────────────────────────────────────────────────────────
+// A kind moment says that a private reply happened. It does NOT say who, and it never says
+// what.
 //
+// The earlier version named both people, which was why it was left device-local and never
+// broadcast: "Mahiman and Vidhi shared a kind moment" keeps the content of a private message
+// private while making the fact of the contact public — and the reply sheet promises, at the
+// moment you are typing, that nothing about it appears in any feed. Naming people would have
+// broken a promise the user had just read.
+//
+// So moments are anonymous. Countries are kept because they carry the "this is happening all
+// over the world" feeling that the card exists for, and a country is not an identity. The
+// uids are stored for ROUTING ONLY — they decide which feed the card belongs in — and are
+// never rendered. That is the whole design: enough to place the card, not enough to identify
+// anyone.
+const MOMENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // a week; older moments stop being news
+
+// Write a moment for a private reply that just went out. Best-effort: a private reply that
+// succeeded must never be reported as failed because its celebratory side-effect didn't
+// write. Returns nothing — the feed listener picks it up.
+export async function recordKindMoment(db, { fromUid, toUid, fromCountry, toCountry }) {
+  if (!db || !fromUid || !toUid) return;
+  try {
+    await addDoc(collection(db, "kindMoments"), {
+      // Routing only. Never rendered — see KindMomentCard.
+      aUid: fromUid,
+      bUid: toUid,
+      // Display. Countries only, no names, no text, no message id.
+      aCountry: fromCountry ?? null,
+      bCountry: toCountry ?? null,
+      ts: Date.now(),
+    });
+  } catch (err) {
+    console.error("[kindMoments] write failed:", err?.code, err?.message);
+  }
+}
+
+// Live moments from the last week, newest first.
+export function useKindMoments(db, currentUser, blockedUids) {
+  const [moments, setMoments] = useState([]);
+  useEffect(() => {
+    if (!db || !currentUser?.uid) { setMoments([]); return; }
+    const q = query(
+      collection(db, "kindMoments"),
+      where("ts", ">", Date.now() - MOMENT_MAX_AGE_MS),
+      orderBy("ts", "desc"),
+      limit(40)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const blocked = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
+      // Blocking is device-local, so a blocked person's moments are filtered here. They are
+      // anonymous on screen either way, but you shouldn't have to see that they were active.
+      setMoments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !blocked.has(m.aUid) && !blocked.has(m.bUid)));
+    }, (err) => {
+      console.error("[kindMoments] listener failed:", err?.code, err?.message);
+      setMoments([]);
+    });
+    return unsub;
+  }, [db, currentUser?.uid, blockedUids]);
+  return moments;
+}
+
 // Route a kind moment to the right feed. A moment belongs in your Focused Feed when either
 // person in it is you or someone you follow; otherwise it's two strangers, so it broadcasts
 // in the Worldwide Feed. Legacy moments predate the uids and were always your own, so they
@@ -104,7 +161,14 @@ export function useRepliesReceived(db, currentUser, messageId, blockedUids) {
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((r) => !blocked.has(r.fromUid))
         .filter((r) => !messageId || r.messageId === messageId));
-    }, () => setReplies([]));
+    }, (err) => {
+      // This used to be `() => setReplies([])`, which is how a missing composite index
+      // presented itself as "the reply appeared for a second and then vanished": the local
+      // cache answered first, the server then rejected the query, and this handler quietly
+      // wiped the list. Silence made a configuration problem look like a data problem.
+      console.error("[privateReplies] listener failed:", err?.code, err?.message);
+      setReplies([]);
+    });
     return unsub;
   }, [db, currentUser?.uid, messageId, blockedUids]);
   return replies;
@@ -300,15 +364,24 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   );
 }
 
-// ── Kind-moment card (a consented "shared a kind moment") ─────────────────────
+// ── Kind-moment card ─────────────────────────────────────────────────────────
+// Anonymous by design. No names are rendered here, and none are stored — see the note above
+// recordKindMoment. Legacy device-local moments DID carry names; they are ignored rather
+// than displayed, so an old row can't leak what a new one never would.
 export function KindMomentCard({ moment, compact = false }) {
+  const a = flagFor(moment.aCountry);
+  const b = flagFor(moment.bCountry);
+  // Two flags when we know both and they differ — that's the "across the world" moment worth
+  // showing. Otherwise stay generic rather than implying a location we don't have.
+  const places = moment.aCountry && moment.bCountry && moment.aCountry !== moment.bCountry
+    ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
+    : null;
   return (
     <div className={`seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
       <span className={`flex-shrink-0 ${compact ? "text-base" : "text-lg"}`}>⭐</span>
       <p className="text-[12px] text-slate-600 leading-snug flex-1">
-        <strong className="text-slate-800">{moment.aName} {flagFor(moment.aCountry)}</strong> and{" "}
-        <strong className="text-slate-800">{moment.bName} {flagFor(moment.bCountry)}</strong> shared a kind moment.
+        Someone sent a private message of kindness{places}.
       </p>
     </div>
   );
@@ -378,6 +451,15 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setSent(true);
     setBusy(false);
     try { awardPoints("reply"); } catch { /* ignore */ }
+    // Announce that kindness happened, without saying who or what. Deliberately after the
+    // success state is set and not awaited: the reply has already landed, and a failure to
+    // write the celebratory card must never make a delivered message look undelivered.
+    recordKindMoment(db, {
+      fromUid: myUid ?? currentUser.uid,
+      toUid: target.uid,
+      fromCountry: me?.country ?? null,
+      toCountry: target.country ?? null,
+    });
     setTimeout(() => onClose?.(), 1200);
   };
 
@@ -395,7 +477,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
           {/* Real now — say who can see it, since "private" should mean something specific. */}
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
             <p className="text-[11px] text-sky-700 leading-relaxed">
-              Only {firstName(target?.sender)} can read this — it isn't shown in any feed. It's screened first,
+              Only {firstName(target?.sender)} can read this — your words are never shown in any feed. It's screened first,
               and either of you can delete it.
             </p>
           </div>
@@ -415,7 +497,8 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : "Send privately"}
           </button>
           <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            Screened before delivery. Nothing about this appears in any feed.
+            Screened before delivery. Your words stay between you two — the feed only ever shows
+            that a kind message happened, never who sent it or what it said.
           </p>
         </div>
       </div>

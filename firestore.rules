@@ -237,6 +237,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Kind moments ──
+    // "A private message of kindness happened" — and nothing else. No names, no text, no
+    // message id. The two uids are stored so the client can decide which feed to show the
+    // card in; they are never rendered, and the rule below is what stops that from being a
+    // loophole rather than a convention.
+    //
+    // Readable by any signed-in member — that is the entire point of the card. Create-only:
+    // a moment is a fact about the past, so there is nothing to edit. Only the person who
+    // SENT the reply may write one, and only naming themselves as the sender, which stops
+    // anyone manufacturing moments about other people.
+    match /kindMoments/{momentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+          && request.resource.data.aUid == request.auth.uid
+          && request.resource.data.bUid is string
+          && request.resource.data.bUid != request.auth.uid
+          && request.resource.data.ts is number
+          // Belt and braces: refuse a document that carries anything beyond these five keys,
+          // so a future caller cannot quietly start attaching names or message text.
+          && request.resource.data.keys().hasOnly(['aUid','bUid','aCountry','bCountry','ts']);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // ── Public profiles ──
     // The readable projection of a member's profile: display name, country, avatar, the two
     // glimpse lines, and the reactions-received tally. Every one of those is already shown

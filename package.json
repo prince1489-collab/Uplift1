@@ -14,7 +14,9 @@
     "check": "npm run check:flags && npm run check:privacy && npm run check:rules && npm run lint",
     "preview": "vite preview",
     "ios:sync": "vite build && cap sync ios",
-    "deploy:rules": "firebase deploy --only firestore:rules"
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "deploy:indexes": "firebase deploy --only firestore:indexes",
+    "deploy:firestore": "firebase deploy --only firestore"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

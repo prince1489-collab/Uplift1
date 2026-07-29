@@ -1,0 +1,51 @@
+{
+  "//": "Composite indexes. Firestore auto-creates single-field indexes, but a query with an equality filter on one field and an orderBy on a DIFFERENT field needs a composite one declared here. Without it the query fails on the server with FAILED_PRECONDITION \u2014 and because listeners serve the local cache first, the symptom is data appearing for a moment and then vanishing. That is exactly what happened to received private replies. Deploy with: npm run deploy:indexes",
+  "indexes": [
+    {
+      "//": "useRepliesReceived / useInboxReplies \u2014 the recipient's inbox.",
+      "collectionGroup": "privateReplies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "toUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "A member's own messages, newest first \u2014 used by My Journey and the impact tallies.",
+      "collectionGroup": "publicMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Recent messages from one country \u2014 the globe's country card.",
+      "collectionGroup": "publicMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "country",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

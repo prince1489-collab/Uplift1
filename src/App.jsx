@@ -24,7 +24,7 @@ import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, loadKindMoments, splitKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, loadFollows, saveFollows, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -1848,15 +1848,15 @@ export default function App() {
   useBackLayer(showFollowing, () => setShowFollowing(false));
   const [reactorsFor, setReactorsFor] = useState(null); // my message whose "who felt this" is open
   useBackLayer(Boolean(reactorsFor), () => setReactorsFor(null));
-  const [kindMoments, setKindMoments] = useState(() => loadKindMoments());
+  // Kind moments are real and shared now, not device-local — a private reply anywhere writes
+  // one, and everyone sees it. Anonymous: the card names nobody. The uids below are used
+  // only to decide which feed it belongs in, never rendered.
+  const kindMoments = useKindMoments(db, currentUser, blockedUids);
   // A moment involving you or someone you follow belongs in the Focused Feed; a moment
   // between two strangers broadcasts in the Worldwide Feed.
   const { focused: focusedMoments, worldwide: worldwideMoments } = useMemo(
-    // Blocked first, so a blocked person can't reach either feed via a kind moment.
-    () => splitKindMoments(
-      kindMoments.filter((km) => !blockedUids.has(km.aUid) && !blockedUids.has(km.bUid)),
-      focusedUids, currentUser?.uid),
-    [kindMoments, blockedUids, focusedUids, currentUser?.uid]
+    () => splitKindMoments(kindMoments, focusedUids, currentUser?.uid),
+    [kindMoments, focusedUids, currentUser?.uid]
   );
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // shared journal being read
@@ -1895,8 +1895,9 @@ export default function App() {
   useEffect(() => {
     if (demoPurgedRef.current || !currentUser?.uid) return;
     demoPurgedRef.current = true;
-    const { stories, moments } = purgeDemoContent();
-    setKindMoments(moments);
+    // Kind moments now live in Firestore, so the device-local list is only ever swept, never
+    // read back into state — the returned `moments` is deliberately ignored.
+    const { stories } = purgeDemoContent();
     setFeaturedStories(stories);
   }, [currentUser?.uid]);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
