@@ -314,8 +314,18 @@ export function KindMomentCard({ moment, compact = false }) {
   );
 }
 
-// ── Private reply sheet (simulated) → creates a kind moment on send ───────────
-export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, onDone, onClose }) {
+// ── Private reply sheet — a real Firestore write to /privateReplies ───────────
+// It no longer produces anything for the caller. It used to be simulated and pushed a local
+// "kind moment" back through an onDone(nextMoments) callback; when replies became real
+// documents that payload disappeared, but the prop and its call site did not. onDone?.()
+// was left being invoked with no argument into `(next) => setKindMoments(next)`, which set
+// the array to undefined and crashed the feed on its next render.
+//
+// That was invisible for as long as the write itself failed — the crash sat one line past a
+// `return`. It only appeared once the Firestore rules were finally deployed and the write
+// started succeeding. The prop is gone rather than guarded: a callback with nothing to say
+// is not worth keeping alive.
+export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, onClose }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -368,7 +378,6 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setSent(true);
     setBusy(false);
     try { awardPoints("reply"); } catch { /* ignore */ }
-    onDone?.();
     setTimeout(() => onClose?.(), 1200);
   };
 

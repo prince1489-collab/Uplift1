@@ -3128,7 +3128,6 @@ export default function App() {
             currentUser={currentUser}
             db={db}
             blockedUids={blockedUids}
-            onDone={(next) => setKindMoments(next)}
             onClose={() => setReplyTarget(null)} />
         )}
         {showWellbeingSheet && currentUser && createPortal(
