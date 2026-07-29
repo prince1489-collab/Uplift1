@@ -1051,16 +1051,14 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-teal-600" /></div>;
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
+    <div className="seen-auth-bg h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
       <form className="mx-auto w-full max-w-sm space-y-3"
         onSubmit={(e) => { e.preventDefault(); if (!valid) return; onContinue({ ...form, dob: (form.dobMonth && form.dobDay && form.dobYear) ? `${form.dobMonth} ${form.dobDay}, ${form.dobYear}` : "" }); }}>
         <div className="flex justify-center pb-3">
-          <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
-            <Sparkles size={24} />
-          </div>
+          <img src="/icon-192.png" alt="" width={68} height={68} className="rounded-[19px] shadow-md" />
         </div>
-        <h1 className="font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em] text-slate-900">Welcome to Seen</h1>
-        <p className="pb-4 text-center text-[20px] leading-tight text-slate-600">Tell us a bit about yourself to start connecting.</p>
+        <h1 className="seen-auth-title font-display text-center text-[42px] leading-[1.05] font-normal tracking-[-0.04em]">Welcome to Seen</h1>
+        <p className="seen-auth-sub pb-4 text-center text-[20px] leading-tight">Tell us a bit about yourself to start connecting.</p>
 
         <InputRow icon={Globe} rightIcon={<ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}>
           <select name="country" value={form.country} onChange={onChange}
@@ -3191,13 +3189,13 @@ export default function App() {
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
               ) : pendingOnboardingDetails ? (
-                <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
+                <div className="seen-auth-bg h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
                   <div className="mx-auto w-full max-w-sm">
                     <div className="flex justify-center pb-3">
-                      <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md"><Sparkles size={24} /></div>
+                      <img src="/icon-192.png" alt="" width={68} height={68} className="rounded-[19px] shadow-md" />
                     </div>
-                    <h1 className="font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em] text-slate-800">A quick wellbeing check-in</h1>
-                    <p className="pb-4 text-center text-[16px] leading-tight text-slate-500">A quick, gentle check-in (it asks about the past two weeks) — just for your own reflection, not a medical test. You can look back on it over time. You're welcome to skip it.</p>
+                    <h1 className="seen-auth-title font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em]">A quick wellbeing check-in</h1>
+                    <p className="seen-auth-sub pb-4 text-center text-[16px] leading-tight">A quick, gentle check-in (it asks about the past two weeks) — just for your own reflection, not a medical test. You can look back on it over time. You're welcome to skip it.</p>
                     <WellbeingCheckin
                       submitLabel="Finish & enter Seen"
                       onComplete={async (scores) => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails, wellbeing: scores }); }}

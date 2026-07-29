@@ -38,7 +38,7 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
   };
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+    <div className="seen-auth-bg h-full w-full bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
       <div className="mx-auto w-full max-w-sm space-y-4">
 
         {/* Progress */}
@@ -48,11 +48,11 @@ function ProfilePhotoStep({ onBack, onComplete, loading, initialPhoto = "" }) {
         </div>
 
         {/* Title */}
-        <h2 className="text-center text-4xl font-extrabold tracking-tight text-slate-800">
+        <h2 className="seen-auth-title text-center text-4xl font-extrabold tracking-tight">
           Add a profile photo
         </h2>
 
-        <p className="text-center text-lg text-slate-500">
+        <p className="seen-auth-sub text-center text-lg">
           Help the community recognize you in chat.
         </p>
 

@@ -7,7 +7,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  Sparkles,
 } from "lucide-react";
 
 export default function SignInStep({
@@ -68,24 +67,34 @@ export default function SignInStep({
     setLocalMessage("Password reset email sent. Please check your inbox.");
   };
 
+  // seen-auth-bg is not decoration: this gradient is hardcoded light, but [data-dark-shell]
+  // lives on <body>, so in dark mode the remaps reached this screen's text and buttons while
+  // the background stayed cream — "Welcome to Seen" rendered near-white on cream, and the
+  // white buttons turned black. The class gives the background a dark variant so it moves
+  // with them.
   return (
-    <div className="h-full w-full bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
+    <div className="seen-auth-bg h-full w-full bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-6">
       <div className="mx-auto w-full max-w-sm">
         <div className="flex justify-center pb-4">
-          <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-4 text-white shadow-md">
-            <Sparkles size={24} />
-          </div>
+          {/* The real app icon rather than a stand-in glyph. This used to be a Sparkles icon
+              in a gradient box, which meant the first screen anyone sees showed a different
+              logo from the one they just tapped on their home screen. */}
+          <img src="/icon-192.png" alt="" width={72} height={72}
+            className="rounded-[20px] shadow-md" />
         </div>
 
-        <h1 className="text-center text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-800 sm:text-[44px]">
+        {/* Explicit palette hexes, not text-slate-*: the slate classes are exactly what the
+            dark shell remaps, and this heading must stay readable on the cream background. */}
+        <h1 className="seen-auth-title font-display text-center text-[40px] leading-[1.05] font-normal tracking-[-0.03em] sm:text-[44px]">
           Welcome to Seen
         </h1>
-        <p className="pb-5 text-center text-[20px] leading-tight text-slate-500 sm:text-2xl">
+        <p className="seen-auth-sub pb-5 text-center text-[18px] leading-snug sm:text-xl">
           Good to see you. Welcome back or join us.
         </p>
 
         <button type="button" onClick={onGoogleSignIn} disabled={googleLoading}
-          className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white py-3 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70">
+          className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border py-3 text-base font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+          style={{ borderColor: "#E7D9CD", background: "#FFFFFF", color: "#3D3229" }}>
           {googleLoading ? <Loader2 className="animate-spin" size={18} /> : "Continue with Google"}
         </button>
 
@@ -101,7 +110,10 @@ export default function SignInStep({
         <div className="mb-4 grid grid-cols-2 gap-2">
           {[["signin","I'm back"],["signup","I'm new"]].map(([m, label]) => (
             <button key={m} type="button" onClick={() => { resetMessages(); setMode(m); }}
-              className={`rounded-xl px-3 py-2 text-sm font-semibold ${mode === m ? "bg-teal-600 text-white" : "border border-slate-200 bg-white text-slate-700"}`}>
+              className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+              mode === m ? "bg-teal-600 text-white" : "border"
+            }`}
+            style={mode === m ? undefined : { borderColor: "#E7D9CD", background: "#FFFDFB", color: "#5C4A3E" }}>
               {label}
             </button>
           ))}

@@ -828,6 +828,24 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
    otherwise put their close/back button under the clock/battery. env() resolves to 0 off-iOS. */
 .seen-overlay-header { padding-top: calc(0.75rem + env(safe-area-inset-top)) !important; }
 
+/* ─── Auth screens (sign-in / welcome / intro) ─────────────────────────────────
+   These hardcode a light cream gradient, which is right for the brand — but
+   [data-dark-shell] lives on <body>, so in dark mode every remap below reached their
+   TEXT and BUTTONS while the background stayed cream. The result was "Welcome to Seen"
+   rendered near-white on cream (effectively invisible) and white buttons turned black.
+   The background has to move with the text, so it is remapped here too. */
+[data-dark-shell] .seen-auth-bg {
+  background: linear-gradient(to bottom, #14181f, #0f1319) !important;
+}
+/* Auth type. Deliberately its OWN classes rather than text-slate-*: the slate classes are
+   what the dark shell remaps, and these need to move with the auth background above rather
+   than with the app shell. Warm neutrals in light, warm off-whites in dark — measured to
+   clear 4.5:1 against their own background in both. */
+.seen-auth-title { color: #3D3229; }
+.seen-auth-sub   { color: #7A6558; }
+[data-dark-shell] .seen-auth-title { color: #F5EDE6 !important; }
+[data-dark-shell] .seen-auth-sub   { color: #C0AEA0 !important; }
+
 /* ─── Header banner rail ───────────────────────────────────────────────────────
    Holds the notification-permission banner and the chat-offline line. Both self-hide,
    so without this the rail's own padding + top border would leave a visible empty gap
