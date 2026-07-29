@@ -573,7 +573,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           </button>
         </div>
 
-        {/* v2: numeric stats now live in "My Journey". Reflect stays a calm writing space.
+        {/* v2: numeric stats now live in "Growth". Reflect stays a calm writing space.
             A slim, non-numeric weekly-cadence line keeps the gentle rhythm without a stats block. */}
         {entries.length > 0 && (
           <div className="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-100 px-4 py-2.5">

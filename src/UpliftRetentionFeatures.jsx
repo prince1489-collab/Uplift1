@@ -1620,7 +1620,7 @@ export function ProfileCard({ profile, onClose, db, currentUser, onOpenBlocked, 
             {/* The streak / drops / level tiles used to sit here. They were removed in the
                 V2 review pass: the card is meant to say who you are, and three scoreboard
                 numbers turned it into a stats readout. The same figures still live on
-                My Journey, which is where someone goes when they actually want them. */}
+                Growth, which is where someone goes when they actually want them. */}
             <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2">
               <Heart size={12} className="text-pink-200" />
               <p className="text-xs text-white/90">Spreading kindness with Seen 🌟</p>

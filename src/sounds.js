@@ -218,7 +218,7 @@ export function stopMapAmbient() {
 // rate, through one swept lowpass. Gain fractions mirror the CSS keyframe, so the swell
 // rises as the can tips and fades as it rights itself.
 //
-// `pour` is a module singleton: My Journey's hero tree and the Kindness Tree overlay can
+// `pour` is a module singleton: the Growth tab's hero tree and the Kindness Tree overlay can
 // both be mounted at once (tapping the hero opens the panel), and both listen for
 // "seen-points". Without this guard that's two pours at double amplitude, phase-beating.
 const WATER_PEAK = 0.055; // sits under the map ambience (0.075–0.09)

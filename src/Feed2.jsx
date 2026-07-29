@@ -1017,7 +1017,9 @@ export function FeaturedStoryReader({ story, me, db, currentUser, onClose, onCha
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[260] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      {/* Same iPhone status-bar clearance as every other full-screen overlay — see the note
+          in MessageReactionsPanel below. */}
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
         <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">📔 A shared reflection</h2>
       </div>
@@ -1205,7 +1207,11 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
+      {/* seen-overlay-header is what keeps this clear of the iPhone status bar. Without it the
+          header sits at top:0 and the close button ends up physically behind the clock —
+          unreachable, with no way out of the panel. Only shows on notched iPhones, which is
+          why it survived Android testing. */}
+      <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
         <h2 className="flex-1 text-sm font-bold text-slate-800 flex items-center gap-1.5">
           <Heart size={15} className="text-rose-500" fill="currentColor" /> Who felt this

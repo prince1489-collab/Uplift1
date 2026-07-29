@@ -3242,7 +3242,7 @@ export default function App() {
         ) : (
           <>
             {/* ── HEADER ── v2: no longer collapsible. The expanding drawer only ever held the
-                 tree chip (now in My Journey) and two self-hiding banners, so tapping the name
+                 tree chip (now in Growth) and two self-hiding banners, so tapping the name
                  just opened an empty gap. Banners render inline below instead. */}
             <header className="border-b border-slate-100 bg-white/90 backdrop-blur z-10 flex-shrink-0" style={{ paddingTop: "env(safe-area-inset-top)" }}>
               <div className="flex items-center justify-between px-4 py-2.5 select-none">
@@ -3412,7 +3412,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🧭 My Journey
+                🌳 Growth
               </button>
             </div>
 
