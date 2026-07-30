@@ -1,7 +1,7 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { signInAnonymously } from "firebase/auth";
 import { geoOrthographic, geoPath, geoGraticule, geoInterpolate } from "d3-geo";
 import { feature } from "topojson-client";
@@ -147,12 +147,15 @@ function GlobePreview() {
 
       ctx.clearRect(0, 0, CSS, CSS);
 
-      // Ocean
+      // Ocean — a warm dark base rather than cold navy, so the coral graticule/land/arcs
+      // drawn on top of it (all already rgba(255,133,128,*)) read as one warm scene instead
+      // of a sci-fi globe with red accents bolted on. This was the one un-rebranded piece:
+      // every layer above the ocean was already coral, so only the base needed to change.
       ctx.beginPath();
       pathGen({ type: "Sphere" });
       const ocean = ctx.createRadialGradient(CX - R * 0.3, CY - R * 0.3, 0, CX, CY, R);
-      ocean.addColorStop(0, "#1e4a7a");
-      ocean.addColorStop(1, "#050d1c");
+      ocean.addColorStop(0, "#4a2420");
+      ocean.addColorStop(1, "#180a08");
       ctx.fillStyle = ocean;
       ctx.fill();
 
@@ -275,9 +278,12 @@ function WelcomeStep({ onStartJourney, db, auth }) {
       <BackgroundAmbient />
 
       <div className="welcome-step__content">
-        {/* Logo icon */}
+        {/* The real app icon, generated from assets/icon.png (see scripts/gen-icons.py) — not
+            a stand-in glyph. This was the Sparkles icon in a teal-to-emerald box, so the very
+            first screen anyone sees showed a different logo from the one they had just tapped
+            on their home screen, in a palette that predated the Phase 5 rebrand. */}
         <div className="welcome-step__logo-wrap">
-          <Sparkles size={28} />
+          <img src="/icon-192.png" alt="" width={56} height={56} />
         </div>
 
         {/* Brand */}

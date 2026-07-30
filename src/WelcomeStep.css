@@ -7,7 +7,10 @@
   justify-content: space-between;
   gap: 20px;
   padding: 32px 20px 28px;
-  background: linear-gradient(160deg, #FFF6EF 0%, #f0f4ff 50%, #f6f2f8 100%);
+  /* Was a cream-to-pale-blue-to-lavender wash — the mid and end stops drifted cool, which is
+     what made the whole screen feel like a different app from the coral/orange logo above it.
+     Warm neutrals throughout now, matching the auth screens' background. */
+  background: linear-gradient(160deg, #FFF6EF 0%, #f7f1e9 50%, #f6efe6 100%);
   overflow: hidden;
 }
 
@@ -71,16 +74,16 @@
   justify-content: center;
   width: 80px;
   height: 80px;
-  border-radius: 999px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #FF9E57, #FF6B6B);
+  border-radius: 22px;
+  overflow: hidden;
   box-shadow: 0 8px 24px rgba(255,107,107, 0.4);
 }
+.welcome-step__logo-wrap img { width: 100%; height: 100%; display: block; }
 
 /* ─── Brand ─────────────────────────────────────────────────── */
 .welcome-step__title {
   margin: 14px 0 0;
-  color: #1e293b;
+  color: #3D3229; /* warm near-black, matching the auth screens — was a cool slate navy */
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: 64px;
   font-weight: 400; /* DM Serif Display looks best at regular weight */
@@ -162,9 +165,13 @@
   border-color: rgba(255,107,107, 0.2);
 }
 
+/* Was pale blue with an indigo border — the one card with no relationship to the sunset
+   ramp at all. Swapped to the app's existing third brand hue (dusky pink, "sky" in the
+   Tailwind remap) — already used for the Worldwide Feed header and private replies
+   elsewhere, so this reuses an established colour rather than inventing a fourth. */
 .welcome-card--seen {
-  background: rgba(240, 249, 255, 0.9);
-  border-color: rgba(99, 102, 241, 0.15);
+  background: rgba(254, 242, 248, 0.9);
+  border-color: rgba(219, 78, 151, 0.18);
 }
 
 .welcome-card--kind {
@@ -180,14 +187,14 @@
 
 .welcome-card__title {
   margin: 0;
-  color: #1e293b;
+  color: #3D3229; /* was cool slate #1e293b */
   font-size: 15px;
   font-weight: 700;
 }
 
 .welcome-card__detail {
   margin: 2px 0 0;
-  color: #64748b;
+  color: #7A6558; /* was cool slate #64748b — 5.14:1 on the cream background, measured */
   font-size: 13px;
   line-height: 1.4;
 }
@@ -196,7 +203,7 @@
 .welcome-trust {
   margin: 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: #7A6558; /* was cool slate #94a3b8, 3.1:1 — under the 4.5:1 small-text minimum */
   letter-spacing: 0.01em;
   text-align: center;
 }
@@ -210,7 +217,12 @@
   gap: 10px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #A82E2C 0%, #0891b2 50%, #1d4ed8 100%);
+  /* Was red-to-cyan-to-royal-blue — a gradient that runs through three hues nothing else in
+     the app uses, on the single most prominent element on the first screen a user sees.
+     Sunset red only now, same family as every primary button elsewhere. Kept to the two
+     darker stops of the ramp (not the lighter #FF6B6B) because white text needs 4.5:1 and
+     the light end only clears 2.78:1 — measured, not assumed. */
+  background: linear-gradient(135deg, #D24341 0%, #A82E2C 100%);
   padding: 18px 24px;
   color: #ffffff;
   font-size: 18px;
@@ -218,7 +230,7 @@
   cursor: pointer;
   letter-spacing: -0.02em;
   box-shadow:
-    0 4px 24px rgba(168,46,44, 0.45),
+    0 4px 24px rgba(210,67,65, 0.45),
     inset 0 1px 0 rgba(255,255,255,0.2),
     inset 0 -1px 0 rgba(0,0,0,0.15);
   transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
@@ -227,7 +239,7 @@
 .welcome-step__cta:hover {
   opacity: 0.93;
   box-shadow:
-    0 6px 32px rgba(168,46,44, 0.55),
+    0 6px 32px rgba(210,67,65, 0.55),
     inset 0 1px 0 rgba(255,255,255,0.2),
     inset 0 -1px 0 rgba(0,0,0,0.15);
 }
@@ -259,7 +271,7 @@
 .welcome-affirmation__text {
   font-size: 13px;
   font-weight: 500;
-  color: #334155;
+  color: #5C4A3E; /* was cool slate #334155 */
   text-align: center;
   font-style: italic;
   transition: opacity 0.4s ease, transform 0.4s ease;
