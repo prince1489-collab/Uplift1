@@ -258,15 +258,25 @@ export default function HaveYouTried({ currentUser, dob }) {
   return (
     <main className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4">
       <div className="mx-auto w-full max-w-md space-y-3">
-        <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
+        {/* Free-floating rather than a card. Below this sit the two prompt cards — the things
+            you actually tap — and a tinted card here made three panels of similar weight where
+            only two do anything. The rule this follows across the app: plain text is context,
+            a card means you can act on it.
+
+            The ⓘ keeps a card-like circle and its 44px tap target: it IS actionable, so it
+            should still look it, and shrinking a control below 44px fails the accessible
+            minimum regardless of how tidy it looks. */}
+        <div className="px-1 pt-1">
           <div className="flex items-center gap-2">
-            <h2 className="flex-1 text-sm font-bold text-slate-800">🌱 Today's two</h2>
+            <h2 className="flex-1 text-[15px] font-bold text-slate-800">🌱 Today's two</h2>
             <button onClick={() => setShowHow(true)} aria-label="How Practice works"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-teal-200 bg-white text-teal-600 hover:bg-teal-100 active:scale-90 transition-all">
-              <Info size={14} />
+              className="-m-2 flex h-11 w-11 flex-shrink-0 items-center justify-center text-teal-600 active:scale-90 transition-all">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-teal-200 bg-white">
+                <Info size={14} />
+              </span>
             </button>
           </div>
-          <p className="mt-0.5 text-[11px] text-slate-500 leading-relaxed">
+          <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">
             One act of kindness, one bit of self-care. Small and real — do what feels right.
           </p>
         </div>

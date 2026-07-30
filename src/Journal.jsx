@@ -507,8 +507,16 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Today's reflection — writes a new one, or edits the day's existing entry */}
-        <div className={`rounded-2xl border p-3 space-y-3 ${editingId ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-slate-50/60"}`}>
+        {/* Today's reflection — writes a new one, or edits the day's existing entry.
+            No container of its own: this used to sit in a bordered, tinted card, which put the
+            prompt in a box inside a box and the textarea in a bordered field inside a bordered
+            card. Spacing separates it from the sections below just as well, and one less frame
+            means the eye goes to the prompt instead of the packaging.
+
+            The old card also carried the "you're editing" signal via its tint. That has moved
+            onto the prompt block below, which is the thing that already says "You answered" —
+            a better home for it than the outer wrapper ever was. */}
+        <div className="space-y-3">
           {/* The standing explainer that used to sit here is gone. It said the same two lines
               every single day above the one thing the tab is for, and pushed the prompt below
               the fold. The editing-state messages stay — those actually tell you something. */}
@@ -523,7 +531,9 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           {/* The prompt is the hero of this tab, so it's set as a question rather than as a
               labelled field. While editing, it shows the prompt that entry was actually
               written against rather than today's rotating one. */}
-          <div className="rounded-xl bg-white border border-slate-200 px-3.5 py-3">
+          <div className={`rounded-xl border px-3.5 py-3 ${
+            editingId ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"
+          }`}>
             <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
               {editingId ? "You answered" : "Today's prompt"}
             </p>

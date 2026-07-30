@@ -15,7 +15,7 @@
 // your messages. Nothing new is exposed by this file; what changes is that nothing *else*
 // is exposed alongside it.
 
-import { doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, limit, getDocs } from "firebase/firestore";
 
 // The only fields that ever leave `users`. Adding to this list makes something public —
 // think about it in those terms, and check it against what the app already displays.

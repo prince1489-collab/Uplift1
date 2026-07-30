@@ -24,6 +24,7 @@ import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
+import { pickInvitation, snoozeInvitation } from "./invitations";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -714,11 +715,16 @@ function resolveVisitStart() {
   return start;
 }
 
-// `nudges` are guidance rows the app wants to surface once — "finish your profile",
-// "here's how the Focused Feed works". They differ from everything else in here in two ways:
-// they are device-local rather than Firestore events, and they are NOT filtered by the
-// since-your-last-visit boundary. A nudge is a standing invitation, not something that
-// happened; expiring it after one visit would mean nobody ever reads it.
+// `nudges` are the app's own invitations — "check in on your wellbeing", "follow someone",
+// "see the Kindness globe" — chosen and paced by src/invitations.js, which guarantees at most
+// one at a time. They differ from every other row here in three ways:
+//   - device-local and computed, not Firestore events;
+//   - NOT filtered by the since-your-last-visit boundary, because an invitation is a standing
+//     offer rather than something that happened, and expiring it after one visit would mean
+//     nobody ever read it;
+//   - they never raise the unread count (see `totalUnread` below).
+// This is the app's single channel for talking to the user. Anything that would otherwise be a
+// banner interrupting the feed belongs here instead.
 function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [] }) {
   const [open, setOpen] = useState(false);
   // Resolved once per mount — the boundary must not move under the user mid-session.
@@ -867,7 +873,14 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
   // the number of rows the user will actually see.
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = visibleRipples.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
-  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + nudges.length;
+  // PEOPLE ONLY. Invitations deliberately do not raise this — see rule 1 in src/invitations.js.
+  // A red count has to mean "a person did something", or the badge stops being believed and the
+  // real notifications stop being read along with it. This previously added `nudges.length`.
+  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount;
+  // ...but an invitation nobody can see is not an invitation. So when there's nothing from a
+  // person and something from the app, the bell gets a quiet amber dot with no number: present
+  // enough to notice, distinct enough that it never reads as "someone replied to you".
+  const showQuietDot = totalUnread === 0 && nudges.length > 0;
 
   // Everything merges into ONE list, newest first, each row stamped with its age. Grouping by
   // type meant an older ripple could sit above a fresh like, and with no timestamps at all
@@ -915,12 +928,18 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((v) => !v)}
+        aria-label={totalUnread > 0
+          ? `Notifications, ${totalUnread} new`
+          : showQuietDot ? "Notifications, one suggestion" : "Notifications"}
         className="relative flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-all">
         <Bell size={18} />
         {totalUnread > 0 && (
           <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
             {totalUnread > 9 ? "9+" : totalUnread}
           </span>
+        )}
+        {showQuietDot && (
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-white" />
         )}
       </button>
       {open && (
@@ -1924,15 +1943,14 @@ export default function App() {
   );
   // v2: deferred glimpse questions — sheet, invited from the 🔔 bell (see `bellNudges`)
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
-  const [glimpsePromptDismissed, setGlimpsePromptDismissed] = useState(() => safeLocalGet("seen_glimpse_prompt_dismissed") === "1");
 
-  // ── Bell nudges ──────────────────────────────────────────────────────────────
-  // Two standing invitations that the bell surfaces rather than the feed. Both are
-  // device-local; neither is a Firestore event.
+  // ── Bell invitations ─────────────────────────────────────────────────────────
+  // Everything the app wants to ask of you now comes through the bell, one at a time, paced by
+  // src/invitations.js. See the rules at the top of that file — particularly that the unread
+  // badge counts PEOPLE only, which is why these are passed separately from the event rows.
   //
-  // First feed visit is stamped once so the follow nudge has a timestamp to sort by and a
-  // three-day clock to measure against — otherwise "3 days of use" has no origin for
-  // accounts that predate this code.
+  // Account start is stamped once so "3 days of use" has an origin for accounts that predate
+  // this code and have no onboardingCompletedAt.
   const FIRST_VISIT_KEY = "seen_first_feed_visit_at";
   const [firstFeedVisitAt] = useState(() => {
     const existing = Number(safeLocalGet(FIRST_VISIT_KEY)) || 0;
@@ -1941,58 +1959,86 @@ export default function App() {
     safeLocalSet(FIRST_VISIT_KEY, String(now));
     return now;
   });
-  const [followNudgeDismissed, setFollowNudgeDismissed] = useState(() => safeLocalGet("seen_follow_nudge_dismissed") === "1");
+  // Bumped on dismiss/act so the memo recomputes against the updated store.
+  const [invitationTick, setInvitationTick] = useState(0);
 
-  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  // Remembered so the "see the Kindness globe" invitation can stop once someone has been.
+  // Declared HERE, above `bellNudges`, and not next to the other `showMap` plumbing further
+  // down: a `const` read by the memo's dependency array has to exist before that array is
+  // built, and `useMemo(fn, [hasOpenedGlobe])` evaluates the array at the call site. Putting
+  // it with its neighbours threw a temporal-dead-zone ReferenceError on every single render —
+  // which the build does not catch, because it is only wrong at runtime.
+  const [hasOpenedGlobe, setHasOpenedGlobe] = useState(() => safeLocalGet("seen_globe_opened") === "1");
+  useEffect(() => {
+    if (showMap && !hasOpenedGlobe) { setHasOpenedGlobe(true); safeLocalSet("seen_globe_opened", "1"); }
+  }, [showMap, hasOpenedGlobe]);
+
+  // v2: wellbeing check-in moved out of onboarding, now invited from the bell.
+  // Also hoisted above INVITATION_COPY, which closes over the setter. That closure is only
+  // called on a tap, so it would work either way — but "safe because it's deferred" is the
+  // kind of reasoning that stops being true the moment someone inlines the call, so the
+  // declaration just goes before its use.
+  const [showWellbeingSheet, setShowWellbeingSheet] = useState(false);
+
+  // Copy lives here rather than in invitations.js: that file decides WHEN to ask, this decides
+  // what the ask says and what tapping it does.
+  const INVITATION_COPY = {
+    follow: {
+      icon: "👥",
+      text: <><span className="font-semibold">Follow someone to fill your Focused Feed</span> — their messages sit together, away from the worldwide feed</>,
+      open: () => setShowFollowing(true),
+    },
+    globe: {
+      icon: "🌍",
+      text: <><span className="font-semibold">See where kindness is travelling</span> — the globe shows messages crossing the world in real time</>,
+      open: () => setShowMap(true),
+    },
+    glimpse: {
+      icon: "💛",
+      text: <><span className="font-semibold">Help people see the person behind the kindness</span> — add two playful lines to your profile</>,
+      open: () => setShowGlimpseSheet(true),
+    },
+    wellbeing: {
+      icon: "🌤️",
+      text: <><span className="font-semibold">How have you been feeling lately?</span> — a quick, private check-in, just for your own reflection</>,
+      open: () => setShowWellbeingSheet(true),
+    },
+    wellbeing_recheck: {
+      icon: "🌤️",
+      text: <><span className="font-semibold">It's been a while since your last check-in</span> — see how the past few weeks compare</>,
+      open: () => setShowWellbeingSheet(true),
+    },
+  };
+
   const bellNudges = useMemo(() => {
-    const out = [];
-    if (!profile) return out;
-
-    // Nobody knows the Focused Feed exists — it's new, and the only way to populate it is to
-    // follow someone. Shown on the first visit, and only while the list is genuinely empty:
-    // once they've followed anyone, they've found the feature and the nudge is noise.
-    if (!followNudgeDismissed && follows.length === 0) {
-      out.push({
-        id: "nudge_follow",
-        ts: firstFeedVisitAt,
-        icon: "👥",
-        text: (
-          <>
-            <span className="font-semibold">Follow someone to fill your Focused Feed</span> — their
-            messages sit together, away from the worldwide feed
-          </>
-        ),
-        onClick: () => setShowFollowing(true),
-        onDismiss: () => { setFollowNudgeDismissed(true); safeLocalSet("seen_follow_nudge_dismissed", "1"); },
-      });
-    }
-
-    // The profile invitation, moved out of the feed and delayed to three days. It used to
-    // appear on day one, mid-feed, before anyone had a reason to care about their profile.
-    const since = typeof profile.onboardingCompletedAt === "number"
+    if (!profile) return [];
+    const accountStartedAt = typeof profile.onboardingCompletedAt === "number"
       ? profile.onboardingCompletedAt
       : firstFeedVisitAt;
-    const dueAt = since + THREE_DAYS_MS;
-    if (!glimpsePromptDismissed && !profile.mostDays && !profile.anotherLife && Date.now() >= dueAt) {
-      out.push({
-        id: "nudge_glimpse",
-        ts: dueAt,
-        icon: "💛",
-        text: (
-          <>
-            <span className="font-semibold">Help people see the person behind the kindness</span> —
-            add two playful lines to your profile
-          </>
-        ),
-        onClick: () => setShowGlimpseSheet(true),
-        onDismiss: () => { setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1"); },
-      });
-    }
-    return out;
-  }, [profile, follows.length, followNudgeDismissed, glimpsePromptDismissed, firstFeedVisitAt]);
-  // v2: wellbeing check-in moved out of onboarding to a post-login prompt
-  const [showWellbeingSheet, setShowWellbeingSheet] = useState(false);
-  const [wellbeingPromptDismissed, setWellbeingPromptDismissed] = useState(() => safeLocalGet("seen_wellbeing_prompt_dismissed") === "1");
+    const chosen = pickInvitation({
+      accountStartedAt,
+      followCount: follows.length,
+      hasOpenedGlobe,
+      hasGlimpse: Boolean(profile.mostDays || profile.anotherLife),
+      hasWellbeing: Boolean(profile.wellbeing),
+      lastWellbeingAt: Number(profile.wellbeingAt) || 0,
+    });
+    if (!chosen) return [];
+    const copy = INVITATION_COPY[chosen.id];
+    if (!copy) return [];
+    // Acting on it counts the same as dismissing it: either way the app has had its say and
+    // shouldn't raise it again on the original schedule.
+    const settle = () => { snoozeInvitation(chosen.id); setInvitationTick((t) => t + 1); };
+    return [{
+      id: `inv_${chosen.id}`,
+      ts: Date.now(),
+      icon: copy.icon,
+      text: copy.text,
+      onClick: () => { settle(); copy.open(); },
+      onDismiss: settle,
+    }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, follows.length, hasOpenedGlobe, firstFeedVisitAt, invitationTick]);
   useBackLayer(showWellbeingSheet, () => setShowWellbeingSheet(false));
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
@@ -2521,10 +2567,18 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.isAnonymous) return;
     let retryTimer = null;
-    // Only the last 7 days — nobody scrolls further back, and it keeps the feed light.
-    // timestamp is written as a number (nowMs()), so a plain numeric cutoff works.
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const q = query(publicMessagesRef, where("timestamp", ">", cutoff), orderBy("timestamp", "desc"), limit(100));
+    // A month, not a week. timestamp is written as a number (nowMs()), so a plain numeric
+    // cutoff works, and because the range and the orderBy are on the SAME field this still
+    // needs no composite index.
+    //
+    // The limit is what actually bounds the feed: once there are more than LIMIT messages
+    // inside the window you get the newest LIMIT regardless of how far back the window
+    // reaches, so widening 7→30 days without also raising this would have changed nothing
+    // except while the app is quiet.
+    const FEED_WINDOW_DAYS = 30;
+    const FEED_LIMIT = 300;
+    const cutoff = Date.now() - FEED_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const q = query(publicMessagesRef, where("timestamp", ">", cutoff), orderBy("timestamp", "desc"), limit(FEED_LIMIT));
     const unsubscribe = onSnapshot(q,
       (snap) => {
         // Legacy mystery greetings are dropped rather than rendered. Their stored `text` was
@@ -3131,12 +3185,18 @@ export default function App() {
                     try {
                       setWellbeingError("");
                       await saveCheckin(db, currentUser.uid, scores);
-                      await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores }, { merge: true });
+                      // wellbeingAt is what the re-check invitation measures against. The
+                      // scores map alone carries no date, and the subcollection copy would
+                      // need a separate query just to answer "how long ago was this?".
+                      await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores, wellbeingAt: Date.now() }, { merge: true });
                     } catch {
                       setWellbeingError("Couldn't save your check-in — check your connection and try again.");
                       return;
                     }
-                    setWellbeingPromptDismissed(true); safeLocalSet("seen_wellbeing_prompt_dismissed", "1");
+                    // No dismissal flag to set: the invitation's own `when` predicate reads
+                    // `profile.wellbeing`, so saving a check-in retires the invitation by
+                    // making it ineligible. A separate boolean would be a second source of
+                    // truth that could disagree with the profile.
                     setShowWellbeingSheet(false);
                   }}
                 />
@@ -3151,7 +3211,8 @@ export default function App() {
             onSave={async (fields) => {
               await setDoc(userProfileRef(currentUser.uid), fields, { merge: true });
               syncPublicProfile(db, currentUser.uid, { ...profile, ...fields });
-              setGlimpsePromptDismissed(true); safeLocalSet("seen_glimpse_prompt_dismissed", "1");
+              // Same as the wellbeing sheet: answering retires the invitation because its
+              // `when` reads profile.mostDays / profile.anotherLife.
             }}
             onClose={() => setShowGlimpseSheet(false)}
           />
@@ -3583,19 +3644,10 @@ export default function App() {
                   It now arrives through the 🔔 bell after three days — see `nudges` below.
                   It was landing on day one, in the middle of the feed, before anyone had a
                   reason to care about their profile. */}
-              {/* v2: post-login wellbeing check-in prompt (moved out of onboarding) */}
-              {!wellbeingPromptDismissed && profile && !profile.wellbeing && (
-                <div className="w-full mb-3 flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
-                  <span className="text-xl flex-shrink-0">🌤️</span>
-                  <button onClick={() => setShowWellbeingSheet(true)} className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-bold text-slate-800">How have you been feeling lately?</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">A quick, private check-in — just for your own reflection →</p>
-                  </button>
-                  <button
-                    onClick={() => { setWellbeingPromptDismissed(true); safeLocalSet("seen_wellbeing_prompt_dismissed", "1"); }}
-                    className="p-1 flex-shrink-0 text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
-                </div>
-              )}
+              {/* The wellbeing check-in prompt used to sit here. It was the app talking to you,
+                  wearing the same clothes as a message from another person, in the one place
+                  reserved for other people. Restyling it wouldn't have fixed that — it now
+                  arrives through the 🔔 bell alongside every other app-to-user message. */}
               {/* Crisis-support banner — surfaced when something you have written in your own
                   words reads as distressed. Shows live helplines inline (not just a deep-link)
                   so a heavy moment never requires navigating away to find a number.

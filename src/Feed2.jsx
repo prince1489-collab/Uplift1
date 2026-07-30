@@ -160,7 +160,9 @@ export const loadKindMoments = () => readJSON(MOMENTS_KEY, []);
 // uids are stored for ROUTING ONLY — they decide which feed the card belongs in — and are
 // never rendered. That is the whole design: enough to place the card, not enough to identify
 // anyone.
-const MOMENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // a week; older moments stop being news
+// A month, matching the feed's own window. These were a week while messages were a week;
+// leaving them behind would have meant month-old messages sitting beside no moments at all.
+const MOMENT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Write a moment for a private reply that just went out. Best-effort: a private reply that
 // succeeded must never be reported as failed because its celebratory side-effect didn't
