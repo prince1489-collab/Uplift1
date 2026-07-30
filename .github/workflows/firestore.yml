@@ -1,0 +1,86 @@
+# Deploys firestore.rules and firestore.indexes.json to Firebase.
+#
+# WHY THIS EXISTS
+# Rules and indexes live in this repo but the repo has no connection to Firebase. Nothing
+# published them unless a person remembered to run `npm run deploy:rules` from a checkout —
+# and that has now failed three separate times:
+#
+#   - Rules went 24 days undeployed. Private replies, shared reflections and public profiles
+#     were denied for every user, and the app told them to check their connection.
+#   - Indexes had never been declared anywhere. A query failed on the server while the local
+#     cache made it look like it had briefly worked: a reply appeared, then vanished.
+#   - The `follows` rule shipped and following silently failed until it was published by hand.
+#
+# The common cause is not carelessness — it is that deploying was a manual step outside the
+# thing that ships. So it moves in here. Every push that touches these files publishes them.
+#
+# It also means the deploy no longer needs a machine that can run commands: `workflow_dispatch`
+# puts a "Run workflow" button in the GitHub web UI, which is the whole procedure on a locked
+# down laptop.
+#
+# ONE-TIME SETUP: a repository secret named FIREBASE_SERVICE_ACCOUNT holding the JSON key for a
+# service account with `Firebase Rules Admin` + `Cloud Datastore Index Admin`. See DEPLOY.md.
+#
+# NOTE: there is one Firebase project, so there is no staging. A rules change on the working
+# branch reaches live users immediately — the same as already happens via Vercel, but worth
+# knowing that this branch is production for rules too.
+
+name: Deploy Firestore rules and indexes
+
+on:
+  push:
+    branches:
+      - claude/improve-app-design-HJrCm
+      - main
+    paths:
+      - firestore.rules
+      - firestore.indexes.json
+      - firebase.json
+      - .github/workflows/firestore.yml
+  # Lets the deploy be triggered from the browser, with no checkout and no CLI.
+  workflow_dispatch:
+
+# Two pushes in quick succession must not race to publish rules. Later run wins; we do NOT
+# cancel in-progress ones, because a half-finished index deploy is worse than a queued one.
+concurrency:
+  group: firestore-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Gate the deploy on the repo's own completeness check before touching Firebase: it
+      # catches a collection the app writes that the rules file never mentions, which is
+      # denied by default the moment it ships. Uses only Node built-ins, so no `npm ci`.
+      - name: Check every collection the app uses has a rule
+        run: node scripts/check-rules.cjs
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # This step exports GOOGLE_APPLICATION_CREDENTIALS, which firebase-tools reads — so no
+      # `firebase login:ci` token is needed. That matters: generating one would itself require
+      # running the CLI somewhere, which is the problem this workflow exists to remove.
+      #
+      # Deliberately NO --force. If a deploy would DELETE an index, this job fails loudly
+      # rather than destroying it quietly; a dropped index is a query that breaks in
+      # production and looks like data vanishing.
+      - name: Deploy rules and indexes
+        run: npx --yes firebase-tools deploy --only firestore --project uplift-6d9ea --non-interactive
+
+      - name: What just happened
+        run: |
+          echo "Published firestore.rules and firestore.indexes.json to uplift-6d9ea."
+          echo "Indexes take a few minutes to build: Firebase Console -> Firestore -> Indexes"
+          echo "shows Building, then Enabled. Queries needing one keep failing until Enabled."

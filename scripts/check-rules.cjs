@@ -10,9 +10,10 @@
 // the other half of the problem: a collection the code writes that the rules file never
 // mentions, which is denied by default the moment it ships.
 //
-// The deploy itself is `npm run deploy:rules`, and it has to be run whenever this file
-// changes. That is the part a human has to remember; this check makes sure the file is at
-// least complete before they do.
+// Remembering to deploy used to be the human's job, which is precisely why it went undone for
+// 24 days. It is now .github/workflows/firestore.yml, which publishes on every push that
+// touches the rules — and which runs THIS check first, so an incomplete rules file fails the
+// job instead of shipping.
 //
 // Run: node scripts/check-rules.cjs
 
@@ -52,5 +53,7 @@ if (missing.length) {
 console.log(
   `OK — ${used.size} collections used, all covered by firestore.rules ` +
   `(${declared.size} rules declared).\n` +
-  `Reminder: the rules file is NOT deployed automatically. Run 'npm run deploy:rules' after changing it.`
+  `Pushing this file to main or the working branch deploys it ` +
+  `(.github/workflows/firestore.yml). To publish without pushing: GitHub -> Actions -> ` +
+  `"Deploy Firestore rules and indexes" -> Run workflow.`
 );
