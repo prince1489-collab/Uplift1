@@ -715,6 +715,85 @@ function resolveVisitStart() {
   return start;
 }
 
+// ── Floating date pill — "Today" / "Tuesday", shown while scrolling the feed ──────────────
+//
+// This is a component with its own state, rather than two `useState`s on App, for one reason:
+// it is driven by scroll. When its label and visibility lived on App, every scroll event
+// re-rendered the entire application — the whole feed, every message — to move one small
+// overlay. Scrolling is compositor-driven and sticky elements are positioned by the
+// compositor, so making the main thread do that much work per frame left the pinned Focused
+// Feed header resolving a frame late. It read as the header wobbling.
+//
+// It got measurably worse when the feed window went 7 → 30 days and the limit 100 → 300:
+// roughly 3x the messages re-rendered per event, and 4x the day separators measured.
+//
+// Three things keep the cost near zero now:
+//   - rAF coalescing: at most ONE measurement per frame however many scroll events fire.
+//   - Changed-only setState: scrolling within a single day sets no state at all, so a normal
+//     scroll re-renders nothing after the first frame.
+//   - A passive listener, so this can never block the compositor.
+function FeedDatePill({ scrollRef }) {
+  const [label, setLabel] = useState("Today");
+  const [visible, setVisible] = useState(false);
+  const rafRef = useRef(0);
+  const hideRef = useRef(null);
+
+  useEffect(() => {
+    // scrollRef points at this component's own PARENT (<main>). That is safe rather than a
+    // race: React attaches host refs during the commit phase, and useEffect is a passive
+    // effect that flushes after paint, so the ref is populated by the time this runs. This
+    // component is also a child of that <main>, so it unmounts and remounts with it on tab
+    // changes and the listener re-attaches to the new element.
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const measure = () => {
+      rafRef.current = 0;
+      // Reads are batched inside one frame, so the forced layout happens once rather than
+      // once per scroll event.
+      const containerTop = container.getBoundingClientRect().top;
+      let next = "Today";
+      container.querySelectorAll("[data-daylabel]").forEach((el) => {
+        if (el.getBoundingClientRect().top <= containerTop + 48) next = el.dataset.daylabel;
+      });
+      setLabel((prev) => (prev === next ? prev : next));
+    };
+
+    const onScroll = () => {
+      setVisible(true); // React bails out when it is already true, so this costs nothing
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(measure);
+      clearTimeout(hideRef.current);
+      hideRef.current = setTimeout(() => setVisible(false), 1500);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      clearTimeout(hideRef.current);
+    };
+  }, [scrollRef]);
+
+  return (
+    <div className="pointer-events-none" style={{ position: "sticky", top: 44, zIndex: 20, height: 0, textAlign: "center" }}>
+      <span style={{
+        display: "inline-block",
+        opacity: visible ? 1 : 0,
+        transition: "opacity 0.25s",
+        background: "rgba(0,0,0,0.42)",
+        color: "#fff",
+        borderRadius: 20,
+        padding: "3px 14px",
+        fontSize: 12,
+        fontWeight: 500,
+        letterSpacing: "0.01em",
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 // `nudges` are the app's own invitations — "check in on your wellbeing", "follow someone",
 // "see the Kindness globe" — chosen and paced by src/invitations.js, which guarantees at most
 // one at a time. They differ from every other row here in three ways:
@@ -2044,9 +2123,8 @@ export default function App() {
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
   const feedRef = useRef(null);
-  const scrollHideTimer = useRef(null);
-  const [feedDateLabel, setFeedDateLabel] = useState("Today");
-  const [feedDateVisible, setFeedDateVisible] = useState(false);
+  // The feed's date pill used to keep its label, visibility and hide-timer here. It now owns
+  // them itself (FeedDatePill) — App state meant every scroll event re-rendered the whole app.
 
   // Android back button: register every closable layer so back closes the top-most
   // one instead of exiting the app (QA #2). Order of opening = order of closing.
@@ -2810,21 +2888,6 @@ export default function App() {
     }
   };
 
-  const handleFeedScroll = (e) => {
-    const container = e.currentTarget;
-    setFeedDateVisible(true);
-    const containerTop = container.getBoundingClientRect().top;
-    let label = "Today";
-    container.querySelectorAll("[data-daylabel]").forEach((el) => {
-      if (el.getBoundingClientRect().top <= containerTop + 48) {
-        label = el.dataset.daylabel;
-      }
-    });
-    setFeedDateLabel(label);
-    clearTimeout(scrollHideTimer.current);
-    scrollHideTimer.current = setTimeout(() => setFeedDateVisible(false), 1500);
-  };
-
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
@@ -3487,28 +3550,18 @@ export default function App() {
             ) : activeTab === "impact" ? (
               <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} />
             ) : (
+            /* No onScroll here on purpose. React's onScroll is a non-passive listener on a
+               scroll container that renders hundreds of messages; FeedDatePill subscribes to
+               this same element with { passive: true } instead, so scrolling can never be
+               blocked waiting on React. */
             <main ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 px-3.5 pt-2 pb-4"
-              onClick={() => { setActiveMessageId(null); }}
-              onScroll={handleFeedScroll}>
+              onClick={() => { setActiveMessageId(null); }}>
               {/* Floating date pill — appears while scrolling, fades out when idle.
                   height:0 so it overlays the feed instead of reserving vertical space.
-                  Sits below the pinned Focused Feed header rather than under it. */}
-              <div className="pointer-events-none" style={{ position: "sticky", top: 44, zIndex: 20, height: 0, textAlign: "center" }}>
-                <span style={{
-                  display: "inline-block",
-                  opacity: feedDateVisible ? 1 : 0,
-                  transition: "opacity 0.25s",
-                  background: "rgba(0,0,0,0.42)",
-                  color: "#fff",
-                  borderRadius: 20,
-                  padding: "3px 14px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  letterSpacing: "0.01em",
-                }}>
-                  {feedDateLabel}
-                </span>
-              </div>
+                  Sits below the pinned Focused Feed header rather than under it.
+                  Owns its own state and scroll listener (see FeedDatePill) so moving it
+                  cannot re-render the feed behind it. */}
+              <FeedDatePill scrollRef={feedRef} />
               {/* Shared journals and your own posts are no longer fixed strips here — they
                   flow inside whichever feed they belong to, in time order. */}
               {/* Transparent "Seen · official" welcome — shown to new users (before their first

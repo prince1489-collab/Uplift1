@@ -160,6 +160,19 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-orange-700   { color: #fbbf24 !important; }
 [data-dark-shell] .text-orange-500   { color: #f59e0b !important; }
 
+/* ── Pinned "Focused Feed" bar ──────────────────────────────────────────────────
+   Its background lives here rather than on a `bg-slate-50` utility because it has one
+   hard requirement the utilities cannot guarantee: be FULLY OPAQUE in both themes, so
+   messages never scroll through it. The dark-shell remaps above rewrite background
+   utilities globally and by combination — `.bg-slate-50.border-slate-200` (a streak-badge
+   rule) would have made this bar 6% opaque without anything in Feed2.jsx changing.
+
+   No backdrop-filter, deliberately. Blurring a pinned element re-samples the backdrop
+   from a fractional scroll offset every frame; browsers round that inconsistently and the
+   bar visibly wobbles as you scroll — worst in WebKit, which is where it was reported. */
+.seen-focused-header               { background-color: #f8fafc; }  /* slate-50 */
+[data-dark-shell] .seen-focused-header { background-color: #0d1117 !important; }
+
 /* ── Accent colour remaps (Phase 0 contrast audit) ─────────────────────────────
    The shell above only remapped slate + orange, so accent "islands" (teal/emerald/
    amber/violet/rose/blue tints) kept LIGHT backgrounds while any slate text inside
