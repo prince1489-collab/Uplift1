@@ -941,17 +941,27 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
           emoji, country: myCountry, reactorName: myName, reactedAt,
-        }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
-
-        // Push notification to message owner (best-effort; throttled per message so rapid
-        // like/unlike/like can't spam the recipient).
-        if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          // Authenticated, and it sends only the two ids: the endpoint reads the reaction
-          // document itself to work out who reacted and what to say, so the notification
-          // text is no longer whatever the caller put in the body.
-          authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
-            .catch(() => {});
-        }
+        })
+          // Push notification to message owner (best-effort; throttled per message so rapid
+          // like/unlike/like can't spam the recipient).
+          //
+          // Chained onto the write rather than fired alongside it. notify-like is
+          // authenticated now and proves the like really happened by reading THIS document,
+          // so the two running in parallel raced an HTTP call to Vercel against a Firestore
+          // round trip — the endpoint would frequently find nothing and refuse, and likes
+          // would quietly stop pushing. Ordering only became load-bearing when the endpoint
+          // stopped trusting the request body.
+          //
+          // It also means a failed write sends nothing, which is right: there is no like to
+          // announce. And the throttle is only spent when a notification is actually
+          // attempted, rather than on a write that never landed.
+          .then(() => {
+            if (emoji === "❤️" && shouldNotifyLike(messageId)) {
+              authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+                .catch(() => {});
+            }
+          })
+          .catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
         // Write outgoingReactions then immediately check if this reactor already sent
         // a greeting within the ripple window ("send → react" ordering). If yes,
@@ -1884,17 +1894,27 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         setDoc(ownerRef, {
           messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
           emoji, country: myCountry, reactorName: myName, reactedAt,
-        }).catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
-
-        // Push notification to message owner (best-effort; throttled per message so rapid
-        // like/unlike/like can't spam the recipient).
-        if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          // Authenticated, and it sends only the two ids: the endpoint reads the reaction
-          // document itself to work out who reacted and what to say, so the notification
-          // text is no longer whatever the caller put in the body.
-          authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
-            .catch(() => {});
-        }
+        })
+          // Push notification to message owner (best-effort; throttled per message so rapid
+          // like/unlike/like can't spam the recipient).
+          //
+          // Chained onto the write rather than fired alongside it. notify-like is
+          // authenticated now and proves the like really happened by reading THIS document,
+          // so the two running in parallel raced an HTTP call to Vercel against a Firestore
+          // round trip — the endpoint would frequently find nothing and refuse, and likes
+          // would quietly stop pushing. Ordering only became load-bearing when the endpoint
+          // stopped trusting the request body.
+          //
+          // It also means a failed write sends nothing, which is right: there is no like to
+          // announce. And the throttle is only spent when a notification is actually
+          // attempted, rather than on a write that never landed.
+          .then(() => {
+            if (emoji === "❤️" && shouldNotifyLike(messageId)) {
+              authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+                .catch(() => {});
+            }
+          })
+          .catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
 
         const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
         setDoc(myReactionRef, {
