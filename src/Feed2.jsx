@@ -454,11 +454,18 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
 export function KindMomentCard({ moment, compact = false }) {
   const a = flagFor(moment.aCountry);
   const b = flagFor(moment.bCountry);
-  // Two flags when we know both and they differ — that's the "across the world" moment worth
-  // showing. Otherwise stay generic rather than implying a location we don't have.
-  const places = moment.aCountry && moment.bCountry && moment.aCountry !== moment.bCountry
-    ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
-    : null;
+  // THREE cases, not two. This used to require the countries to DIFFER before naming them,
+  // which quietly folded "both people are in India" in with "we have no idea where either
+  // person is" and showed the same bare sentence for both. Same-country is the common case for
+  // any app whose users cluster, so the most frequent kind moment was rendering as the least
+  // informative one — while the app knew exactly where both people were.
+  //
+  // Unknown still stays generic: that one is honest, because there is nothing to say.
+  const known = moment.aCountry && moment.bCountry;
+  const places = !known ? null
+    : moment.aCountry !== moment.bCountry
+      ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
+      : <> between two people in <strong className="text-slate-800">{a} {moment.aCountry}</strong></>;
   return (
     <div className={`seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
