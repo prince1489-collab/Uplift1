@@ -25,7 +25,7 @@ import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation } from "./invitations";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -804,7 +804,13 @@ function FeedDatePill({ scrollRef }) {
 //   - they never raise the unread count (see `totalUnread` below).
 // This is the app's single channel for talking to the user. Anything that would otherwise be a
 // banner interrupting the feed belongs here instead.
-function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [] }) {
+// `replies` are private replies addressed to me. They are the strongest example of rule 1 —
+// a real person wrote you something personal — so unlike invitations they DO raise the badge.
+//
+// Their unread signal is the `read` field, not the since-your-last-visit boundary that governs
+// waves, likes and ripples. A private reply must not stop being new because you happened to
+// open the app once; it stays until you actually read it.
+function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [], replies = [], onOpenReply }) {
   const [open, setOpen] = useState(false);
   // Resolved once per mount — the boundary must not move under the user mid-session.
   const [visitStart] = useState(resolveVisitStart);
@@ -952,10 +958,16 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
   // the number of rows the user will actually see.
   const newLikesCount = visibleLikes.filter((l) => l.at > likesSeenAt).length;
   const newRipplesCount = visibleRipples.filter((r) => (r.createdAt ?? 0) > ripplesSeenAt).length;
+  // Unread replies are the ones not yet marked read. Filtered here rather than in the query
+  // on purpose: adding where("read","==",false) alongside the existing orderBy("ts") would
+  // need a NEW composite index, and a missing index on this exact collection is what made
+  // received replies appear for a second and then vanish. The list is capped at 50.
+  const unreadReplies = replies.filter((r) => !r.read);
+
   // PEOPLE ONLY. Invitations deliberately do not raise this — see rule 1 in src/invitations.js.
   // A red count has to mean "a person did something", or the badge stops being believed and the
   // real notifications stop being read along with it. This previously added `nudges.length`.
-  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount;
+  const totalUnread = visibleWaves.length + newLikesCount + newRipplesCount + unreadReplies.length;
   // ...but an invitation nobody can see is not an invitation. So when there's nothing from a
   // person and something from the app, the bell gets a quiet amber dot with no number: present
   // enough to notice, distinct enough that it never reads as "someone replied to you".
@@ -992,12 +1004,21 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
         ? <><span className="font-semibold">{g.n} people</span> you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>
         : <>Someone you reached{g.country ? <> in <span className="font-semibold">{g.country}</span></> : null} went on to greet others</>,
     }));
+    // Private replies. Shown whether read or not — a reply is worth being able to find again,
+    // and unlike the others it opens something rather than just reporting.
+    replies.forEach((r) => out.push({
+      id: `reply_${r.id}`, ts: Number(r.ts) || 0, icon: "💬", tint: "bg-sky-50/60", fresh: !r.read,
+      text: r.inReplyTo
+        ? <><span className="font-semibold">{r.fromName || "Someone"}</span> replied back</>
+        : <><span className="font-semibold">{r.fromName || "Someone"}</span>{r.fromCountry ? <> from <span className="font-semibold">{r.fromCountry}</span></> : null} replied privately to your message</>,
+      onClick: () => onOpenReply?.(r),
+    }));
     nudges.forEach((n) => out.push({
       id: n.id, ts: n.ts, icon: n.icon, tint: "bg-amber-50/60", fresh: true,
       text: n.text, onClick: n.onClick, onDismiss: n.onDismiss,
     }));
     return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
-  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges]);
+  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges, replies, onOpenReply]);
   // Honest, transparently system-authored reassurance: if you've shared kindness but no one
   // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
   // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
@@ -1999,6 +2020,24 @@ export default function App() {
     setFeaturedStories(stories);
   }, [currentUser?.uid]);
   const [replyTarget, setReplyTarget] = useState(null); // stranger message being privately replied to
+
+  // Private replies addressed to me. `useInboxReplies` had existed and been exported since
+  // replies became real documents, but nothing ever called it — so a private reply, the most
+  // personal thing that happens in this app, arrived with no bell row, no badge and no push.
+  // The only way to find one was to open the reactions panel of the message it answered.
+  const inboxReplies = useInboxReplies(db, currentUser, blockedUids);
+  // The reply being answered, which turns the reply sheet into the second half of the exchange.
+  const [answeringReply, setAnsweringReply] = useState(null);
+  useBackLayer(Boolean(answeringReply), () => setAnsweringReply(null));
+  const openReply = useCallback((r) => {
+    // Opening it is reading it. Best-effort: the rules let the recipient change nothing but
+    // `read`, so a failure here costs an extra badge, not correctness.
+    if (r && !r.read) updateDoc(doc(db, "privateReplies", r.id), { read: true }).catch(() => {});
+    // Answering an answer is not offered — and is also refused by the rules, so the UI and
+    // the server agree rather than the button being the only thing stopping it.
+    setAnsweringReply(r?.inReplyTo ? { ...r, readOnly: true } : r);
+  }, [db]);
+
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
   // Follow/unfollow from the Worldwide Feed. These write one Firestore document each and
@@ -3225,6 +3264,19 @@ export default function App() {
             blockedUids={blockedUids}
             onClose={() => setReplyTarget(null)} />
         )}
+        {/* The other half of the exchange: answering a private reply someone sent you. Same
+            sheet, in `answering` mode — `target` is the person who wrote to you. */}
+        {answeringReply && currentUser && (
+          <PrivateReplySheet
+            target={{ uid: answeringReply.fromUid, sender: answeringReply.fromName, country: answeringReply.fromCountry, id: answeringReply.messageId, text: answeringReply.messageText }}
+            me={profile}
+            myUid={currentUser?.uid}
+            currentUser={currentUser}
+            db={db}
+            blockedUids={blockedUids}
+            answering={answeringReply}
+            onClose={() => setAnsweringReply(null)} />
+        )}
         {showWellbeingSheet && currentUser && createPortal(
           <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowWellbeingSheet(false)} />
@@ -3379,7 +3431,8 @@ export default function App() {
                     </button>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent} nudges={bellNudges} />
+                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent}
+                      nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu

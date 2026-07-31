@@ -138,6 +138,23 @@ service cloud.firestore {
     //
     // No update path for `text` — a reply cannot be edited after it has been delivered, so
     // what the recipient reports is what was sent. The recipient may only flip `read`.
+    //
+    // ONE REPLY BACK, AND ONLY ONE — enforced here rather than by hiding a button.
+    //
+    // The exchange is deliberately capped at two messages: B replies to A's public message,
+    // A may answer once, and that is the end. Not a chat. Two mechanisms make that real
+    // server-side, so it holds against anything talking to Firestore directly:
+    //
+    //  1. The answer is written at a DERIVED id — `{originalReplyId}__reply` — rather than a
+    //     random one. In Firestore a write to a path that already holds a document is an
+    //     UPDATE, not a create, so a second answer falls through to the update rule below,
+    //     which permits only `read` to change. The cap therefore needs no counter, no
+    //     transaction and no extra document: it is a consequence of the id being predictable.
+    //
+    //  2. An answer cannot itself be answered. `inReplyTo` must not already end in
+    //     `__reply`, which stops `x__reply__reply` and every longer chain.
+    //
+    // `matches()` is a full-string match in rules, so '.*__reply' means "ends with __reply".
     match /privateReplies/{replyId} {
       allow read: if request.auth != null
           && (resource.data.fromUid == request.auth.uid
@@ -148,7 +165,13 @@ service cloud.firestore {
           && request.resource.data.toUid != request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 500;
+          && request.resource.data.text.size() <= 500
+          // A first reply carries no inReplyTo and keeps its auto-id. An answer must carry
+          // one, must sit at the id derived from it, and must not be answering an answer.
+          && (!('inReplyTo' in request.resource.data.keys())
+              || (request.resource.data.inReplyTo is string
+                  && replyId == request.resource.data.inReplyTo + '__reply'
+                  && !request.resource.data.inReplyTo.matches('.*__reply')));
       allow update: if request.auth != null
           && resource.data.toUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);

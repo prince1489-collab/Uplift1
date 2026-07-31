@@ -20,7 +20,9 @@
     "deploy:indexes": "npx --yes firebase-tools deploy --only firestore:indexes",
     "deploy:firestore": "npx --yes firebase-tools deploy --only firestore",
     "firebase": "npx --yes firebase-tools",
-    "deploy:login": "npx --yes firebase-tools login"
+    "deploy:login": "npx --yes firebase-tools login",
+    "test:rules": "node scripts/test-rules.mjs",
+    "test:rules:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-rules.mjs\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
@@ -43,6 +45,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.3",

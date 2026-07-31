@@ -17,7 +17,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { startCheckout } from "./payments";
 import { StickerPicker } from "./StickerReactions";
-import { apiUrl } from "./apiBase";
+import { authedPost } from "./apiBase";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 import { syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -946,11 +946,11 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         // Push notification to message owner (best-effort; throttled per message so rapid
         // like/unlike/like can't spam the recipient).
         if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          fetch(apiUrl("/api/notify-like"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
-          }).catch(() => {});
+          // Authenticated, and it sends only the two ids: the endpoint reads the reaction
+          // document itself to work out who reacted and what to say, so the notification
+          // text is no longer whatever the caller put in the body.
+          authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+            .catch(() => {});
         }
 
         // Write outgoingReactions then immediately check if this reactor already sent
@@ -1889,11 +1889,11 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
         // Push notification to message owner (best-effort; throttled per message so rapid
         // like/unlike/like can't spam the recipient).
         if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-          fetch(apiUrl("/api/notify-like"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ownerUid: senderUid, reactorName: myName, country: myCountry }),
-          }).catch(() => {});
+          // Authenticated, and it sends only the two ids: the endpoint reads the reaction
+          // document itself to work out who reacted and what to say, so the notification
+          // text is no longer whatever the caller put in the body.
+          authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+            .catch(() => {});
         }
 
         const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;

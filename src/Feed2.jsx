@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   doc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc,
-  setDoc, deleteDoc,
+  setDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
 import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
@@ -481,12 +481,41 @@ export function KindMomentCard({ moment, compact = false }) {
 // `return`. It only appeared once the Firestore rules were finally deployed and the write
 // started succeeding. The prop is gone rather than guarded: a callback with nothing to say
 // is not worth keeping alive.
-export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, onClose }) {
+// `answering` turns this sheet into the other half of the exchange: instead of replying to a
+// stranger's public message, you are answering the private reply someone sent you. It is the
+// same sheet rather than a second one because everything below the header is identical work —
+// the moderation call, the writeFailure mapping, the busy/sent/error states — and two copies
+// of that is how the safe path and the second path drift apart.
+export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, onClose }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const blocked = blockedUids instanceof Set ? blockedUids.has(target?.uid) : false;
+
+  // Has this exchange already been answered? Your own answer is addressed to THEM, so it never
+  // appears in your inbox and this cannot be worked out locally — hence one read when the sheet
+  // opens. Purely for honesty in the UI: the cap itself is enforced by the rules, and a stale
+  // answer here would be refused by the server rather than silently accepted.
+  // `undefined` = still checking, `null` = not answered yet, object = the answer already sent.
+  // Whether a check is needed is derived, not stored — setting state synchronously in the
+  // effect body for the "nothing to check" case would cascade an extra render on every open.
+  const needsAnswerCheck = Boolean(answering) && !answering.readOnly && Boolean(db);
+  const [existingAnswer, setExistingAnswer] = useState(undefined);
+  useEffect(() => {
+    if (!needsAnswerCheck) return;
+    let alive = true;
+    getDoc(doc(db, "privateReplies", `${answering.id}__reply`))
+      .then((s) => { if (alive) setExistingAnswer(s.exists() ? s.data() : null); })
+      .catch(() => { if (alive) setExistingAnswer(null); }); // read failed → let the rules decide
+    return () => { alive = false; };
+  }, [db, answering, needsAnswerCheck]);
+
+  const answerChecked = !needsAnswerCheck || existingAnswer !== undefined;
+  // The exchange is over when you are looking at someone's answer to you, or you have already
+  // sent yours. Either way there is nothing to write, so the composer is not shown at all
+  // rather than shown and rejected.
+  const exchangeComplete = Boolean(answering) && (answering.readOnly || Boolean(existingAnswer));
 
   const send = async () => {
     const clean = text.trim();
@@ -513,18 +542,32 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
       return;
     }
 
+    const payload = {
+      fromUid: myUid ?? currentUser.uid,
+      fromName: firstName(me?.fullName) || "Someone",
+      fromCountry: me?.country ?? null,
+      toUid: target.uid,
+      messageId: target.id ?? null,
+      messageText: (target.text ?? "").slice(0, 120), // context for the recipient
+      text: clean,
+      ts: Date.now(),
+      read: false,
+    };
+
+    let replyId;
     try {
-      await addDoc(collection(db, "privateReplies"), {
-        fromUid: myUid ?? currentUser.uid,
-        fromName: firstName(me?.fullName) || "Someone",
-        fromCountry: me?.country ?? null,
-        toUid: target.uid,
-        messageId: target.id ?? null,
-        messageText: (target.text ?? "").slice(0, 120), // context for the recipient
-        text: clean,
-        ts: Date.now(),
-        read: false,
-      });
+      if (answering) {
+        // The one permitted answer goes to a DERIVED id, not a random one. That is what caps
+        // the exchange at two messages: a second answer would be a write to a path that
+        // already exists, which Firestore treats as an update, and the update rule allows
+        // only `read` to change. So the limit is enforced by the rules rather than by this
+        // component choosing not to offer the button again. See firestore.rules.
+        replyId = `${answering.id}__reply`;
+        await setDoc(doc(db, "privateReplies", replyId), { ...payload, inReplyTo: answering.id });
+      } else {
+        const ref = await addDoc(collection(db, "privateReplies"), payload);
+        replyId = ref.id;
+      }
     } catch (err) {
       setError(writeFailure(err, "Your reply"));
       setBusy(false);
@@ -534,15 +577,26 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setSent(true);
     setBusy(false);
     try { awardPoints("reply"); } catch { /* ignore */ }
-    // Announce that kindness happened, without saying who or what. Deliberately after the
-    // success state is set and not awaited: the reply has already landed, and a failure to
-    // write the celebratory card must never make a delivered message look undelivered.
-    recordKindMoment(db, {
-      fromUid: myUid ?? currentUser.uid,
-      toUid: target.uid,
-      fromCountry: me?.country ?? null,
-      toCountry: target.country ?? null,
-    });
+
+    // Everything below here is best-effort and deliberately NOT awaited. The reply has
+    // already landed; a failure to push a notification or write a celebratory card must
+    // never make a delivered message look undelivered.
+
+    // Push the recipient. Sends only the id — notify-reply reads the document itself to work
+    // out who it is for and what to say, so nothing here can choose the notification text.
+    authedPost(currentUser, "/api/notify-reply", { replyId }).catch(() => {});
+
+    // Announce that kindness happened, without saying who or what — but only for a first
+    // reply. An answer is the same two people in the same exchange, and recording a second
+    // moment would show one interaction on the globe twice.
+    if (!answering) {
+      recordKindMoment(db, {
+        fromUid: myUid ?? currentUser.uid,
+        toUid: target.uid,
+        fromCountry: me?.country ?? null,
+        toCountry: target.country ?? null,
+      });
+    }
     setTimeout(() => onClose?.(), 1200);
   };
 
@@ -552,37 +606,81 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
       <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
         <div className="px-5 pb-2 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">Reply privately to {firstName(target?.sender)} {flagFor(target?.country)}</h2>
+          <h2 className="text-lg font-bold text-slate-800">
+            {answering ? "Reply back" : `Reply privately to ${firstName(target?.sender)}`} {flagFor(target?.country)}
+          </h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
         </div>
         <div className="px-5 pb-8 space-y-3">
-          <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{target?.text}”</div>
-          {/* Real now — say who can see it, since "private" should mean something specific. */}
+          {answering ? (
+            // The exchange so far, oldest first, so it reads in order: what you wrote publicly,
+            // then what they sent you privately. Without your own message above theirs, a reply
+            // arriving days later has no context.
+            <div className="space-y-2">
+              {answering.messageText && (
+                <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">You wrote</p>
+                  <p className="mt-0.5 text-[13px] text-slate-500 italic">“{answering.messageText}”</p>
+                </div>
+              )}
+              <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-600">
+                  {firstName(answering.fromName)} replied {flagFor(answering.fromCountry)}
+                </p>
+                <p className="mt-0.5 text-[14px] text-slate-700">{answering.text}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{target?.text}”</div>
+          )}
+          {/* Real now — say who can see it, since "private" should mean something specific.
+              For an answer it also has to say this is the last one, BEFORE they write it —
+              finding out afterwards that you had one shot would feel like a trick. */}
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
             <p className="text-[11px] text-sky-700 leading-relaxed">
-              Only {firstName(target?.sender)} can read this — your words are never shown in any feed. It's screened first,
-              and either of you can delete it.
+              Only {firstName(answering ? answering.fromName : target?.sender)} can read this — your words are never shown
+              in any feed. It's screened first, and either of you can delete it.
+              {answering && " This is a one-off reply, not a chat: once you send it, the exchange is complete."}
             </p>
           </div>
-          <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 120))} rows={2} autoFocus
-            placeholder="A private word of kindness, just between you two…"
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
-          {error && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{error}</p>
+          {exchangeComplete ? (
+            <>
+              {existingAnswer && (
+                <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">You replied</p>
+                  <p className="mt-0.5 text-[14px] text-slate-700">{existingAnswer.text}</p>
+                </div>
+              )}
+              <p className="text-center text-[12px] text-slate-500 leading-relaxed">
+                This exchange is complete — one reply each, and that's it. Kindness here isn't a
+                conversation to keep up with.
+              </p>
+            </>
+          ) : !answerChecked ? (
+            <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-slate-300" /></div>
+          ) : (
+            <>
+              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 120))} rows={2} autoFocus
+                placeholder="A private word of kindness, just between you two…"
+                className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+              {error && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{error}</p>
+              )}
+              {sent && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] font-semibold text-amber-700">
+                  Sent ✓ — only {firstName(answering ? answering.fromName : target?.sender)} will see it.
+                </div>
+              )}
+              <button onClick={send} disabled={!text.trim() || sent || busy}
+                className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : answering ? "Send reply" : "Send privately"}
+              </button>
+              <p className="text-center text-[10px] text-slate-400 leading-relaxed">
+                Screened before delivery. Your words stay between you two — the feed only ever shows
+                that a kind message happened, never who sent it or what it said.
+              </p>
+            </>
           )}
-          {sent && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] font-semibold text-amber-700">
-              Sent ✓ — only {firstName(target?.sender)} will see it.
-            </div>
-          )}
-          <button onClick={send} disabled={!text.trim() || sent || busy}
-            className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : "Send privately"}
-          </button>
-          <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            Screened before delivery. Your words stay between you two — the feed only ever shows
-            that a kind message happened, never who sent it or what it said.
-          </p>
         </div>
       </div>
     </div>,

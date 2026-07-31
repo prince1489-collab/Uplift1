@@ -26,4 +26,12 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    // Everything above assumes a browser, which is wrong for a third of the repo: the Vercel
+    // functions in api/, the build config and the check scripts all run on Node. Without this
+    // every `process.env` read was a `no-undef` error — 26 of them, all false, which is enough
+    // noise to hide a real one. Not a rule relaxation: these globals genuinely exist here.
+    files: ['api/**/*.js', 'scripts/**/*.js', 'vite.config.js'],
+    languageOptions: { globals: { ...globals.node } },
+  },
 ])
