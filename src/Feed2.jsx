@@ -454,18 +454,19 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
 export function KindMomentCard({ moment, compact = false }) {
   const a = flagFor(moment.aCountry);
   const b = flagFor(moment.bCountry);
-  // THREE cases, not two. This used to require the countries to DIFFER before naming them,
-  // which quietly folded "both people are in India" in with "we have no idea where either
-  // person is" and showed the same bare sentence for both. Same-country is the common case for
-  // any app whose users cluster, so the most frequent kind moment was rendering as the least
-  // informative one — while the app knew exactly where both people were.
+  // Both flags whenever both countries are known — including when they are the SAME country.
+  // Two people in India get "🇮🇳 India and 🇮🇳 India", exactly like a cross-border pair: every
+  // card is then the same shape, and two flags is what says "two people connected" at a glance.
   //
-  // Unknown still stays generic: that one is honest, because there is nothing to say.
-  const known = moment.aCountry && moment.bCountry;
-  const places = !known ? null
-    : moment.aCountry !== moment.bCountry
-      ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
-      : <> between two people in <strong className="text-slate-800">{a} {moment.aCountry}</strong></>;
+  // This used to require the countries to DIFFER, which folded "both in India" in with "we have
+  // no idea where either person is" and showed the same bare sentence for both. Same-country is
+  // the common case for any app whose users cluster, so the most frequent kind moment rendered
+  // as the least informative one while the app knew exactly where both people were.
+  //
+  // Unknown is still the one case that stays generic, because there is genuinely nothing to say.
+  const places = moment.aCountry && moment.bCountry
+    ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
+    : null;
   return (
     <div className={`seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
