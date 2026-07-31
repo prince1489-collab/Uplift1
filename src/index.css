@@ -188,6 +188,24 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    needs opposite ends of its ramp, which is exactly why a single utility could not serve
    both themes here. */
 .seen-feed-header                    { background-color: #f8fafc; }  /* slate-50 */
+
+/* The pinned one. `position`, `top` and `z-index` live HERE, next to the background, rather
+   than as `sticky -top-2 z-[25]` utilities — because a pinned bar only works if all four
+   agree, and split across two systems they didn't:
+
+     - z-[25] sat BELOW siblings in the same scroller that are z-30 (the long-press reaction
+       bar, and three sticky prompts). Anything at z-30 painted straight over the bar.
+     - it depended on the Tailwind CDN generating two arbitrary/negative utilities at runtime
+       for the one element that must never fail to cover what is behind it.
+   z-index 40 clears every z-30 in the feed.
+
+   `top` stays NEGATIVE, and that is load-bearing rather than a leftover. The scroller has
+   `pt-2`, so with `top: 0` the bar pins 8px BELOW the top of the scrollport and messages show
+   through the strip above it. Measured in a browser: `top: 0` pins at y=8, `top: -8px` pins
+   flush at y=0. The 8px it hangs above the scrollport is clipped by the overflow, which is
+   why the padding below compensates. I changed this to `top: 0` while investigating and the
+   measurement caught it going in. */
+.seen-feed-header--pinned { position: sticky; top: -8px; z-index: 40; }
 .seen-feed-header .seen-feed-meta    { color: #64748b; }
 .seen-feed-title--world              { color: #B93878; }
 .seen-feed-title--focus              { color: #A82E2C; }

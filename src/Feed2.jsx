@@ -419,15 +419,24 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
           <button
             key={m.id}
             onClick={() => setOpen((v) => !v)}
-            className="w-full text-left rounded-2xl border border-sky-200 bg-white px-3 py-2 active:scale-[0.99] transition-transform"
+            // Same bubble as a message from someone else in the Focused Feed —
+            // `bg-teal-50 border-teal-200` with `text-teal-900` — rather than the white card
+            // with a sky border this used to be. A message from a stranger and a message from
+            // someone you follow are the same KIND of thing, and dressing them differently
+            // made the two feeds look like two products.
+            //
+            // It also fixes dark mode for free: white/sky/slate here had uneven remap coverage,
+            // whereas every teal-* class below is already remapped. Measured on both:
+            // body 9.39:1 light / 12.55:1 dark, name and hint 6.17:1 / 8.35:1.
+            className="w-full text-left rounded-2xl border border-teal-200 bg-teal-50 px-3 py-2 active:scale-[0.99] transition-transform"
             style={{ animation: "seenFadeUp 350ms ease both" }}>
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className="text-sm">{flagFor(m.country)}</span>
-              <span className="text-[11px] font-semibold text-slate-500 truncate flex-1">{firstName(m.sender)}</span>
+              <span className="text-[11px] font-semibold text-teal-700 truncate flex-1">{firstName(m.sender)}</span>
               {likes[m.id] && <Heart size={11} className="text-rose-500 flex-shrink-0" fill="currentColor" />}
-              <span className="text-[10px] text-slate-300 flex-shrink-0">{open ? "tap to close" : "tap to like or reply"}</span>
+              <span className="text-[10px] text-teal-700 opacity-70 flex-shrink-0">{open ? "tap to close" : "tap to like or reply"}</span>
             </div>
-            <p className="text-[13px] leading-snug text-slate-800 font-medium line-clamp-2">“{m.text}”</p>
+            <p className="text-[13px] leading-snug text-teal-900 font-medium line-clamp-2">“{m.text}”</p>
           </button>
 
           {open && (
@@ -936,7 +945,7 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // written for some other component cannot silently make this one see-through.
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
-    <div className="seen-feed-header sticky -top-2 z-[25] -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
+    <div className="seen-feed-header seen-feed-header--pinned -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
       <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 Focused Feed</p>
       <span className="seen-feed-meta text-[10px] font-semibold">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}
