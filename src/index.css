@@ -161,51 +161,47 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-orange-500   { color: #f59e0b !important; }
 
 /* ── Feed section headers: "Worldwide Feed" and "Focused Feed" ──────────────────
-   ONE class for both, so the two bars cannot drift apart. They previously carried
-   different utilities — the Worldwide bar was tinted sky/pink, the Focused bar slate —
-   and looked like parts of two different apps stacked on top of each other.
+   ONE class for both, so the two bars cannot drift apart. They previously carried different
+   utilities — the Worldwide bar tinted sky/pink, the Focused bar slate — and looked like parts
+   of two different apps stacked on each other.
 
-   The background lives here rather than on a `bg-slate-50` utility because it has a
-   requirement the utilities cannot guarantee: be FULLY OPAQUE in both themes, so messages
-   never scroll through the pinned Focused bar. The dark-shell remaps above rewrite
-   background utilities globally and by combination — `.bg-slate-50.border-slate-200` (a
-   streak-badge rule) would have made that bar 6% opaque without anything in Feed2.jsx
-   changing.
+   NEITHER IS PINNED. The Focused bar used to be sticky and messages were repeatedly drawn
+   across it; unpinned, it takes its own space in the flow and nothing can overlap it. See the
+   note above FocusedFeedHeader in Feed2.jsx for why that was chosen over more layering.
 
-   No backdrop-filter, deliberately. Blurring a pinned element re-samples the backdrop
-   from a fractional scroll offset every frame; browsers round that inconsistently and the
-   bar visibly wobbles as you scroll — worst in WebKit, which is where it was reported. */
-   Colours are set here for both themes rather than left to `text-*` utilities, because the
-   dark remaps cover the palette unevenly and these two bars fell in the gaps. Every value
-   below is measured against its own background, not eyeballed:
+   Colours live here rather than on `text-*` utilities because the dark remaps cover the palette
+   unevenly and these two bars fell in the gaps. Every value is measured against its own
+   background, not eyeballed:
 
      light  world #B93878 on #f8fafc 5.15:1 · focus #A82E2C 6.49:1 · meta #64748b 4.55:1
      dark   world #F9A8CE on #0d1117 10.38:1 · focus #FFA09A 9.68:1 · meta #8792a6 6.03:1
 
-   The dark values are not cosmetic. `text-teal-600` has no dark remap (only -700 and -900
-   do), so "FOCUSED FEED" was rendering at 2.79:1 — dark red on near-black, under the 4.5:1
-   minimum for small text. And `text-sky-600` at 3.62:1 was under it in light mode. Each pair
-   needs opposite ends of its ramp, which is exactly why a single utility could not serve
-   both themes here. */
+   The dark values are not cosmetic: `text-teal-600` has no dark remap (only -700 and -900 do),
+   so "FOCUSED FEED" rendered at 2.79:1 — dark red on near-black, under the 4.5:1 minimum. And
+   `text-sky-600` was 3.62:1 in light. Each pair needs opposite ends of its ramp, which is why
+   one utility class could not serve both themes.
+
+   The background stays here rather than on a `bg-slate-50` utility because the dark-shell
+   remaps rewrite background utilities globally AND by combination — `.bg-slate-50.border-slate-200`
+   (a streak-badge rule) would otherwise make these bars 6% opaque with nothing in Feed2.jsx
+   changing.
+
+   ONE comment, and it ends exactly once — which is the whole reason the bar was broken. An
+   earlier version of this block closed its comment early, half way through the prose, leaving
+   the remaining sentences as raw text at the top level of the stylesheet. CSS error recovery
+   skips to the next rule boundary when it meets that, so it silently swallowed the rule that
+   followed: the background below. The bar rendered with NO background, its text painting
+   straight onto the messages behind it, while every rule after the damage applied normally.
+
+   It cost two wrong diagnoses — first the opacity, then the z-index — because the rule is
+   present in the source AND in the built output, and only the parser drops it. Every tool I
+   reached for said it was fine. Then the fix for it reintroduced it, by quoting the offending
+   character sequence inside the replacement comment.
+
+   Hence scripts/check-css.cjs, which parses the built stylesheet and asserts these rules
+   survive. Nothing else catches this: a malformed comment is valid input that silently
+   produces broken CSS, and the build stays green throughout. */
 .seen-feed-header                    { background-color: #f8fafc; }  /* slate-50 */
-
-/* The pinned one. `position`, `top` and `z-index` live HERE, next to the background, rather
-   than as `sticky -top-2 z-[25]` utilities — because a pinned bar only works if all four
-   agree, and split across two systems they didn't:
-
-     - z-[25] sat BELOW siblings in the same scroller that are z-30 (the long-press reaction
-       bar, and three sticky prompts). Anything at z-30 painted straight over the bar.
-     - it depended on the Tailwind CDN generating two arbitrary/negative utilities at runtime
-       for the one element that must never fail to cover what is behind it.
-   z-index 40 clears every z-30 in the feed.
-
-   `top` stays NEGATIVE, and that is load-bearing rather than a leftover. The scroller has
-   `pt-2`, so with `top: 0` the bar pins 8px BELOW the top of the scrollport and messages show
-   through the strip above it. Measured in a browser: `top: 0` pins at y=8, `top: -8px` pins
-   flush at y=0. The 8px it hangs above the scrollport is clipped by the overflow, which is
-   why the padding below compensates. I changed this to `top: 0` while investigating and the
-   measurement caught it going in. */
-.seen-feed-header--pinned { position: sticky; top: -8px; z-index: 40; }
 .seen-feed-header .seen-feed-meta    { color: #64748b; }
 .seen-feed-title--world              { color: #B93878; }
 .seen-feed-title--focus              { color: #A82E2C; }

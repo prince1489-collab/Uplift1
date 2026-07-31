@@ -924,18 +924,29 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 }
 
 // ── Focused-feed section header — the boundary between strangers and your people ──
-// Sticks to the top of the feed scroller so it stays visible while you scroll.
-// `-mx-3.5 px-3.5` cancels the scroller's horizontal padding so the pinned bar runs edge
-// to edge; `-top-2` with the matching `pt-3.5` cancels its `pt-2`, which would otherwise
-// leave an 8px sliver above the bar for messages to scroll through.
 //
-// OPAQUE, AND NOT BLURRED, DELIBERATELY. This carried `bg-slate-50/95 backdrop-blur` and
-// visibly wobbled during scroll. A backdrop-filter is re-sampled from a fractional scroll
-// offset every frame and browsers round that inconsistently — worst in WebKit, which is why
-// it showed up on iPhone. At 95% opacity the blur was imperceptible anyway, so it was paying
-// a per-frame re-composite on the one element that is pinned while scrolling, for nothing.
-// Dark mode made it worse again: `[data-dark-shell] main` is itself translucent, so the blur
-// was sampling through a second translucent layer.
+// NOT STICKY, and that is the fix rather than an omission.
+//
+// It was pinned, and messages kept being drawn across it. Two goes at fixing that — making it
+// opaque, then raising it above the z-30 siblings in the same scroller — both passed every
+// check I could run and both still shipped broken on the device. The forensics ended up
+// self-contradictory: the bar's own text was painting on top (its colours sampled correctly
+// from the live CSS) while the band behind it sampled the message bubble's fill, with the
+// background rule present, unoverridden, and the class on the element.
+//
+// A pinned bar is only ever correct if its background, its z-index and its stacking context
+// all agree — three things, across two styling systems, to keep a label visible. Unpinned it
+// takes its own space in the flow, and nothing can overlap it: not because the layering is
+// right but because there is no layering. The label stops following you down the list, which
+// costs little here, because the Worldwide rotator is fixed above the scroller and everything
+// below it is this feed. The boundary only needs marking where it happens.
+//
+// `-mx-3.5 px-3.5` cancels the scroller's horizontal padding so the divider still runs edge to
+// edge, which is what makes it match the Worldwide bar above.
+//
+// It also carried `bg-slate-50/95 backdrop-blur` once, which visibly wobbled during scroll: a
+// backdrop-filter is re-sampled from a fractional scroll offset every frame and browsers round
+// that inconsistently. That is gone too, and now moot — nothing is composited over anything.
 //
 // The background is set by `.seen-feed-header` in index.css rather than a `bg-slate-50`
 // utility, on purpose. This bar has ONE hard requirement — be fully opaque, in both themes,
@@ -945,7 +956,7 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // written for some other component cannot silently make this one see-through.
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
-    <div className="seen-feed-header seen-feed-header--pinned -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
+    <div className="seen-feed-header -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-1.5">
       <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 Focused Feed</p>
       <span className="seen-feed-meta text-[10px] font-semibold">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}

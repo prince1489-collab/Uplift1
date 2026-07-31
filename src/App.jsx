@@ -775,7 +775,11 @@ function FeedDatePill({ scrollRef }) {
   }, [scrollRef]);
 
   return (
-    <div className="pointer-events-none" style={{ position: "sticky", top: 44, zIndex: 20, height: 0, textAlign: "center" }}>
+    // top was 44, a number chosen purely to clear the pinned Focused Feed header. Nothing is
+    // pinned any more, so 44px of clearance is a leftover that left the pill floating oddly far
+    // down. 8 sits it just inside the scroller. height:0 keeps it an overlay rather than
+    // something that takes space.
+    <div className="pointer-events-none" style={{ position: "sticky", top: 8, zIndex: 20, height: 0, textAlign: "center" }}>
       <span style={{
         display: "inline-block",
         opacity: visible ? 1 : 0,
@@ -3611,7 +3615,6 @@ export default function App() {
               onClick={() => { setActiveMessageId(null); }}>
               {/* Floating date pill — appears while scrolling, fades out when idle.
                   height:0 so it overlays the feed instead of reserving vertical space.
-                  Sits below the pinned Focused Feed header rather than under it.
                   Owns its own state and scroll listener (see FeedDatePill) so moving it
                   cannot re-render the feed behind it. */}
               <FeedDatePill scrollRef={feedRef} />

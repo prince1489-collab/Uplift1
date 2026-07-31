@@ -13,7 +13,7 @@
     "check:privacy": "node scripts/check-privacy.cjs",
     "check:rules": "node scripts/check-rules.cjs",
     "check:icons": "python3 scripts/gen-icons.py --check",
-    "check": "npm run check:flags && npm run check:privacy && npm run check:rules && npm run check:icons && npm run lint",
+    "check": "npm run check:flags && npm run check:privacy && npm run check:rules && npm run check:icons && npm run build && npm run check:css && npm run lint",
     "preview": "vite preview",
     "ios:sync": "vite build && cap sync ios",
     "deploy:rules": "npx --yes firebase-tools deploy --only firestore:rules",
@@ -22,7 +22,8 @@
     "firebase": "npx --yes firebase-tools",
     "deploy:login": "npx --yes firebase-tools login",
     "test:rules": "node scripts/test-rules.mjs",
-    "test:rules:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-rules.mjs\""
+    "test:rules:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-rules.mjs\"",
+    "check:css": "node scripts/check-css.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
