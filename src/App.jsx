@@ -3395,7 +3395,7 @@ export default function App() {
         ) : (
           <>
             {/* ── HEADER ── v2: no longer collapsible. The expanding drawer only ever held the
-                 tree chip (now in Growth) and two self-hiding banners, so tapping the name
+                 tree chip (now in Grow) and two self-hiding banners, so tapping the name
                  just opened an empty gap. Banners render inline below instead. */}
             {/* z-[35], not z-10. `backdrop-blur` makes this header its own stacking context, so
                 the notification dropdown's z-50 only ranks it against its siblings INSIDE the
@@ -3573,7 +3573,7 @@ export default function App() {
                     ? "border-teal-500 text-teal-600"
                     : "border-transparent text-slate-400 hover:text-slate-600"
                 }`}>
-                🌳 Growth
+                🌳 Grow
               </button>
             </div>
 

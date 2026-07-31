@@ -78,7 +78,7 @@ function HowItWorksSheet({ onClose }) {
           <Line emoji="🎯" title="Want something more specific?"
             body={`"Pick an area" opens ${HYT_AREAS.length} themed sets — work, home, friends, neighbours, nature and more — for when you know what kind of kindness you're in the mood for.`} />
           <Line emoji="✅" title="Tap to mark it done."
-            body="That's it. Each one waters your Kindness Tree in Growth." />
+            body="That's it. Each one waters your Kindness Tree in Grow." />
           <Line emoji="🕊️" title="Nothing to break."
             body="No streaks, no scores, no guilt. Doing one is plenty. Doing none is fine too." />
           <button onClick={onClose}

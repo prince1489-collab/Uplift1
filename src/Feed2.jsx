@@ -389,10 +389,15 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   useEffect(() => { if (item && item.type !== "message" && open) setOpen(false); }, [item?.type, open]);
 
   return (
-    <div className="border-b-2 border-sky-100 bg-sky-50/60 px-3 py-2 flex-shrink-0">
+    // Same bar as the Focused Feed header below it — shared `.seen-feed-header` background and
+    // the same border, sizes and weights. This was a sky-tinted box with a 2px sky border, so
+    // the two feed headings looked like parts of two different apps stacked on each other.
+    // The heading keeps its own accent colour: that is what tells the two feeds apart, and it
+    // is information rather than decoration.
+    <div className="seen-feed-header border-b border-slate-200 px-3 py-2 flex-shrink-0">
       <div className="flex items-center justify-between px-1 pb-1">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-sky-600">🌍 Worldwide Feed</p>
-        <span className="text-[10px] font-semibold text-sky-400">
+        <p className="seen-feed-title--world text-[11px] font-bold uppercase tracking-wide">🌍 Worldwide Feed</p>
+        <span className="seen-feed-meta text-[10px] font-semibold">
           {items.length > 1 ? <span className="tabular-nums">{idx + 1}/{items.length}</span> : "from strangers"}
         </span>
       </div>
@@ -923,7 +928,7 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // Dark mode made it worse again: `[data-dark-shell] main` is itself translucent, so the blur
 // was sampling through a second translucent layer.
 //
-// The background is set by `.seen-focused-header` in index.css rather than a `bg-slate-50`
+// The background is set by `.seen-feed-header` in index.css rather than a `bg-slate-50`
 // utility, on purpose. This bar has ONE hard requirement — be fully opaque, in both themes,
 // so nothing scrolls through it — and the dark-shell remaps rewrite Tailwind background
 // utilities globally. `bg-slate-50` + `border-slate-200` together already match a rule meant
@@ -931,14 +936,14 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // written for some other component cannot silently make this one see-through.
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
-    <div className="seen-focused-header sticky -top-2 z-[25] -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-teal-600">👥 Focused Feed</p>
-      <span className="text-[10px] font-semibold text-slate-400">
+    <div className="seen-feed-header sticky -top-2 z-[25] -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
+      <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 Focused Feed</p>
+      <span className="seen-feed-meta text-[10px] font-semibold">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}
       </span>
       {onManage && (
         <button onClick={onManage}
-          className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold text-teal-600 hover:bg-teal-50 transition-colors">
+          className="seen-feed-title--focus ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold hover:bg-teal-50 transition-colors">
           Manage
         </button>
       )}

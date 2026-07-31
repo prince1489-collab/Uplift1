@@ -1,6 +1,6 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// MySeenStory.jsx — the "Growth" tab (v2, tab id still `impact`). The centrepiece is the animated
+// MySeenStory.jsx — the "Grow" tab (v2, tab id still `impact`). The centrepiece is the animated
 // Kindness Tree; the whole page has gentle motion (staggered fade-in, idle tree sway,
 // count-up metrics). Only four metrics are shown: Countries reached, Ripple effect,
 // Tried in real life, Reflections. Tree balance = real sparkBalance + device-local
