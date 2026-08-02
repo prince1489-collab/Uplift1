@@ -925,38 +925,39 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 
 // ── Focused-feed section header — the boundary between strangers and your people ──
 //
-// NOT STICKY, and that is the fix rather than an omission.
+// PINNED, so it stays visible as you scroll and always tells you which feed you are looking at.
 //
-// It was pinned, and messages kept being drawn across it. Two goes at fixing that — making it
-// opaque, then raising it above the z-30 siblings in the same scroller — both passed every
-// check I could run and both still shipped broken on the device. The forensics ended up
-// self-contradictory: the bar's own text was painting on top (its colours sampled correctly
-// from the live CSS) while the band behind it sampled the message bubble's fill, with the
-// background rule present, unoverridden, and the class on the element.
+// A pinned bar has ONE hard requirement: be fully opaque, in both themes, so messages pass
+// behind it rather than through it. Everything that requirement depends on — the background,
+// `position`, `top` and `z-index` — lives together in index.css under `.seen-feed-header` and
+// `.seen-feed-header--pinned`, deliberately NOT split between there and Tailwind utilities.
 //
-// A pinned bar is only ever correct if its background, its z-index and its stacking context
-// all agree — three things, across two styling systems, to keep a label visible. Unpinned it
-// takes its own space in the flow, and nothing can overlap it: not because the layering is
-// right but because there is no layering. The label stops following you down the list, which
-// costs little here, because the Worldwide rotator is fixed above the scroller and everything
-// below it is this feed. The boundary only needs marking where it happens.
+// That is not tidiness. Messages were drawn across this bar for three rounds of fixes, and the
+// cause was never layering: a comment in index.css closed early and CSS error recovery silently
+// swallowed the background rule that followed it. The bar rendered with no background at all,
+// its text painting straight onto the messages behind, which looks exactly like a z-index bug
+// and is not one. `scripts/check-css.cjs` now parses the built stylesheet and fails if that
+// background rule goes missing again — the only thing that catches it, because the rule stays
+// present in both the source and the build and only the parser drops it.
 //
-// `-mx-3.5 px-3.5` cancels the scroller's horizontal padding so the divider still runs edge to
-// edge, which is what makes it match the Worldwide bar above.
+// z-index 40 is also load-bearing: the long-press reaction bar and three prompts in the same
+// scroller are z-30, and an earlier z-[25] here sat underneath all of them.
 //
-// It also carried `bg-slate-50/95 backdrop-blur` once, which visibly wobbled during scroll: a
+// The background is owned by that class rather than a `bg-slate-50` utility for a second
+// reason: the dark-shell remaps rewrite background utilities globally AND by combination, and
+// `bg-slate-50` + `border-slate-200` together already match a rule meant for streak badges that
+// would render this bar 6% opaque with nothing in this file changing.
+//
+// `-mx-3.5 px-3.5` cancels the scroller's horizontal padding so the bar runs edge to edge, which
+// is what makes it match the Worldwide bar above. `pt-3.5` compensates for the negative `top`:
+// the bar hangs 8px above the scrollport and that much is clipped away.
+//
+// It carried `bg-slate-50/95 backdrop-blur` once, which visibly wobbled during scroll — a
 // backdrop-filter is re-sampled from a fractional scroll offset every frame and browsers round
-// that inconsistently. That is gone too, and now moot — nothing is composited over anything.
-//
-// The background is set by `.seen-feed-header` in index.css rather than a `bg-slate-50`
-// utility, on purpose. This bar has ONE hard requirement — be fully opaque, in both themes,
-// so nothing scrolls through it — and the dark-shell remaps rewrite Tailwind background
-// utilities globally. `bg-slate-50` + `border-slate-200` together already match a rule meant
-// for streak badges that would make this 6% opaque. Owning the colour here means a remap
-// written for some other component cannot silently make this one see-through.
+// that inconsistently, worst in WebKit. Opaque and unblurred is both cheaper and steadier.
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
-    <div className="seen-feed-header -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-1.5">
+    <div className="seen-feed-header seen-feed-header--pinned -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
       <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 Focused Feed</p>
       <span className="seen-feed-meta text-[10px] font-semibold">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}

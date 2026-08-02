@@ -775,11 +775,10 @@ function FeedDatePill({ scrollRef }) {
   }, [scrollRef]);
 
   return (
-    // top was 44, a number chosen purely to clear the pinned Focused Feed header. Nothing is
-    // pinned any more, so 44px of clearance is a leftover that left the pill floating oddly far
-    // down. 8 sits it just inside the scroller. height:0 keeps it an overlay rather than
-    // something that takes space.
-    <div className="pointer-events-none" style={{ position: "sticky", top: 8, zIndex: 20, height: 0, textAlign: "center" }}>
+    // top: 44 clears the pinned Focused Feed header so the pill sits BELOW it rather than
+    // behind it. zIndex 20 is under that bar's 40 on purpose — if the two ever meet, the
+    // section label wins. height:0 keeps this an overlay rather than something taking space.
+    <div className="pointer-events-none" style={{ position: "sticky", top: 44, zIndex: 20, height: 0, textAlign: "center" }}>
       <span style={{
         display: "inline-block",
         opacity: visible ? 1 : 0,

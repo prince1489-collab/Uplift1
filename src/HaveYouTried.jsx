@@ -12,7 +12,7 @@
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { RefreshCw, Check, Info, X } from "lucide-react";
-import { HYT_AREAS, pickDaily, todayKey, ageBandFor } from "./hytPrompts";
+import { pickDaily, todayKey, ageBandFor, areasForBand } from "./hytPrompts";
 import { playCheckIn } from "./sounds";
 import { awardPoints, POINTS } from "./points";
 
@@ -53,7 +53,10 @@ const Line = ({ emoji, title, body }) => (
   </div>
 );
 
-function HowItWorksSheet({ onClose }) {
+function HowItWorksSheet({ ageBand, onClose }) {
+  // Counts and names only the areas this band can actually reach — telling a 15-year-old about
+  // 14 sets "starting with work" describes an app they are not being shown.
+  const areas = areasForBand(ageBand);
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -76,7 +79,7 @@ function HowItWorksSheet({ onClose }) {
           <Line emoji="🔄" title="Not feeling one? Try another."
             body="One swap a day — either a different suggestion, or a different area entirely. After that today's two stay put, and fresh ones arrive tomorrow." />
           <Line emoji="🎯" title="Want something more specific?"
-            body={`"Pick an area" opens ${HYT_AREAS.length} themed sets — work, home, friends, neighbours, nature and more — for when you know what kind of kindness you're in the mood for.`} />
+            body={`"Pick an area" opens ${areas.length} themed sets — ${areas.slice(0, 4).map((a) => a.label.toLowerCase()).join(", ")} and more — for when you know what kind of kindness you're in the mood for.`} />
           <Line emoji="✅" title="Tap to mark it done."
             body="That's it. Each one waters your Kindness Tree in Grow." />
           <Line emoji="🕊️" title="Nothing to break."
@@ -142,9 +145,12 @@ function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, 
 // ── steer to a different area when today's doesn't fit ───────────────────────
 // Deliberately not capped like "try another": this steers, it doesn't reroll. The prompt
 // inside a chosen area is still fixed by the day, so there's nothing to shop for.
-function AreaPicker({ current, canPick, onPick, onClear }) {
+function AreaPicker({ current, canPick, ageBand, onPick, onClear }) {
   const [open, setOpen] = useState(false);
-  const areas = HYT_AREAS;
+  // Under-18s don't see Work life, Romantic life, Money life or Legacy life — see areasForBand.
+  // This hides the control; pickDaily independently refuses a stored area outside the band, so
+  // an existing selection can't survive the button disappearing.
+  const areas = areasForBand(ageBand);
   // Nothing to offer once the day's swap is spent and no area is active — say so rather than
   // showing a control that would do nothing.
   if (!canPick && !current) {
@@ -298,6 +304,7 @@ export default function HaveYouTried({ currentUser, dob }) {
               <AreaPicker
                 current={state.area ?? null}
                 canPick={canSwap}
+                ageBand={ageBand}
                 onPick={pickArea}
                 onClear={clearArea}
               />
@@ -317,7 +324,7 @@ export default function HaveYouTried({ currentUser, dob }) {
         )}
       </div>
 
-      {showHow && <HowItWorksSheet onClose={() => setShowHow(false)} />}
+      {showHow && <HowItWorksSheet ageBand={ageBand} onClose={() => setShowHow(false)} />}
     </main>
   );
 }

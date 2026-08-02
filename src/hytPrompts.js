@@ -83,7 +83,7 @@ export const HYT_EVERYDAY = [
 ];
 
 export const HYT_AREAS = [
-  { id: "work", emoji: "💼", label: "Work life", prompts: [
+  { id: "work", adultOnly: true, emoji: "💼", label: "Work life", prompts: [
     "Have you tried… telling a colleague specifically what they did well this week?",
     "Have you tried… making someone a cup of tea without being asked?",
     "Have you tried… greeting the new starter and offering to answer any questions?",
@@ -209,7 +209,7 @@ export const HYT_AREAS = [
     "Have you tried… giving a friend space without making them feel guilty?",
     "Have you tried… simply asking a friend, how are you really?",
   ] },
-  { id: "romance", emoji: "💗", label: "Romantic life", prompts: [
+  { id: "romance", adultOnly: true, emoji: "💗", label: "Romantic life", prompts: [
     "Have you tried… telling your partner one thing you fell for early on?",
     "Have you tried… making your partner a drink exactly how they like it?",
     "Have you tried… leaving a loving note for them to find later?",
@@ -461,7 +461,7 @@ export const HYT_AREAS = [
     "Have you tried… thanking a local volunteer for their time?",
     "Have you tried… leaving spare seeds on the wall for passers-by?",
   ] },
-  { id: "money", emoji: "💷", label: "Money life", prompts: [
+  { id: "money", adultOnly: true, emoji: "💷", label: "Money life", prompts: [
     "Have you tried… paying for the coffee of the person behind you?",
     "Have you tried… rounding up your bill and leaving the change as a tip?",
     "Have you tried… popping a few coins in a charity box today?",
@@ -629,7 +629,7 @@ export const HYT_AREAS = [
     "Have you tried… reporting an injured animal to a local rescue?",
     "Have you tried… simply pausing to thank a tree for its shade?",
   ] },
-  { id: "legacy", emoji: "🕯️", label: "Legacy life", prompts: [
+  { id: "legacy", adultOnly: true, emoji: "🕯️", label: "Legacy life", prompts: [
     "Have you tried… writing down one piece of advice you'd want a younger you to hear?",
     "Have you tried… planting a tree that others will sit under one day?",
     "Have you tried… recording a favourite family story before it's forgotten?",
@@ -870,6 +870,18 @@ export function ageBandFor(age) {
   return "adult";
 }
 
+// Which themed areas a band may choose from. Four are marked `adultOnly` — Work life, Romantic
+// life, Money life and Legacy life — because they assume a job, a partner, a household budget or
+// a lifetime to look back on, and a 13-year-old picking "Romantic life" gets prompts written for
+// someone else entirely. The other ten stay, including Care life: young carers exist, and that
+// bank is written gently enough for one.
+//
+// Unknown age keeps the full list. `ageBandFor(null)` is "adult" already, and hiding areas from
+// everyone who has not given a date of birth would cost far more than it protects.
+export function areasForBand(band) {
+  return band === "teen" ? HYT_AREAS.filter((a) => !a.adultOnly) : HYT_AREAS;
+}
+
 // ── deterministic daily selection ─────────────────────────────────────────────
 export function hytHash(str) {
   let h = 5381;
@@ -896,7 +908,14 @@ export function todayKey(d = new Date()) {
 // nothing to shop for. The one-a-day cap on swapping lives in HaveYouTried.jsx.
 export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null }) {
   const day = todayKey(date);
-  const area = chosenArea ? HYT_AREAS.find((a) => a.id === chosenArea) : null;
+  // Resolved against the areas this BAND may have, not against all of them. Filtering the
+  // picker alone would leak: `chosenArea` is stored on the device, so anyone who picked
+  // "Money life" before adding a date of birth — or who had none and later gave one — would
+  // keep being served it with the button long gone. The check that counts is the one where the
+  // prompt is chosen, not the one on the control.
+  const area = chosenArea
+    ? areasForBand(ageBand).find((a) => a.id === chosenArea) || null
+    : null;
   const kindnessList = area ? area.prompts : HYT_EVERYDAY;
   const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
 

@@ -459,6 +459,11 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   // While editing, show the prompt that entry was actually written against.
   const activePrompt = entryForDate?.prompt || prompt;
 
+  // "Completed" = this date already has a reflection and the box still holds exactly it. Derived
+  // in one place so the label and the disabled state can never disagree about what done means —
+  // they were computing the same condition separately before.
+  const isCompleted = Boolean(editingId) && text.trim() === (entryForDate?.text ?? "").trim();
+
   const handleSave = async () => {
     const trimmed = text.trim();
     if (!trimmed || saving || !db || !uid) return;
@@ -538,12 +543,17 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               {editingId ? "You answered" : "Today's prompt"}
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
-            {!editingId && (
+            {/* One swap a day, matching Practice — and said the same way, so the two tabs
+                aren't teaching two different rules in two different vocabularies.
+                The offset key is already per-day, so this resets on its own tomorrow. */}
+            {!editingId && (promptOffset < 1 ? (
               <button onClick={nextPrompt}
                 className="mt-2 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
                 Ask me something else →
               </button>
-            )}
+            ) : (
+              <p className="mt-2 text-[11px] font-semibold text-slate-300">swapped — back tomorrow</p>
+            ))}
           </div>
 
           <textarea
@@ -575,11 +585,18 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           {saveError && (
             <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{saveError}</p>
           )}
+          {/* Three states, and the middle one is the point of the tab.
+              Once today's reflection is written and untouched, the button said "Save changes" —
+              the app talking about its own persistence at the exact moment you had just done
+              the thing. It now says you completed it, because that is what happened.
+              It reverts to "Save changes" the instant you type, or editing looks impossible. */}
           <button
             onClick={handleSave}
-            disabled={saving || !text.trim() || (editingId && text.trim() === (entryForDate?.text ?? "").trim())}
-            className="w-full rounded-full bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50">
-            {saving ? "Saving…" : editingId ? "Save changes" : "Add reflection"}
+            disabled={saving || !text.trim() || isCompleted}
+            className={`w-full rounded-full py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-100 ${
+              isCompleted ? "bg-emerald-600" : "bg-teal-600 hover:bg-teal-700 disabled:opacity-50"
+            }`}>
+            {saving ? "Saving…" : isCompleted ? "✓ Completed" : editingId ? "Save changes" : "Add reflection"}
           </button>
         </div>
 

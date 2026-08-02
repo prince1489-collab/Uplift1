@@ -165,9 +165,18 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    utilities — the Worldwide bar tinted sky/pink, the Focused bar slate — and looked like parts
    of two different apps stacked on each other.
 
-   NEITHER IS PINNED. The Focused bar used to be sticky and messages were repeatedly drawn
-   across it; unpinned, it takes its own space in the flow and nothing can overlap it. See the
-   note above FocusedFeedHeader in Feed2.jsx for why that was chosen over more layering.
+   The Focused bar is PINNED, so it must be fully opaque and must out-rank everything in the
+   scroller. Both live in `.seen-feed-header--pinned` below, next to the background, because a
+   pinned bar only works if all of them agree — and when the background silently went missing
+   the bar looked like a stacking bug for two rounds of fixes.
+
+   The negative `top` is load-bearing: the scroller has `pt-2`, so `top: 0` pins the bar 8px
+   BELOW the scrollport and messages show through the strip above it. Measured in a browser —
+   `top: 0` pins at y=8, `top: -8px` pins flush at y=0. The 8px that hangs above is clipped by
+   the overflow, which is what `pt-3.5` on the element compensates for.
+
+   z-index 40 clears the `z-30` siblings in the same scroller (the long-press reaction bar and
+   three sticky prompts), which a previous `z-[25]` did not.
 
    Colours live here rather than on `text-*` utilities because the dark remaps cover the palette
    unevenly and these two bars fell in the gaps. Every value is measured against its own
@@ -202,6 +211,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    survive. Nothing else catches this: a malformed comment is valid input that silently
    produces broken CSS, and the build stays green throughout. */
 .seen-feed-header                    { background-color: #f8fafc; }  /* slate-50 */
+.seen-feed-header--pinned            { position: sticky; top: -8px; z-index: 40; }
 .seen-feed-header .seen-feed-meta    { color: #64748b; }
 .seen-feed-title--world              { color: #B93878; }
 .seen-feed-title--focus              { color: #A82E2C; }
