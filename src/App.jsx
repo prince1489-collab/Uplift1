@@ -844,13 +844,12 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
   // Don't fire notifications on initial load — only for events that arrive after mount
   useEffect(() => { const t = setTimeout(() => { notifyReadyRef.current = true; }, 2500); return () => clearTimeout(t); }, []);
 
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // Closing on an outside click is the backdrop's job, not a document mousedown listener's.
+  // The listener that used to live here tested `ref.current.contains(e.target)` — and once the
+  // panel moved into a body-level portal, `ref` (the bell's wrapper) no longer contained it. So
+  // every tap on a notification row counted as "outside", closed the panel on mousedown, and
+  // the click never reached the row. The backdrop renders only while open and cannot get that
+  // wrong, because containment stops being the question.
 
   useEffect(() => {
     if (!db || !currentUser) return;
@@ -1029,7 +1028,7 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
   const hot = streak >= 7;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button onClick={() => setOpen((v) => !v)}
         aria-label={totalUnread > 0
           ? `Notifications, ${totalUnread} new`
@@ -1045,31 +1044,34 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-white" />
         )}
       </button>
-      {open && (
-        <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden">
-          <div className={`flex items-center gap-2 px-4 py-3 ${hot ? "bg-orange-50" : "bg-slate-50"} border-b border-slate-100`}>
-            <span className="text-lg">{hot ? "🔥" : "✨"}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold text-slate-800">
-                {streak > 0 ? `${streak}-day kindness streak!` : "Start your kindness streak"}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                {streak >= 3
-                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% drop bonus active`
-                  : streak > 0 ? "Keep it going — 3 days unlocks a drop bonus"
-                  : "Send a greeting today to begin"}
-              </p>
-            </div>
-          </div>
+      {/* PORTALLED TO BODY, and both reasons are bugs this had.
+          1. It was `absolute right-0 w-80` anchored to the BELL, which is not flush right — the
+             ⋯ menu sits beside it. 320px measured leftward from there ran off the screen edge
+             on a phone, so the panel was clipped and "SINCE YOUR LAST VISIT" rendered as
+             "INCE YOUR LAST VISIT".
+          2. Inside the header it competed with the feed's sticky bars, which repeatedly won and
+             painted "FOCUSED FEED · Manage" across its rows.
+          `fixed` alone could not fix either: the header has `backdrop-blur`, which makes it a
+          containing block for fixed descendants, so `fixed` inside it resolves against the
+          header rather than the viewport. Leaving the subtree is the only reliable way out —
+          and at body level nothing in the feed can reach it, whatever its z-index. */}
+      {open && createPortal(
+        <>
+          <div data-portal className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
+          <div data-portal
+            className="fixed left-3 right-3 z-[201] ml-auto max-w-sm rounded-2xl border border-slate-100 bg-white shadow-xl overflow-hidden"
+            style={{ top: "calc(env(safe-area-inset-top) + 3.5rem)" }}>
           <div className="border-b border-slate-100 px-4 py-1.5">
-            {/* Only claim "since your last visit" when that's actually what the list is.
-                Nudges deliberately survive across visits, so with one in the list the header
-                would be describing something the rows don't do. */}
+            {/* Only claim "since your last visit" when that is what the list actually is.
+                Invitations deliberately survive across visits, and an unread private reply
+                persists until it is read — the reported screenshot showed this header above a
+                reply from FIVE DAYS ago. Anything that outlives the visit boundary makes the
+                since-your-last-visit wording false, so the label follows the contents. */}
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-              {nudges.length > 0 ? "For you" : "Since your last visit"}
+              {nudges.length > 0 || replies.length > 0 ? "For you" : "Since your last visit"}
             </p>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div className="max-h-[60vh] overflow-y-auto">
             {rows.length === 0 && !showSeenAck ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">Nothing new since you were last here</p>
             ) : (
@@ -1120,7 +1122,27 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
               </button>
             </div>
           )}
-        </div>
+          {/* The streak sits BELOW the notifications, not above them. It used to take the first
+              quarter of the panel — the least urgent thing in the most valuable position, above
+              an actual private message from a real person. It is a standing status, not an
+              event, so it reads as a footer. */}
+          <div className={`flex items-center gap-2 border-t border-slate-100 px-4 py-2.5 ${hot ? "bg-orange-50" : "bg-slate-50"}`}>
+            <span className="text-base">{hot ? "🔥" : "✨"}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-slate-800">
+                {streak > 0 ? `${streak}-day kindness streak!` : "Start your kindness streak"}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {streak >= 3
+                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% drop bonus active`
+                  : streak > 0 ? "Keep it going — 3 days unlocks a drop bonus"
+                  : "Send a greeting today to begin"}
+              </p>
+            </div>
+          </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );
@@ -2104,9 +2126,13 @@ export default function App() {
   // Copy lives here rather than in invitations.js: that file decides WHEN to ask, this decides
   // what the ask says and what tapping it does.
   const INVITATION_COPY = {
+    // Day one, for anyone following nobody. Since the guided tour was retired this is the only
+    // place the app explains its own structure, so it has to do two jobs in one sentence: say
+    // that you can SEARCH for people by name (which nothing else mentions — the empty state
+    // only ever said "tap Follow on a message"), and say what the two feeds actually are.
     follow: {
-      icon: "👥",
-      text: <><span className="font-semibold">Follow someone to fill your Focused Feed</span> — their messages sit together, away from the worldwide feed</>,
+      icon: "🔎",
+      text: <><span className="font-semibold">Find people you know by name</span> — search for anyone on Seen, and their messages arrive in your Focused Feed instead of the worldwide one</>,
       open: () => setShowFollowing(true),
     },
     globe: {
@@ -2429,61 +2455,15 @@ export default function App() {
     setMenuOpen(v);
   }, []);
 
-  const tourSteps = useMemo(() => [
-    {
-      key: "send",
-      target: '[data-tour="send"]',
-      title: "Welcome to Seen 👋",
-      body: "Send a kind greeting to a real stranger somewhere in the world. They'll feel seen — and so will you.",
-      before: () => { setPickerOpen(false); setReactionBarId(null); },
-    },
-    {
-      key: "categories",
-      target: '[data-tour="categories"]',
-      title: "Choose the right words",
-      body: "Community, Greetings, Warmth, Calm & Local — send a winning community greeting or a phrase in your own language.",
-      before: () => { setMenuOpen(false); setPickerOpen(true); },
-    },
-    {
-      key: "connect",
-      target: '[data-tour="connect"]',
-      extraPadTop: 70,
-      title: "Press & hold any message",
-      body: "Long-press a message to send a ❤️ — and tap anyone's name to see a little glimpse of who they are.",
-      before: () => {
-        setPickerOpen(false);
-        const others = messages.filter((m) => m.uid && m.uid !== currentUser?.uid);
-        const other = others[Math.floor(others.length * 0.65)] ?? others[0];
-        if (other) {
-          const el = document.querySelector(`[data-msg-id="${other.id}"]`);
-          if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
-          setReactionBarId(other.id);
-        }
-      },
-    },
-    {
-      key: "tabs",
-      target: '[data-tour="tab-nav"]',
-      title: "Explore the app",
-      body: "🌱 Community — vote greetings into the weekly Top 5.  📖 Board — your growing kindness story.  💡 Life Hacks — daily tips for mind & body.",
-      before: () => { setReactionBarId(null); setPickerOpen(false); setMenuOpen(false); },
-    },
-    {
-      key: "menu-intro",
-      target: '[data-tour="menu"]',
-      title: "There's more in here",
-      body: "Tap ⋯ anytime for your World Map, Person behind the Kindness, Journal, Wellbeing check-in and Support.",
-      // Never opens the menu — keeping the tour off the live menu state guarantees you land on the feed.
-      before: () => { setPickerOpen(false); setMenuOpen(false); },
-    },
-    {
-      key: "journey",
-      target: null,
-      title: "That's your journey",
-      body: "Send kindness daily, keep your streak alive, and watch your impact light up the world map. Ready?",
-      before: () => { setReactionBarId(null); setMenuOpen(false); },
-    },
-  ], [messages, currentUser]);
+  // The guided tour's step definitions used to live here. The tour itself was retired in v2
+  // (see `tourActive`, which is only ever set to false), so these six steps had not rendered
+  // for anyone in a long time — and had drifted badly in the meantime, describing Community,
+  // Board and Life Hacks tabs that no longer exist.
+  //
+  // Deleted rather than left dormant: `TOUR_VERSION` exists specifically to replay the tour
+  // for every user after a release, so copy naming three removed features was one flag flip
+  // away from being shown to everyone. What teaches the app now is the day-one `follow`
+  // invitation in src/invitations.js, which arrives through the bell.
 
   // Re-engagement: when user leaves the app, schedule a "come back" push for 9 AM tomorrow
   useEffect(() => {

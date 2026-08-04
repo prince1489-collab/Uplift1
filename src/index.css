@@ -175,8 +175,20 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    `top: 0` pins at y=8, `top: -8px` pins flush at y=0. The 8px that hangs above is clipped by
    the overflow, which is what `pt-3.5` on the element compensates for.
 
-   z-index 40 clears the `z-30` siblings in the same scroller (the long-press reaction bar and
-   three sticky prompts), which a previous `z-[25]` did not.
+   z-index 32 is a NARROW window, and both walls are real:
+
+     - above 30, the long-press reaction bar and three sticky prompts in the same scroller. A
+       previous z-[25] sat under those and they painted over this bar.
+     - below 35, the app header. `<main>` sets no z-index, so this bar competes in the ROOT
+       stacking context — where 40 beat the header and, with it, the notification dropdown
+       inside the header. That put "FOCUSED FEED · Manage" back in the middle of the open bell
+       panel, which is the exact symptom the comment at App.jsx:3402 was written about after the
+       first time it happened. Raising this number to fix an overlap in the feed is how it
+       recurs; if the bar is being painted over again, look for the covering element's z-index
+       rather than increasing this one.
+
+   40 is not free either — it belongs to the greeting picker, a full-screen sheet that SHOULD
+   cover the header.
 
    Colours live here rather than on `text-*` utilities because the dark remaps cover the palette
    unevenly and these two bars fell in the gaps. Every value is measured against its own
@@ -211,7 +223,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
    survive. Nothing else catches this: a malformed comment is valid input that silently
    produces broken CSS, and the build stays green throughout. */
 .seen-feed-header                    { background-color: #f8fafc; }  /* slate-50 */
-.seen-feed-header--pinned            { position: sticky; top: -8px; z-index: 40; }
+.seen-feed-header--pinned            { position: sticky; top: -8px; z-index: 32; }
 .seen-feed-header .seen-feed-meta    { color: #64748b; }
 .seen-feed-title--world              { color: #B93878; }
 .seen-feed-title--focus              { color: #A82E2C; }

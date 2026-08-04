@@ -716,9 +716,14 @@ export function FocusedFeedEmpty() {
     <div className="mx-2 my-4 rounded-2xl border border-slate-200 bg-white px-4 py-6 text-center">
       <div className="text-3xl mb-2">👋</div>
       <p className="text-sm font-bold text-slate-800">Your focused feed is quiet</p>
+      {/* Search is named FIRST, and it used not to be named at all — this said only "tap Follow
+          on someone in the Worldwide Feed", which teaches you to wait for the right stranger to
+          drift past rather than to go and find the people you already know. Someone arriving
+          because a friend told them about Seen needs to hear "search by name" on this screen. */}
       <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">
-        Tap <strong>Follow</strong> on someone in the Worldwide Feed above to see their kind
-        messages here — just the people you choose.
+        <strong>Search for anyone by name</strong> — or tap <strong>Follow</strong> on a message
+        in the Worldwide Feed above. Whoever you choose, their messages arrive here instead of
+        in with the strangers.
       </p>
     </div>
   );
