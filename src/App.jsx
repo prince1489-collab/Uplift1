@@ -24,7 +24,7 @@ import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
 import { awardPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
-import { pickInvitation, snoozeInvitation } from "./invitations";
+import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -813,7 +813,14 @@ function FeedDatePill({ scrollRef }) {
 // Their unread signal is the `read` field, not the since-your-last-visit boundary that governs
 // waves, likes and ripples. A private reply must not stop being new because you happened to
 // open the app once; it stays until you actually read it.
-function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [], replies = [], onOpenReply }) {
+//
+// EVERY ROW IS EITHER A PERSON OR ONE PACED INVITATION. Nothing else earns a place here — not
+// the streak, not the app thanking you for using it. Both used to be in this panel: the streak
+// as a footer, and a "your kindness is out there spreading — from Seen" note pinned to the top,
+// above actual messages from actual people. Standing status belongs on Grow; congratulation for
+// nothing belongs nowhere. If a row isn't something a person did or something the app is asking
+// of you, it does not go in the bell.
+function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenReply }) {
   const [open, setOpen] = useState(false);
   // Resolved once per mount — the boundary must not move under the user mid-session.
   const [visitStart] = useState(resolveVisitStart);
@@ -1021,12 +1028,6 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
     }));
     return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
   }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges, replies, onOpenReply]);
-  // Honest, transparently system-authored reassurance: if you've shared kindness but no one
-  // has reacted yet, Seen itself acknowledges you (never disguised as another person). It clears
-  // on its own the moment a real reaction arrives. Not counted as "unread" — no red badge.
-  const showSeenAck = hasSentGreeting && visibleLikes.length === 0;
-  const hot = streak >= 7;
-
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)}
@@ -1072,19 +1073,10 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
             </p>
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
-            {rows.length === 0 && !showSeenAck ? (
+            {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-[11px] text-slate-400">Nothing new since you were last here</p>
             ) : (
               <div className="py-1">
-                {showSeenAck && (
-                  <div className="flex items-start gap-2.5 px-4 py-2.5">
-                    <span className="text-base flex-shrink-0">💛</span>
-                    <p className="flex-1 text-[11px] text-slate-700 min-w-0">
-                      Your kindness is out there spreading — thank you for showing up.
-                      <span className="mt-0.5 block text-[10px] font-semibold text-emerald-600">— from Seen</span>
-                    </p>
-                  </div>
-                )}
                 {rows.map((r) => (
                   <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${r.fresh ? r.tint : ""} hover:bg-slate-50`}>
                     <span className="text-base flex-shrink-0">{r.icon}</span>
@@ -1122,24 +1114,6 @@ function NotificationBell({ streak, db, currentUser, hasSentGreeting, nudges = [
               </button>
             </div>
           )}
-          {/* The streak sits BELOW the notifications, not above them. It used to take the first
-              quarter of the panel — the least urgent thing in the most valuable position, above
-              an actual private message from a real person. It is a standing status, not an
-              event, so it reads as a footer. */}
-          <div className={`flex items-center gap-2 border-t border-slate-100 px-4 py-2.5 ${hot ? "bg-orange-50" : "bg-slate-50"}`}>
-            <span className="text-base">{hot ? "🔥" : "✨"}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold text-slate-800">
-                {streak > 0 ? `${streak}-day kindness streak!` : "Start your kindness streak"}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                {streak >= 3
-                  ? `+${streak >= 30 ? 100 : streak >= 14 ? 75 : streak >= 7 ? 50 : 25}% drop bonus active`
-                  : streak > 0 ? "Keep it going — 3 days unlocks a drop bonus"
-                  : "Send a greeting today to begin"}
-              </p>
-            </div>
-          </div>
           </div>
         </>,
         document.body
@@ -2104,6 +2078,15 @@ export default function App() {
   });
   // Bumped on dismiss/act so the memo recomputes against the updated store.
   const [invitationTick, setInvitationTick] = useState(0);
+  // …and bumped when you DO one of the things an invitation asks for. Without this, writing a
+  // reflection while its invitation was on screen left the invitation sitting there asking for
+  // something already done — the stamps live in localStorage, which React cannot observe. The
+  // event is fired by markDone() in invitations.js.
+  useEffect(() => {
+    const bump = () => setInvitationTick((t) => t + 1);
+    window.addEventListener("seen-activity", bump);
+    return () => window.removeEventListener("seen-activity", bump);
+  }, []);
 
   // Remembered so the "see the Kindness globe" invitation can stop once someone has been.
   // Declared HERE, above `bellNudges`, and not next to the other `showMap` plumbing further
@@ -2134,6 +2117,24 @@ export default function App() {
       icon: "🔎",
       text: <><span className="font-semibold">Find people you know by name</span> — search for anyone on Seen, and their messages arrive in your Focused Feed instead of the worldwide one</>,
       open: () => setShowFollowing(true),
+    },
+    // The composer takes your own words, and nothing in the UI says so — the send bar leads
+    // with the ready-made greetings, which is the right default and also the reason people
+    // never find out there's another way in.
+    custom_message: {
+      icon: "✍️",
+      text: <><span className="font-semibold">Say it in your own words</span> — write your own message to the world, not just a ready-made one</>,
+      open: () => setPostComposerOpen(true),
+    },
+    reflect: {
+      icon: "📖",
+      text: <><span className="font-semibold">A quiet minute to reflect?</span> — a line or two in your private journal, whenever it suits you</>,
+      open: () => setActiveTab("journal"),
+    },
+    practice: {
+      icon: "🌱",
+      text: <><span className="font-semibold">One small act of kindness today</span> — Practice suggests something real to try, out in the world</>,
+      open: () => setActiveTab("hyt"),
     },
     globe: {
       icon: "🌍",
@@ -2169,6 +2170,14 @@ export default function App() {
       hasGlimpse: Boolean(profile.mostDays || profile.anotherLife),
       hasWellbeing: Boolean(profile.wellbeing),
       lastWellbeingAt: Number(profile.wellbeingAt) || 0,
+      // Your own-words posts are device-local, same as the follow cache, so the count is
+      // simply the list length rather than anything that needs fetching.
+      localPostCount: localPosts.length,
+      // Read at pick time rather than held in state: these change from inside Reflect and
+      // Practice, which don't own this memo. The "seen-activity" listener above is what makes
+      // a fresh stamp reach it.
+      lastReflectionAt: lastDoneAt("reflect"),
+      lastPracticeAt: lastDoneAt("practice"),
     });
     if (!chosen) return [];
     const copy = INVITATION_COPY[chosen.id];
@@ -2185,7 +2194,7 @@ export default function App() {
       onDismiss: settle,
     }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, follows.length, hasOpenedGlobe, firstFeedVisitAt, invitationTick]);
+  }, [profile, follows.length, hasOpenedGlobe, firstFeedVisitAt, invitationTick, localPosts.length]);
   useBackLayer(showWellbeingSheet, () => setShowWellbeingSheet(false));
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
@@ -3414,7 +3423,7 @@ export default function App() {
                     </button>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <NotificationBell streak={streak} db={db} currentUser={currentUser} hasSentGreeting={hasSent}
+                    <NotificationBell db={db} currentUser={currentUser}
                       nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>

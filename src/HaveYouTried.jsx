@@ -15,6 +15,7 @@ import { RefreshCw, Check, Info, X } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor, areasForBand } from "./hytPrompts";
 import { playCheckIn } from "./sounds";
 import { awardPoints, POINTS } from "./points";
+import { markDone } from "./invitations";
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.
 const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -227,6 +228,9 @@ export default function HaveYouTried({ currentUser, dob }) {
     if (nowDone) {
       try { playCheckIn(); } catch { /* ignore */ }
       awardPoints("practice");
+      // Only on ticking, never on un-ticking: changing your mind about one prompt shouldn't
+      // reset the clock the bell's "one small act today" invitation measures.
+      try { markDone("practice"); } catch { /* ignore */ }
       setCelebrating(slot);
       setTimeout(() => setCelebrating((c) => (c === slot ? null : c)), 2200);
       // Bonus once when both of today's prompts are complete.

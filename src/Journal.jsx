@@ -14,6 +14,7 @@ import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, S
 import { pickDailyPrompt } from "./JournalPrompts";
 import { writeFailure } from "./writeFailure";
 import { awardPoints } from "./points";
+import { markDone } from "./invitations";
 import { authedPost } from "./apiBase";
 
 const TYPES = [
@@ -135,7 +136,9 @@ function FolderRow({ open, onClick, label, count }) {
       <ChevronRight size={13} className={`text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
       <Folder size={13} className="text-amber-400" />
       <span className="text-[12px] font-semibold text-slate-700">{label}</span>
-      <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-400 tabular-nums">{count}</span>
+      {/* The third instance of the same mistake: slate-400 sitting on slate-100 is 2.34:1, and
+          this is the entry count inside a button. */}
+      <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-600 tabular-nums">{count}</span>
     </button>
   );
 }
@@ -337,6 +340,17 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const [openFolders, setOpenFolders] = useState(null); // Set of open folder keys (null → init to newest)
   const prevWeekly = useRef(null);
   const prevWeeks = useRef(null);
+  const textRef = useRef(null);
+
+  // Grow the writing box to fit what's in it. Driven off `text` rather than off the keystroke
+  // so it also settles when an entry is loaded into the box by picking a date — otherwise
+  // opening a past reflection showed six lines of a twelve-line entry.
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
 
   useEffect(() => {
     if (!db || !uid) return;
@@ -478,6 +492,10 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
         try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
       }
       setSaveError("");
+      // Stamped on edits as well as new entries: coming back to today's reflection and adding
+      // to it is still reflecting, and the bell's "a quiet minute?" invitation should stop
+      // asking either way.
+      try { markDone("reflect"); } catch { /* ignore */ }
       playCheckIn();
     } catch (err) {
       // A reflection is something the user wrote. Losing it silently is the worst
@@ -525,11 +543,14 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           {/* The standing explainer that used to sit here is gone. It said the same two lines
               every single day above the one thing the tab is for, and pushed the prompt below
               the fold. The editing-state messages stay — those actually tell you something. */}
-          {editingId && (
+          {/* Only for a PAST date, where "why is there already something in the box?" is a real
+              question. The today version — "You've written today's reflection. You can keep
+              editing it — one a day is plenty." — said the same two lines above the prompt every
+              day after your first entry, to say what the ✓ Completed button and the "You
+              answered" label already say twice over. */}
+          {editingId && date !== todayStr() && (
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              {date === todayStr()
-                ? "You've written today's reflection. You can keep editing it — one a day is plenty."
-                : "You already reflected on this day. Edit it below, or pick another date."}
+              You already reflected on this day. Edit it below, or pick another date.
             </p>
           )}
 
@@ -552,18 +573,26 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
                 Ask me something else →
               </button>
             ) : (
-              <p className="mt-2 text-[11px] font-semibold text-slate-300">swapped — back tomorrow</p>
+              // slate-300 measured 1.48:1 on this tint — the only thing explaining where the
+              // swap link went, and effectively invisible.
+              <p className="mt-2 text-[11px] font-semibold text-slate-600">swapped — back tomorrow</p>
             ))}
           </div>
 
+          {/* The writing box is the tab. It was rows={3}, which clipped a four-line entry mid
+              sentence and made you scroll inside a three-line window to reread your own
+              paragraph — in the one place the app asks you to write something. It now opens at
+              six lines and grows with the entry, so the text you are writing is never taller
+              than the box holding it. */}
           <textarea
+            ref={textRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            rows={3}
+            rows={6}
             /* Not the prompt again — it's already directly above, and repeating it verbatim
                made the card read as though it had asked twice. */
             placeholder="Write whatever comes…"
-            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-teal-400 focus:outline-none"
+            className="w-full resize-none overflow-hidden rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-relaxed text-slate-800 focus:border-teal-400 focus:outline-none"
           />
 
           {/* Almost every reflection is for today, so the date picker is folded away behind a
@@ -577,8 +606,9 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-teal-400 focus:outline-none"
             />
           ) : (
+            // slate-400 is 2.56:1 — under the floor, and this is a button, not a caption.
             <button onClick={() => setShowDatePicker(true)}
-              className="text-[11px] text-slate-400 hover:text-teal-600">
+              className="text-[11px] text-slate-600 hover:text-teal-600">
               {date === todayStr() ? "Writing for today · change date" : `Writing for ${fmtDate(date)} · change`}
             </button>
           )}
@@ -600,43 +630,52 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           </button>
         </div>
 
-        {/* v2: numeric stats now live in "Grow". Reflect stays a calm writing space.
-            A slim, non-numeric weekly-cadence line keeps the gentle rhythm without a stats block. */}
-        {entries.length > 0 && (
-          <div className="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-100 px-4 py-2.5">
-            <span className="text-[11px] font-semibold text-slate-500">
-              {reflectionsThisWeek > 0
-                ? `Reflections this week: ${reflectionsThisWeek} of ${WEEKLY_GOAL}`
-                : "A fresh week — whenever you're ready 🌱"}
-            </span>
-            {reflectionsThisWeek >= WEEKLY_GOAL && <span className="text-[10px] font-bold text-emerald-600">✓ lovely rhythm</span>}
-          </div>
-        )}
+        {/* Your rhythm and your calendar, in ONE row. They were two full-width cards stacked
+            directly on top of each other — an amber card saying "Reflections this week: 1 of 3"
+            and a white card saying "This month's reflections" — which is two frames and two
+            rows of vertical space to carry one small fact and one disclosure. The count rides
+            on the calendar row it was already describing.
 
-        {/* Calendar — collapsed by default (it's spacious); tap to reveal */}
+            v2: numeric stats live in "Grow"; this stays a gentle cadence marker, never a score. */}
         {entries.length > 0 && (
           <div>
             <button onClick={() => setShowCalendar((v) => !v)}
               className="w-full flex items-center gap-2 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors">
-              <Calendar size={14} className="text-teal-500" />
+              <Calendar size={14} className="text-teal-500 flex-shrink-0" />
               <span className="text-[12px] font-semibold text-slate-700">This month's reflections</span>
-              <ChevronRight size={14} className={`ml-auto text-slate-400 transition-transform ${showCalendar ? "rotate-90" : ""}`} />
+              <span className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                {reflectionsThisWeek >= WEEKLY_GOAL ? (
+                  <span className="text-[10px] font-bold text-emerald-600">✓ lovely rhythm</span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-slate-600 tabular-nums">
+                    {reflectionsThisWeek > 0 ? `${reflectionsThisWeek} of ${WEEKLY_GOAL} this week` : "a fresh week 🌱"}
+                  </span>
+                )}
+                <ChevronRight size={14} className={`text-slate-400 transition-transform ${showCalendar ? "rotate-90" : ""}`} />
+              </span>
             </button>
             {showCalendar && <div className="mt-2"><MonthHeatmap counts={counts} /></div>}
           </div>
         )}
 
-        {/* On this day — resurface a past reflection */}
+        {/* On this day — resurface a past reflection. Collapsed to a SINGLE line: it is a
+            lovely thing to stumble on, but it is not what you came to the tab to do, and at two
+            lines of preview plus a heading row it was the third stacked card between the
+            writing box and your entries. One line still shows enough to recognise it, and it
+            opens on a tap. */}
         {onThisDay && (
           <button
             onClick={() => setExpandPast((v) => !v)}
-            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 transition-colors hover:bg-violet-50">
-            <div className="flex items-center gap-1.5 mb-1">
-              <History size={13} className="text-violet-400" />
-              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500">{onThisDay.label}</p>
-              <span className="text-[10px] text-slate-400 ml-auto">{fmtDate(onThisDay.entry.date)}</span>
+            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2.5 transition-colors hover:bg-violet-50">
+            <div className="flex items-center gap-1.5">
+              <History size={13} className="text-violet-400 flex-shrink-0" />
+              {/* Both measured on violet-50, not on white: violet-500 was 3.86:1 and slate-500
+                  only reaches 4.34:1 against this tint. The whole card is a button, so its
+                  label and date are interactive text and have to clear 4.5. */}
+              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700 flex-shrink-0">{onThisDay.label}</p>
+              <span className="text-[10px] text-slate-600 ml-auto flex-shrink-0">{fmtDate(onThisDay.entry.date)}</span>
             </div>
-            <p className={`text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ${expandPast ? "" : "line-clamp-2"}`}>
+            <p className={`mt-1 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ${expandPast ? "" : "line-clamp-1"}`}>
               {onThisDay.entry.text}
             </p>
           </button>
