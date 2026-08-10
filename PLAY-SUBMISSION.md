@@ -200,7 +200,7 @@ Fields:
 
 | Field | Value |
 |---|---|
-| App name | Seen |
+| App name | Seen — Kindness to Strangers |
 | Category | Social |
 | Contact email | mahiman@seenapp.app (verified) |
 | Website | https://www.seenapp.app/ (verified) |
@@ -209,6 +209,32 @@ Fields:
 Write the short description around what the app *is*, not what it aspires to. Avoid superlatives
 and any claim of health benefit — a wellbeing claim invites the health-app policy questions you
 otherwise sidestep entirely.
+
+### 6.1 ASO — the title is the heaviest lever you control
+
+**"Seen" alone is close to unfindable.** It is one of the most common words in English, so it
+competes with every listing that happens to contain it, and it tells Play's index nothing about
+what the app does. The title field carries more ranking weight than any other text in the
+listing, and it is 30 characters.
+
+| Field | Value | Length |
+|---|---|---|
+| Title | `Seen — Kindness to Strangers` | 28 / 30 |
+| Short description | `Send kindness to a stranger anywhere in the world. And receive it back.` | 71 / 80 |
+
+The title keeps the brand first and spends the remainder on the two phrases someone would
+actually type. The short description is the second-heaviest field and the only copy most people
+read — it leads with the action, and the second sentence answers "what do I get".
+
+Terms worth having somewhere in the full description, because they are what people search and
+none of them currently appear: *kindness*, *strangers*, *encouragement*, *gratitude journal*,
+*wellbeing*, *anonymous message*, *random acts of kindness*. Do not stuff them — Play penalises
+that, and it reads badly to the humans you are trying to convince. Work them into sentences that
+would exist anyway.
+
+Change the title and short description **together**, and then leave them alone for at least two
+weeks. Play re-indexes on a delay, and changing them again mid-cycle means you learn nothing
+about which version worked.
 
 ---
 

@@ -13,8 +13,44 @@
     <meta name="apple-mobile-web-app-title" content="Seen" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#D24341" />
-    <title>Seen</title>
-    <meta name="description" content="Kindness is addictive. Spread kind greetings in real time." />
+
+    <!-- ── Link previews ──────────────────────────────────────────────────────
+         Seen's growth loop is people sharing an invite link (`?add=<uid>`, see
+         UpliftRetentionFeatures.jsx) into WhatsApp, iMessage, Instagram and Discord. Without
+         these tags every one of those shares rendered as a bare grey URL reading "Seen",
+         which is the weakest possible version of a personal recommendation.
+
+         og:image MUST be absolute — relative paths are silently dropped by every scraper —
+         and the canonical host is www.seenapp.app, the domain verified with Play. index.html
+         is served no-cache (vercel.json), so edits here take effect on the next deploy;
+         the scrapers themselves cache for days, so use each platform's debugger to refresh
+         rather than assuming a change didn't land.
+
+         The card is deliberately identical for every visitor. Personalising it
+         ("Mahiman invited you") needs a serverless route rendering per-uid OG tags, which is
+         worth doing once the loop is proven, not before. -->
+    <title>Seen — Send kindness to a stranger, anywhere in the world</title>
+    <meta name="description" content="Send a kind message to someone, somewhere in the world — and get encouragement back when you need it. No ads, no arguments. Free on Android and the web." />
+    <link rel="canonical" href="https://www.seenapp.app/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Seen" />
+    <meta property="og:url" content="https://www.seenapp.app/" />
+    <meta property="og:title" content="Seen — Small acts. Real connection." />
+    <meta property="og:description" content="Send a kind message to someone, somewhere in the world — and get encouragement back when you need it. A calmer, kinder corner of the internet." />
+    <meta property="og:image" content="https://www.seenapp.app/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Seen — a tree whose canopy forms a heart, above the words Small acts. Real connection." />
+    <meta property="og:locale" content="en_GB" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Seen — Small acts. Real connection." />
+    <meta name="twitter:description" content="Send a kind message to someone, somewhere in the world — and get encouragement back when you need it." />
+    <meta name="twitter:image" content="https://www.seenapp.app/og-image.png" />
+    <meta name="twitter:image:alt" content="Seen — a tree whose canopy forms a heart, above the words Small acts. Real connection." />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

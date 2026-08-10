@@ -1,7 +1,7 @@
 {
   "name": "Seen",
   "short_name": "Seen",
-  "description": "Kindness is addictive. Spread kind greetings in real time.",
+  "description": "Send a kind message to someone, somewhere in the world — and get encouragement back when you need it.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
