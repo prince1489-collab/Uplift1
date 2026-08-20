@@ -135,10 +135,15 @@ workflows:
           # Verify rather than trust: agvtool writes MARKETING_VERSION in build settings on
           # modern projects and CFBundleShortVersionString on older ones, and a silent no-op
           # here would only surface as a missing build in App Store Connect days later.
-          ACTUAL=$(agvtool what-marketing-version -terse1 | head -1)
-          echo "marketing version -> $ACTUAL (wanted $MARKETING_VERSION)"
-          echo "build number      -> $(agvtool what-version -terse)"
-          [ "$ACTUAL" = "$MARKETING_VERSION" ] || { echo "!! marketing version not applied"; exit 1; }
+          #
+          # The check greps agvtool's full report for the exact version rather than parsing a
+          # terse flag whose output format varies by Xcode and by target count — a brittle parse
+          # here would FAIL THE BUILD on a false alarm, which is worse than the bug it guards.
+          echo "── marketing version report ──"
+          agvtool what-marketing-version
+          echo "build number -> $(agvtool what-version -terse)"
+          agvtool what-marketing-version | grep -q "\"$MARKETING_VERSION\"" \
+            || { echo "!! marketing version is not $MARKETING_VERSION — aborting before a mis-stamped upload"; exit 1; }
       - name: Build & archive IPA
         script: |
           xcode-project build-ipa \
