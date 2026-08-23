@@ -349,7 +349,7 @@ function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrad
                     and the answer is the reason the rest of this menu is shaped the way it is. */}
                 <Row
                   onClick={() => { window.open("/story.html", "_blank", "noopener,noreferrer"); close(); }}
-                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>✦</span></IconBox>}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💛</span></IconBox>}
                   label="Why Seen exists"
                   sub="The story behind the app"
                 />
@@ -825,7 +825,10 @@ function WelcomeMoment({ firstName, onClose }) {
         className="w-full max-w-md rounded-t-3xl sm:rounded-3xl px-6 pb-7 pt-8 max-h-[92vh] overflow-y-auto"
         style={{ background: "linear-gradient(160deg,#FFFAF5 0%,#FFF1E8 55%,#FFE4DA 100%)",
                  animation: "seenFadeUp 420ms ease both" }}>
-        <span aria-hidden className="block text-2xl">✦</span>
+        {/* The real icon. This was a ✦ — the pre-rebrand mark — introducing the note that
+            explains who made the app. */}
+        <img src="/icon-512.png" width="56" height="56" alt=""
+          className="block h-14 w-14 rounded-2xl shadow-sm" />
         <h2 className="mt-3 text-[22px] font-bold leading-snug text-slate-800">
           {firstName ? `Welcome, ${firstName}.` : "Welcome to Seen."}
         </h2>
