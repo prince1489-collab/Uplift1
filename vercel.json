@@ -115,6 +115,10 @@
       "destination": "/privacy.html"
     },
     {
+      "source": "/story",
+      "destination": "/story.html"
+    },
+    {
       "source": "/support",
       "destination": "/support.html"
     },

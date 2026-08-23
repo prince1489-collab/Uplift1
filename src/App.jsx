@@ -344,6 +344,15 @@ function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrad
                   label="Wellbeing"
                   sub="Wellbeing check-in & Support"
                 />
+                {/* A real row, not a line in the legal microtext at the bottom. Someone who goes
+                    looking for why an app exists is exactly the person worth answering properly,
+                    and the answer is the reason the rest of this menu is shaped the way it is. */}
+                <Row
+                  onClick={() => { window.open("/story.html", "_blank", "noopener,noreferrer"); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>✦</span></IconBox>}
+                  label="Why Seen exists"
+                  sub="The story behind the app"
+                />
 
               </div>
 
@@ -794,6 +803,55 @@ function FeedDatePill({ scrollRef }) {
         {label}
       </span>
     </div>
+  );
+}
+
+// The one time the app speaks in the founder's voice rather than the product's.
+//
+// It fires the instant onboarding succeeds — the most receptive second there is, because the
+// person has just committed and nothing has been asked of them yet. `showWelcomeMoment` was
+// already being set at exactly that point and read by nothing at all; this is what it was for.
+//
+// DELIBERATELY A NOTE, NOT A SCREEN. It does not belong in the signup flow: every step before
+// someone reaches the app costs people, which is why the guided tour was retired. So it sits
+// AFTER the finish line, says one small true thing, and gets out of the way. The long version
+// lives at /story.html for whoever wants it, and this never appears again.
+function WelcomeMoment({ firstName, onClose }) {
+  useBackLayer(true, onClose);
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[320] flex items-end sm:items-center justify-center bg-black/45 p-0 sm:p-4"
+      onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl px-6 pb-7 pt-8 max-h-[92vh] overflow-y-auto"
+        style={{ background: "linear-gradient(160deg,#FFFAF5 0%,#FFF1E8 55%,#FFE4DA 100%)",
+                 animation: "seenFadeUp 420ms ease both" }}>
+        <span aria-hidden className="block text-2xl">✦</span>
+        <h2 className="mt-3 text-[22px] font-bold leading-snug text-slate-800">
+          {firstName ? `Welcome, ${firstName}.` : "Welcome to Seen."}
+        </h2>
+        <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-slate-700">
+          <p>
+            I worked in a care home when I was young. A resident called Frank waited for his son
+            every day — and when he didn't come, Frank would brush it off and say he must be busy.
+          </p>
+          <p>
+            Years later, in a lonely winter of my own, the thing that lifted me was thirty seconds
+            of conversation with strangers on a dog walk.
+          </p>
+          <p>Seen is that, turned into an app. Thank you for being here.</p>
+        </div>
+        <p className="mt-4 text-[15px] font-semibold text-slate-800">— Mahiman</p>
+        <button onClick={onClose}
+          className="mt-6 w-full rounded-full bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors">
+          Start sending kindness
+        </button>
+        <a href="/story.html" target="_blank" rel="noopener noreferrer"
+          className="mt-3 block text-center text-[12px] font-semibold text-teal-700 underline">
+          Read the whole story
+        </a>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -3197,6 +3255,10 @@ export default function App() {
       <div {...(darkMode ? { "data-dark-shell": "" } : {})} className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-none sm:h-[90vh] sm:rounded-3xl" style={darkMode ? {} : { background: "#fff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
 
 
+        {showWelcomeMoment && (
+          <WelcomeMoment firstName={String(profile?.fullName || "").trim().split(/\s+/)[0]}
+            onClose={() => setShowWelcomeMoment(false)} />
+        )}
         {showProfileCard && (
           <ProfileCard profile={profile} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
             onOpenBlocked={() => setShowBlockedApp(true)}
