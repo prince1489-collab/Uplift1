@@ -243,9 +243,22 @@ workflows:
           V="android/variables.gradle"
           sed -i "s/^\( *\)targetSdkVersion *=.*/\1targetSdkVersion = $TARGET_SDK/"   "$V"
           sed -i "s/^\( *\)compileSdkVersion *=.*/\1compileSdkVersion = $TARGET_SDK/" "$V"
-          echo "── SDK levels ──"; grep -E "minSdk|compileSdk|targetSdk" "$V"
-          # A silent sed miss here surfaces as a Play policy rejection days later, so assert.
+
+          # Google sign-in, and this one fails at RUNTIME rather than at build time.
+          # @capacitor-firebase/authentication defaults rgcfaIncludeGoogle to false
+          # (android/build.gradle:6). With it false, play-services-auth and the credentials
+          # libraries are compileOnly — the APK builds cleanly and the classes are simply absent on
+          # the device, so signInWithGoogle() throws the moment a user taps it. This is the Android
+          # twin of the iOS podspec patch in scripts/enable-google-signin.cjs.
+          grep -q "rgcfaIncludeGoogle" "$V" \
+            && sed -i "s/^\( *\)rgcfaIncludeGoogle *=.*/\1rgcfaIncludeGoogle = true/" "$V" \
+            || sed -i "s/^\( *\)minSdkVersion\(.*\)$/\1minSdkVersion\2\n\1rgcfaIncludeGoogle = true/" "$V"
+
+          echo "── variables.gradle ──"; grep -E "minSdk|compileSdk|targetSdk|rgcfaIncludeGoogle" "$V"
+          # Silent sed misses here surface days later — one as a Play policy rejection, the other
+          # as a crash report from a user who tried to sign in. Assert both.
           grep -qE "^ *targetSdkVersion *= *$TARGET_SDK\b" "$V" || { echo "!! targetSdkVersion not set to $TARGET_SDK"; exit 1; }
+          grep -qE "^ *rgcfaIncludeGoogle *= *true\b" "$V" || { echo "!! rgcfaIncludeGoogle not enabled — Google sign-in would crash on device"; exit 1; }
       - name: Inject google-services.json
         script: |
           if [ -f "android-config/google-services.json" ]; then

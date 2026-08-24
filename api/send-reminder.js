@@ -1,6 +1,8 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+// Shared with notify-like/notify-reply so the Android payload shape exists in exactly one place.
+import { androidNotification } from "./_auth.js";
 
 function initAdmin() {
   if (!getApps().length) {
@@ -67,7 +69,7 @@ export default async function handler(req, res) {
 
     // Only send to users whose local time is 9am, and who have a stored timezone.
     const entries = snap.docs
-      .map((d) => ({ uid: d.id, token: d.data().fcmToken, timezone: d.data().timezone }))
+      .map((d) => ({ uid: d.id, token: d.data().fcmToken, timezone: d.data().timezone, platform: d.data().pushPlatform }))
       .filter((e) => e.token && e.timezone)
       .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }))
       .filter((e) => e.hour === 9);
@@ -89,28 +91,43 @@ export default async function handler(req, res) {
     for (const [key, group] of Object.entries(groups)) {
       if (!group.length) continue;
       const msg = key === "weekly" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : DAILY_MESSAGE;
-      // FCM batch limit is 500 tokens per multicast call
-      for (let i = 0; i < group.length; i += 500) {
-        const chunk = group.slice(i, i + 500);
-        // Data-only so the compat SDK doesn't auto-show a duplicate notification.
-        const result = await getMessaging().sendEachForMulticast({
-          tokens: chunk.map((e) => e.token),
-          // link is carried in data so native iOS can deep-link via notification.data.link.
-          data: { title: msg.title, body: msg.body, link: APP_URL },
-          webpush: { fcmOptions: { link: APP_URL } },
-          // apns is applied only to APNs-backed (iOS) tokens; web tokens ignore it. The aps.alert
-          // makes iOS display the notification (data-only would be delivered silently).
-          apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
-        });
-        sent += result.successCount;
-        result.responses.forEach((r, idx) => {
-          if (!r.success) {
-            errors.push(r.error?.code || "unknown");
-            if (r.error?.code === "messaging/registration-token-not-registered") {
-              staleUids.push(chunk[idx].uid);
+      // A multicast sends ONE payload to many tokens, and native Android needs a different one
+      // from everybody else: it must have an android.notification block (no service worker in a
+      // webview, and Android will not display a data-only message in the background), while a web
+      // token must NOT have one (sw.js renders the notification itself, so it would show twice).
+      // So split by shape first and send each separately, rather than picking one payload and
+      // being wrong for half the recipients.
+      const shapes = {
+        android: group.filter((e) => e.platform === "android"),
+        other: group.filter((e) => e.platform !== "android"),
+      };
+      for (const [shape, list] of Object.entries(shapes)) {
+        if (!list.length) continue;
+        // FCM batch limit is 500 tokens per multicast call
+        for (let i = 0; i < list.length; i += 500) {
+          const chunk = list.slice(i, i + 500);
+          // Data-only so the compat SDK doesn't auto-show a duplicate notification.
+          const payload = {
+            tokens: chunk.map((e) => e.token),
+            // link is carried in data so native iOS can deep-link via notification.data.link.
+            data: { title: msg.title, body: msg.body, link: APP_URL },
+            webpush: { fcmOptions: { link: APP_URL } },
+            // apns is applied only to APNs-backed (iOS) tokens; web tokens ignore it. The aps.alert
+            // makes iOS display the notification (data-only would be delivered silently).
+            apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
+          };
+          if (shape === "android") payload.android = androidNotification(msg.title, msg.body);
+          const result = await getMessaging().sendEachForMulticast(payload);
+          sent += result.successCount;
+          result.responses.forEach((r, idx) => {
+            if (!r.success) {
+              errors.push(r.error?.code || "unknown");
+              if (r.error?.code === "messaging/registration-token-not-registered") {
+                staleUids.push(chunk[idx].uid);
+              }
             }
-          }
-        });
+          });
+        }
       }
     }
 

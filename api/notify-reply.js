@@ -36,6 +36,7 @@ export default async function handler(req, res) {
 
     const userSnap = await db.collection("users").doc(toUid).get();
     const token = userSnap.data()?.fcmToken;
+    const platform = userSnap.data()?.pushPlatform;
     if (!token) return res.status(200).json({ skipped: "no token" });
 
     // The two directions read differently, and the difference matters: one is a stranger
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
       ? `${name} replied back 💬`
       : `${name} sent you a private reply 💬`;
 
-    const pushId = await getMessaging().send(pushEnvelope(token, body));
+    const pushId = await getMessaging().send(pushEnvelope(token, body, platform));
     return res.status(200).json({ ok: true, messageId: pushId });
   } catch (err) {
     console.error("[notify-reply]", err?.code, err?.message);

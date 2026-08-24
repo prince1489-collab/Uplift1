@@ -76,7 +76,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
-import { registerNativePush, isNativeIOS } from "./nativePush";
+import { registerNativePush, isNativeIOS, isNativeApp } from "./nativePush";
 import { apiUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
@@ -99,13 +99,13 @@ const app = initializeApp(firebaseConfig);
 // can't load in the native webview and stalls auth init — so onAuthStateChanged never fires and the app
 // hangs on the loading spinner. Native sign-in uses signInWithCredential, which doesn't need the resolver.
 // On web keep getAuth (+ setPersistence) so the PWA/TWA popup→redirect flow still works.
-const auth = isNativeIOS()
+const auth = isNativeApp()
   ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
   : getAuth(app);
 // Keep the session in IndexedDB — survives best in installed/standalone PWAs (TWA, home-screen),
 // so a returning user is restored on launch instead of seeing the sign-in screen again.
 // (initializeAuth already sets persistence natively, so only the web branch needs this.)
-if (!isNativeIOS()) setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
+if (!isNativeApp()) setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
@@ -1672,9 +1672,9 @@ export default function App() {
   );
   useEffect(() => {
     if (!currentUser) return;
-    // Native iOS: register for push via the Firebase Messaging Capacitor plugin (APNs→FCM token,
-    // stored in the same users/{uid}.fcmToken field). Skip the web service-worker token path.
-    if (isNativeIOS()) {
+    // Native (iOS or Android): register via the Firebase Messaging Capacitor plugin and skip
+    // the web service-worker token path, which has no service worker to attach to in a webview.
+    if (isNativeApp()) {
       registerNativePush({
         db,
         uid: currentUser.uid,
@@ -2343,7 +2343,7 @@ export default function App() {
     // (the installed-app fallback uses signInWithRedirect). onAuthStateChanged then fires with the user.
     // Skip on native iOS: there's no web redirect to consume there (native uses signInWithCredential),
     // and calling it forces the web redirect resolver/iframe that hangs in the WKWebView.
-    if (!isNativeIOS()) getRedirectResult(auth).catch(() => {});
+    if (!isNativeApp()) getRedirectResult(auth).catch(() => {});
 
     // Failsafe: if auth init ever stalls (e.g. a webview quirk) and onAuthStateChanged never fires,
     // don't trap the user on an infinite loading spinner — degrade to the sign-in screen after 6s.
@@ -2681,10 +2681,14 @@ export default function App() {
   const signInWithGoogle = async () => {
     setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
-      // Native iOS: Google blocks its OAuth flow inside app web-views, so use the real native
-      // Google sheet via the Firebase Authentication Capacitor plugin, then sign the JS SDK in
-      // with the returned credential. Web/dev uses the Firebase popup/redirect flow.
-      if (isNativeIOS()) {
+      // Native: Google blocks its OAuth flow inside app web-views — on Android as well as iOS —
+      // so use the real native Google sheet via the Firebase Authentication Capacitor plugin, then
+      // sign the JS SDK in with the returned credential. Web/dev uses the popup/redirect flow.
+      //
+      // On Android this ALSO needs rgcfaIncludeGoogle=true in variables.gradle (set per build in
+      // codemagic.yaml). Without it the plugin's Google dependencies are compileOnly: the build
+      // succeeds and this call fails at runtime.
+      if (isNativeApp()) {
         const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
         // Native Google sheet → returns the credential → sign the JS SDK in. No artificial timeout:
         // the flow is interactive (system prompt + account chooser can take longer than any short
@@ -2713,6 +2717,12 @@ export default function App() {
   // Native iOS uses the real Apple sheet (ASAuthorization) via the Firebase Authentication
   // Capacitor plugin, then signs the JS SDK in with the returned credential so onAuthStateChanged
   // fires as usual. Web/dev falls back to the Firebase popup/redirect OAuth flow.
+  //
+  // DELIBERATELY STILL isNativeIOS(), not isNativeApp(). No policy requires Apple sign-in on
+  // Android, and the Android flow is a browser redirect needing an Apple Services ID, a signing
+  // key and a return URL configured in Firebase — real setup outside this repo for no benefit.
+  // The known cost: an account created with Apple cannot sign in on Android, and has no password
+  // to fall back on. Acceptable while the iOS install base is days old; revisit if it grows.
   const signInWithApple = async () => {
     setIsGoogleSigningIn(true); setAuthError(""); setEmailLinkMessage("");
     try {
@@ -3230,7 +3240,7 @@ export default function App() {
         <div className="relative flex h-[100dvh] w-full max-w-md flex-col overflow-hidden rounded-none border border-white/80 bg-white/95 shadow-2xl backdrop-blur sm:h-[90vh] sm:rounded-3xl">
           {unauthScreen === "welcome"
             ? <WelcomeStep onStartJourney={() => setUnauthScreen("signin")} db={db} auth={auth} />
-            : <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
+            : <SignInStep onEmailLinkSignIn={isNativeApp() ? undefined : sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                 onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle} onAppleSignIn={isNativeIOS() ? signInWithApple : undefined}
                 loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                 emailLinkMessage={emailLinkMessage} authError={authError} />}
@@ -3307,7 +3317,7 @@ export default function App() {
         )}
 
 
-        {!isNativeIOS() && showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
+        {!isNativeApp() && showUpgrade && <PremiumUpgradePrompt country={profile?.country} currentUser={currentUser} onClose={() => setShowUpgrade(false)} />}
 
         {/* Kindness loop sheets */}
         {postComposerOpen && (
@@ -3426,7 +3436,7 @@ export default function App() {
                 </p>
               )}
               {onboardingStep === "entry" ? (
-                <SignInStep onEmailLinkSignIn={sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
+                <SignInStep onEmailLinkSignIn={isNativeApp() ? undefined : sendEmailSignInLink} onPasswordSignIn={signInWithPassword}
                   onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle} onAppleSignIn={isNativeIOS() ? signInWithApple : undefined}
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
@@ -3508,7 +3518,7 @@ export default function App() {
                       onShare={() => setShowProfileCard(true)}
                       onFollowing={() => setShowFollowing(true)}
                       followCount={follows.length}
-                      onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
+                      onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
                       onSupport={() => setActiveTab("support")}
                       onChangePassword={changePassword}
                       onKindnessTree={() => setShowLevels(true)}
@@ -3973,7 +3983,7 @@ export default function App() {
                                               playHeart();
                                               if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
-                                            onUpgrade={() => { if (!isNativeIOS()) setShowUpgrade(true); }}
+                                            onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
                                             onReply={() => setReplyTarget(m)}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />

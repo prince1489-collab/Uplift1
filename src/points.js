@@ -70,13 +70,17 @@ function pushRemote(total) {
 // on a new device or a new shell, which is the exact disaster this function exists to prevent.
 // Taking the larger can only ever be generous, which is the right way to be wrong about someone's
 // record of their own kindness.
-export async function syncPoints(db, uid) {
-  if (!db || !uid) return getPoints();
-  mirror = { db, uid };
+// The parameter is `myUid`, not `uid`, deliberately: scripts/check-privacy.cjs treats that name
+// as the signal that a users/{uid} read is of your OWN document rather than someone else's, and
+// asks call sites to say so rather than accepting an ambiguous name. This only ever reads the
+// signed-in user's own doc — the rules would deny anything else.
+export async function syncPoints(db, myUid) {
+  if (!db || !myUid) return getPoints();
+  mirror = { db, uid: myUid };
 
   let remote = 0;
   try {
-    const snap = await getDoc(doc(db, "users", uid));
+    const snap = await getDoc(doc(db, "users", myUid));
     remote = Number(snap.data()?.[FIELD]) || 0;
   } catch {
     return getPoints(); // offline or denied — keep what we have, never clobber either side

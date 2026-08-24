@@ -53,15 +53,39 @@ export function cors(req, res) {
   return true;
 }
 
-// One place for the FCM envelope both push routes send. Data-only so the compat SDK doesn't
+// One place for the FCM envelope the push routes send. Data-only so the compat SDK doesn't
 // auto-show a duplicate — sw.js reads payload.data and calls showNotification() itself — plus
 // an apns block, which only iOS tokens act on and which is what makes iOS display the alert.
 export const APP_URL = "https://www.seenapp.app";
-export function pushEnvelope(token, body) {
+
+// `platform` is users/{uid}.pushPlatform, written next to the token by nativePush.js.
+//
+// WHY IT HAS TO BE PASSED IN. An FCM token is opaque: a token from the native Android app and one
+// from Android Chrome are indistinguishable here, and they need OPPOSITE payloads. The web token
+// must stay data-only, because sw.js renders the notification itself and a `notification` block
+// would give that user TWO. The native Android token needs exactly that block, because there is no
+// service worker in a webview and Android will not display a data-only message while the app is
+// backgrounded — it arrives, silently, and the user never learns anyone wrote to them.
+//
+// Anything that is not "android" keeps the previous envelope byte for byte, so iOS and web are
+// untouched, including every token stored before pushPlatform existed.
+// Exported so send-reminder.js, which builds its own multicast payload, uses the SAME block.
+// Two copies of this would drift, and the way you would find out is a user reporting that
+// notifications stopped — months later, from the sender nobody remembered to update.
+export function androidNotification(title, body) {
   return {
+    priority: "high",
+    notification: { title, body, sound: "default", clickAction: "FCM_PLUGIN_ACTIVITY" },
+  };
+}
+
+export function pushEnvelope(token, body, platform) {
+  const envelope = {
     token,
     data: { title: "Seen", body, link: APP_URL },
     webpush: { fcmOptions: { link: APP_URL } },
     apns: { payload: { aps: { alert: { title: "Seen", body }, sound: "default" } } },
   };
+  if (platform === "android") envelope.android = androidNotification("Seen", body);
+  return envelope;
 }

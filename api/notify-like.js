@@ -43,6 +43,9 @@ export default async function handler(req, res) {
 
     const userSnap = await db.collection("users").doc(ownerUid).get();
     const token = userSnap.data()?.fcmToken;
+    // Written beside the token by nativePush.js; absent for tokens stored before it existed,
+    // which correctly falls through to the original web/iOS envelope.
+    const platform = userSnap.data()?.pushPlatform;
     if (!token) return res.status(200).json({ skipped: "no token" });
 
     const name = String(reaction.reactorName || "Someone").trim() || "Someone";
@@ -51,7 +54,7 @@ export default async function handler(req, res) {
       ? `${name} from ${country} liked your message ❤️`
       : `${name} liked your message ❤️`;
 
-    const pushId = await getMessaging().send(pushEnvelope(token, body));
+    const pushId = await getMessaging().send(pushEnvelope(token, body, platform));
     return res.status(200).json({ ok: true, messageId: pushId });
   } catch (err) {
     console.error("[notify-like]", err?.code, err?.message);
