@@ -1,12 +1,29 @@
-## Codemagic CI/CD — build & sign the iOS app (Capacitor) and upload to TestFlight.
-## Runs on a Codemagic Mac build machine, so no local Mac/Xcode is needed.
+## Codemagic CI/CD — builds and signs BOTH native apps from this one repo:
+##   ios-capacitor      → TestFlight automatically; submitting for review stays manual in ASC.
+##   android-capacitor  → Play's INTERNAL track automatically; promoting past it stays manual.
+## Runs on Codemagic's machines, so no local Mac/Xcode/Android Studio is needed.
 ##
-## One-time setup in the Codemagic UI (see the iOS plan, Part 2/3):
+## The WEB app is not built here at all — Vercel deploys it straight from the same branch. Worth
+## remembering when a change seems not to have shipped: web changes need no build, and native
+## changes do not reach anyone until a store release.
+##
+## ── One-time setup, iOS (see the iOS plan, Part 2/3) ──
 ##  1. Connect this GitHub repo and pick the branch.
 ##  2. Team → Integrations → App Store Connect: add your App Store Connect API key (.p8 + Key ID + Issuer ID).
 ##  3. Reference that integration below as `app_store_connect: <integration-name>` and set BUNDLE_ID.
 ##  4. Make sure GoogleService-Info.plist is committed at ios/App/App/GoogleService-Info.plist
 ##     (or injected via an encrypted env var / Codemagic file).
+##
+## ── One-time setup, Android ──
+##  5. Google Cloud Console → IAM → Service accounts → create one → Keys → Add key → JSON.
+##  6. Play Console → Users and permissions → invite that service account's email, granting
+##     "Release to testing tracks" on Seen.
+##  7. Codemagic → Environment variables → paste the WHOLE JSON as GOOGLE_PLAY_SERVICE_ACCOUNT,
+##     marked Secure, in a group named `google_play` (referenced by the workflow below).
+##  8. Commit android-config/google-services.json, and register BOTH SHA-1 fingerprints in
+##     Firebase — the upload key AND Play App Signing's, from Play Console → App integrity.
+##     With only the upload key registered, Google sign-in works in testing and fails for every
+##     real install.
 
 workflows:
   ios-capacitor:
@@ -195,6 +212,12 @@ workflows:
           source: true
       cancel_previous_builds: true
     environment:
+      groups:
+        # Holds GOOGLE_PLAY_SERVICE_ACCOUNT (secure) — the whole service-account JSON, pasted as
+        # one variable. Codemagic → Environment variables, group name must match this exactly.
+        # Without this line the variable is simply undefined and the publish step below fails
+        # AFTER a full build has run, which is a slow way to learn about a typo.
+        - google_play
       android_signing:
         - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
       vars:
@@ -286,14 +309,28 @@ workflows:
       - android/app/build/outputs/**/*.aab
       - android/app/build/outputs/**/mapping.txt
     publishing:
-      # Deliberately left commented: the closed test is mid-run and its 14-day clock
-      # restarts if the track is disturbed. Upload the first AAB by hand, confirm it
-      # installs and the package/key are accepted, then enable this.
+      # INTERNAL, and only internal. This is the first time this codebase runs in a WebView rather
+      # than in Chrome, so Google sign-in, push and the hardware back button are all genuinely
+      # untested. Internal testing has no tester minimum and no 14-day clock, so it costs nothing
+      # to land every push there — while promotion to closed or production stays a decision
+      # somebody makes, not a side effect of pushing a commit.
       #
-      # google_play:
-      #   credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT
-      #   track: internal
-      #   submit_as_draft: true
+      # This used to be commented out "because the closed test is mid-run and its 14-day clock
+      # restarts if the track is disturbed". That no longer applies: production is live, the
+      # organisation account was never subject to the 12-tester rule, and the clock tracked
+      # tester opt-in rather than builds in any case.
+      #
+      # NOT submit_as_draft. A draft waits for a click in Play Console before anyone can install
+      # it, which puts back the exact round trip this removes.
+      #
+      # If the first run fails with a "changes not sent for review" error, the listing has an edit
+      # pending — either clear it in Play Console or add `changes_not_sent_for_review: true` here.
+      # That is a pending-edit problem, not a broken credential.
+      google_play:
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT
+        track: internal
+      # Kept alongside: a copy of the artifact in the inbox is still what you want on the day a
+      # publish fails.
       email:
         recipients:
           - prince1489@googlemail.com
