@@ -22,7 +22,7 @@ import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
-import { awardPoints } from "./points";
+import { awardPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
@@ -1656,6 +1656,15 @@ export default function App() {
     setShowInstallBanner(false);
     try { localStorage.setItem("seen-install-dismissed", "1"); } catch (_) {}
   };
+
+  // Reconcile the Kindness Tree with users/{uid}.treePoints, and arm the mirror so later awards
+  // are written through. Runs on every sign-in rather than once: it is how a tree survives a new
+  // device, a reinstall, and — the reason it exists — the Android app moving from a TWA (Chrome's
+  // storage) to Capacitor (a WebView at a different origin, which cannot read it).
+  useEffect(() => {
+    if (!db || !currentUser?.uid) return;
+    syncPoints(db, currentUser.uid);
+  }, [currentUser?.uid]); // db is a module-level constant, not a reactive value
 
   // FCM push token — register when notification permission is granted
   const [notifPermission, setNotifPermission] = useState(
