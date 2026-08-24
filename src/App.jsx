@@ -76,7 +76,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
-import { registerNativePush, isNativeIOS, isNativeApp } from "./nativePush";
+import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform } from "./nativePush";
 import { apiUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
@@ -1690,7 +1690,14 @@ export default function App() {
         .then((token) => {
           if (token) {
             const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            setDoc(doc(db, "users", currentUser.uid), { fcmToken: token, timezone: tz }, { merge: true }).catch(() => {});
+            // pushPlatform belongs on BOTH token writers, not just the native one. It tells the
+            // senders which envelope a token needs, and merge:true means omitting it here leaves
+            // whatever was there before: someone who registered in the native app and later
+            // granted notifications on the website kept `pushPlatform: "android"` against a WEB
+            // token, so every push carried the Android notification block to a browser already
+            // drawing its own — two notifications, which is the exact thing the field prevents.
+            setDoc(doc(db, "users", currentUser.uid),
+              { fcmToken: token, timezone: tz, pushPlatform: pushPlatform() }, { merge: true }).catch(() => {});
           }
         })
         .catch(() => {});
