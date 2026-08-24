@@ -834,7 +834,7 @@ function WelcomeMoment({ firstName, onClose }) {
         </h2>
         <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-slate-700">
           <p>
-            I worked in a care home when I was young. A resident called Frank waited for his son
+            I worked in a care home when I was 18. A resident called Frank waited for his son
             every day — and when he didn't come, Frank would brush it off and say he must be busy.
           </p>
           <p>
