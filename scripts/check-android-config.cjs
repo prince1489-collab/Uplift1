@@ -61,6 +61,18 @@ if (!client) {
 // Google sign-in cannot work, because sign-in matches the certificate the app was signed with.
 const androidOauth = (client.oauth_client || []).filter((o) => o?.client_type === 1);
 
+// google-services.json stores the SHA-1 as lowercase hex with no separators; Play Console shows
+// it as uppercase colon-separated pairs. Render it Play's way so the two can be compared by eye
+// without transcribing anything — the count alone cannot tell you whether the upload key got
+// registered twice instead of the app signing key once.
+const asPlayFormat = (hash) => {
+  if (typeof hash !== "string" || !/^[0-9a-fA-F]{40}$/.test(hash)) {
+    return String(hash ?? "(no certificate_hash in this entry)"); // show it, never throw on it
+  }
+  return hash.toUpperCase().match(/../g).join(":");
+};
+const fingerprints = androidOauth.map((o) => asPlayFormat(o?.android_info?.certificate_hash));
+
 if (androidOauth.length === 0) {
   console.error("google-services.json contains no Android OAuth clients (client_type 1).");
   console.error("No SHA-1 fingerprints were registered when this file was downloaded, so Google");
@@ -78,9 +90,13 @@ if (androidOauth.length === 1) {
   console.log("          Play App Signing re-signs installs with Google's key, so if the one");
   console.log("          registered is the upload key, sign-in will work in testing and fail for");
   console.log("          every real install. Both certificates are in Play Console -> App integrity.");
+  console.log(`          The one present is: ${fingerprints[0]}`);
 }
 
 console.log(
   `OK — google-services.json: project ${projectId}, package ${PACKAGE}, ` +
   `${androidOauth.length} SHA-1 fingerprint${androidOauth.length === 1 ? "" : "s"} registered.`
 );
+// Printed so they can be checked against Play Console -> App integrity. Two entries that are
+// both the upload key look identical to two correct ones until you actually read them.
+fingerprints.forEach((f) => console.log(`     ${f}`));
