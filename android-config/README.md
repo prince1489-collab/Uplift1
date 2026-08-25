@@ -5,12 +5,18 @@ Mirrors `ios-config/`, which holds the committed `GoogleService-Info.plist` that
 
 ## `google-services.json` — you need to add this
 
-**It is not in the repo, and the build will warn loudly until it is.**
+**It is not in the repo, and the build only WARNS when it is missing — it does not fail.** The
+inject step is non-fatal on purpose, so a build without this file goes green and produces an app
+where Google sign-in and push are both broken at runtime. Do not take a green build as proof.
 
 The TWA never needed it: a Trusted Web Activity is just the website running in Chrome, so
-there was no native app for Firebase to configure. A Capacitor app is a real Android app,
-and `@capacitor-firebase/messaging` needs the native Firebase config or push notifications
-silently do nothing.
+there was no native app for Firebase to configure. A Capacitor app is a real Android app, and it
+needs the native config for BOTH halves of the Firebase integration:
+
+- `@capacitor-firebase/messaging` — without it, push notifications silently do nothing.
+- `@capacitor-firebase/authentication` — without it, **Google sign-in fails**. This half also
+  depends on the SHA-1 fingerprints below, and on `rgcfaIncludeGoogle = true`, which
+  `codemagic.yaml` sets per build.
 
 To generate it:
 
@@ -18,11 +24,44 @@ To generate it:
 2. Add app → Android
 3. Package name: **`app.seenapp.twa`** — this must match exactly. It is the package Play
    already knows, and the reason we kept it rather than minting a new one.
-4. Download `google-services.json` and commit it here as
+4. **Register BOTH SHA-1 certificate fingerprints** — see the next section. Do this BEFORE
+   downloading.
+5. Download `google-services.json` and commit it here as
    `android-config/google-services.json`
 
 The Codemagic workflow copies it into `android/app/` after `cap add android`, because the
 native folder is generated fresh on every build and is not committed.
+
+### The two SHA-1 fingerprints, and why one of them is easy to miss
+
+Google sign-in matches the certificate the app was **actually signed with**. Play App Signing is
+enabled for this app, which means Google re-signs every installed build with its own key — so the
+certificate a real user's app carries is NOT your upload key.
+
+Both fingerprints live in *Play Console → Test and release → Setup → App integrity → App signing*,
+and both belong in Firebase (Project settings → your Android app → Add fingerprint):
+
+| Fingerprint | Covers |
+|---|---|
+| **App signing key certificate** | every install from Play — i.e. all real users |
+| **Upload key certificate** | builds signed by your own key, before Play re-signs them |
+
+Registering only the upload key produces the worst kind of failure: sign-in appears to work while
+you are testing, and fails for **every real install** after release. Register both.
+
+**Re-download `google-services.json` AFTER adding fingerprints.** The OAuth client entries are
+baked into the file at download time, so a copy taken beforehand is already stale. You can check a
+downloaded file without installing anything — it should contain `"client_type": 1` entries under
+`oauth_client`, one per fingerprint. No such entries means the fingerprints were not registered
+when you downloaded it.
+
+### This file is not a secret — commit it
+
+Worth stating because it is the exact opposite of the OTHER JSON in this setup. The Play
+service-account key goes into Codemagic as a **Secure** environment variable and must never be
+committed: it grants publishing rights to the Play account. `google-services.json` is client
+configuration that ships inside every APK anyway — anyone can extract it from a downloaded app —
+so committing it is correct and is how `ios-config/GoogleService-Info.plist` is already handled.
 
 ## Why the package name lives in Gradle, not capacitor.config.json
 
