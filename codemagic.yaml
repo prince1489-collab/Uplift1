@@ -249,6 +249,10 @@ workflows:
         - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
       vars:
         PACKAGE_NAME: "app.seenapp.twa"   # the package Play already knows; do NOT mint a new one
+        # Public version string. Play only enforces versionCode uniqueness, so this is cosmetic —
+        # but Android reporting 1.0 while iOS is on 1.2 makes the two stores disagree about what
+        # release this is.
+        ANDROID_VERSION_NAME: "1.2"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
@@ -309,6 +313,27 @@ workflows:
           # as a crash report from a user who tried to sign in. Assert both.
           grep -qE "^ *targetSdkVersion *= *$TARGET_SDK\b" "$V" || { echo "!! targetSdkVersion not set to $TARGET_SDK"; exit 1; }
           grep -qE "^ *rgcfaIncludeGoogle *= *true\b" "$V" || { echo "!! rgcfaIncludeGoogle not enabled — Google sign-in would crash on device"; exit 1; }
+      - name: Configure Gradle to sign with the upload keystore
+        script: |
+          set -e
+          APP="android/app/build.gradle"
+          # android_signing: [seen_upload] puts the keystore on the machine and exports CM_*
+          # variables — and that is ALL it does. Capacitor's generated build.gradle has no
+          # signingConfigs block, so bundleRelease happily produces an UNSIGNED aab and reports
+          # success. Play then rejects it at upload with "All uploaded bundles must be signed",
+          # after the entire build has already run.
+          #
+          # Names only, never values — these are secrets. If the four used below are absent, this
+          # list shows what Codemagic actually exported.
+          echo "-- CM_* variables available (names only) --"
+          env | grep -o '^CM_[A-Z_]*' | sort -u || echo "  (none)"
+
+          if grep -q "signingConfigs" "$APP"; then
+            echo "signingConfigs already present -- skipping"
+          else
+            python3 scripts/patch-android-signing.py "$APP"
+          fi
+          python3 scripts/patch-android-signing.py --verify "$APP"
       - name: Inject google-services.json
         script: |
           if [ -f "android-config/google-services.json" ]; then
@@ -354,14 +379,42 @@ workflows:
           if [ -f "assets/icon.png" ]; then npx @capacitor/assets generate --android || true; fi
       - name: Set a unique, incrementing build number
         script: |
+          set -e
           # Play rejects a versionCode it has already seen.
-          BUILD_NUMBER=$(($(google-play get-latest-build-number --package-name "$PACKAGE_NAME" 2>/dev/null || echo 0) + 1))
-          echo "versionCode -> $BUILD_NUMBER"
+          #
+          # This used to swallow its own failure: no --credentials, stderr to /dev/null, and
+          # `|| echo 0` turning any error into versionCode 1 — which is the TWA's existing
+          # version code, so the upload was rejected as a duplicate with nothing saying why.
+          # A lookup that cannot run must FAIL rather than invent a number.
+          LATEST=$(google-play get-latest-build-number \
+            --package-name "$PACKAGE_NAME" \
+            --credentials @env:GOOGLE_PLAY_SERVICE_ACCOUNT)
+          case "$LATEST" in
+            ''|*[!0-9]*)
+              echo "!! Could not read the latest version code from Play. Got: '$LATEST'"
+              echo "!! Check GOOGLE_PLAY_SERVICE_ACCOUNT and that the Play Developer API is on."
+              exit 1 ;;
+          esac
+          BUILD_NUMBER=$((LATEST + 1))
+          echo "latest on Play: $LATEST -> building versionCode $BUILD_NUMBER"
           sed -i "s/versionCode [0-9]*/versionCode $BUILD_NUMBER/" android/app/build.gradle
+          # Keep the public version string in step with iOS rather than sitting at 1.0 forever.
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$ANDROID_VERSION_NAME\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+          grep -q "versionCode $BUILD_NUMBER" android/app/build.gradle \
+            || { echo "!! versionCode was not applied"; exit 1; }
       - name: Build signed release AAB
         script: |
+          set -e
           cd android
           ./gradlew bundleRelease
+          cd ..
+          # Prove it is signed HERE, not at the publish step. An unsigned bundle builds cleanly
+          # and only fails after upload, which is the slowest possible way to find out.
+          AAB=$(find android/app/build/outputs/bundle/release -name '*.aab' | head -1)
+          echo "verifying signature on $AAB"
+          jarsigner -verify "$AAB" \
+            || { echo "!! The AAB is NOT signed. Play will reject it."; exit 1; }
     artifacts:
       - android/app/build/outputs/**/*.aab
       - android/app/build/outputs/**/mapping.txt
