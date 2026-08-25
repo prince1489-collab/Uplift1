@@ -304,7 +304,37 @@ workflows:
             echo "google-services.json injected"
           else
             echo "!! android-config/google-services.json is MISSING."
-            echo "!! Push notifications will not work. See android-config/README.md."
+            echo "!! Google sign-in AND push will not work. See android-config/README.md."
+          fi
+      - name: Verify the Firebase Gradle wiring
+        script: |
+          set -e
+          ROOT="android/build.gradle"; APP="android/app/build.gradle"
+          # google-services.json is INERT unless the com.google.gms.google-services Gradle plugin
+          # parses it into resources. Copying the file in is not enough, and nothing about a
+          # missing plugin fails the build — it fails at runtime, on a device, as "sign-in does
+          # nothing", which is the worst place to discover it.
+          #
+          # This VERIFIES rather than patches, deliberately. Capacitor's own app/build.gradle
+          # already applies the plugin conditionally when the file is present, and its root
+          # build.gradle ships the classpath for exactly that reason. Editing a generated file we
+          # have not inspected risks duplicating the classpath or breaking that conditional — so
+          # the build reports what is actually there, and only refuses to continue when the
+          # combination is unambiguously broken.
+          echo "── google-services wiring ──"
+          echo "classpath in root build.gradle:"; grep -n "com.google.gms:google-services" "$ROOT" || echo "  (none)"
+          echo "plugin applied in app/build.gradle:"; grep -n "com.google.gms.google-services" "$APP" || echo "  (none)"
+
+          if [ -f "android/app/google-services.json" ]; then
+            grep -q "com.google.gms.google-services" "$APP" \
+              || { echo "!! google-services.json is present but NOTHING applies the plugin that reads it."; \
+                   echo "!! Firebase would be inert: no Google sign-in, no push. Add the plugin to $APP."; exit 1; }
+            grep -q "com.google.gms:google-services" "$ROOT" \
+              || { echo "!! The plugin is applied but its classpath is missing from $ROOT."; \
+                   echo "!! Add classpath 'com.google.gms:google-services:4.4.2' to the buildscript block."; exit 1; }
+            echo "OK — config present, and the plugin that reads it is wired."
+          else
+            echo "!! No google-services.json in the build — Firebase is not configured."
           fi
       - name: Generate app icon & splash from assets/ (non-fatal)
         script: |
