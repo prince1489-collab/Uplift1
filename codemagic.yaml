@@ -25,6 +25,13 @@
 ##     rotating either key breaks the other.
 ##  6. Play Console → Users and permissions → invite that service account's email, granting
 ##     "Release to testing tracks" on Seen.
+##  6b. ENABLE THE PLAY DEVELOPER API on the Cloud project — a SEPARATE gate from 6, and the one
+##     that bites last because it only fails at the publish step, after a full build has already
+##     succeeded and the AAB has been signed:
+##       https://console.developers.google.com/apis/api/androidpublisher.googleapis.com/overview?project=821891105119
+##     Step 6 grants the service account PERMISSION to publish; this switches on the API it uses
+##     to do so. Having one without the other looks like a credentials problem and is not one.
+##     Allow a few minutes to propagate before retrying.
 ##  7. Codemagic → Environment variables → paste the WHOLE JSON as GOOGLE_PLAY_SERVICE_ACCOUNT,
 ##     marked Secure, in a group named `google_play` (referenced by the workflow below).
 ##  8. Commit android-config/google-services.json, and register BOTH SHA-1 fingerprints in
