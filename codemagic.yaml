@@ -66,11 +66,19 @@ workflows:
         BUNDLE_ID: "app.seenapp.ios"
         APP_STORE_APPLE_ID: "6786136562"   # App Store Connect numeric Apple ID of the "Seen" app record
         # CFBundleShortVersionString — the number the App Store shows and groups builds under.
-        # BUMP THIS for every public release. It is not the build number: BUILD_NUMBER
-        # (CFBundleVersion) increments per upload and is invisible to users, whereas this is the
-        # "1.1" a customer sees, and App Store Connect will not offer a build to a version whose
-        # number it does not carry.
-        MARKETING_VERSION: "1.1"
+        # BUMP THIS FOR EVERY PUBLIC RELEASE. It is not the build number: BUILD_NUMBER
+        # (CFBundleVersion) increments itself per upload and is invisible to users, whereas this
+        # is the "1.2" a customer sees, and App Store Connect will not offer a build to a version
+        # whose number it does not carry.
+        #
+        # Forgetting to bump it fails at UPLOAD, after a full build and archive, with:
+        #   90062  CFBundleShortVersionString [x] must contain a higher version than the
+        #          previously approved version [x]
+        #   90186  Invalid Pre-Release Train. The train version 'x' is closed for new build
+        #          submissions
+        # Both mean the same thing — that version already shipped, so pick the next one. They are
+        # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
+        MARKETING_VERSION: "1.2"
       node: 20
       xcode: latest
       cocoapods: default
