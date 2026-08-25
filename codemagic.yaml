@@ -207,7 +207,12 @@ workflows:
   #      Play rejects a key mismatch.
   android-capacitor:
     name: Seen Android (Capacitor)
-    instance_type: linux_x2
+    # Plain `linux`, not `linux_x2`. The x2 tier failed pre-flight with "The selected instance
+    # type is not available with the current billing plan" — it is a higher-resource tier not
+    # included on every Codemagic plan. Nothing in this build (a standard Capacitor
+    # build/sign/package, no heavy compilation) needs the extra resources, so this is not a
+    # downgrade in practice — only in what the account is billed for.
+    instance_type: linux
     max_build_duration: 60
     triggering:
       # Pin the branch. Without this it is a per-build dropdown in the Codemagic UI, and
