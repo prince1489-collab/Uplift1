@@ -15,7 +15,14 @@
 ##     (or injected via an encrypted env var / Codemagic file).
 ##
 ## ── One-time setup, Android ──
-##  5. Google Cloud Console → IAM → Service accounts → create one → Keys → Add key → JSON.
+##  5. Google Cloud Console (project uplift-6d9ea) → **Service Accounts**, which is its own
+##     sidebar item BELOW "IAM" — IAM lists who has access, not the accounts themselves.
+##     Create one (e.g. codemagic-play-publisher), then Keys → Add key → Create new key → JSON.
+##     SKIP the "grant this service account access to project" step: it needs no GCP role at
+##     all, because its permission comes from the Play Console invite in 6. Looking for a role
+##     to grant here is the usual place to get stuck. Do NOT reuse firebase-adminsdk-fbsvc —
+##     that one backs FIREBASE_SERVICE_ACCOUNT_JSON for the /api routes, and sharing it means
+##     rotating either key breaks the other.
 ##  6. Play Console → Users and permissions → invite that service account's email, granting
 ##     "Release to testing tracks" on Seen.
 ##  7. Codemagic → Environment variables → paste the WHOLE JSON as GOOGLE_PLAY_SERVICE_ACCOUNT,
