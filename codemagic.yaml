@@ -277,12 +277,47 @@ workflows:
           # Android package is therefore set here instead.
           set -e
           GRADLE="android/app/build.gradle"
+
+          # ONLY applicationId. Do NOT touch `namespace`.
+          #
+          # These are different things and only one of them is the app's identity:
+          #   applicationId — what Play and the device know the app as. Must be app.seenapp.twa.
+          #   namespace     — the compile-time Java package for the R class, and what Android
+          #                   resolves RELATIVE manifest class names against.
+          #
+          # `cap add android` generates MainActivity in the package taken from capacitor.config
+          # .json's appId, i.e. app.seenapp.ios.MainActivity, and Capacitor's AndroidManifest
+          # declares it relatively as android:name=".MainActivity". Rewriting namespace to
+          # app.seenapp.twa therefore made Android look for app.seenapp.twa.MainActivity, which
+          # does not exist — so the launcher icon started the process, the class was not found,
+          # and it died before drawing a single frame. On device that looks exactly like "the app
+          # does not open": launch animation, then straight back to the home screen, with no
+          # crash dialog and no data or battery recorded against the app.
+          #
+          # applicationId and namespace differing is completely normal and is the correct state
+          # here.
           sed -i "s/applicationId \"[^\"]*\"/applicationId \"$PACKAGE_NAME\"/" "$GRADLE"
-          sed -i "s/^\s*namespace \"[^\"]*\"/    namespace \"$PACKAGE_NAME\"/" "$GRADLE"
           echo "── applicationId / namespace ──"
           grep -E "applicationId|namespace" "$GRADLE"
-          # Fail loudly rather than shipping a package Play will not accept.
-          grep -q "applicationId \"$PACKAGE_NAME\"" "$GRADLE" || { echo "applicationId not set"; exit 1; }
+          grep -q "applicationId \"$PACKAGE_NAME\"" "$GRADLE" || { echo "!! applicationId not set"; exit 1; }
+
+          # Assert the launcher activity actually EXISTS at the package the manifest resolves to.
+          # This is the check whose absence shipped a build that could not start.
+          NS=$(grep -oP '(?<=namespace ")[^"]+' "$GRADLE" | head -1)
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          ACT=$(grep -oP '(?<=android:name=")\.?[A-Za-z0-9_.]*MainActivity' "$MANIFEST" | head -1)
+          case "$ACT" in
+            .*) FQCN="${NS}${ACT}" ;;   # relative name resolves against the namespace
+            *)  FQCN="$ACT" ;;          # already fully qualified
+          esac
+          SRC="android/app/src/main/java/$(echo "$FQCN" | tr '.' '/').java"
+          echo "namespace=$NS  manifest activity=$ACT  -> expects $SRC"
+          [ -f "$SRC" ] || {
+            echo "!! The manifest resolves its launcher to $FQCN but no such source file exists."
+            echo "!! The app would install and then die on launch with ClassNotFoundException."
+            echo "!! Present instead:"; find android/app/src/main/java -name 'MainActivity.*' | sed 's/^/!!   /'
+            exit 1
+          }
       - name: Raise the target API level to Play's minimum
         script: |
           set -e
