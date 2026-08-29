@@ -249,10 +249,14 @@ workflows:
         - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
       vars:
         PACKAGE_NAME: "app.seenapp.twa"   # the package Play already knows; do NOT mint a new one
-        # Public version string. Play only enforces versionCode uniqueness, so this is cosmetic —
-        # but Android reporting 1.0 while iOS is on 1.2 makes the two stores disagree about what
-        # release this is.
-        ANDROID_VERSION_NAME: "1.2"
+        # Public version string. BUMP THIS whenever a build is meant to be distinguishable from
+        # the last one. Play only enforces versionCode uniqueness, so this is cosmetic to Play —
+        # but it is the ONLY version a person can see. Settings -> Apps shows this, not the
+        # version code, so two different bundles both labelled 1.2 are indistinguishable on a
+        # device. That happened: production carried a broken versionCode 2 and internal carried
+        # versionCode 3, both displaying "1.2", and there was no way to tell which one a phone
+        # had installed without uninstalling.
+        ANDROID_VERSION_NAME: "1.3"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
