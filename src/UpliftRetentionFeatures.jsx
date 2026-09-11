@@ -1031,18 +1031,34 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
         const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
-        // On your OWN message the badge can't toggle (you can't react to yourself), so it
-        // becomes a private "who felt this" viewer instead.
+        // On your OWN message the badge can't toggle (you can't react to yourself), so the
+        // whole thing opens the "who felt this" viewer.
+        //
+        // On SOMEONE ELSE'S message that badge has two jobs and liking used to win both, which
+        // is why the viewer looked like an owner-only feature — it was never locked, the tap was
+        // simply taken. So the two jobs get their own targets: the emoji sends a heart, the
+        // number says who sent one. The border, background and hit area move to the wrapper so
+        // it still reads and behaves as a single pill.
         const isOwn = senderUid && senderUid === currentUser?.uid;
         return (
-          <button key={e}
-            onClick={() => (isOwn && onViewReactors ? onViewReactors() : toggle(e))}
-            title={isOwn && onViewReactors ? "See who felt this" : undefined}
-            className={`seen-react-badge relative flex items-center gap-0.5 rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-95 before:absolute before:-inset-2 before:content-[''] ${
+          <span key={e}
+            className={`seen-react-badge relative flex items-center rounded-full border text-[10px] font-semibold shadow-sm transition-all hover:scale-110 before:absolute before:-inset-2 before:content-[''] ${
               mine2 ? "is-mine border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
             }`}>
-            {e}<span className="ml-0.5">{count}</span>
-          </button>
+            <button
+              onClick={() => (isOwn && onViewReactors ? onViewReactors() : toggle(e))}
+              title={isOwn ? "See who felt this" : mine2 ? "Take your heart back" : "Send a heart"}
+              className="relative z-[1] py-1 pl-2 pr-0.5 active:scale-90 transition-transform">
+              {e}
+            </button>
+            <button
+              onClick={() => onViewReactors?.()}
+              disabled={!onViewReactors}
+              title={onViewReactors ? "See who felt this" : undefined}
+              className="relative z-[1] py-1 pl-0.5 pr-2 active:scale-90 transition-transform disabled:cursor-default">
+              {count}
+            </button>
+          </span>
         );
       })}
     </div>
@@ -2033,6 +2049,18 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           {emoji}
         </button>
       ))}
+      {/* Animated stickers. The picker below has been fully built since it shipped — twelve
+          reactions, a working toggle transaction, and a live StickerDisplay on the bubble — and
+          setShowStickers(true) was never called from anywhere, so none of it could be reached.
+          This button is the whole of what was missing. */}
+      <div className="seen-qrb-sep" />
+      <button
+        className="seen-qrb-btn"
+        title="React with a sticker"
+        style={{ fontSize: 16 }}
+        onClick={() => setShowStickers(true)}>
+        😀
+      </button>
       {/* Reply privately — only on other people's messages. Lives here rather than beside
           the sender's name so nothing hangs outside the bubble. */}
       {!mine && onReply && (

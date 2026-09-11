@@ -324,7 +324,7 @@ function ShareStorySheet({ entry, authorName, country, authorUid, db, currentUse
   );
 }
 
-export default function JournalPanel({ db, currentUser, profile, darkMode = false, inline = false, onClose }) {
+export default function JournalPanel({ db, currentUser, profile, darkMode = false, inline = false, onClose, onKindAct }) {
   const uid = currentUser?.uid;
   const type = "reflection"; // v2: single-category journal
   const [date, setDate] = useState(todayStr());
@@ -490,6 +490,9 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
         });
         try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
+        // New entries only, same as the points above: coming back to edit today's reflection is
+        // still the same day's act, and the streak is already credited for it.
+        try { onKindAct?.(); } catch { /* ignore */ }
       }
       setSaveError("");
       // Stamped on edits as well as new entries: coming back to today's reflection and adding

@@ -207,7 +207,7 @@ function AreaPicker({ current, canPick, ageBand, onPick, onClear }) {
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
-export default function HaveYouTried({ currentUser, dob }) {
+export default function HaveYouTried({ currentUser, dob, onKindAct }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
@@ -228,6 +228,8 @@ export default function HaveYouTried({ currentUser, dob }) {
     if (nowDone) {
       try { playCheckIn(); } catch { /* ignore */ }
       awardPoints("practice");
+      // Doing something kind out in the world is a kind act. It counts.
+      try { onKindAct?.(); } catch { /* ignore */ }
       // Only on ticking, never on un-ticking: changing your mind about one prompt shouldn't
       // reset the clock the bell's "one small act today" invitation measures.
       try { markDone("practice"); } catch { /* ignore */ }

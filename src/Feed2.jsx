@@ -350,8 +350,15 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   // moment takes its turn in the same slot instead of adding fixed height below it.
   const items = useMemo(() => {
     const msgs = messages
-      // Personal posts are routed to the Focused Feed, so they never join this rotation.
-      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !m.isPersonal && !focusedSet.has(m.uid) && !isBlocked(m.uid))
+      // `isPersonal` used to be filtered out here, which meant a message someone had WRITTEN
+      // THEMSELVES could only ever be seen by people already following them — the app's most
+      // expressive act was also its least far-travelling, and the Worldwide Feed quietly showed
+      // presets only. The data was always world-readable (firestore.rules: `allow read: if true`)
+      // and the composer already tells the author it is public, so this was a display filter
+      // rather than a privacy boundary. Every other exclusion below is deliberate and stays:
+      // yourself, the synthetic system row, people you follow (they belong in the Focused Feed),
+      // and anyone you have blocked.
+      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid) && !isBlocked(m.uid))
       .slice(0, 25)
       .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
     // A blocked person must not surface via a kind moment or a shared reflection either.

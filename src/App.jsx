@@ -2956,6 +2956,19 @@ export default function App() {
   const DAILY_GREETING_LIMIT = 50;
   const haptic = (pattern = [8]) => { try { navigator.vibrate?.(pattern); } catch(_) {} };
 
+  // One kind act a day keeps the streak — and "kind act" now means what a person would mean by
+  // it. recordGreetingDay() used to be called from handleSendMessage and nowhere else, so
+  // TAPPING A PRESET was the only way to keep a streak alive: writing your own message,
+  // completing a Practice prompt and saving a reflection all left it untouched. Someone could
+  // use Seen thoughtfully every day for a week and still be on zero, which taught precisely the
+  // wrong lesson about what this app values.
+  //
+  // Safe to call more than once a day: recordGreetingDay's transaction returns the existing
+  // streak unchanged when lastGreetingDate is already today.
+  const creditKindAct = useCallback(() => {
+    try { recordGreetingDay()?.catch?.(() => {}); } catch { /* never block the act itself */ }
+  }, [recordGreetingDay]);
+
   // Ripple attribution: convert my recent reactions into "ripple" credits for the
   // people whose greetings I reacted to. Only reactions within the window count, and
   // each original sender is credited at most once (doc id = my uid). Best-effort.
@@ -3062,7 +3075,11 @@ export default function App() {
       } else {
         setShowMapPrompt(true);
       }
-      if ([3, 7, 14, 30].includes(newStreak)) {
+      // Only on the FIRST send of the day. `newStreak` is streak + 1 computed optimistically,
+      // before recordGreetingDay's transaction resolves — so a second send on the same day
+      // evaluated the same stale `streak` again and fired the milestone celebration twice.
+      // The streak itself only advances once a day, so the celebration should too.
+      if (todayMessageCount === 0 && [3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => { anim.triggerStreakConfetti(); playStreak(); }, 300);
       }
 
@@ -3335,6 +3352,22 @@ export default function App() {
             db={db}
             streak={streak}
             sparkBalance={sparkBalance}
+            // Writing your own words was the ONLY action in the app that fired nothing at all:
+            // no toast, no burst, no haptic, no sound, no streak — while tapping a preset fired
+            // all five, and ticking a checkbox got the biggest celebration in the product. It
+            // even earned MORE drops (150 against 100) and never said so. PostComposer has
+            // always called onPosted; App simply never passed one, so it was a no-op.
+            onPosted={() => {
+              setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]);
+              requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
+              anim.triggerSparkBurst(85, 92);
+              haptic([10, 30, 10]);
+              try { playSend(); } catch { /* ignore */ }
+              creditKindAct();
+              // Same offer the preset path makes — your words have just gone out to the world,
+              // so the globe is worth showing.
+              setShowMapPrompt(true);
+            }}
             onClose={() => setPostComposerOpen(false)} />
         )}
         {replyTarget && (
@@ -3492,6 +3525,11 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
+                    {/* Imported since it was written and never once mounted, so the streak was
+                        invisible unless you opened the ⋯ menu. Stated as a fact and nothing
+                        more — no countdown, no warning, nothing about losing it. The roadmap is
+                        firm that this is a wellbeing app and guilt is not a mechanic here. */}
+                    <StreakBadge streak={streak} />
                   </div>
                   <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
@@ -3676,9 +3714,9 @@ export default function App() {
             )}
 
             {activeTab === "hyt" ? (
-              <HaveYouTried currentUser={currentUser} dob={profile?.dob} />
+              <HaveYouTried currentUser={currentUser} dob={profile?.dob} onKindAct={creditKindAct} />
             ) : activeTab === "journal" ? (
-              <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode} inline />
+              <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode} inline onKindAct={creditKindAct} />
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />

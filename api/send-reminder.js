@@ -17,13 +17,18 @@ const APP_URL = "https://www.seenapp.app";
 // prompt the wellbeing part on ALTERNATE Sundays — nudging it weekly would ask for a check-in
 // that isn't due yet. Off-weeks keep the community-vote + journal prompts.
 const DAILY_MESSAGE  = { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." };
+// Both of these used to open with "Vote for this week's community greetings." There is no
+// voting screen: CommunityArena is imported in App.jsx and never rendered, and the picker's
+// community category was retired. So every user was sent to a feature that does not exist,
+// twice a month, for as long as they had notifications on. A reminder must only ever name
+// something the app can actually do.
 const WEEKLY_MESSAGE_WELLBEING = {
   title: "Your fortnightly check-in 🌱",
-  body: "Vote for this week's community greetings, add a journal note, and update your Wellbeing score.",
+  body: "Add a line to your journal, and see how the last two weeks have felt.",
 };
 const WEEKLY_MESSAGE_LITE = {
   title: "Your weekly check-in 🌱",
-  body: "Vote for this week's community greetings and add a journal note.",
+  body: "A quiet minute to look back — add a line to your journal.",
 };
 
 function localHour(timezone, now) {
