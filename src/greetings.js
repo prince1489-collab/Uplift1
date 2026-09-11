@@ -7,6 +7,8 @@
  * PREMIUM tier: strength, celebrate, cultural, themed (monthly)
  */
 
+import { hytHash } from "./hytPrompts";
+
 export const MONTHLY_THEMES = {
   0:  { name: "New Year's Light",    emoji: "✨" },
   1:  { name: "Love & Kindness",     emoji: "❤️" },
@@ -481,6 +483,42 @@ export function getAccessibleGreetings(isPremium = false) {
     if (g.category === "themed" && g.months && !g.months.includes(month)) return false;
     return true;
   });
+}
+
+// Today's ready-made suggestions, drawn from the WHOLE library.
+//
+// The picker used to render four category tabs — Greetings, Warmth, Calm and a language pack —
+// out of the nine categories that exist, so Strength, Celebrate, World moments and This Month
+// were unreachable: sixty-nine greetings that no user could ever see, and a handful that
+// everybody saw every single day. That is why two people would send the identical sentence on
+// the same morning.
+//
+// Selection needs no cron and no stored state: it is fixed for the whole day, different for two
+// people on the same morning, and derived entirely from the date and the uid.
+//
+// It COUNTS days rather than hashing the date. Hashing looks equivalent and is not — hashes
+// collide, so consecutive days would sometimes land on the same starting point and hand back a
+// set already seen that week. Advancing by `wanted` places a day instead walks cleanly through
+// the whole library before returning to the start.
+//
+// The stride is a prime so each day's four cross category boundaries rather than arriving as
+// four neighbours from the same block — ALL_GREETINGS is grouped by category, so stepping by one
+// would hand out four variations of the same sentiment.
+export function pickDailyGreetings({ uid = "anon", date = new Date(), swap = 0, count = 4 } = {}) {
+  const pool = getAccessibleGreetings(true);
+  if (!pool.length) return [];
+  const wanted = Math.min(count, pool.length);
+  const day = Math.floor((date.getTime() - date.getTimezoneOffset() * 60000) / 86400000);
+  const base = (day + Math.max(0, swap)) * wanted + hytHash(uid);
+  const out = [];
+  const used = new Set();
+  for (let i = 0; out.length < wanted && i < pool.length * 4; i++) {
+    const g = pool[(base + i * 7919) % pool.length];
+    if (used.has(g.id)) continue;
+    used.add(g.id);
+    out.push(g);
+  }
+  return out;
 }
 
 export function getGreetingsByCategory(isPremium = false) {

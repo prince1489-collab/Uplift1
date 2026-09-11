@@ -30,7 +30,7 @@ const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
 import {
-  useStreak, computeSparkReward, computeDropsGain,
+  useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
   SparkGiftButton,
   LiveGreeterCount, MessageReactions,
@@ -44,7 +44,8 @@ import {
   QuickReactBar,
 } from "./UpliftRetentionFeatures";
 
-import { getGreetingsByCategory, getAccessibleGreetings, getCurrentMonthTheme, LOCAL_GREETINGS, LANGUAGE_MAP } from "./greetings";
+import { pickDailyGreetings } from "./greetings";
+import { pickDailyProverb, proverbAsGreeting } from "./proverbs";
 import { getResources, getEmergency } from "./SupportData.js";
 import JournalPanel from "./Journal";
 import ModerationQueue from "./ModerationQueue";
@@ -1319,132 +1320,100 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   );
 }
 
-function GreetingPicker({ profile, streak, onSelect, onClose, onUpgrade, onPersonalShare, isSending = false, remainingToday, db, currentUser, communityGreetings = [] }) {
-  const isPremium = true;
-  const categories = getGreetingsByCategory(isPremium);
-  const [activeCategory, setActiveCategory] = useState("core");
+function GreetingPicker({ onSelect, onClose, onPersonalShare, isSending = false, currentUser }) {
+  // ONE screen, not four tabs.
+  //
+  // The tab row rendered four of the nine categories that exist, which left sixty-nine
+  // greetings unreachable and handed everyone the same fourteen every day — so two people
+  // would open the app on the same morning and send the identical sentence. Browsing was
+  // also the wrong job for this sheet: it asked people to shop for a feeling.
+  //
+  // What replaces it: your own words first and permanently, then five suggestions that change
+  // daily — four ready-made, and one proverb from a language that is not yours, carrying its
+  // own translation and what it means.
+  //
+  // Gone from here on purpose: the "N left today" chip and the per-greeting "+N drops" tags.
+  // A menu that prices each option and counts down your allowance is the transactional framing
+  // the Kindness Tree was chosen over the Kindness Jar to avoid. The daily cap is still
+  // enforced in handleSendMessage and still announces itself when you actually reach it; the
+  // drops still arrive, in the celebration afterwards, where they read as thanks.
+  const uid = currentUser?.uid ?? "anon";
+  const [swap, setSwap] = useState(0);
 
-  // Local greetings filtered to the user's language; fall back to global phrases if no match.
-  const userLang = LANGUAGE_MAP[profile?.country] ?? null;
-  const localGreetings = userLang
-    ? LOCAL_GREETINGS.filter((g) => g.language === userLang)
-    : LOCAL_GREETINGS.filter((g) => g.language === "global");
-  const hasLocalGreetings = localGreetings.length > 0;
+  const suggestions = useMemo(() => pickDailyGreetings({ uid, swap }), [uid, swap]);
+  // Foreign to the reader by design. LOCAL_GREETINGS is filtered the other way — down to the
+  // user's OWN language — which is the right call for a greeting someone will send to a
+  // neighbour and exactly the wrong one here, where the point is that it came from somewhere
+  // else.
+  const proverb = useMemo(() => pickDailyProverb({ uid, swap }), [uid, swap]);
+  const proverbGreeting = useMemo(() => proverbAsGreeting(proverb), [proverb]);
 
-  const isCommunity = activeCategory === "community";
-  const activeGreetings = isCommunity
-    ? communityGreetings
-    : activeCategory === "local"
-    ? localGreetings
-    : categories.find((c) => c.id === activeCategory)?.greetings ?? [];
-  // v2: Community category retired; replaced by a personalised free-text share option.
-  const allCategories = [
-    { id: "core",      label: "Greetings", emoji: "☀️", isPremium: false },
-    { id: "warmth",    label: "Warmth",    emoji: "💛", isPremium: false },
-    { id: "calm",      label: "Calm",      emoji: "🌿", isPremium: false },
-    ...(hasLocalGreetings ? [{ id: "local", label: "Local", emoji: "🗣️", isPremium: true }] : []),
-  ];
+  const cardBase = "w-full rounded-xl border px-3 py-2.5 text-left transition-colors";
+  const cardIdle = "border-slate-200 bg-white hover:border-teal-400 hover:bg-teal-50";
+  const cardBusy = "border-slate-100 bg-slate-50 cursor-not-allowed";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase text-slate-400">Choose Message</span>
-          {remainingToday !== undefined && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-              remainingToday <= 2 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
-            }`}>
-              {remainingToday} left today
-            </span>
-          )}
-        </div>
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Send a little kindness</span>
         <button onClick={onClose} className="rounded-full bg-slate-100 flex items-center justify-center" style={{ minWidth: 44, minHeight: 44 }}>
           <ChevronDown size={16} className="text-slate-500" />
         </button>
       </div>
-      <div data-tour="categories" className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-        {allCategories.map((cat) => {
-          const locked = cat.isPremium && !isPremium;
-          return (
-            <button key={cat.id}
-              onClick={() => locked ? onUpgrade() : setActiveCategory(cat.id)}
-              className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                activeCategory === cat.id && !locked
-                  ? "border-teal-400 bg-teal-50 text-teal-700"
-                  : locked
-                  ? "border-amber-200 bg-amber-50 text-amber-600"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}>
-              <span style={{ fontSize: "11px" }}>{cat.emoji}</span>
-              {cat.label}
-              {locked && <span className="text-[10px]">🔒</span>}
-            </button>
-          );
-        })}
-      </div>
-      {/* v2: personalised free-text share (replaces the retired Community pool) */}
+
+      {/* First, and always here. It used to be a banner halfway down the list, below the
+          presets — which is why most people never discovered the app takes their own words. */}
       {onPersonalShare && (
         <button onClick={onPersonalShare}
-          className="w-full flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-left active:scale-[0.99] transition-transform">
+          className="w-full flex items-center gap-2.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-left active:scale-[0.99] transition-transform">
           <span className="text-lg">✍️</span>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-bold text-violet-800">In your own words</p>
-            <p className="text-[11px] text-violet-500">Write your own kind message to share</p>
+            <p className="text-[11px] text-violet-500">Say it however you like</p>
           </div>
           <span className="text-violet-400">→</span>
         </button>
       )}
-      <div className="space-y-1.5 max-h-48 overflow-y-auto">
-        {isCommunity ? (
-          <>
-            <p className="text-center text-[11px] text-slate-400 leading-relaxed px-2 py-1">
-              ⭐ This week's winners — voted in by the community. Vote for next week in the
-              <strong className="text-teal-600"> 🌱 Community</strong> tab.
+
+      <p className="pt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        Today&apos;s suggestions
+      </p>
+
+      <div className="space-y-1.5 max-h-[42vh] overflow-y-auto">
+        {suggestions.map((greeting) => (
+          <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
+            disabled={isSending}
+            className={`${cardBase} text-sm font-semibold ${isSending ? `${cardBusy} text-slate-400` : `${cardIdle} text-slate-800`}`}>
+            {greeting.text}
+          </button>
+        ))}
+
+        {/* The proverb, laid out exactly as it reads: the translation is the message, the
+            original says where it came from, and the meaning says what it is telling you. */}
+        {proverb && proverbGreeting && (
+          <button onClick={() => !isSending && onSelect(proverbGreeting)}
+            disabled={isSending}
+            className={`${cardBase} ${isSending ? cardBusy : "border-amber-200 bg-amber-50/70 hover:border-amber-400 hover:bg-amber-50"}`}>
+            <p className={`text-sm font-semibold ${isSending ? "text-slate-400" : "text-slate-800"}`}>
+              &ldquo;{proverb.english}&rdquo;
             </p>
-            {activeGreetings.length === 0 ? (
-              <p className="text-center text-xs text-slate-400 py-4 leading-relaxed">
-                This week's winners appear here after voting.<br />Vote in the 🌱 Community tab!
-              </p>
-            ) : (
-              activeGreetings.map((greeting) => (
-                <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
-                  disabled={isSending}
-                  className="seen-champion-card relative overflow-hidden w-full rounded-xl border border-amber-300 px-3 py-2.5 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed"
-                  style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", boxShadow: "0 1px 8px rgba(245,158,11,0.18)" }}>
-                  {!isSending && (
-                    <span aria-hidden className="absolute inset-0 pointer-events-none"
-                      style={{ background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.6) 50%, transparent 65%)", animation: "seenShimmer 3.2s ease-in-out infinite" }} />
-                  )}
-                  <div className="relative">
-                    <span className={`text-sm font-semibold ${isSending ? "text-slate-400" : "text-slate-800"}`}>{greeting.text}</span>
-                    <span className="ml-2 text-xs text-teal-600">
-                      +{computeDropsGain(greeting.sparkReward, streak)} drops
-                      {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
-                    </span>
-                  </div>
-                  <span className="relative text-[10px] text-amber-700 font-semibold">
-                    {greeting.isFeatured ? "⭐ Featured · " : ""}by {greeting.authorName}{greeting.authorCountry && FLAG_MAP[greeting.authorCountry] ? ` ${FLAG_MAP[greeting.authorCountry]}` : ""}
-                  </span>
-                </button>
-              ))
-            )}
-          </>
-        ) : (
-          activeGreetings.map((greeting) => (
-            <button key={greeting.id} onClick={() => !isSending && onSelect(greeting)}
-              disabled={isSending}
-              className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-                isSending ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed" : "border-slate-200 bg-white text-slate-800 hover:border-teal-400 hover:bg-teal-50"
-              }`}>
-              <span>{greeting.text}</span>
-              <span className="ml-2 text-xs text-teal-600">
-                +{computeDropsGain(greeting.sparkReward, streak)} drops
-                {streak >= 3 && <span className="ml-1 text-orange-500">🔥</span>}
-              </span>
-            </button>
-          ))
+            <p className={`mt-1.5 text-[11px] leading-snug ${isSending ? "text-slate-400" : "text-amber-800"}`}>
+              <span className="font-bold">{proverb.language}:</span> {proverb.original}
+              {proverb.romanisation ? ` (${proverb.romanisation})` : ""}
+            </p>
+            <p className={`mt-0.5 text-[11px] italic leading-snug ${isSending ? "text-slate-400" : "text-amber-700/90"}`}>
+              Meaning: {proverb.meaning}
+            </p>
+          </button>
         )}
       </div>
+
+      {/* Free, and unlimited. Practice already works this way: swapping a prompt you cannot
+          use today must never feel like spending something. */}
+      <button onClick={() => setSwap((s) => s + 1)} disabled={isSending}
+        className="w-full rounded-xl py-2 text-center text-[11px] font-semibold text-slate-400 hover:text-teal-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
+        Show me others
+      </button>
     </div>
   );
 }
@@ -3039,6 +3008,18 @@ export default function App() {
         isMystery: false,
         isPremium: isPremium,
         sparkReward: earnedSparks,
+        // A proverb travels as four fields rather than one pre-formatted string. `text` is the
+        // English line, because that is the part every recipient can read; the script, how to
+        // say it, and what it means ride alongside so the bubble can lay them out the same way
+        // the picker did — and so none of it has to be parsed back out of a sentence later.
+        ...(greeting.proverb
+          ? {
+              proverbOriginal: greeting.proverb.original,
+              proverbRomanisation: greeting.proverb.romanisation ?? null,
+              proverbLanguage: greeting.proverb.language,
+              proverbMeaning: greeting.proverb.meaning,
+            }
+          : {}),
       });
 
       // Message is written — close picker and play animations immediately
@@ -4090,6 +4071,17 @@ export default function App() {
                                               : "bg-teal-50 border-teal-200 text-teal-900"
                                           }`}>
                                           {m.text}
+                                          {/* Only a proverb has these. The translation is
+                                              already above as the message itself. */}
+                                          {m.proverbOriginal && (
+                                            <span className="mt-1.5 block border-t border-black/5 pt-1.5 text-[11px] font-normal leading-snug opacity-80">
+                                              <span className="font-bold">{m.proverbLanguage}:</span> {m.proverbOriginal}
+                                              {m.proverbRomanisation ? ` (${m.proverbRomanisation})` : ""}
+                                              {m.proverbMeaning && (
+                                                <span className="mt-0.5 block italic opacity-90">Meaning: {m.proverbMeaning}</span>
+                                              )}
+                                            </span>
+                                          )}
                                         </div>
                                         <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
@@ -4203,17 +4195,11 @@ export default function App() {
                     </p>
                   )}
                   <GreetingPicker
-                    profile={profile}
-                    streak={streak}
                     onSelect={handleSendMessage}
                     onClose={() => setPickerOpen(false)}
-                    onUpgrade={() => { setPickerOpen(false); setShowUpgrade(true); }}
                     onPersonalShare={() => { setPickerOpen(false); setPostComposerOpen(true); }}
                     isSending={isSending}
-                    remainingToday={DAILY_GREETING_LIMIT - todayMessageCount}
-                    db={db}
                     currentUser={currentUser}
-                    communityGreetings={champions}
                   />
                 </div>
               </div>
