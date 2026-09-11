@@ -25,7 +25,7 @@ import MySeenStory from "./MySeenStory";
 import { awardPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -3692,6 +3692,11 @@ export default function App() {
                 onOpenStory={(s) => setOpenStory(s)}
                 onToggleFocus={toggleFocus}
                 onReplyPrivately={(m) => setReplyTarget(m)} />
+            )}
+
+            {/* Between the two feeds, because that is where the difference is visible. */}
+            {activeTab === "feed" && (
+              <TwoFeedsIntro onFindPeople={() => setShowFollowing(true)} />
             )}
 
             {activeTab === "hyt" ? (

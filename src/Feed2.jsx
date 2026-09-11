@@ -967,6 +967,57 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // It carried `bg-slate-50/95 backdrop-blur` once, which visibly wobbled during scroll — a
 // backdrop-filter is re-sampled from a fractional scroll offset every frame and browsers round
 // that inconsistently, worst in WebKit. Opaque and unblurred is both cheaper and steadier.
+const TWO_FEEDS_KEY = "seen_two_feeds_intro_v1";
+
+// Two feeds sit on this screen and nothing ever said they were different things.
+//
+// Every explanation the app had was REACTIVE — it appeared only once someone was already
+// confused. The empty-state card explains it, but only when the Focused Feed is empty. The
+// header says "just you for now", but only at zero follows. The "find people you know"
+// invitation is top priority and lives inside the bell, which a new user has no reason to open.
+// So the common case was someone scrolling two stacked feeds without knowing why one was
+// strangers and the other was not, and never learning that the second is something you build.
+//
+// This sits BETWEEN them, where the difference is physically on the screen and the arrows point
+// at the real thing. Not a modal: the retired guided tour is proof enough that people dismiss an
+// overlay standing between them and the app, and learn nothing from it.
+export function TwoFeedsIntro({ onFindPeople }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(TWO_FEEDS_KEY) === "1"; } catch { return false; }
+  });
+  if (dismissed) return null;
+
+  const close = () => {
+    setDismissed(true);
+    try { localStorage.setItem(TWO_FEEDS_KEY, "1"); } catch { /* a private window just sees it again */ }
+  };
+
+  return (
+    <div className="-mx-3.5 mb-2 border-y border-teal-100 bg-teal-50/60 px-3.5 py-2.5">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700">Two feeds, on purpose</p>
+          <p className="text-[12px] leading-snug text-slate-600">
+            <span className="font-semibold text-slate-700">Above</span> — kind words from strangers, anywhere in the world.
+          </p>
+          <p className="text-[12px] leading-snug text-slate-600">
+            <span className="font-semibold text-slate-700">Below</span> — only the people you choose to follow.
+          </p>
+        </div>
+        <button onClick={close} aria-label="Got it" title="Got it"
+          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-teal-600/60 hover:bg-teal-100/70 hover:text-teal-700 transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+      <button onClick={() => { close(); onFindPeople?.(); }}
+        className="mt-2 flex items-center gap-1.5 rounded-full border border-teal-300 bg-white px-3 py-1 text-[11px] font-bold text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+        <Search size={11} />
+        Find people you know
+      </button>
+    </div>
+  );
+}
+
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
     <div className="seen-feed-header seen-feed-header--pinned -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
