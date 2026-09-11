@@ -52,7 +52,7 @@ import ModerationQueue from "./ModerationQueue";
 import UserGlimpse from "./UserGlimpse";
 import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
 import {
-  useChampionGreetings, useLeaderboardCandidates,
+  useLeaderboardCandidates,
   CommunityArena,
   recordCommunitySend,
 } from "./CommunityGreetings";
@@ -2273,7 +2273,6 @@ export default function App() {
   const [adminResetting, setAdminResetting] = useState(false);
   const [adminResetError, setAdminResetError] = useState("");
   // Community greetings: live approved pool (for the picker) + pending count (admin badge)
-  const champions = useChampionGreetings(db, currentUser);            // weekly Top-5 → sendable in picker
   const candidates = useLeaderboardCandidates(db, currentUser);        // approved pool → voting arena
   const userProfileRef = (uid) => doc(db, "users", uid);
   const publicMessagesRef = collection(db, "publicMessages");
