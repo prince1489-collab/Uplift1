@@ -53,7 +53,13 @@ if (missing.length) {
 console.log(
   `OK — ${used.size} collections used, all covered by firestore.rules ` +
   `(${declared.size} rules declared).\n` +
+  // This used to state flatly that pushing deploys the file. It does — but only once the
+  // FIREBASE_SERVICE_ACCOUNT secret exists, and it did not for the first six weeks this line
+  // was printed, including inside the failing deploy job itself, three lines above the failure.
+  // A check that prints a confident falsehood is worse than one that prints nothing.
   `Pushing this file to main or the working branch deploys it ` +
-  `(.github/workflows/firestore.yml). To publish without pushing: GitHub -> Actions -> ` +
-  `"Deploy Firestore rules and indexes" -> Run workflow.`
+  `(.github/workflows/firestore.yml) — provided the FIREBASE_SERVICE_ACCOUNT repository secret ` +
+  `is set; the workflow now fails with setup instructions if it is not. To publish without ` +
+  `pushing: GitHub -> Actions -> "Deploy Firestore rules and indexes" -> Run workflow. ` +
+  `To publish with no Action at all, DEPLOY.md has a browser-only route.`
 );

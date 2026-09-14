@@ -64,6 +64,44 @@ jobs:
       - name: Check every collection the app uses has a rule
         run: node scripts/check-rules.cjs
 
+      # The ONE-TIME SETUP above is a precondition, not a suggestion, and until it is done this
+      # job cannot deploy anything. Without this step the run dies inside
+      # google-github-actions/auth with:
+      #
+      #   the GitHub Action workflow must specify exactly one of "workload_identity_provider"
+      #   or "credentials_json"!
+      #
+      # — which describes that action's input contract and says nothing about the actual
+      # problem, namely that the repository secret does not exist. This workflow failed three
+      # times over six weeks with that message and never once named the cause.
+      #
+      # Passed through `env:` rather than read in an `if:`, because secrets are not available to
+      # job-level conditionals. Only the length is ever tested, so the value cannot leak into a
+      # public log.
+      - name: Check the deploy credentials exist
+        env:
+          CREDS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$CREDS" ]; then
+            echo "::error::The repository secret FIREBASE_SERVICE_ACCOUNT is not set, so rules and indexes cannot be deployed."
+            echo ""
+            echo "Nothing was published. The live rules are untouched."
+            echo ""
+            echo "To fix it once, ever (full steps in DEPLOY.md):"
+            echo "  1. Firebase Console -> Project settings -> Service accounts -> Manage service"
+            echo "     account permissions -> Create service account, named github-firestore-deploy."
+            echo "  2. Grant it 'Firebase Rules Admin' and 'Cloud Datastore Index Admin'."
+            echo "  3. Its Keys tab -> Add key -> Create new key -> JSON."
+            echo "  4. This repo -> Settings -> Secrets and variables -> Actions -> New repository"
+            echo "     secret, named exactly FIREBASE_SERVICE_ACCOUNT, value = the whole JSON file."
+            echo "  5. Re-run this job from the Actions page."
+            echo ""
+            echo "To publish rules RIGHT NOW without any of that, DEPLOY.md has a browser-only"
+            echo "route that needs no machine you can run commands on."
+            exit 1
+          fi
+          echo "FIREBASE_SERVICE_ACCOUNT is present (${#CREDS} characters). Continuing."
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
