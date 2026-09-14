@@ -19,7 +19,10 @@
 # down laptop.
 #
 # ONE-TIME SETUP: a repository secret named FIREBASE_SERVICE_ACCOUNT holding the JSON key for a
-# service account with `Firebase Rules Admin` + `Cloud Datastore Index Admin`. See DEPLOY.md.
+# service account with `Firebase Rules Admin` + `Cloud Datastore Index Admin` + `Service Usage
+# Viewer`. That third role is the non-obvious one: firebase-tools checks whether the Firestore
+# API is enabled before deploying, and without it the run dies with a 403 from
+# serviceusage.googleapis.com that reads like a Firestore problem. See DEPLOY.md.
 #
 # NOTE: there is one Firebase project, so there is no staging. A rules change on the working
 # branch reaches live users immediately — the same as already happens via Vercel, but worth
@@ -90,7 +93,9 @@ jobs:
             echo "To fix it once, ever (full steps in DEPLOY.md):"
             echo "  1. Firebase Console -> Project settings -> Service accounts -> Manage service"
             echo "     account permissions -> Create service account, named github-firestore-deploy."
-            echo "  2. Grant it 'Firebase Rules Admin' and 'Cloud Datastore Index Admin'."
+            echo "  2. Grant it 'Firebase Rules Admin', 'Cloud Datastore Index Admin' and"
+            echo "     'Service Usage Viewer' — the third is needed for firebase-tools' own"
+            echo "     pre-deploy check and its absence looks like a Firestore error, not an IAM one."
             echo "  3. Its Keys tab -> Add key -> Create new key -> JSON."
             echo "  4. This repo -> Settings -> Secrets and variables -> Actions -> New repository"
             echo "     secret, named exactly FIREBASE_SERVICE_ACCOUNT, value = the whole JSON file."

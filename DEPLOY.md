@@ -56,8 +56,26 @@ The workflow needs a `FIREBASE_SERVICE_ACCOUNT` repository secret. Once, ever:
 1. **Create the account.** Firebase Console → ⚙ **Project settings** → **Service accounts** →
    *Manage service account permissions* (opens Google Cloud IAM) → **Create service account**.
    Name it `github-firestore-deploy`.
-2. **Grant two roles:** `Firebase Rules Admin` and `Cloud Datastore Index Admin`. If a deploy
-   later fails on permissions, `Firebase Develop Admin` is the broader fallback.
+2. **Grant three roles:** `Firebase Rules Admin`, `Cloud Datastore Index Admin`, and
+   **`Service Usage Viewer`**.
+
+   The third one is not obvious and this cost a real detour. Before deploying anything,
+   `firebase-tools` prints *"ensuring required API firestore.googleapis.com is enabled…"* and
+   asks the Service Usage API whether that API is on. An account without read access there gets:
+
+   ```
+   Request to https://serviceusage.googleapis.com/v1/projects/<project>/services/
+   firestore.googleapis.com had HTTP Error: 403, Permission denied to get service
+   ```
+
+   which reads like a Firestore permission problem and is not one — the deploy never reaches
+   Firestore. `Service Usage Viewer` grants `serviceusage.services.get` and nothing else; it
+   cannot enable or disable anything, and it cannot read a single document. `Service Usage
+   Consumer` also works and is slightly broader.
+
+   If a deploy later fails on permissions in some *other* way, `Firebase Develop Admin` is the
+   broad fallback — but prefer adding the specific role the error names. The whole point of a
+   scoped account is that a key sitting in a public repo cannot read your users' journals.
 3. **Create a JSON key:** the account's **Keys** tab → *Add key* → *Create new key* → JSON.
 4. **Store it:** repo → **Settings** → **Secrets and variables** → **Actions** → **New
    repository secret**, named exactly `FIREBASE_SERVICE_ACCOUNT`, value = the whole JSON file.
