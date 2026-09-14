@@ -1395,15 +1395,10 @@ export function PremiumUpgradePrompt({ onClose, currentUser, country }) {
 // PROFILE CARD
 // ─────────────────────────────────────────────────────────────────
 
-const LEVEL_THRESHOLDS = [
-  { min: 0,   title: "Novice Greeter" },
-  { min: 50,  title: "Kindness Scout" },
-  { min: 150, title: "Beacon of Hope" },
-  { min: 300, title: "Sunshine Bringer" },
-  { min: 600, title: "Guardian of Joy" },
-];
-
-// getLevelForBalance lived here — its only caller was the profile card's level tile.
+// A five-tier level ladder lived here (Novice Greeter → Guardian of Joy) alongside its resolver
+// getLevelForBalance. Both lost their only caller when the profile card's level tile was removed,
+// and then sat unreferenced — a third naming scheme for progress, in a file that already had one
+// too many. The Kindness Tree stage is now the only answer to "how far along am I".
 
 // ─────────────────────────────────────────────────────────────────
 // EDIT PROFILE SHEET

@@ -1,9 +1,28 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
 // KindnessTree.jsx — the personal-growth centrepiece (v2). Kind actions "water" a tree
-// that grows through many stages (up to 10M points). Balance = real spark balance + local
-// preview points. The growth is an animated inline SVG: soil → seed → stem → leaves →
-// blossom, with a watering animation when points are earned.
+// that grows through many stages. Balance = real spark balance + local preview points. The
+// growth is an animated inline SVG: soil → seed → stem → leaves → blossom, with a watering
+// animation when points are earned.
+//
+// ── WHY THE SCALE CHANGED (and why it could only move one way) ───────────────────────────────
+// The ladder used to top out at 10,000,000. Measured against what someone actually earns in a
+// day, that is not a long climb — it is an unreachable one. A user doing something kind EVERY
+// DAY without missing one needed 63 years to reach Tree of Life, and 3 years to reach Blooming.
+// Seven of the seventeen stages could not be reached in a lifetime, and the stage list showed
+// them all, with their prices on.
+//
+// A ladder whose top half is decoration does the opposite of what it is for. The middle sagged
+// too: past the first fortnight, advancement slowed to once every few months, which is where
+// people quietly stop caring.
+//
+// The scale below puts the summit at roughly 5 months of devoted use, a year of regular use, or
+// three years of occasional use, with a step every two to four weeks through the first year.
+//
+// THE DIRECTION MATTERS. Every new threshold is at or BELOW its old value, so the change can
+// only ever move somebody UP — a tester on 30,000 goes from Leafing to First blossom. That is
+// deliberate: docs/v2-roadmap.md says "never devalue testers' balances", so the fix had to be
+// lowering the bar rather than raising what actions pay. scripts/check-tree.cjs asserts it.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -12,23 +31,23 @@ import { getPoints } from "./points";
 import { playWatering } from "./sounds";
 
 export const TREE_STAGES = [
-  { min: 0,          name: "Seed",          blurb: "Every forest starts exactly here." },
-  { min: 200,        name: "Sprouting",     blurb: "Something is stirring beneath the soil." },
-  { min: 600,        name: "Sprout",        blurb: "First green — your kindness broke the surface." },
-  { min: 1500,       name: "Seedling",      blurb: "Small, steady, and quietly growing." },
-  { min: 3500,       name: "Sapling",       blurb: "Standing a little taller each day." },
-  { min: 7000,       name: "Rooted",        blurb: "Roots deep enough to hold firm." },
-  { min: 15000,      name: "Young tree",    blurb: "Strong enough to give a little shade." },
-  { min: 30000,      name: "Leafing",       blurb: "Leaves unfurling, one by one." },
-  { min: 60000,      name: "In leaf",       blurb: "Full and green — people notice." },
-  { min: 120000,     name: "Budding",       blurb: "The first buds are forming." },
-  { min: 250000,     name: "First blossom", blurb: "Your kindness is beginning to flower." },
-  { min: 500000,     name: "Blooming",      blurb: "In full, glorious bloom." },
-  { min: 1000000,    name: "Full bloom",    blurb: "A million drops of kindness." },
-  { min: 2000000,    name: "Flourishing",   blurb: "Thriving, and giving back to the world." },
-  { min: 3500000,    name: "Grand tree",    blurb: "A landmark of kindness." },
-  { min: 6000000,    name: "Ancient tree",  blurb: "Weathered, wise, and wonderful." },
-  { min: 10000000,   name: "Tree of Life",  blurb: "A tree others rest beneath. 🌍" },
+  { min: 0,       name: "Seed",          blurb: "Every forest starts exactly here." },
+  { min: 200,     name: "Sprouting",     blurb: "Something is stirring beneath the soil." },
+  { min: 500,     name: "Sprout",        blurb: "First green — your kindness broke the surface." },
+  { min: 1100,    name: "Seedling",      blurb: "Small, steady, and quietly growing." },
+  { min: 2100,    name: "Sapling",       blurb: "Standing a little taller each day." },
+  { min: 3700,    name: "Rooted",        blurb: "Roots deep enough to hold firm." },
+  { min: 6000,    name: "Young tree",    blurb: "Strong enough to give a little shade." },
+  { min: 9200,    name: "Leafing",       blurb: "Leaves unfurling, one by one." },
+  { min: 13500,   name: "In leaf",       blurb: "Full and green — people notice." },
+  { min: 19500,   name: "Budding",       blurb: "The first buds are forming." },
+  { min: 27500,   name: "First blossom", blurb: "Your kindness is beginning to flower." },
+  { min: 38000,   name: "Blooming",      blurb: "In full, glorious bloom." },
+  { min: 52000,   name: "Full bloom",    blurb: "Fifty thousand drops of kindness." },
+  { min: 71000,   name: "Flourishing",   blurb: "Thriving, and giving back to the world." },
+  { min: 96000,   name: "Grand tree",    blurb: "A landmark of kindness." },
+  { min: 150000,  name: "Ancient tree",  blurb: "Weathered, wise, and wonderful." },
+  { min: 250000,  name: "Tree of Life",  blurb: "A tree others rest beneath. 🌍" },
 ];
 
 export function treeStageFor(balance) {

@@ -7,7 +7,7 @@ import {
   Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
-import { AnimationLayer, useAnimations, useSparkCounter, useProgressBarFill,
+import { AnimationLayer, useAnimations, useSparkCounter,
   MessageSlideIn, SendingIndicator, GreetingSheetWrapper, MapTransitionWrapper,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
   ReactionBurstLayer, useReactionBurst, FLAG_MAP } from "./MicroAnimations";
@@ -20,9 +20,9 @@ import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
-import KindnessTreePanel from "./KindnessTree";
+import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import MySeenStory from "./MySeenStory";
-import { awardPoints, syncPoints } from "./points";
+import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
@@ -144,26 +144,21 @@ const COUNTRY_OPTIONS = [
   "Zambia","Zimbabwe",
 ];
 
-const LEVEL_THRESHOLDS = [
-  { min: 0,         title: "Still Loading…" },
-  { min: 50,        title: "Vibe Check: Passed" },
-  { min: 150,       title: "It's Giving Kind" },
-  { min: 300,       title: "Chronically Wholesome" },
-  { min: 600,       title: "Main Character Energy" },
-  { min: 1_500,     title: "Understood the Assignment" },
-  { min: 4_000,     title: "Serotonin Dealer" },
-  { min: 10_000,    title: "Ate and Left No Crumbs" },
-  { min: 25_000,    title: "Lowkey Iconic" },
-  { min: 60_000,    title: "Living Rent Free in Hearts" },
-  { min: 150_000,   title: "Real One, No Debate" },
-  { min: 350_000,   title: "In Your Kindness Era" },
-  { min: 750_000,   title: "Highkey Goated" },
-  { min: 1_500_000, title: "It's Giving Legend" },
-  { min: 3_000_000, title: "The Algorithm Fears You" },
-  { min: 5_000_000, title: "No Cap, Just Impact" },
-  { min: 7_500_000, title: "Ate Every Assignment" },
-  { min: 10_000_000,title: "Chronically GOATED" },
-];
+// The eighteen slang level titles that used to live here ("Still Loading…", "Main Character
+// Energy", "Chronically GOATED") are gone, and the app now names your progress in exactly one
+// way: the Kindness Tree stage.
+//
+// They had to go because they were a SECOND ladder measuring a DIFFERENT number. These titles
+// were keyed on sparkBalance alone; the tree is keyed on sparks + tree points. So the same
+// person could read "Main Character Energy" next to a picture of a sapling, with no way to tell
+// which one was their real progress — or that the two were counting different things at all.
+//
+// They were also unreachable. "Chronically GOATED" wanted 10,000,000 sparks, which at a devoted
+// user's earning rate is around 548 years; eleven of the eighteen titles were beyond a human
+// lifetime. And for all that they appeared in ONE place: a subtitle in this menu.
+//
+// docs/v2-roadmap.md:207 settled this a while ago — "Stage names replace level names" — and it
+// simply never happened. This is that decision, carried out.
 
 // Rotating, giving-focused confirmations shown after sending — reframes the reward as the
 // act of kindness itself, so a reaction-back isn't the implied payoff.
@@ -222,7 +217,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -234,10 +229,6 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, follow
   useBackLayer(showWellbeingHub, () => setShowWellbeingHub(false));
   useBackLayer(showWellbeing, () => setShowWellbeing(false));
 
-  const currentLevel = LEVEL_THRESHOLDS.reduce(
-    (l, t) => sparkBalance >= t.min ? t : l,
-    LEVEL_THRESHOLDS[0]
-  );
   const firstName = profile?.fullName?.trim()?.split(" ")?.[0]
     || currentUser?.displayName?.split(" ")?.[0]
     || "You";
@@ -308,7 +299,7 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, follow
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-slate-800 truncate">{profile?.fullName ?? firstName}</p>
                   </div>
-                  <p className="text-xs text-slate-400 truncate">{currentLevel.title}</p>
+                  <p className="text-xs text-slate-400 truncate">{treeStageName}</p>
                 </div>
                 {streak > 0 && (
                   <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
@@ -2828,23 +2819,26 @@ export default function App() {
   const isPremium = true; // all features free — grow the user base
   const sparkBalance = Number(profile?.sparkBalance ?? 0);
   // v2 tree balance = real sparks + device-local preview points (grows the Kindness Tree)
-  const currentLevel = useMemo(() => LEVEL_THRESHOLDS.reduce((l, t) => sparkBalance >= t.min ? t : l, LEVEL_THRESHOLDS[0]), [sparkBalance]);
-  const nextLevel = useMemo(() => LEVEL_THRESHOLDS.find((t) => t.min > sparkBalance) || null, [sparkBalance]);
-  const progressPercent = useMemo(() => {
-    if (!nextLevel) return 100;
-    const span = nextLevel.min - currentLevel.min;
-    return span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((sparkBalance - currentLevel.min) / span) * 100)));
-  }, [currentLevel.min, nextLevel, sparkBalance]);
+  // The tree balance is sparks + the device-local points ledger, and it is the ONLY progress
+  // number the app now shows. KindnessTree.jsx computes the same sum for the panel; this copy
+  // exists so the menu subtitle and the level-up chime can follow the tree without opening it.
+  const [treePoints, setTreePoints] = useState(() => getPoints());
+  useEffect(() => {
+    const onPts = () => setTreePoints(getPoints());
+    window.addEventListener("seen-points", onPts);
+    return () => window.removeEventListener("seen-points", onPts);
+  }, []);
+  const treeStage = useMemo(() => treeStageFor(sparkBalance + treePoints), [sparkBalance, treePoints]);
 
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
-  const animatedProgress = useProgressBarFill(progressPercent);
-  // Level-up chime — fires when the spark level crosses into a higher tier (placed AFTER
-  // currentLevel is declared to avoid a temporal-dead-zone crash).
-  const prevLevelRef = useRef(currentLevel.min);
+  // Growth chime. It used to fire on the retired spark-only ladder, which meant it could sound
+  // at a moment when nothing the user could see had changed — and stay silent when the tree
+  // visibly grew. It now follows the tree, which is the thing being celebrated.
+  const prevStageRef = useRef(treeStage.min);
   useEffect(() => {
-    if (currentLevel.min > prevLevelRef.current) playLevelUp();
-    prevLevelRef.current = currentLevel.min;
-  }, [currentLevel.min]);
+    if (treeStage.min > prevStageRef.current) playLevelUp();
+    prevStageRef.current = treeStage.min;
+  }, [treeStage.min]);
   // World-map ambient drone — starts when the globe opens, stops when it closes.
   useEffect(() => {
     if (showMap) startMapAmbient(); else stopMapAmbient();
@@ -3677,6 +3671,7 @@ export default function App() {
                       isPremium={isPremium}
                       streak={streak}
                       sparkBalance={sparkBalance}
+                      treeStageName={treeStage.name}
                       isAdmin={isAdmin}
                       onAdminReports={() => setShowReports(true)}
                       onAdminClearFeed={() => setAdminConfirm(true)}

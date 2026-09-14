@@ -21,7 +21,7 @@ import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "l
 import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile, searchProfiles } from "./publicProfile";
 import { writeFailure } from "./writeFailure";
-import { awardPoints } from "./points";
+import { awardPoints, claimFirstToday } from "./points";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 
@@ -1233,7 +1233,11 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
 
     // Waters the Kindness Tree, same as a reflection. This was missing entirely — the post
     // previously earned nothing on either ledger.
-    try { awardPoints("post"); } catch { /* ignore */ }
+    //
+    // The first one you write today is worth 500 and the rest 150; see THE 500s in points.js
+    // for why only this one of the two 500s needs the guard. claimFirstToday marks as it reads,
+    // so it is called exactly once, here, after the post has actually gone through.
+    try { awardPoints(claimFirstToday("post") ? "postFirst" : "post"); } catch { /* ignore */ }
     setState("done");
     onPosted?.();
     setTimeout(() => onClose?.(), 900);
