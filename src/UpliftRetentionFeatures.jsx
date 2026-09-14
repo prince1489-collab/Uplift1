@@ -830,6 +830,11 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
+// The height of the one reaction strip, in px. Referenced twice — by the strip itself and by
+// the heart glow, which subtracts it so the ring keeps hugging the message rather than growing
+// to enclose the chips. They must agree, so it is one constant.
+const REACTION_STRIP_H = 26;
+
 export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
@@ -1029,8 +1034,8 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     return (
       <button
         onClick={(e) => { e.stopPropagation(); toggle("❤️"); }}
-        className="absolute -bottom-3 right-1 flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
-        style={{ zIndex: 3 }}
+        className="mt-1 ml-auto flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
+        style={{ zIndex: 3, height: REACTION_STRIP_H }}
         title="Be the first to send a heart">
         🤍 Be first
       </button>
@@ -1043,9 +1048,15 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   return (
     <>
       {displayCount > 0 && (
+        // inset-0 would stretch the ring down over the strip below, tracing a box around the
+        // chips instead of around the message. The offset is a constant rather than measured
+        // because the strip cannot wrap — see the note on it below. The glow only ever renders
+        // when a heart exists, and a heart always renders a chip, so the strip is always there
+        // to offset against.
         <div
           aria-hidden="true"
-          className="seen-heart-glow pointer-events-none absolute inset-0"
+          className="seen-heart-glow pointer-events-none absolute inset-x-0 top-0"
+          style={{ bottom: REACTION_STRIP_H }}
           data-tier={glowTier}
         />
       )}
@@ -1053,12 +1064,18 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         the bubble's bottom edge, the stickers in flow 6px beneath it — which put two sets of
         reactions to the same message in the same band on opposite sides of the card.
 
-        It stays absolutely positioned rather than moving into the flow because the heart glow
-        is `inset: 0` on this same wrapper: put the chips in flow and the glow ring stretches
-        down to enclose them, tracing a box around the pills instead of around the message. */}
+        It sits in the normal flow, so a message with reactions takes the room it needs and one
+        without stays tight against the next. The first fix for that was bottom padding on every
+        message row, which bought the room by loosening the ENTIRE feed — 14px between messages
+        inside a group, where the grouping is the thing telling you they are one person talking.
+
+        flex-nowrap is load-bearing rather than stylistic: the glow below is offset by exactly
+        one strip height, so the strip has to be exactly one line tall. Nothing can wrap it —
+        the heart plus at most three stickers plus an overflow chip is about 150px, and anything
+        beyond that is folded into the "+N". */}
     <div
-      className="absolute -bottom-3 right-1 flex items-center gap-0.5"
-      style={{ zIndex: 3 }}>
+      className="mt-1 flex flex-nowrap items-center justify-end gap-0.5"
+      style={{ zIndex: 3, height: REACTION_STRIP_H }}>
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
         const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);

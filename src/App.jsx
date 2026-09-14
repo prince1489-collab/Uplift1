@@ -4108,7 +4108,7 @@ export default function App() {
                                 const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} data-msg-id={m.id} className="relative pb-3">
+                                  <div key={m.id} data-msg-id={m.id} className="relative pb-0.5">
                                     {/* WhatsApp-style reaction bar — floats above bubble on long press */}
                                     {reactionBarId === m.id && (
                                       <>
