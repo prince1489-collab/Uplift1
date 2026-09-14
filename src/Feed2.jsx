@@ -22,6 +22,7 @@ import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile, searchProfiles } from "./publicProfile";
 import { writeFailure } from "./writeFailure";
 import { awardPoints, claimFirstToday } from "./points";
+import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 
@@ -29,6 +30,10 @@ const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
 const FOLLOWS_KEY = "seen_v2_follows";    // [{ uid, name, country, label }]
 const MOMENTS_KEY = "seen_v2_kind_moments";
+// Sticker reactions share the `reactions` subcollection with hearts, keyed by sticker id.
+// This resolves an id back to its emoji and label so the panel can show what was actually sent.
+const STICKER_BY_ID = Object.fromEntries(STICKERS.map((x) => [x.id, x]));
+
 const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
 // 200, and 200 exactly, because that is where moderation stops rather than where the design
@@ -1571,10 +1576,25 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
     if (!db || !message?.id) { setReactors([]); return; }
     let alive = true;
     const unsub = onSnapshot(collection(db, "publicMessages", message.id, "reactions"), async (snap) => {
+      // `emoji` is the document id, and the ids are NOT all emoji — stickers are stored in
+      // this same subcollection under "sticker_hug", "sticker_clap" and so on. This loop used
+      // to take the id verbatim, so a sticker reactor was listed in the Hearts section with the
+      // literal text "sticker_hug" where the heart should be, and counted in "Hearts · N".
+      //
+      // Both kinds belong here — someone who sent a hug did feel something — but they are shown
+      // as what they are, in their own section, with the sticker's real emoji.
       const rows = [];
       snap.forEach((d) => {
         const { uids = [], countries = {}, reactedAt = {} } = d.data() || {};
-        uids.forEach((uid) => rows.push({ uid, emoji: d.id, country: countries[uid] ?? null, at: reactedAt[uid] ?? 0 }));
+        const sticker = STICKER_BY_ID[d.id] ?? null;
+        uids.forEach((uid) => rows.push({
+          uid,
+          emoji: sticker ? sticker.emoji : d.id,
+          kind: sticker ? "sticker" : "heart",
+          label: sticker ? sticker.label : null,
+          country: countries[uid] ?? null,
+          at: reactedAt[uid] ?? 0,
+        }));
       });
       rows.sort((a, b) => (b.at || 0) - (a.at || 0));
       const resolved = await Promise.all(rows.map(async (r) => {
@@ -1590,6 +1610,12 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
     }, () => { if (alive) setReactors([]); });
     return () => { alive = false; unsub(); };
   }, [db, message?.id]);
+
+  // Split once, here, rather than filtering twice in the JSX. `reactors === null` means still
+  // loading, which is a different thing from "nobody", so the null is preserved by the guards
+  // below rather than collapsed into an empty array.
+  const hearts = reactors ? reactors.filter((r) => r.kind === "heart") : [];
+  const stickerReactors = reactors ? reactors.filter((r) => r.kind === "sticker") : [];
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
@@ -1613,21 +1639,21 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">
-              Hearts {reactors ? `· ${reactors.length}` : ""}
+              Hearts {hearts ? `· ${hearts.length}` : ""}
             </p>
             {reactors === null ? (
               <div className="py-8 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
                 <Loader2 size={16} className="animate-spin" /> Loading…
               </div>
-            ) : reactors.length === 0 ? (
+            ) : hearts.length === 0 ? (
               <div className="rounded-2xl border border-slate-100 bg-slate-50 py-8 text-center text-[13px] text-slate-400">
                 <div className="text-2xl mb-1">🤍</div>
                 No hearts yet — they often arrive a little later.
               </div>
             ) : (
               <div className="space-y-1">
-                {reactors.map((r) => (
-                  <div key={`${r.uid}_${r.emoji}`} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
+                {hearts.map((r) => (
+                  <div key={`${r.uid}_${r.kind}_${r.emoji}`} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
                     <div className="h-9 w-9 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
                       <span style={{ fontSize: "15px" }}>{flagFor(r.country)}</span>
                     </div>
@@ -1642,6 +1668,31 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
               </div>
             )}
           </div>
+
+          {stickerReactors.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+                Stickers · {stickerReactors.length}
+              </p>
+              <div className="space-y-1">
+                {stickerReactors.map((r) => (
+                  <div key={`${r.uid}_${r.kind}_${r.emoji}`} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
+                      <span style={{ fontSize: "15px" }}>{flagFor(r.country)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700 truncate">{r.name}</p>
+                      {/* The sticker's own words — "Big hug", "Hang in there". More use than
+                          the country line here: it says what they actually sent you. */}
+                      {r.label && <p className="text-[11px] text-slate-400 truncate">{r.label}</p>}
+                    </div>
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">{timeAgo(r.at)}</span>
+                    <span className="text-sm flex-shrink-0">{r.emoji}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">

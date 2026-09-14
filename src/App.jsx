@@ -16,11 +16,11 @@ import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
-import { StickerDisplay } from "./StickerReactions";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
+import { STICKERS } from "./StickerReactions";
 import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -974,12 +974,22 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
             } catch { name = "Someone"; }
           }
         }
-        return { id: r.id, name: name || "Someone", country, at: typeof r.reactedAt === "number" ? r.reactedAt : 0 };
+        // emoji/sticker carried through: this list now contains stickers as well as hearts,
+        // because the sticker path finally writes reactionsReceived. Reporting a hug as
+        // "liked your message ❤️" would put words and an emoji on it that the sender
+        // never chose.
+        return {
+          id: r.id, name: name || "Someone", country,
+          at: typeof r.reactedAt === "number" ? r.reactedAt : 0,
+          emoji: typeof r.emoji === "string" && r.emoji ? r.emoji : "❤️",
+          isSticker: Boolean(r.stickerId),
+        };
       }));
       if (notifyReadyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
         resolved.forEach((l) => {
           if (!prevLikeIdsRef.current.has(l.id) && l.at > likesSeenAtRef.current) {
-            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} liked your message ❤️`, { icon: "/icon-192.png", badge: "/badge-96.png" });
+            const what = l.isSticker ? `reacted ${l.emoji}` : `liked your message ${l.emoji}`;
+            new Notification(`${l.name}${l.country ? ` from ${l.country}` : ""} ${what}`, { icon: "/icon-192.png", badge: "/badge-96.png" });
           }
         });
       }
@@ -1061,8 +1071,8 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
       text: <>Someone waved at you</>, onDismiss: () => dismissWave(w.id),
     }));
     visibleLikes.forEach((l) => out.push({
-      id: l.id, ts: l.at, icon: "❤️", tint: "bg-rose-50/60", fresh: l.at > likesSeenAt,
-      text: <><span className="font-semibold">{l.name}</span>{l.country ? <> from <span className="font-semibold">{l.country}</span></> : null} liked your message</>,
+      id: l.id, ts: l.at, icon: l.emoji || "❤️", tint: l.isSticker ? "bg-teal-50/60" : "bg-rose-50/60", fresh: l.at > likesSeenAt,
+      text: <><span className="font-semibold">{l.name}</span>{l.country ? <> from <span className="font-semibold">{l.country}</span></> : null} {l.isSticker ? "reacted to your message" : "liked your message"}</>,
       onDismiss: () => dismissLike(l.id),
     }));
     const byCountry = new Map();
@@ -1742,9 +1752,13 @@ export default function App() {
         const unsub = onSnapshot(collection(db, "publicMessages", msgId, "reactions"), (rSnap) => {
           const newToasts = [];
           rSnap.forEach((rDoc) => {
+            // Sticker documents are keyed "sticker_hug", not by an emoji, so this allow-list
+            // silently excluded every one of them and a hug from Nairobi lit nothing on the
+            // globe. They carry a countries map now, so they belong here as much as a heart.
             const REACT_EMOJIS = new Set(["❤️", "🙏", "😊", "🌟"]);
-            if (!REACT_EMOJIS.has(rDoc.id)) return;
-            const emoji = rDoc.id;
+            const isSticker = rDoc.id.startsWith("sticker_");
+            if (!REACT_EMOJIS.has(rDoc.id) && !isSticker) return;
+            const emoji = isSticker ? (STICKERS.find((x) => x.id === rDoc.id)?.emoji ?? "✨") : rDoc.id;
             const data = rDoc.data();
             const countries = data.countries || {};
             const reactedAt = data.reactedAt || {};
@@ -4094,7 +4108,7 @@ export default function App() {
                                 const tailClass = "";
                                 const isActive = activeMessageId === m.id;
                                 return (
-                                  <div key={m.id} data-msg-id={m.id} className="relative pb-0.5">
+                                  <div key={m.id} data-msg-id={m.id} className="relative pb-3">
                                     {/* WhatsApp-style reaction bar — floats above bubble on long press */}
                                     {reactionBarId === m.id && (
                                       <>
@@ -4113,6 +4127,11 @@ export default function App() {
                                               playHeart();
                                               if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
+                                            // Stickers get the burst and the haptic but never
+                                            // the optimistic heart — a sticker is not a heart,
+                                            // and this handler has no branch that could treat
+                                            // it as one.
+                                            onSticker={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
                                             onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
                                             onReply={() => setReplyTarget(m)}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
@@ -4193,7 +4212,6 @@ export default function App() {
                                         </div>
                                         <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
-                                      <StickerDisplay db={db} messageId={m.id} currentUser={currentUser} />
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 

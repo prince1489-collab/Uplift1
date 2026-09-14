@@ -49,9 +49,18 @@ export default async function handler(req, res) {
 
     const name = String(reaction.reactorName || "Someone").trim() || "Someone";
     const country = reaction.country ? String(reaction.country) : null;
-    const body = country
-      ? `${name} from ${country} liked your message ❤️`
-      : `${name} liked your message ❤️`;
+
+    // Hearts and stickers both arrive here, because both now write reactionsReceived and both
+    // want the same proof-by-re-read. They must not both say "liked your message ❤️": someone
+    // who sent a hug would be reported as having sent a heart, and the emoji in the alert would
+    // be one the sender never chose.
+    //
+    // The emoji comes from the stored document rather than the request body, same as every
+    // other field here — the endpoint deliberately trusts nothing the caller sends.
+    const isSticker = Boolean(reaction.stickerId);
+    const emoji = String(reaction.emoji || "❤️");
+    const what = isSticker ? `reacted ${emoji}` : `liked your message ${emoji}`;
+    const body = country ? `${name} from ${country} ${what}` : `${name} ${what}`;
 
     // One dead device must not stop the others being told, so each send is settled on its own
     // and a permanently-dead token is pruned individually.

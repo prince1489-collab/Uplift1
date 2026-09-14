@@ -1,13 +1,29 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
-// StickerReactions.jsx — Curated animated sticker reactions (GIF-style preview)
+// StickerReactions.jsx — curated animated sticker reactions.
+//
+// THERE IS NO ❤️ STICKER, and that is the point. There used to be one — `sticker_love`, whose
+// emoji was the identical glyph to the heart the bubble already carries — and it caused three
+// separate problems at once:
+//
+//   1. Two documents in the same subcollection meant the same feeling could be recorded twice,
+//      by two different components, in two different visual treatments, on two different parts
+//      of the card. People saw a doubled heart because there genuinely were two.
+//   2. Picking it also painted a PHANTOM: the picker called back with the emoji, App.jsx read
+//      "❤️" and applied an optimistic +1 to the badge — but only a sticker_love document was
+//      ever written, so the badge showed a count that did not exist and vanished on reload.
+//   3. "Who felt this" iterated the collection unfiltered and printed the raw document id, so
+//      the panel listed a reactor as the literal string "sticker_love".
+//
+// The heart is the app's primary gesture and it owns that glyph. A sticker says something the
+// heart cannot — a hug, applause, hang in there — which is the only reason to have stickers.
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { createPortal } from "react-dom";
-import { collection, doc, onSnapshot, runTransaction } from "firebase/firestore";
+import { deleteDoc, doc, runTransaction, setDoc } from "firebase/firestore";
+import { authedPost } from "./apiBase";
 import { X } from "lucide-react";
 
 export const STICKERS = [
-  { id: "sticker_love",     emoji: "❤️",  label: "Sending love",   anim: "sticker-bounce", bg: "bg-rose-50   border-rose-100"   },
   { id: "sticker_hug",      emoji: "🤗",  label: "Big hug",        anim: "sticker-bounce", bg: "bg-amber-50  border-amber-100"  },
   { id: "sticker_clap",     emoji: "👏",  label: "Applause",       anim: "sticker-clap",   bg: "bg-teal-50   border-teal-100"   },
   { id: "sticker_star",     emoji: "🌟",  label: "You're a star",  anim: "sticker-spin",   bg: "bg-yellow-50 border-yellow-100" },
@@ -21,52 +37,90 @@ export const STICKERS = [
   { id: "sticker_sparkle",  emoji: "✨",  label: "Sparkling",      anim: "sticker-pulse",  bg: "bg-violet-50 border-violet-100" },
 ];
 
-const STICKER_MAP = Object.fromEntries(STICKERS.map(s => [s.id, s]));
-
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-export function useStickerReactions(db, messageId) {
-  const [reactions, setReactions] = useState({});
-  useEffect(() => {
-    if (!db || !messageId) return;
-    // Reuse the existing reactions subcollection — sticker IDs (sticker_*)
-    // don't collide with emoji keys (❤️ 🙏 😊 🌟), so no rule changes needed.
-    return onSnapshot(
-      collection(db, "publicMessages", messageId, "reactions"),
-      snap => {
-        const r = {};
-        snap.forEach(d => {
-          if (d.id.startsWith("sticker_")) r[d.id] = d.data();
-        });
-        setReactions(r);
-      },
-      () => {}
-    );
-  }, [db, messageId]);
-  return reactions;
-}
-
 // ── StickerPicker ─────────────────────────────────────────────────────────────
 
-export function StickerPicker({ db, currentUser, messageId, onClose, onPick }) {
+// Same job as shouldNotifyLike in UpliftRetentionFeatures.jsx, kept local rather than shared:
+// a heart and a sticker are two different notifications, so throttling them together would mean
+// sending a hug silently swallowed because you had hearted the same message a moment earlier.
+const STICKER_NOTIFY_COOLDOWN_MS = 60 * 1000;
+const lastStickerNotify = new Map();
+function shouldNotifySticker(messageId) {
+  const now = Date.now();
+  const prev = lastStickerNotify.get(messageId) ?? 0;
+  if (now - prev < STICKER_NOTIFY_COOLDOWN_MS) return false;
+  lastStickerNotify.set(messageId, now);
+  return true;
+}
+
+export function StickerPicker({ db, currentUser, messageId, senderUid, reactorCountry = null, reactorName = "", onClose, onPick }) {
   const [sending, setSending] = useState(false);
 
   const handlePick = async (sticker) => {
     if (sending || !db || !currentUser || !messageId) return;
+    // You cannot react to your own message. Every heart path has checked this since it was
+    // written; the sticker path never did, so your own stickers appeared in your own
+    // "Who felt this" and, once the code below existed, would have notified you of yourself.
+    if (senderUid && senderUid === currentUser.uid) { onClose?.(); return; }
     setSending(true);
+    let added = false;
     try {
       const rRef = doc(db, "publicMessages", messageId, "reactions", sticker.id);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(rRef);
         const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
         const uids = data.uids ?? [];
+        // countries and reactedAt are carried forward and written back. The old code did a bare
+        // tx.set of { count, uids } with no merge, which meant a sticker on a message that
+        // already had hearts would have WIPED those two maps had the ids ever collided — and,
+        // more immediately, it left sticker reactors with no country and no timestamp, so they
+        // sorted to the bottom of the panel and lit no country on the globe.
+        const countries = { ...(data.countries ?? {}) };
+        const reactedAt = { ...(data.reactedAt ?? {}) };
         if (uids.includes(currentUser.uid)) {
           const next = uids.filter(u => u !== currentUser.uid);
-          tx.set(rRef, { count: Math.max(0, next.length), uids: next });
+          delete countries[currentUser.uid];
+          delete reactedAt[currentUser.uid];
+          tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
         } else {
-          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid] });
+          countries[currentUser.uid] = reactorCountry ?? null;
+          reactedAt[currentUser.uid] = Date.now();
+          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+          added = true;
         }
       });
+
+      // ── Tell the person. ──────────────────────────────────────────────────────────────────
+      // None of this existed. A sticker wrote its reaction document and stopped there: no
+      // reactionsReceived row, so it never appeared in the recipient's bell or their globe, and
+      // no push, so their phone stayed silent. Someone sent warmth and the app quietly absorbed
+      // it. In an app whose whole purpose is making a person feel noticed, that was the worst
+      // thing on the card.
+      //
+      // Shape and ordering copied deliberately from the heart path: notify-like re-reads this
+      // document to prove the reaction happened, so the POST is CHAINED onto the write rather
+      // than fired beside it — run in parallel and the endpoint often finds nothing yet.
+      if (senderUid && senderUid !== currentUser.uid) {
+        const ownerRef = doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`);
+        if (!added) {
+          deleteDoc(ownerRef).catch(() => {});
+        } else {
+          const myName = (reactorName || "").trim().split(" ")[0] || "Someone";
+          const reactedAt = Date.now();
+          setDoc(ownerRef, {
+            messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+            emoji: sticker.emoji, stickerId: sticker.id, stickerLabel: sticker.label,
+            country: reactorCountry ?? null, reactorName: myName, reactedAt,
+          })
+            .then(() => {
+              if (shouldNotifySticker(messageId)) {
+                authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+                  .catch(() => {});
+              }
+            })
+            .catch((err) => { console.error("[sticker reactionsReceived]", err?.code, err?.message); });
+        }
+      }
+
       onPick?.(sticker);
     } catch (err) {
       console.error("Sticker react error:", err);
@@ -88,7 +142,11 @@ export function StickerPicker({ db, currentUser, messageId, onClose, onPick }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-2 flex-shrink-0">
           <div>
-            <p className="text-sm font-bold text-slate-800">React with a GIF</p>
+            {/* Not "React with a GIF", which is what this said. There are no GIFs here — these
+                are emoji with CSS keyframes on them. Promising a GIF and delivering a bouncing
+                emoji is a small lie told at the exact moment someone is deciding whether this
+                app is worth their attention. */}
+            <p className="text-sm font-bold text-slate-800">React with a sticker</p>
             <p className="text-[11px] text-slate-400">Tap one to send it as a reaction</p>
           </div>
           <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-100 transition-colors">
@@ -116,35 +174,16 @@ export function StickerPicker({ db, currentUser, messageId, onClose, onPick }) {
   );
 }
 
-// ── StickerDisplay — shown below message bubble ───────────────────────────────
-
-export function StickerDisplay({ db, messageId, currentUser }) {
-  const reactions = useStickerReactions(db, messageId);
-  const active = Object.entries(reactions).filter(([, v]) => (v.count ?? 0) > 0);
-  if (active.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap gap-1.5 mt-1.5">
-      {active.map(([stickerId, data]) => {
-        const s = STICKER_MAP[stickerId];
-        if (!s) return null;
-        const isMe = (data.uids ?? []).includes(currentUser?.uid);
-        return (
-          <div
-            key={stickerId}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 shadow-sm ${
-              isMe
-                ? "border-teal-300 bg-teal-50"
-                : "border-slate-200 bg-white"
-            }`}
-          >
-            <span className={`text-base leading-none select-none ${s.anim}`}>{s.emoji}</span>
-            {data.count > 1 && (
-              <span className="text-[11px] font-bold text-slate-500">{data.count}</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// StickerDisplay used to live here, and it is gone on purpose.
+//
+// It rendered its own row of sticker pills, in normal flow, 6px below the bubble — while the
+// heart badge hung 12px ABOVE the bubble's bottom edge, absolutely positioned. Two rows of
+// reactions to the same message, in the same 18px band, on opposite sides of the card, with
+// 2px of gap between messages. That is what "the stickers fall just below the message" was.
+//
+// ReactionSideBadges now renders hearts and stickers as one row, from one listener. It was
+// already subscribed to this whole subcollection and reading every document — it simply threw
+// the sticker ones away. Two components watching the same collection for the same message is
+// also two Firestore listeners per bubble, on the app's hottest render path.
+//
+// useStickerReactions went with it; StickerDisplay was its only caller.

@@ -16,7 +16,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { startCheckout } from "./payments";
-import { StickerPicker } from "./StickerReactions";
+import { StickerPicker, STICKERS } from "./StickerReactions";
 import { authedPost } from "./apiBase";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
@@ -849,13 +849,32 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   const displayCount = serverCount + (localHearted && !userAlreadyReacted ? 1 : 0);
   const active = displayCount > 0 ? ["❤️"] : EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
 
+  // The stickers on this message. This listener was ALREADY reading these documents and
+  // discarding them, while StickerDisplay opened a second listener on the same collection to
+  // render them in a second row below the bubble. One listener, one row.
+  const stickers = STICKERS
+    .map((def) => ({ def, data: reactions[def.id] }))
+    .filter((x) => (x.data?.count ?? 0) > 0);
+  // Bounded: this row floats over the card, so it cannot be allowed to wrap onto a second line
+  // and collide with the message underneath. Past three, the overflow chip carries the rest and
+  // opens the panel that can show them all properly.
+  const STICKER_SLOTS = 3;
+  const shownStickers = stickers.slice(0, STICKER_SLOTS);
+  const hiddenStickerCount = stickers
+    .slice(STICKER_SLOTS)
+    .reduce((n, x) => n + (x.data?.count ?? 0), 0);
+
   // Invite the FIRST real heart on a recent, un-reacted greeting from someone else — so a post
   // that would otherwise get no response gets a GENUINE reaction (never a fabricated one).
+  //
+  // Stickers count as a response. Offering "be the first" under a message someone has already
+  // answered with a hug told the sender their message was ignored when it was not.
   const BE_FIRST_WINDOW_MS = 3 * 60 * 60 * 1000;
-  const showBeFirst = !mine && displayCount === 0 && senderUid && senderUid !== currentUser?.uid
+  const showBeFirst = !mine && displayCount === 0 && stickers.length === 0
+    && senderUid && senderUid !== currentUser?.uid
     && messageTs && (Date.now() - messageTs < BE_FIRST_WINDOW_MS);
 
-  if (active.length === 0 && displayCount === 0 && !showBeFirst) return null;
+  if (active.length === 0 && displayCount === 0 && stickers.length === 0 && !showBeFirst) return null;
 
   const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
@@ -1001,7 +1020,12 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   };
 
   // Zero reactions but recent + not mine → invite the first (real) heart.
-  if (active.length === 0 && displayCount === 0) {
+  //
+  // Keyed on showBeFirst rather than on "no hearts", which is what it used to test. Those were
+  // the same condition until stickers joined this row: a message answered with a hug but no
+  // heart would otherwise take this branch and render "Be first" INSTEAD of the hug — telling
+  // the sender nobody had responded, on top of hiding the response.
+  if (showBeFirst) {
     return (
       <button
         onClick={(e) => { e.stopPropagation(); toggle("❤️"); }}
@@ -1025,8 +1049,15 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
           data-tier={glowTier}
         />
       )}
+    {/* ONE reaction strip. Hearts and stickers used to be two rows — the heart floating over
+        the bubble's bottom edge, the stickers in flow 6px beneath it — which put two sets of
+        reactions to the same message in the same band on opposite sides of the card.
+
+        It stays absolutely positioned rather than moving into the flow because the heart glow
+        is `inset: 0` on this same wrapper: put the chips in flow and the glow ring stretches
+        down to enclose them, tracing a box around the pills instead of around the message. */}
     <div
-      className="absolute -bottom-3 right-1 flex gap-0.5"
+      className="absolute -bottom-3 right-1 flex items-center gap-0.5"
       style={{ zIndex: 3 }}>
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
@@ -1061,6 +1092,36 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
           </span>
         );
       })}
+
+      {/* Stickers, in the same strip. These used to be inert decoration; tapping one now opens
+          the same panel the heart count does, so "who sent me that hug?" is answerable. */}
+      {shownStickers.map(({ def, data }) => {
+        const isMine = (data.uids ?? []).includes(currentUser?.uid);
+        const count = data.count ?? 0;
+        return (
+          <button
+            key={def.id}
+            onClick={() => onViewReactors?.()}
+            disabled={!onViewReactors}
+            title={onViewReactors ? `${def.label} — see who felt this` : def.label}
+            className={`seen-react-badge relative flex items-center gap-0.5 rounded-full border px-1.5 py-1 text-[10px] font-semibold shadow-sm transition-all hover:scale-110 active:scale-90 disabled:cursor-default ${
+              isMine ? "is-mine border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600"
+            }`}>
+            <span className={`text-[13px] leading-none select-none ${def.anim}`}>{def.emoji}</span>
+            {count > 1 && <span>{count}</span>}
+          </button>
+        );
+      })}
+
+      {hiddenStickerCount > 0 && (
+        <button
+          onClick={() => onViewReactors?.()}
+          disabled={!onViewReactors}
+          title="See every reaction"
+          className="seen-react-badge relative rounded-full border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-slate-500 shadow-sm transition-all hover:scale-110 active:scale-90 disabled:cursor-default">
+          +{hiddenStickerCount}
+        </button>
+      )}
     </div>
     </>
   );
@@ -1776,7 +1837,7 @@ const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onUpgrade, onDelete, onReply }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onSticker, onUpgrade, onDelete, onReply }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -2044,10 +2105,10 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           {emoji}
         </button>
       ))}
-      {/* Animated stickers. The picker below has been fully built since it shipped — twelve
-          reactions, a working toggle transaction, and a live StickerDisplay on the bubble — and
-          setShowStickers(true) was never called from anywhere, so none of it could be reached.
-          This button is the whole of what was missing. */}
+      {/* Animated stickers. The picker below was fully built from the day it shipped and
+          setShowStickers(true) was never called from anywhere, so none of it could be reached;
+          this button is the whole of what was missing. The reactions it writes now land in the
+          same strip as the heart, and reach the recipient. */}
       <div className="seen-qrb-sep" />
       <button
         className="seen-qrb-btn"
@@ -2096,8 +2157,20 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           db={db}
           currentUser={currentUser}
           messageId={messageId}
+          // The picker needs to know whose message this is and who is reacting, so it can skip
+          // your own messages and tell the recipient afterwards. It knew none of that before,
+          // which is why a sticker went nowhere.
+          senderUid={senderUid}
+          reactorCountry={profile?.country ?? null}
+          reactorName={profile?.fullName ?? ""}
           onClose={() => setShowStickers(false)}
-          onPick={(sticker) => { onReact?.(sticker.emoji); }}
+          // onSticker, NOT onReact. This used to call onReact(sticker.emoji), and that was the
+          // phantom heart: onReact treats "❤️" as a heart tap and applies an optimistic +1 to
+          // the badge, while the picker only ever writes a sticker document — a count with
+          // nothing behind it, which survived until reload because the optimistic set is never
+          // cleared. Removing sticker_love defuses it today, but a separate callback is what
+          // stops it coming back the next time someone adds a heart-ish sticker.
+          onPick={(sticker) => onSticker?.(sticker.emoji)}
         />
       )}
     </div>
