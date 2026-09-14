@@ -2,7 +2,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 // Shared with notify-like/notify-reply so the Android payload shape exists in exactly one place.
-import { androidNotification } from "./_auth.js";
+import { androidNotification, tokensFor, dropDeadToken } from "./_auth.js";
 
 function initAdmin() {
   if (!getApps().length) {
@@ -46,6 +46,87 @@ function localDay(timezone, now) {
   } catch { return ""; }
 }
 
+// ── What actually happened to this person ────────────────────────────────────────────────────
+//
+// The daily push has said the same sentence six days a week since it shipped, and it names
+// nothing that happened: not who wrote to you, not who was moved by something you said. A
+// notification that never varies becomes wallpaper inside a fortnight, and this is Seen's only
+// re-engagement channel — so it is worth the two extra reads to make it true.
+//
+// Both queries are bounded and use indexes that already exist. `read` and `reactedAt` are
+// filtered in memory on purpose: a where() on either would need a new composite index, and an
+// index that has to be deployed separately is a way for this to silently stop working.
+//
+// COST: two reads per recipient per morning. At tens of users that is nothing. Past a few
+// hundred it is worth batching by timezone slice or denormalising a counter onto the user doc —
+// noting it here rather than discovering it on a bill.
+async function personalNews(db, uid, since) {
+  const news = { replies: 0, replyName: null, hearts: 0, heartName: null, heartCountry: null };
+  try {
+    const rs = await db.collection("privateReplies")
+      .where("toUid", "==", uid).orderBy("ts", "desc").limit(10).get();
+    const unread = rs.docs.map((d) => d.data()).filter((r) => r && r.read === false);
+    news.replies = unread.length;
+    news.replyName = unread[0]?.fromName || null;
+  } catch (err) { console.error("[send-reminder] replies", err?.code); }
+  try {
+    const hs = await db.collection("users").doc(uid).collection("reactionsReceived")
+      .orderBy("reactedAt", "desc").limit(10).get();
+    const recent = hs.docs.map((d) => d.data()).filter((r) => Number(r?.reactedAt) > since);
+    news.hearts = recent.length;
+    news.heartName = recent[0]?.reactorName || null;
+    news.heartCountry = recent[0]?.country || null;
+  } catch (err) { console.error("[send-reminder] hearts", err?.code); }
+  return news;
+}
+
+// A private reply outranks a heart: somebody wrote to you, personally, and is waiting for you to
+// read it. A heart outranks the generic line. Every one of these is a STATEMENT of something
+// true — never "your streak is at risk", never a countdown. The roadmap is explicit that guilt is
+// not a mechanic in a wellbeing app, and a notification is the easiest place in a product to
+// break that rule by accident.
+export function newsMessage(news) {
+  if (news.replies > 0) {
+    return news.replies === 1
+      ? { title: "Someone wrote to you 💬", body: `${news.replyName || "Someone"} sent you a private word of kindness.` }
+      : { title: "Someone wrote to you 💬", body: `${news.replies} private replies are waiting for you.` };
+  }
+  if (news.hearts > 0) {
+    const who = news.heartName && news.heartCountry
+      ? `${news.heartName} in ${news.heartCountry}`
+      : (news.heartName || "Someone");
+    return news.hearts === 1
+      ? { title: "Your words landed ❤️", body: `${who} felt something you wrote.` }
+      : { title: "Your words landed ❤️", body: `${news.hearts} people felt something you wrote.` };
+  }
+  return null;
+}
+
+// One query, shared by everyone with no personal news — so the fallback still says something
+// true rather than repeating yesterday's sentence. Kindness happening elsewhere is the closest
+// thing Seen has to a reason to open it on a quiet day.
+async function worldOvernight(db, since) {
+  try {
+    const snap = await db.collection("publicMessages").where("timestamp", ">", since).limit(500).get();
+    const countries = new Set();
+    snap.docs.forEach((d) => { const c = d.data()?.country; if (c) countries.add(c); });
+    return { count: snap.size, countries: countries.size };
+  } catch (err) {
+    console.error("[send-reminder] world", err?.code);
+    return { count: 0, countries: 0 };
+  }
+}
+
+export function worldMessage(world) {
+  if (world.count < 5) return null; // too few to be worth saying out loud
+  return {
+    title: "Good morning ☀️",
+    body: world.countries > 1
+      ? `${world.count} kind messages crossed the world overnight, from ${world.countries} countries.`
+      : `${world.count} kind messages were sent overnight.`,
+  };
+}
+
 export default async function handler(req, res) {
   // Vercel cron injects Authorization: Bearer <CRON_SECRET> automatically — and only when
   // CRON_SECRET is defined for that project.
@@ -70,78 +151,75 @@ export default async function handler(req, res) {
     const db = getFirestore();
     const now = new Date();
 
-    const snap = await db.collection("users").where("fcmToken", "!=", "").get();
+    // Was `.where("fcmToken", "!=", "")`, which cannot see a user whose only registration lives
+    // in the fcmTokens map. Reading all users and filtering here costs a full collection scan,
+    // which at this size is cheaper than maintaining a second index — and tokensFor() then
+    // resolves either shape.
+    const snap = await db.collection("users").get();
 
     // Only send to users whose local time is 9am, and who have a stored timezone.
     const entries = snap.docs
-      .map((d) => ({ uid: d.id, token: d.data().fcmToken, timezone: d.data().timezone, platform: d.data().pushPlatform }))
-      .filter((e) => e.token && e.timezone)
+      .map((d) => ({ uid: d.id, rows: tokensFor(d.data()), timezone: d.data().timezone }))
+      .filter((e) => e.rows.length && e.timezone)
       .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }))
       .filter((e) => e.hour === 9);
 
     if (!entries.length) return res.status(200).json({ sent: 0, total: snap.size, matched: 0 });
 
-    // One morning push per user: Sundays get the combined weekly check-in, other days the daily nudge.
     // Fortnightly parity (UTC week index) decides whether this Sunday includes the wellbeing prompt.
     const wellbeingWeek = Math.floor(now.getTime() / (7 * 24 * 60 * 60 * 1000)) % 2 === 0;
-    const groups = { daily: [], weekly: [] };
-    for (const e of entries) {
-      (e.day === "Sun" ? groups.weekly : groups.daily).push(e);
-    }
+    const since = now.getTime() - 24 * 60 * 60 * 1000;
 
     let sent = 0;
     const errors = [];
-    const staleUids = [];
+    const dead = [];
 
-    for (const [key, group] of Object.entries(groups)) {
-      if (!group.length) continue;
-      const msg = key === "weekly" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : DAILY_MESSAGE;
-      // A multicast sends ONE payload to many tokens, and native Android needs a different one
-      // from everybody else: it must have an android.notification block (no service worker in a
-      // webview, and Android will not display a data-only message in the background), while a web
-      // token must NOT have one (sw.js renders the notification itself, so it would show twice).
-      // So split by shape first and send each separately, rather than picking one payload and
-      // being wrong for half the recipients.
-      const shapes = {
-        android: group.filter((e) => e.platform === "android"),
-        other: group.filter((e) => e.platform !== "android"),
-      };
-      for (const [shape, list] of Object.entries(shapes)) {
-        if (!list.length) continue;
-        // FCM batch limit is 500 tokens per multicast call
-        for (let i = 0; i < list.length; i += 500) {
-          const chunk = list.slice(i, i + 500);
-          // Data-only so the compat SDK doesn't auto-show a duplicate notification.
-          const payload = {
-            tokens: chunk.map((e) => e.token),
-            // link is carried in data so native iOS can deep-link via notification.data.link.
-            data: { title: msg.title, body: msg.body, link: APP_URL },
-            webpush: { fcmOptions: { link: APP_URL } },
-            // apns is applied only to APNs-backed (iOS) tokens; web tokens ignore it. The aps.alert
-            // makes iOS display the notification (data-only would be delivered silently).
-            apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
-          };
-          if (shape === "android") payload.android = androidNotification(msg.title, msg.body);
-          const result = await getMessaging().sendEachForMulticast(payload);
-          sent += result.successCount;
-          result.responses.forEach((r, idx) => {
-            if (!r.success) {
-              errors.push(r.error?.code || "unknown");
-              if (r.error?.code === "messaging/registration-token-not-registered") {
-                staleUids.push(chunk[idx].uid);
-              }
-            }
-          });
-        }
-      }
+    // Send one payload to one person, across every device they have. Each device carries its own
+    // platform because the envelope differs: native Android needs an android.notification block
+    // (no service worker in a webview, and a data-only message is delivered silently while
+    // backgrounded), while a web token must NOT have one or sw.js draws a second notification.
+    const pushTo = async (uid, rows, msg) => {
+      const results = await Promise.allSettled(rows.map((r) => {
+        const payload = {
+          token: r.token,
+          data: { title: msg.title, body: msg.body, link: APP_URL },
+          webpush: { fcmOptions: { link: APP_URL } },
+          apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
+        };
+        if (r.platform === "android") payload.android = androidNotification(msg.title, msg.body);
+        return getMessaging().send(payload);
+      }));
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") { sent += 1; return; }
+        const code = result.reason?.code || "unknown";
+        errors.push(code);
+        // Carry the owner through: a token row knows its device, not whose it is.
+        if (code === "messaging/registration-token-not-registered") dead.push({ uid, row: rows[i] });
+      });
+    };
+
+    // The generic line is the same sentence for everybody, so it is worth computing once.
+    const world = await worldOvernight(db, since);
+    const worldMsg = worldMessage(world);
+
+    // Ordering, most specific first: something a person did FOR YOU beats the Sunday ritual,
+    // which beats what the world did, which beats the evergreen line. Telling someone about the
+    // journal while an unread private message sits waiting would be the wrong thing to say.
+    let personalised = 0;
+    for (const e of entries) {
+      const news = await personalNews(db, e.uid, since);
+      const personal = newsMessage(news);
+      if (personal) personalised += 1;
+      const weekly = e.day === "Sun" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : null;
+      const msg = personal ?? weekly ?? worldMsg ?? DAILY_MESSAGE;
+      await pushTo(e.uid, e.rows, msg);
     }
 
-    // Best-effort cleanup of permanently dead tokens.
-    await Promise.all(
-      staleUids.map((uid) => db.collection("users").doc(uid).update({ fcmToken: "" }).catch(() => {}))
-    );
+    // Prune only the devices that actually died. This used to blank `fcmToken` for the whole
+    // user, so one stale browser registration could take a working phone offline.
+    await Promise.all(dead.map(({ uid, row }) => dropDeadToken(db, uid, row).catch(() => {})));
 
-    return res.status(200).json({ sent, matched: entries.length, total: snap.size, errors });
+    return res.status(200).json({ sent, matched: entries.length, personalised, total: snap.size, world, errors });
   } catch (err) {
     console.error("[send-reminder]", err?.code, err?.message);
     return res.status(500).json({ error: err?.code || "internal", message: err?.message });

@@ -79,6 +79,48 @@ export function androidNotification(title, body) {
   };
 }
 
+// ── Which devices to push, and pruning the ones that have died ───────────────────────────────
+//
+// A person is not a device. users/{uid}.fcmToken was ONE field written by two different
+// registrations — the web app and the native app — so the last one to register owned every
+// notification from then on. Open Seen in Chrome after installing it and the browser's token
+// overwrote the phone's; from that moment every push went to the browser, and sw.js opens the
+// website on tap. That is the whole of "notifications take me to the web link". Two phones on
+// one account had the same problem, silently.
+//
+// users/{uid}.fcmTokens is keyed by a DEVICE id rather than by the token. Keying by token would
+// leave an orphan behind every time FCM rotated one, and would put an opaque third-party string
+// into a Firestore field path. A device id is ours, stable, and safe to use in a dot path when
+// the entry has to be deleted.
+//
+// Reads fall back to the legacy single field, so nobody stops receiving notifications between
+// this deploying and their next app open. The clients keep writing both for the same reason.
+export function tokensFor(userData) {
+  const map = userData?.fcmTokens;
+  if (map && typeof map === "object") {
+    const rows = Object.entries(map)
+      .filter(([, v]) => v && typeof v === "object" && v.token)
+      .map(([deviceId, v]) => ({ deviceId, token: String(v.token), platform: v.platform ?? null }));
+    if (rows.length) return rows;
+  }
+  const legacy = userData?.fcmToken;
+  return legacy ? [{ deviceId: null, token: String(legacy), platform: userData?.pushPlatform ?? null }] : [];
+}
+
+// FCM says a token is permanently gone. Remove just that device rather than blanking the field
+// for all of them — which is what clearing `fcmToken` used to do, taking a working phone offline
+// because a stale browser token happened to fail first.
+export async function dropDeadToken(db, uid, row) {
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const patch = {};
+  if (row?.deviceId) patch[`fcmTokens.${row.deviceId}`] = FieldValue.delete();
+  // Only clear the legacy field if it is the one that died, or it would silently disable a
+  // device that has not migrated yet.
+  const snap = await db.collection("users").doc(uid).get().catch(() => null);
+  if (snap?.data()?.fcmToken && snap.data().fcmToken === row?.token) patch.fcmToken = "";
+  if (Object.keys(patch).length) await db.collection("users").doc(uid).update(patch).catch(() => {});
+}
+
 export function pushEnvelope(token, body, platform) {
   const envelope = {
     token,

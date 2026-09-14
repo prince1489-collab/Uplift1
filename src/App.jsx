@@ -77,7 +77,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
-import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform } from "./nativePush";
+import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
 import { apiUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
@@ -1647,7 +1647,29 @@ export default function App() {
       registerNativePush({
         db,
         uid: currentUser.uid,
-        onOpenLink: () => { try { window.location.assign("/"); } catch { /* ignore */ } },
+        // nativePush resolves the link the notification was carrying and hands it over; this
+        // used to drop it and navigate to "/", so tapping "Kalpana replied to you" put you on
+        // the feed with no idea where to look.
+        //
+        // An ABSOLUTE url is deliberately reduced to its path: inside a Capacitor WebView the
+        // app is served from its own origin, so assigning https://www.seenapp.app/... leaves the
+        // app and opens a browser — the very symptom being fixed. Anything that is not a
+        // same-site path falls back to the feed rather than navigating somewhere unexpected.
+        onOpenLink: (link) => {
+          try {
+            let path = "/";
+            if (typeof link === "string" && link) {
+              if (link.startsWith("/")) path = link;
+              else {
+                try {
+                  const u = new URL(link);
+                  if (/(^|\.)seenapp\.app$/i.test(u.hostname)) path = `${u.pathname}${u.search}${u.hash}` || "/";
+                } catch { /* not a url — keep "/" */ }
+              }
+            }
+            window.location.assign(path);
+          } catch { /* ignore */ }
+        },
       });
       return;
     }
@@ -1665,8 +1687,12 @@ export default function App() {
             // granted notifications on the website kept `pushPlatform: "android"` against a WEB
             // token, so every push carried the Android notification block to a browser already
             // drawing its own — two notifications, which is the exact thing the field prevents.
-            setDoc(doc(db, "users", currentUser.uid),
-              { fcmToken: token, timezone: tz, pushPlatform: pushPlatform() }, { merge: true }).catch(() => {});
+            setDoc(doc(db, "users", currentUser.uid), {
+              fcmToken: token, timezone: tz, pushPlatform: pushPlatform(),
+              // Keyed per device, so registering here no longer takes the phone's notifications
+              // away from it. merge:true merges INTO the map rather than replacing it.
+              fcmTokens: tokenEntry(token, pushPlatform(), tz),
+            }, { merge: true }).catch(() => {});
           }
         })
         .catch(() => {});

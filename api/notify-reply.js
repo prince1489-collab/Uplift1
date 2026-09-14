@@ -11,7 +11,7 @@
 // reply you actually sent, and its text cannot be chosen by the caller.
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { cors, requireCaller, pushEnvelope } from "./_auth.js";
+import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (!cors(req, res)) return;
@@ -35,9 +35,8 @@ export default async function handler(req, res) {
     if (!toUid || toUid === callerUid) return res.status(400).json({ error: "bad recipient" });
 
     const userSnap = await db.collection("users").doc(toUid).get();
-    const token = userSnap.data()?.fcmToken;
-    const platform = userSnap.data()?.pushPlatform;
-    if (!token) return res.status(200).json({ skipped: "no token" });
+    const rows = tokensFor(userSnap.data());
+    if (!rows.length) return res.status(200).json({ skipped: "no token" });
 
     // The two directions read differently, and the difference matters: one is a stranger
     // reaching out, the other is someone answering you. `inReplyTo` is what distinguishes
@@ -47,15 +46,19 @@ export default async function handler(req, res) {
       ? `${name} replied back 💬`
       : `${name} sent you a private reply 💬`;
 
-    const pushId = await getMessaging().send(pushEnvelope(token, body, platform));
-    return res.status(200).json({ ok: true, messageId: pushId });
+    const results = await Promise.allSettled(
+      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform)))
+    );
+    let sent = 0;
+    await Promise.all(results.map(async (result, i) => {
+      if (result.status === "fulfilled") { sent += 1; return; }
+      const code = result.reason?.code;
+      console.error("[notify-reply]", code, result.reason?.message);
+      if (code === "messaging/registration-token-not-registered") await dropDeadToken(db, toUid, rows[i]);
+    }));
+    return res.status(200).json({ ok: sent > 0, sent, devices: rows.length });
   } catch (err) {
     console.error("[notify-reply]", err?.code, err?.message);
-    if (err?.code === "messaging/registration-token-not-registered" && toUid) {
-      try {
-        await getFirestore().collection("users").doc(toUid).update({ fcmToken: "" });
-      } catch { /* ignore */ }
-    }
     return res.status(500).json({ error: err?.code || "internal", message: err?.message });
   }
 }

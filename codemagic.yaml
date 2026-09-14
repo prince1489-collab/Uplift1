@@ -85,7 +85,7 @@ workflows:
         #          submissions
         # Both mean the same thing — that version already shipped, so pick the next one. They are
         # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
-        MARKETING_VERSION: "1.4"
+        MARKETING_VERSION: "1.5"
       node: 20
       xcode: latest
       cocoapods: default
@@ -256,7 +256,7 @@ workflows:
         # device. That happened: production carried a broken versionCode 2 and internal carried
         # versionCode 3, both displaying "1.2", and there was no way to tell which one a phone
         # had installed without uninstalling.
-        ANDROID_VERSION_NAME: "1.4"
+        ANDROID_VERSION_NAME: "1.5"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.

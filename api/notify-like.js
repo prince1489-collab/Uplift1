@@ -13,7 +13,7 @@
 //     so the notification body can't be attacker-chosen.
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { cors, requireCaller, pushEnvelope } from "./_auth.js";
+import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (!cors(req, res)) return;
@@ -42,11 +42,10 @@ export default async function handler(req, res) {
     if (reaction.reactorUid !== callerUid) return res.status(403).json({ error: "not your reaction" });
 
     const userSnap = await db.collection("users").doc(ownerUid).get();
-    const token = userSnap.data()?.fcmToken;
-    // Written beside the token by nativePush.js; absent for tokens stored before it existed,
-    // which correctly falls through to the original web/iOS envelope.
-    const platform = userSnap.data()?.pushPlatform;
-    if (!token) return res.status(200).json({ skipped: "no token" });
+    // Every device they have, not just whichever registered most recently. Each row carries its
+    // own platform, which is what decides the envelope shape.
+    const rows = tokensFor(userSnap.data());
+    if (!rows.length) return res.status(200).json({ skipped: "no token" });
 
     const name = String(reaction.reactorName || "Someone").trim() || "Someone";
     const country = reaction.country ? String(reaction.country) : null;
@@ -54,15 +53,21 @@ export default async function handler(req, res) {
       ? `${name} from ${country} liked your message ❤️`
       : `${name} liked your message ❤️`;
 
-    const pushId = await getMessaging().send(pushEnvelope(token, body, platform));
-    return res.status(200).json({ ok: true, messageId: pushId });
+    // One dead device must not stop the others being told, so each send is settled on its own
+    // and a permanently-dead token is pruned individually.
+    const results = await Promise.allSettled(
+      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform)))
+    );
+    let sent = 0;
+    await Promise.all(results.map(async (result, i) => {
+      if (result.status === "fulfilled") { sent += 1; return; }
+      const code = result.reason?.code;
+      console.error("[notify-like]", code, result.reason?.message);
+      if (code === "messaging/registration-token-not-registered") await dropDeadToken(db, ownerUid, rows[i]);
+    }));
+    return res.status(200).json({ ok: sent > 0, sent, devices: rows.length });
   } catch (err) {
     console.error("[notify-like]", err?.code, err?.message);
-    if (err?.code === "messaging/registration-token-not-registered") {
-      try {
-        await getFirestore().collection("users").doc(ownerUid).update({ fcmToken: "" });
-      } catch { /* ignore */ }
-    }
     return res.status(500).json({ error: err?.code || "internal", message: err?.message });
   }
 }
