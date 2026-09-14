@@ -13,7 +13,7 @@ import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt } from "./JournalPrompts";
 import { writeFailure } from "./writeFailure";
-import { awardPoints } from "./points";
+import { awardPoints, POINTS } from "./points";
 import { markDone } from "./invitations";
 import { authedPost } from "./apiBase";
 
@@ -23,6 +23,12 @@ const TYPES = [
 ];
 
 const WEEKLY_GOAL = 3; // a gentle "few times a week" target — never punitive
+// How many entries the log shows before offering the folder tree. Ten is about four weeks at
+// the weekly goal — far enough back to find "what did I write on Tuesday" by scrolling.
+const RECENT_ENTRIES = 10;
+// How many times a day the prompt can be rerolled. See the note at the swap link for why this
+// is three here and one in Practice.
+const PROMPT_SWAPS = 3;
 const WEEKS_ACTIVE_MILESTONES = [4, 8, 12, 26, 52];
 
 function pad(n) { return String(n).padStart(2, "0"); }
@@ -338,6 +344,8 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const [showDatePicker, setShowDatePicker] = useState(false); // dates other than today are the rare case
   const [shareEntry, setShareEntry] = useState(null); // entry being shared as a Featured Story
   const [openFolders, setOpenFolders] = useState(null); // Set of open folder keys (null → init to newest)
+  const [dropsBurst, setDropsBurst] = useState(false);  // the "+N drops" acknowledgement on save
+  const [showAllEntries, setShowAllEntries] = useState(false);
   const prevWeekly = useRef(null);
   const prevWeeks = useRef(null);
   const textRef = useRef(null);
@@ -414,15 +422,27 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   });
 
   const renderEntry = (e) => {
-    const t = TYPES.find((x) => x.id === e.type) ?? TYPES[0];
+    // Every entry written since the v2 merge is stored with type "reflection", which matches
+    // NEITHER of the two TYPES — so this used to fall back to TYPES[0] and badge every single
+    // card "🙏 Grateful", whatever it said. A label that is wrong on every row is worse than no
+    // label, and it was wrong on every row.
+    //
+    // What replaces it is the question the entry was actually written to, which has been stored
+    // on the document all along and never shown anywhere. Re-reading "What made you laugh this
+    // week?" above your own answer is the thing that makes an old entry worth reopening.
+    const t = TYPES.find((x) => x.id === e.type) ?? null;
     return (
       <div key={e.id} className="rounded-2xl border border-slate-100 bg-white shadow-sm px-3.5 py-3 relative overflow-hidden"
         style={{ animation: "seenFadeUp 300ms ease both" }}>
-        <span aria-hidden className="absolute -right-2 -bottom-3 text-5xl opacity-[0.06] select-none">{t.emoji}</span>
-        <div className="flex items-center justify-between mb-1 relative">
-          <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ background: `${t.color}18`, color: t.color }}>
-            {t.emoji} {t.label}
-          </span>
+        <span aria-hidden className="absolute -right-2 -bottom-3 text-5xl opacity-[0.06] select-none">{t ? t.emoji : "🌱"}</span>
+        <div className="flex items-center justify-between mb-1 relative gap-2">
+          {t ? (
+            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ background: `${t.color}18`, color: t.color }}>
+              {t.emoji} {t.label}
+            </span>
+          ) : e.prompt ? (
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-teal-600" title={e.prompt}>{e.prompt}</span>
+          ) : <span />}
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-[10px] text-slate-400">{fmtDate(e.date)}</span>
             <button onClick={() => setShareEntry(e)} title="Share as story" className="text-slate-300 hover:text-teal-500 transition-colors">
@@ -490,6 +510,12 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
         });
         try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
+        // Say thank you. Practice has burst "✨ +150 drops" on every tick since it shipped;
+        // Reflect awarded its points in complete silence, so the tab that asks for the most
+        // effort was the only one that never acknowledged it. New entries only — an edit
+        // earns nothing, and a burst over nothing would be a lie.
+        setDropsBurst(true);
+        setTimeout(() => setDropsBurst(false), 2200);
         // New entries only, same as the points above: coming back to edit today's reflection is
         // still the same day's act, and the streak is already credited for it.
         try { onKindAct?.(); } catch { /* ignore */ }
@@ -521,6 +547,20 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const content = (
     <>
       {celebrate && <Confetti />}
+      {/* Deliberately a fixed, brief overlay rather than a card-bound one: the writing area has
+          no fixed height (the textarea auto-grows), so anchoring to it would put the message in
+          a different place depending on how much you wrote. */}
+      {dropsBurst && (
+        <div className="pointer-events-none fixed inset-x-0 top-24 z-[318] flex justify-center px-4">
+          <div className="rounded-2xl bg-teal-500/95 px-5 py-3 text-center shadow-xl"
+            style={{ animation: "seenPracticeDone 2200ms ease both" }}>
+            <p className="text-lg font-extrabold text-white">✨ +{POINTS.reflect} drops</p>
+            <p className="mt-0.5 text-[12px] font-medium leading-snug text-teal-50">
+              You gave that a minute of real attention.
+            </p>
+          </div>
+        </div>
+      )}
       {!inline && (
         <div className="seen-overlay-header flex items-center gap-3 border-b border-slate-100 px-4 py-3 flex-shrink-0">
           <button onClick={onClose} className="rounded-full p-1.5 hover:bg-slate-100 transition-colors">
@@ -567,10 +607,19 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               {editingId ? "You answered" : "Today's prompt"}
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
-            {/* One swap a day, matching Practice — and said the same way, so the two tabs
-                aren't teaching two different rules in two different vocabularies.
-                The offset key is already per-day, so this resets on its own tomorrow. */}
-            {!editingId && (promptOffset < 1 ? (
+            {/* Three swaps, where Practice allows one, and the difference is deliberate rather
+                than drift.
+
+                In Practice the prompt IS the task, so rerolling freely lets you shop for the
+                easiest act of kindness on offer — the limit is what keeps it a practice. Here
+                the prompt is only a way in; you can write about anything, and the entry is worth
+                the same whichever question started it. So a reroll costs nothing, while being
+                stuck on a question that does not land — on the one screen whose entire job is to
+                get someone writing — costs the whole session.
+
+                Still bounded, because an endless carousel is its own way of not writing. The
+                offset key is per-day, so this resets on its own tomorrow. */}
+            {!editingId && (promptOffset < PROMPT_SWAPS ? (
               <button onClick={nextPrompt}
                 className="mt-2 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
                 Ask me something else →
@@ -578,7 +627,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             ) : (
               // slate-300 measured 1.48:1 on this tint — the only thing explaining where the
               // swap link went, and effectively invisible.
-              <p className="mt-2 text-[11px] font-semibold text-slate-600">swapped — back tomorrow</p>
+              <p className="mt-2 text-[11px] font-semibold text-slate-600">that's all of them for today — write about anything 🌱</p>
             ))}
           </div>
 
@@ -684,13 +733,28 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           </button>
         )}
 
-        {/* Log — tidied into Year → Month → Week folders */}
+        {/* Log.
+            It used to open straight into Year → Month → Week folders, and nothing else. Reading
+            what you wrote last Tuesday meant opening three nested folders — filing-cabinet UI
+            over a notebook, and on a tab whose whole job is to be easy to come back to.
+            The folders are right for someone with a year of entries and wrong for everyone on
+            day three, so they are now what "Show all" opens rather than the front door. */}
         <div>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Your entries</p>
           {entries.length === 0 ? (
             <p className="text-center text-xs text-slate-400 py-6 leading-relaxed">
               No reflections yet.<br />A line or two, a few times a week, is all it takes. 🌱
             </p>
+          ) : !showAllEntries ? (
+            <div className="space-y-2">
+              {entries.slice(0, RECENT_ENTRIES).map(renderEntry)}
+              {entries.length > RECENT_ENTRIES && (
+                <button onClick={() => setShowAllEntries(true)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                  Show all {entries.length} entries
+                </button>
+              )}
+            </div>
           ) : (
             <div className="space-y-1">
               {folders.map((yr) => (
@@ -721,6 +785,10 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
                   )}
                 </div>
               ))}
+              <button onClick={() => setShowAllEntries(false)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                Show recent only
+              </button>
             </div>
           )}
         </div>
