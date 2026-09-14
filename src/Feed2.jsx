@@ -350,7 +350,7 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
 const ROTATE_MS = 5000;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately }) {
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   // Blocking has to hold here too. It used to be applied only to the Focused Feed, so a
   // blocked person's messages kept rotating through the Worldwide strip.
@@ -358,6 +358,27 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
     const set = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
     return (uid) => Boolean(uid) && set.has(uid);
   }, [blockedUids]);
+  // What the world did today, for when there is no stranger to show.
+  //
+  // This band is the FIRST thing on the home screen, and on a small user base it is empty by
+  // construction: the rotation excludes everyone you follow (they belong in the Focused Feed
+  // below), so once you follow the handful of people who are actually active, there is nobody
+  // left to rotate. Every frame of every recording so far has opened on "Kind messages from
+  // around the world will appear here" — an app about not being alone, whose first line is an
+  // absence.
+  //
+  // So when there is nothing to rotate, say something true instead of apologising. Counted from
+  // the same `messages` already in hand — no extra query — and deliberately counting EVERYONE,
+  // including you and the people you follow, because this is a measure of the world rather than
+  // a feed of it.
+  const pulse = useMemo(() => {
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const recent = messages.filter(
+      (m) => m?.uid && m.uid !== "system" && m.text && !isBlocked(m.uid) && Number(m.timestamp) > dayAgo
+    );
+    return { count: recent.length, countries: new Set(recent.map((m) => m.country).filter(Boolean)).size };
+  }, [messages, isBlocked]);
+
   // Strangers' messages and stranger-to-stranger kind moments share one rotation, so a
   // moment takes its turn in the same slot instead of adding fixed height below it.
   const items = useMemo(() => {
@@ -415,16 +436,37 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
     // is information rather than decoration.
     <div className="seen-feed-header border-b border-slate-200 px-3 py-2 flex-shrink-0">
       <div className="flex items-center justify-between px-1 pb-1">
-        <p className="seen-feed-title--world text-[11px] font-bold uppercase tracking-wide">🌍 Worldwide Feed</p>
+        {/* The globe is the best thing in the app and it was three taps deep in an overflow
+            menu, next to Sign out. This heading is already the word "worldwide" sitting on the
+            home screen — so it is the one control in the product that should open it. */}
+        <button
+          type="button"
+          onClick={() => onOpenGlobe?.()}
+          disabled={!onOpenGlobe}
+          title={onOpenGlobe ? "Open the world map" : undefined}
+          className="seen-feed-title--world flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide disabled:cursor-default">
+          🌍 Worldwide Feed
+          {onOpenGlobe && <span aria-hidden className="text-[9px] opacity-60">▸</span>}
+        </button>
         <span className="seen-feed-meta text-[10px] font-semibold">
-          {items.length > 1 ? <span className="tabular-nums">{idx + 1}/{items.length}</span> : "from strangers"}
+          {items.length > 1
+            ? <span className="tabular-nums">{idx + 1}/{items.length}</span>
+            : items.length === 0 && pulse.count > 0 ? "today so far" : "from strangers"}
         </span>
       </div>
 
       {!item ? (
-        <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] text-slate-500">
-          💛 Kind messages from around the world will appear here.
-        </div>
+        pulse.count > 0 ? (
+          // Never a live number that reads as zero: this branch only renders when count > 0.
+          <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] leading-snug text-slate-600">
+            🌍 <span className="font-bold">{pulse.count}</span> kind {pulse.count === 1 ? "message" : "messages"} sent
+            {pulse.countries > 1 ? <> across <span className="font-bold">{pulse.countries}</span> countries</> : null} today.
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] text-slate-500">
+            💛 Kind messages from around the world will appear here.
+          </div>
+        )
       ) : item.type === "moment" ? (
         <div key={item.id} style={{ animation: "seenFadeUp 350ms ease both" }}>
           <KindMomentCard moment={item.moment} compact />
@@ -552,6 +594,31 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     return () => { alive = false; };
   }, [db, answering, needsAnswerCheck]);
 
+  // THE THIRD PART OF THE EXCHANGE.
+  //
+  // A private exchange has three messages — the feed post it began with, the private reply, and
+  // the answer — and this sheet showed two of them. Which two depends on direction, and the
+  // labels did not:
+  //
+  //   Someone replies to MY post → `messageText` is my post, "You wrote" is right.
+  //   Someone ANSWERS my reply   → `messageText` is THEIR post, and "You wrote" sat above a
+  //                                message I had never written, while the reply I actually
+  //                                sent appeared nowhere at all.
+  //
+  // `inReplyTo` tells the two apart, because a private reply always goes TO the author of the
+  // message it answers: without it, the post is mine; with it, the post is theirs and my own
+  // reply is the document it points at. One read, and only in the second case.
+  const needsOriginalReply = Boolean(answering?.inReplyTo) && Boolean(db);
+  const [myOriginalReply, setMyOriginalReply] = useState(undefined);
+  useEffect(() => {
+    if (!needsOriginalReply) return;
+    let alive = true;
+    getDoc(doc(db, "privateReplies", answering.inReplyTo))
+      .then((s) => { if (alive) setMyOriginalReply(s.exists() ? s.data() : null); })
+      .catch(() => { if (alive) setMyOriginalReply(null); }); // unreadable → just show two parts
+    return () => { alive = false; };
+  }, [db, answering, needsOriginalReply]);
+
   const answerChecked = !needsAnswerCheck || existingAnswer !== undefined;
   // The exchange is over when you are looking at someone's answer to you, or you have already
   // sent yours. Either way there is nothing to write, so the composer is not shown at all
@@ -660,8 +727,16 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             <div className="space-y-2">
               {answering.messageText && (
                 <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">You wrote</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    {answering.inReplyTo ? `${firstName(answering.fromName)} wrote` : "You wrote"}
+                  </p>
                   <p className="mt-0.5 text-[13px] text-slate-500 italic">“{stripQuotes(answering.messageText)}”</p>
+                </div>
+              )}
+              {myOriginalReply?.text && (
+                <div className="rounded-xl bg-teal-50 border border-teal-200 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">You replied</p>
+                  <p className="mt-0.5 text-[14px] text-slate-700">{myOriginalReply.text}</p>
                 </div>
               )}
               <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">

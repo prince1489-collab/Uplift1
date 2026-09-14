@@ -78,7 +78,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
-import { apiUrl } from "./apiBase";
+import { publicUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
 const firebaseConfig = {
@@ -222,7 +222,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -343,6 +343,14 @@ function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrad
                   label="People you follow"
                   sub={followCount > 0 ? `${followCount} ${followCount === 1 ? "person" : "people"} · add labels` : "Choose who's in your Focused Feed"}
                 />
+                {/* The one thing the app has never been able to do: bring somebody in. The +50
+                    drops for each of you is already written and waiting on the other end. */}
+                <Row
+                  onClick={() => { onInvite?.(); close(); }}
+                  icon={<IconBox className="bg-amber-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💌</span></IconBox>}
+                  label="Invite a friend"
+                  sub="Share Seen — you both get 50 drops"
+                />
                 <Row
                   tourId="m-wellbeing"
                   onClick={() => { setShowWellbeingHub(true); close(); }}
@@ -354,7 +362,7 @@ function MeatballMenu({ onWorld, onShare, onFollowing, followCount = 0, onUpgrad
                     looking for why an app exists is exactly the person worth answering properly,
                     and the answer is the reason the rest of this menu is shaped the way it is. */}
                 <Row
-                  onClick={() => { window.open("/story.html", "_blank", "noopener,noreferrer"); close(); }}
+                  onClick={() => { onStory?.(); close(); }}
                   icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💛</span></IconBox>}
                   label="Why Seen exists"
                   sub="The story behind the app"
@@ -2137,6 +2145,12 @@ export default function App() {
   );
   // v2: deferred glimpse questions — sheet, invited from the 🔔 bell (see `bellNudges`)
   const [showGlimpseSheet, setShowGlimpseSheet] = useState(false);
+  // "Why Seen exists" used to open in a browser tab, so the most moving two minutes in the
+  // product ended with the reader outside it — and on the native build, outside the app
+  // entirely. It is the same public/story.html either way, rendered in a sheet rather than
+  // duplicated into JSX, so that page stays the single source of that text.
+  const [showStory, setShowStory] = useState(false);
+  useBackLayer(showStory, () => setShowStory(false));
 
   // ── Bell invitations ─────────────────────────────────────────────────────────
   // Everything the app wants to ask of you now comes through the bell, one at a time, paced by
@@ -3018,6 +3032,36 @@ export default function App() {
     }
   };
 
+  // Invite a friend.
+  //
+  // The reward for this has existed and worked since long before there was any way to trigger
+  // it: ?ref=<uid> is captured on arrival, and completeOnboarding pays +50 drops to BOTH people
+  // in a transaction. What was missing was a link. The only generator ever written lives in
+  // BuddyPanel, which has never been rendered, and the profile share card exports a PNG with no
+  // URL in it — so the app has had no way for one person to bring in another.
+  const handleInvite = async () => {
+    const uid = currentUser?.uid;
+    if (!uid) return;
+    const url = publicUrl(`/?ref=${uid}`);
+    const text = "I've been using Seen — it's a small app for sending someone a kind word. Come and find me on it.";
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Seen", text, url });
+        return;
+      } catch (err) {
+        // Closing the share sheet is a decision, not a failure — don't then shove it on their
+        // clipboard as if they had asked for that.
+        if (err?.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setSentToast("Invite link copied");
+    } catch {
+      setSentToast("Couldn't copy the link");
+    }
+  };
+
   const handleSendMessage = async (greeting) => {
     if (!currentUser || !profile || isSending) return;
     if (todayMessageCount >= DAILY_GREETING_LIMIT) return;
@@ -3404,6 +3448,27 @@ export default function App() {
             answering={answeringReply}
             onClose={() => setAnsweringReply(null)} />
         )}
+        {/* The founder's story, read without leaving. An iframe of the same public/story.html
+            the web route serves, rather than the text copied into a component: one version of
+            it, typeset once, and whichever gets edited is the one everybody reads. It is in
+            the bundle, so this resolves locally in the Capacitor build too. */}
+        {showStory && createPortal(
+          <div data-portal className="fixed inset-0 z-[250] flex flex-col bg-white">
+            <div
+              className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 px-4 pb-3"
+              style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+              <h2 className="text-base font-bold text-slate-800">Why Seen exists</h2>
+              <button
+                onClick={() => setShowStory(false)}
+                aria-label="Close"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <iframe src="/story.html" title="Why Seen exists" className="w-full flex-1 border-0" />
+          </div>,
+          document.body
+        )}
         {showWellbeingSheet && currentUser && createPortal(
           <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowWellbeingSheet(false)} />
@@ -3578,6 +3643,8 @@ export default function App() {
                       onOpenChange={handleMenuOpenChange}
                       onWorld={() => setShowMap(true)}
                       onShare={() => setShowProfileCard(true)}
+                      onInvite={handleInvite}
+                      onStory={() => setShowStory(true)}
                       onFollowing={() => setShowFollowing(true)}
                       followCount={follows.length}
                       onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
@@ -3727,7 +3794,8 @@ export default function App() {
                 stories={worldwideStories}
                 onOpenStory={(s) => setOpenStory(s)}
                 onToggleFocus={toggleFocus}
-                onReplyPrivately={(m) => setReplyTarget(m)} />
+                onReplyPrivately={(m) => setReplyTarget(m)}
+                onOpenGlobe={() => setShowMap(true)} />
             )}
 
             {/* Between the two feeds, because that is where the difference is visible. */}

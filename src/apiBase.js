@@ -15,6 +15,16 @@ export function apiUrl(path) {
   return path;
 }
 
+// The app's PUBLIC address, for a link somebody ELSE will open.
+//
+// Never window.location.origin for this. In the Capacitor build that is capacitor://localhost
+// or https://localhost, so an invite generated on a phone would be a link to nowhere — and it
+// would look completely fine to whoever sent it. Same reasoning as apiUrl() above, different
+// direction: that one is for reaching our backend, this one is for being reachable.
+export function publicUrl(path = "/") {
+  return `${PROD_ORIGIN}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 // Authenticated POST to one of our /api routes. Lives here rather than in a component so
 // every caller goes through apiUrl() — a relative fetch resolves to the local bundle in the
 // Capacitor build and never reaches Vercel.
