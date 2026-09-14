@@ -3505,13 +3505,19 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <h1 className="text-sm font-bold text-slate-800 truncate">Hey {firstName}</h1>
-                    {/* Imported since it was written and never once mounted, so the streak was
-                        invisible unless you opened the ⋯ menu. Stated as a fact and nothing
-                        more — no countdown, no warning, nothing about losing it. The roadmap is
-                        firm that this is a wellbeing app and guilt is not a mechanic here. */}
+                  </div>
+                  {/* The streak sits on the STATUS line, not beside the greeting.
+                      It was next to the h1 and, sharing that row with a truncating heading, took
+                      its width first — so "Hey Mahiman" rendered as "Hey Mahi…" on a 392px
+                      screen. Greeting somebody by a cut-off name is worse than not greeting them,
+                      and this is the one line in the app that addresses a person directly.
+                      Down here it reads as status, which is what it is.
+                      Still stated as a fact and nothing more: no countdown, no warning, nothing
+                      about losing it. The roadmap is firm that guilt is not a mechanic here. */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <LiveGreeterCount db={db} currentUser={currentUser} compact />
                     <StreakBadge streak={streak} />
                   </div>
-                  <LiveGreeterCount db={db} currentUser={currentUser} compact />
                 </div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <div onClick={(e) => e.stopPropagation()}>

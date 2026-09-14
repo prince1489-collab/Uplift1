@@ -395,9 +395,11 @@ export const ALL_GREETINGS = [
 
   // ─── PREMIUM: World moments ────────────────────────────────────────────────
   { id: "wm1", text: "Wishing you and your family joy this season 🌙",         sparkReward: 20, isMystery: false, category: "cultural", isPremium: true },
-  { id: "wm2", text: "Light and love to you this festive time 🕯️",            sparkReward: 20, isMystery: false, category: "cultural", isPremium: true },
-  { id: "wm3", text: "May this new year bring you everything you hope for 🎊", sparkReward: 20, isMystery: false, category: "cultural", isPremium: true },
-  { id: "wm4", text: "Sending spring energy your way 🌸",                     sparkReward: 15, isMystery: false, category: "cultural", isPremium: true },
+  // months added: these three sat in `cultural` with no gate at all, which only went unnoticed
+  // because the category was unreachable from the picker.
+  { id: "wm2", months: [10, 11], text: "Light and love to you this festive time 🕯️",            sparkReward: 20, isMystery: false, category: "cultural", isPremium: true },
+  { id: "wm3", months: [11, 0], text: "May this new year bring you everything you hope for 🎊", sparkReward: 20, isMystery: false, category: "cultural", isPremium: true },
+  { id: "wm4", text: "Sending fresh energy your way 🌸",                     sparkReward: 15, isMystery: false, category: "cultural", isPremium: true },
   { id: "wm5", text: "Harvest blessings to you and yours 🌾",                 sparkReward: 15, isMystery: false, category: "cultural", isPremium: true },
 
   // ─── PREMIUM: Themed — January (New Year) ─────────────────────────────────
@@ -479,8 +481,13 @@ export function getAccessibleGreetings(isPremium = false) {
   const month = new Date().getMonth();
   return ALL_GREETINGS.filter(g => {
     if (g.isPremium && !isPremium) return false;
-    // Themed greetings: only show the current month's pack
-    if (g.category === "themed" && g.months && !g.months.includes(month)) return false;
+    // ANY greeting carrying `months` is filtered by them, whatever its category.
+    //
+    // This used to say `g.category === "themed" && ...`, which was survivable only while the
+    // picker showed four categories and `cultural` was not one of them. Opening the whole
+    // library put three ungated seasonal lines back in circulation, and September duly offered
+    // "Autumn is here" and "Sending spring energy your way" in the same four suggestions.
+    if (g.months && !g.months.includes(month)) return false;
     return true;
   });
 }
