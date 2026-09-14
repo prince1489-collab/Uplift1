@@ -167,6 +167,11 @@ const LEVEL_THRESHOLDS = [
 
 // Rotating, giving-focused confirmations shown after sending — reframes the reward as the
 // act of kindness itself, so a reaction-back isn't the implied payoff.
+// Proverbs are stored as the bare line and quoted by whoever presents them. Messages written
+// before that arrived carry their own curly quotes, so strip one pair before adding ours rather
+// than leaving those few showing two.
+const stripQuotes = (s = "") => String(s).replace(/^\s*[“"']+/, "").replace(/[”"']+\s*$/, "");
+
 const SEND_AFFIRMATIONS = [
   "Sent",
   "Kindness sent — that's the point",
@@ -3758,7 +3763,7 @@ export default function App() {
                   send). NOT a fake human/account: a clearly-labelled system message that warms
                   the cold-start. Disappears once they send, or on dismiss. */}
               {!hasSent && !welcomeDismissed && (
-                <div className="relative mb-3 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3.5 pr-9"
+                <div className="seen-welcome-card relative mb-3 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3.5 pr-9"
                   style={{ animation: "seenFadeUp 400ms ease both" }}>
                   <button
                     onClick={() => { setWelcomeDismissed(true); try { localStorage.setItem("seen_welcome_dismissed", "1"); } catch { /* ignore */ } }}
@@ -4106,7 +4111,11 @@ export default function App() {
                                               ? "bg-emerald-100 border-emerald-200 text-emerald-900"
                                               : "bg-teal-50 border-teal-200 text-teal-900"
                                           }`}>
-                                          {m.text}
+                                          {/* A proverb is a quotation, so the bubble presents it
+                                              as one. `stripQuotes` covers the messages written
+                                              before the stored text dropped its own punctuation —
+                                              without it those would now show two pairs. */}
+                                          {m.proverbOriginal ? `“${stripQuotes(m.text)}”` : m.text}
                                           {/* Only a proverb has these. The translation is
                                               already above as the message itself. */}
                                           {m.proverbOriginal && (

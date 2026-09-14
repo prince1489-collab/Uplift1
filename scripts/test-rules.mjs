@@ -103,6 +103,40 @@ await check("client shape: A's answer at `${id}__reply` with inReplyTo is accept
     clientPayload("uidA", "uidB", { inReplyTo: first.id }))));
 
 
+// ── publicMessages: the world-readable collection, which had no length bound at all until the
+//    composer limit went to 200. The bound is the ABUSE ceiling (500), deliberately looser than
+//    the composer's 200 so a preset or a proverb that grows by a word is not a permission error —
+//    but a client writing straight to Firestore can no longer drop a megabyte into the feed
+//    everyone loads. These are the first rules tests this collection has ever had.
+const publicMsg = (uid, text) => ({
+  uid, sender: "Ada", text, timestamp: 1700000000000,
+  country: "United Kingdom", isMystery: false, isPremium: true, sparkReward: 25,
+});
+
+await check("public: an ordinary greeting is accepted",
+  assertSucceeds(addDoc(collection(A, "publicMessages"), publicMsg("uidA", "Morning! Hope something good finds you today"))));
+await check("public: a 200-character post (the composer's limit) is accepted",
+  assertSucceeds(addDoc(collection(A, "publicMessages"), publicMsg("uidA", "x".repeat(200)))));
+await check("public: a proverb carrying its extra fields is accepted",
+  assertSucceeds(addDoc(collection(A, "publicMessages"), {
+    ...publicMsg("uidA", "A journey of a thousand miles begins with a single step."),
+    proverbOriginal: "千里之行，始于足下", proverbRomanisation: "Qiān lǐ zhī xíng, shǐ yú zú xià",
+    proverbLanguage: "Chinese", proverbMeaning: "Big goals require you to start with small actions.",
+  })));
+await check("public: 500 characters is the ceiling, and still allowed",
+  assertSucceeds(addDoc(collection(A, "publicMessages"), publicMsg("uidA", "x".repeat(500)))));
+await check("public: 501 characters is refused",
+  assertFails(addDoc(collection(A, "publicMessages"), publicMsg("uidA", "x".repeat(501)))));
+await check("public: a megabyte is refused",
+  assertFails(addDoc(collection(A, "publicMessages"), publicMsg("uidA", "x".repeat(200000)))));
+await check("public: empty text is refused",
+  assertFails(addDoc(collection(A, "publicMessages"), publicMsg("uidA", ""))));
+await check("public: a non-string text is refused",
+  assertFails(addDoc(collection(A, "publicMessages"), publicMsg("uidA", 42))));
+await check("public: you still cannot post as someone else",
+  assertFails(addDoc(collection(B, "publicMessages"), publicMsg("uidA", "not mine to send"))));
+
+
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);
 const failed = results.filter(([ok]) => !ok).length;

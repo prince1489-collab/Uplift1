@@ -10,8 +10,19 @@ service cloud.firestore {
     // ── Public messages (global greeting feed) ──
     match /publicMessages/{msgId} {
       allow read: if true;
+      // The world-readable collection had NO bound on `text` at all, while its quieter neighbours
+      // both do (privateReplies 500, sharedReflections 2000) — so a client talking straight to
+      // Firestore could put a megabyte into the feed everyone loads.
+      //
+      // 500 rather than the composer's 200 on purpose. This is the abuse ceiling, not the product
+      // limit: the real contract is that api/moderate-message.js reads at most 200 characters, and
+      // that is enforced where it belongs, in the composer. Pinning the rule to 200 as well would
+      // mean a preset or a proverb that grew by a word became a permission error.
       allow create: if request.auth != null
-          && request.resource.data.uid == request.auth.uid;
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
       allow update: if request.auth != null
           && resource.data.uid == request.auth.uid;
       allow delete: if request.auth != null

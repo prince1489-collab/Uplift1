@@ -295,7 +295,11 @@ export function proverbAsGreeting(p) {
   if (!p) return null;
   return {
     id: `proverb_${p.id}`,
-    text: `“${p.english}”`,
+    // PLAIN, not pre-quoted. It used to be stored with its own curly quotes, which looked right
+    // in the feed bubble and doubled up everywhere else — "Who felt this" renders “{message.text}”
+    // and produced ""Those who keep trying are never truly defeated."" on screen. Six other call
+    // sites quote the same way. The quotes belong to whichever container is presenting it.
+    text: p.english,
     sparkReward: p.sparkReward ?? R,
     isMystery: false,
     category: "proverb",

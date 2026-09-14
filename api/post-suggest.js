@@ -21,7 +21,7 @@ function initAdmin() {
 }
 
 const MAX_IN = 200;  // generous input cap — the user's draft, before tightening
-const MAX_OUT = 80;  // must match MAX_LEN in src/Feed2.jsx, or a suggestion won't fit the box
+const MAX_OUT = 200; // must match MAX_LEN in src/Feed2.jsx, or a suggestion won't fit the box
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");

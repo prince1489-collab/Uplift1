@@ -31,13 +31,25 @@ const FOLLOWS_KEY = "seen_v2_follows";    // [{ uid, name, country, label }]
 const MOMENTS_KEY = "seen_v2_kind_moments";
 const LIKES_KEY = "seen_v2_board_likes";
 const STORIES_KEY = "seen_v2_stories";
-const MAX_LEN = 80;
+// 200, and 200 exactly, because that is where moderation stops rather than where the design
+// does: api/moderate-message.js caps its input at 200 and silently truncates beyond it, so a
+// longer limit would publish the back half of every long message to a world-readable feed
+// without it having been read by anything. Raising this further means changing that first.
+//
+// 80 was demonstrably too tight: a Ganesh Chaturthi blessing — "Ganpati Bappa Morya! May Lord
+// Ganesha bless your life with joy & prosperity" — reached 77 and had no room left for 🙏.
+const MAX_LEN = 200;
 const POST_SPARK_REWARD = 25; // base, before the streak multiplier
 // Anonymous posting is level-gated per the roadmap: a brand-new account cannot immediately
 // post without a name attached. 150 is level 3 ("It's Giving Kind") — roughly a week of
 // ordinary use, low enough not to block real members, high enough that a throwaway account
 // created to post anonymously has to earn it first.
 const ANON_MIN_BALANCE = 150;
+
+// A container that presents a message as a quotation adds the quotes itself. Proverbs used to
+// arrive pre-quoted, which produced ""like this"" wherever one was rendered inside quotes — the
+// stored text is plain now, and this covers the handful written before that.
+const stripQuotes = (s = "") => String(s).replace(/^\s*[“"']+/, "").replace(/[”"']+\s*$/, "");
 
 const readJSON = (k, fb) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)); } catch { return fb; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
@@ -443,7 +455,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
               {likes[m.id] && <Heart size={11} className="text-rose-500 flex-shrink-0" fill="currentColor" />}
               <span className="text-[10px] text-teal-700 opacity-70 flex-shrink-0">{open ? "tap to close" : "tap to like or reply"}</span>
             </div>
-            <p className="text-[13px] leading-snug text-teal-900 font-medium line-clamp-2">“{m.text}”</p>
+            <p className="text-[13px] leading-snug text-teal-900 font-medium line-clamp-2">“{stripQuotes(m.text)}”</p>
           </button>
 
           {open && (
@@ -649,7 +661,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
               {answering.messageText && (
                 <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">You wrote</p>
-                  <p className="mt-0.5 text-[13px] text-slate-500 italic">“{answering.messageText}”</p>
+                  <p className="mt-0.5 text-[13px] text-slate-500 italic">“{stripQuotes(answering.messageText)}”</p>
                 </div>
               )}
               <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">
@@ -660,7 +672,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
               </div>
             </div>
           ) : (
-            <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{target?.text}”</div>
+            <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{stripQuotes(target?.text)}”</div>
           )}
           {/* Real now — say who can see it, since "private" should mean something specific.
               For an answer it also has to say this is the last one, BEFORE they write it —
@@ -1517,7 +1529,7 @@ export function MessageReactionsPanel({ db, message, currentUser, blockedUids, o
         <div className="mx-auto max-w-md space-y-5">
           <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
             <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600 mb-1">Your message</p>
-            <p className="text-[15px] leading-relaxed text-slate-800 font-medium">“{message?.text}”</p>
+            <p className="text-[15px] leading-relaxed text-slate-800 font-medium">“{stripQuotes(message?.text)}”</p>
           </div>
 
           <div>

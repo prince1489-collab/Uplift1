@@ -98,6 +98,21 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-slate-900 { color: #f1f5f9 !important; }
 [data-dark-shell] .text-slate-800 { color: #e2e8f0 !important; }
 [data-dark-shell] .text-slate-700 { color: #cbd5e1 !important; }
+
+/* The "Seen · official" welcome card — the FIRST thing a new account reads, and in dark mode it
+   was very nearly invisible: light grey text on a light mint card, about 1.6:1.
+   The map above lightens .text-slate-700, but it cannot touch this card's background, because
+   the background is a GRADIENT. Every background rule here matches a background-COLOUR utility
+   (`[class~="bg-teal-50"]` and friends); `from-emerald-50` / `to-teal-50` set gradient colour
+   stops, which is a different property, so the card kept its light ground while the text on top
+   was lightened to match a dark one.
+   Fixed here rather than by teaching the map about `from-*`/`to-*`, which would repaint every
+   gradient in the app to fix one card. */
+[data-dark-shell] .seen-welcome-card {
+  background-image: none !important;
+  background-color: rgba(16,185,129,0.13) !important;
+  border-color: rgba(16,185,129,0.35) !important;
+}
 [data-dark-shell] .text-slate-600 { color: #94a3b8 !important; }
 [data-dark-shell] .text-slate-500 { color: #64748b !important; }
 [data-dark-shell] .text-slate-400 { color: #8792a6 !important; } /* was #4a5568 — too dim for author/meta lines */
