@@ -38,6 +38,18 @@
 ##     Firebase — the upload key AND Play App Signing's, from Play Console → App integrity.
 ##     With only the upload key registered, Google sign-in works in testing and fails for every
 ##     real install.
+##
+## ── One-time setup, BOTH platforms ──
+##  9. Codemagic → Environment variables → group `seen_web` → add VITE_KLIPY_KEY (the KLIPY app
+##     key from partner.klipy.com). NOT secure: Vite inlines it into a public bundle either way,
+##     so marking it secure only hides it from you.
+##
+##     This is the one class of variable that must exist in TWO places. The api/ variables are
+##     read by serverless functions at runtime and live in Vercel alone; a VITE_ variable is
+##     baked into the bundle AT BUILD TIME, and both Vercel and this file build a bundle. Set it
+##     in one and not the other and the feature simply is not there on the phones, with nothing
+##     in any log to say why. The group name here must match the group name in the Codemagic UI
+##     exactly — that mismatch is silent too.
 
 workflows:
   ios-capacitor:
@@ -69,6 +81,16 @@ workflows:
       # ios_signing shorthand here did NOT auto-create them ("No matching profiles found").
       groups:
         - ios_signing   # Codemagic env-var group holding the (secure) IOS_DIST_CERT_KEY for cert reuse
+        # Holds VITE_KLIPY_KEY. Codemagic runs `npm run build` itself, and Vite INLINES VITE_*
+        # values at build time — so a variable that exists only in Vercel is simply absent from
+        # the bundle this workflow produces. Without this line the phone apps ship with
+        # isKlipyConfigured() false and hide the "Add a GIF" button entirely, while the web has
+        # it. Nothing errors; the feature is just missing on the platforms most people use.
+        #
+        # NOT the same as the api/ variables: those are read by serverless functions at runtime
+        # and belong to Vercel alone. A VITE_ one has to exist in EVERY place that builds the
+        # bundle, which is Vercel and here.
+        - seen_web
       vars:
         BUNDLE_ID: "app.seenapp.ios"
         APP_STORE_APPLE_ID: "6786136562"   # App Store Connect numeric Apple ID of the "Seen" app record
@@ -245,6 +267,9 @@ workflows:
         # Without this line the variable is simply undefined and the publish step below fails
         # AFTER a full build has run, which is a slow way to learn about a typo.
         - google_play
+        # See the note in the iOS workflow: VITE_KLIPY_KEY is inlined at build time, so it has
+        # to be present wherever the bundle is built, not only in Vercel.
+        - seen_web
       android_signing:
         - seen_upload          # Codemagic → Teams → Code signing identities → Android keystores
       vars:

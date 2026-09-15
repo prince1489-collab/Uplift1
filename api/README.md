@@ -60,3 +60,13 @@ Both are absent-safe: without the VAPID key web push does not register, and with
 key the composer hides the "Add a GIF" button entirely rather than offering one that fails.
 A rebuild is needed after changing either, because the value is baked in — setting it in Vercel
 and redeploying nothing will change nothing.
+
+**And they belong in TWO places, unlike everything in the table above.** The `api/` variables are
+read by serverless functions at runtime, so Vercel is the only place they exist. A `VITE_` one is
+inlined into the bundle at build time, and two systems build that bundle: Vercel for the web, and
+Codemagic for the iOS and Android apps (`codemagic.yaml` runs `npm run build` itself). Set one in
+Vercel only and the feature works on the web and is silently missing on both phones.
+
+`VITE_KLIPY_KEY` is therefore in Codemagic too, in the `seen_web` environment group.
+`VITE_FIREBASE_VAPID_KEY` deliberately is NOT: it feeds the web service-worker token path, which
+native never reaches — `App.jsx` returns after `registerNativePush` before the VAPID branch.

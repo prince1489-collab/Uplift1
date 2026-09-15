@@ -216,8 +216,16 @@ already backs Canva, Figma, Miro and Outlook.
 Nothing to do with Google Cloud. At **[partner.klipy.com](https://partner.klipy.com)**:
 
 1. Create an account → **Add Platform** → generate an app key.
-2. Add it to Vercel as `VITE_KLIPY_KEY`, then **redeploy** — Vite bakes `VITE_` variables into
-   the bundle at build time, so setting it without a new build changes nothing.
+2. Add it in **two places**, because two systems build the bundle and Vite bakes `VITE_`
+   variables in at build time:
+   - **Vercel** → Environment Variables → `VITE_KLIPY_KEY`, type **Config** (not Secret — it
+     ships in a public bundle either way), Preview + Production. Then **redeploy**: setting it
+     without a new build changes nothing.
+   - **Codemagic** → Environment variables → group **`seen_web`** → `VITE_KLIPY_KEY`, same
+     value, not secure. `codemagic.yaml` already references that group in both workflows.
+
+   Setting it in Vercel only gives you GIFs on the web and no GIF button at all on iOS and
+   Android, with nothing in any log to explain it.
 
 The free tier's test key allows **100 calls an hour**, and a production key is requested from the
 same panel. One call is one sheet-open or one search, so 100/hour is comfortable for testing and
