@@ -19,10 +19,17 @@
 // time and only appears on Vercel, where it silently serves the previous deploy. That has
 // already cost this project two commits that looked live and were not.
 //
-// What an exposed key is worth to somebody who takes it: read-only GIF search against a free
-// quota. No user data, no writes, nothing about anybody. It is quota theft, not a breach, and
-// it is why Tenor's own documentation shows client-side use. Restrict it by HTTP referrer in
-// the Google Cloud console and the quota is protected too. See DEPLOY.md.
+// What an exposed key is worth to somebody who takes it — PROVIDED IT IS API-RESTRICTED — is
+// read-only GIF search against a free quota. No user data, no writes, nothing about anybody.
+// Quota theft, not a breach, which is why Tenor's own documentation shows client-side use.
+//
+// That proviso is load-bearing and is not the default. A Google Cloud API key with no API
+// restriction may call ANY api-key-accepting service enabled on its project, and this key comes
+// from uplift-6d9ea — the same project as Firestore, Identity Toolkit, FCM and the Play
+// Developer API. Unrestricted, it would not be a GIF key at all; it would be a key to all of
+// that, sitting in a file anyone can read. DEPLOY.md has the console steps: the required one is
+// API restrictions → Tenor API only, which unlike a referrer restriction does not break the
+// Capacitor builds.
 //
 // If the function budget is ever freed — retiring api/goodnews.js would do it — moving this
 // behind a route is a small change: the two exported functions are the whole surface.

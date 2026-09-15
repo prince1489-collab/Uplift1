@@ -209,31 +209,43 @@ Tenor v2 uses a **Google Cloud API key**. In the [Google Cloud console](https://
 3. Add it to Vercel as `VITE_TENOR_KEY`, then **redeploy** — Vite bakes `VITE_` variables into
    the bundle at build time, so setting it without a new build changes nothing.
 
-### Restrict it — and the part that will catch you out
+### Restrict it — the required step, and the optional one
 
 This key ships inside the JavaScript bundle. That is deliberate (`src/tenor.js` explains why: a
-proxy route would be a 13th serverless function, which fails the Vercel build), and what it is
-worth to a thief is read-only GIF search against your free quota — no user data, nothing
-writable. Still worth restricting so the quota stays yours.
+proxy route would be a 13th serverless function, which fails the Vercel build). What matters is
+that a key which is *going* to be public is bounded before it is.
 
-**Application restrictions → Websites**, with `https://www.seenapp.app/*`.
+There are two independent restriction types, and conflating them is easy:
 
-**The catch: that will break GIFs in the Android and iOS apps.** A referrer restriction checks
-the `Referer` header, and the Capacitor build is a WebView whose origin is
-`capacitor://localhost` — it does not send a referrer Google will recognise. This is the same
-shape of trap as the invite link, which had to be built on the production origin rather than
-`window.location.origin` for exactly this reason.
+| | answers | breaks the Capacitor apps? |
+|---|---|---|
+| **API restrictions** | *what may this key call?* | **no** |
+| **Application restrictions** | *who may call with it?* | yes, if set to Websites |
 
-So pick one:
+**API restrictions → Restrict key → tick `Tenor API` only. This one is required.**
 
-- **Unrestricted key.** Simplest, works everywhere, quota is theft-able. Given what the key can
-  do, this is a defensible choice for now — set a low daily quota cap in the console and watch it.
-- **Two keys.** A referrer-restricted `VITE_TENOR_KEY` for the web build, and a separate
-  unrestricted one for the native builds, injected by Codemagic. More moving parts; genuinely
-  tighter for the web, which is where most traffic will be.
+Not a precaution — the alternative is genuinely dangerous. Google's rule is that *"standard API
+keys can be used with any API that accepts API keys, unless API restrictions have been added"*,
+and `uplift-6d9ea` is not an isolated project. It runs Identity Toolkit (auth), Cloud Firestore,
+Firebase Cloud Messaging, Firebase Rules and the Google Play Android Developer API. An
+unrestricted key minted there is not a GIF key; it is a key to that project's whole
+API-key-accepting surface, published in a file anyone can read. Restricted to Tenor, what it is
+worth to a thief is read-only GIF search against a free quota.
 
-Either way, set a **quota limit** in the console (APIs & Services → Tenor API → Quotas). That is
-the control that actually caps the damage, and it works regardless of which option you pick.
+**Create a NEW key for this.** Do not reuse the Firebase web API key — that one is public by
+design and Firebase-restricted, and widening it to cover Tenor would be the wrong direction.
+
+**Application restrictions can stay `None`,** once the API restriction is set. Setting them to
+Websites (`https://www.seenapp.app/*`) tightens the web a little further, but it **breaks GIFs in
+the Android and iOS apps**: a referrer restriction checks the `Referer` header, and the Capacitor
+build is a WebView whose origin is `capacitor://localhost`, which sends nothing Google
+recognises. Same shape of trap as the invite link, which had to be built on the production origin
+rather than `window.location.origin` for exactly this reason. If you do want it, you need two
+keys — a referrer-restricted one for the web build and an unrestricted one injected by Codemagic
+for native — which is a real cost in moving parts for a modest gain.
+
+Finally, set a **quota limit** (APIs & Services → Tenor API → Quotas). That is what actually caps
+the damage from a scraped key, and it works regardless of the choices above.
 
 ### Verify
 
