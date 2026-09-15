@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// storage.rules — the access rules for Cloud Storage.
+//
+// WHY THIS FILE DID NOT EXIST UNTIL NOW, AND WHY THAT MATTERED. firebase.json declared only
+// firestore, so the bucket's rules lived exclusively in the Firebase console: unversioned, not
+// reviewable, not deployable from a checkout, and with no record of what they said or when they
+// last changed. firestore.rules had exactly this problem and it cost 24 days of undeployed
+// rules — see the header of .github/workflows/firestore.yml.
+//
+// It mattered more than it looks, because the app has been writing to Storage all along. Avatars
+// go to profilePhotos/{uid}/avatar.{ext} from two places (App.jsx, in onboarding, and
+// UpliftRetentionFeatures.jsx, in profile edit), and whatever the console happens to say is the
+// only thing standing behind them.
+//
+// ── WHAT THE CLIENT CHECKS, AND WHY THAT IS NOT ENOUGH ───────────────────────────────────────
+// The onboarding upload rejects files over 2MB and anything whose type is not image/*
+// (ProfilePhotoStep.jsx). The profile-EDIT upload checks neither — no size limit, no type
+// check — so the two paths to the same object disagree about what is allowed.
+//
+// Both are client-side either way, which means neither is a boundary: the Storage SDK is
+// callable from a console on any signed-in session, with any path and any bytes. The rules below
+// are the first place these limits are actually enforced rather than requested.
+//
+// Note especially `ext` in both callers: it is taken from the END OF THE USER'S FILENAME and
+// pasted into the object path, and contentType is taken from the file. Without the contentType
+// condition below, a signed-in user could put avatar.html into the bucket, served as text/html.
+//
+// ── A HONEST NOTE ABOUT `allow read` ─────────────────────────────────────────────────────────
+// Avatars are read publicly, and that is deliberate: they appear next to messages, in "Who felt
+// this", and on public profiles (publicProfile.js). But be clear about what the read rule does
+// and does not do — getDownloadURL() mints a URL carrying a download TOKEN, and those URLs serve
+// the object regardless of what is written here. Every avatar URL already handed out is a
+// capability that this file cannot revoke. Tightening reads would therefore buy no real privacy
+// while risking a broken image somewhere it is legitimately shown, so this says what is actually
+// true rather than something stricter that only looks safer.
+//
+// To revoke a specific object you delete it, or rotate its token in the console. Deleting the
+// Firestore document that points at it is not enough — that is the same gap ModerationQueue has
+// for reported content, recorded in the Release B plan.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Profile photos ───────────────────────────────────────────────────────────────────────
+    // The only path the app writes to today. {fileName} rather than a fixed name because the
+    // extension is derived from whatever the user's file was called.
+    match /profilePhotos/{uid}/{fileName} {
+
+      allow read: if true;
+
+      // Yours, an image, and under 2MB. The size bound matches the check onboarding already
+      // makes, so this tightens nothing for anyone using the app normally — it just makes the
+      // limit true for the profile-edit path, which never had one, and for anyone calling the
+      // SDK directly.
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 2 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Everything else ──────────────────────────────────────────────────────────────────────
+    // Closed. A default-deny catch-all is what keeps a new feature's first upload path from
+    // silently inheriting whatever the console was last set to; anything new has to add its own
+    // rule here, deliberately, in a reviewable diff.
+    //
+    // Release B's pendingMedia/ quarantine path is NOT pre-declared above. Writing rules for a
+    // feature that does not exist yet is how rules end up describing something nobody built.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

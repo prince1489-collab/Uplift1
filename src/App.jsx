@@ -2967,7 +2967,16 @@ export default function App() {
       setPendingProfileData(null); setPendingOnboardingDetails(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       setShowWelcomeMoment(false); // save failed — drop the welcome overlay, show the form + error
-      if (error?.code === "storage/unauthorized") { setOnboardingError("Storage rules are blocking photo upload."); return; }
+      // Reworded now that storage.rules genuinely enforces a 2MB image-only limit: this is the
+      // error a real person hits with a large photo, and "Storage rules are blocking photo
+      // upload" told them about our configuration rather than about their file. The step's own
+      // check catches both cases first, so reaching this means something rarer — hence the
+      // suggestion to continue, since a profile photo is optional and losing the whole signup
+      // over one is the worst outcome available.
+      if (error?.code === "storage/unauthorized") {
+        setOnboardingError("That photo couldn't be uploaded — it may be too large (2MB max) or not an image. You can skip it and add one later.");
+        return;
+      }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
       if (error?.code === "unavailable") { setOnboardingError("Firebase is temporarily unavailable."); return; }
       setOnboardingError(error?.code ? `Unable to save your profile (${error.code}).` : "Unable to save your profile right now.");

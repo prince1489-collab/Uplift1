@@ -3,5 +3,9 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "//storage": "Declared so storage.rules can be deployed at all; the bucket's rules used to exist only in the console. Deliberately NOT picked up by the GitHub Action or by npm run deploy:firestore, both of which pass --only firestore. Deploy it by hand, once, with: npm run deploy:storage -- and read the warning in storage.rules first, because that command OVERWRITES whatever the console currently says.",
+  "storage": {
+    "rules": "storage.rules"
   }
 }

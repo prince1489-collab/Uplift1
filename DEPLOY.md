@@ -161,6 +161,40 @@ local cache before the server rejects the query.
 A range filter and an `orderBy` on the *same* field need no composite index; Firestore creates
 single-field indexes automatically. That is why the 30-day feed window costs nothing.
 
+## Storage rules
+
+`storage.rules` covers the bucket that holds profile photos. It is **not** deployed by the
+GitHub Action or by `npm run deploy:firestore` — both pass `--only firestore` — so it will not
+go out by accident, and it has to be published deliberately, once:
+
+```
+npm run deploy:storage
+```
+
+### Read this before the first time you run it
+
+That command **overwrites whatever the Firebase console currently says**, and unlike Firestore
+there is no committed history of what that was — the rules have only ever existed in the
+console. So before the first deploy:
+
+1. Firebase Console → **Storage** → **Rules**. Read what is there now and note the *Last
+   published* date, exactly as for Firestore rules above.
+2. If it says anything other than owner-scoped access to `profilePhotos/{uid}/…`, **copy it
+   somewhere first**. Reverting needs a copy; there is nothing to roll back to.
+3. Compare it with `storage.rules`. If the console is broader — the Firebase default is
+   `allow read, write: if request.auth != null`, which lets any signed-in user overwrite
+   anyone else's avatar — then deploying is a straight improvement and the only thing that
+   changes for real users is that files over 2MB and non-images are refused.
+4. If the console is *narrower* in some way this repo does not know about, say so before
+   deploying rather than after; the file is the thing to change, not the console, or the next
+   deploy silently undoes it again.
+
+### Verify it took
+
+Console → **Storage** → **Rules** should show the new text and a fresh *Last published*. Then
+set a profile photo from the app to confirm a normal upload still works, and try a file over
+2MB to confirm it is refused with a message about the file rather than a permissions error.
+
 ## The CLI (fallback)
 
 Only needed if you have a machine you can run commands on and want to deploy outside GitHub.

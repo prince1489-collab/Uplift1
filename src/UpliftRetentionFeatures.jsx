@@ -1493,9 +1493,29 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
   const [error, setError] = useState("");
   const fileRef = useRef(null);
 
+  // The same two checks onboarding makes (ProfilePhotoStep.jsx). This path had neither, so the
+  // two ways of setting the same avatar disagreed about what was allowed: onboarding refused a
+  // 10MB file politely, profile-edit accepted it and pushed it into the bucket.
+  //
+  // storage.rules now enforces both for real — client checks are a courtesy, not a boundary,
+  // since the SDK is callable from a console on any signed-in session. But without them the
+  // rejection surfaces as `storage/unauthorized`, which reads as "you are not allowed to have a
+  // profile picture" rather than "that file is too big". Saying which of the two it is, before
+  // the upload starts, is the entire value of checking here as well.
+  const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("That file isn't an image. Please choose a photo.");
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setError("Please choose an image smaller than 2MB.");
+      return;
+    }
+    setError("");
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
