@@ -73,18 +73,24 @@ service cloud.firestore {
         // says so, and the whole safety argument for GIFs (someone else rates the catalogue)
         // only holds while the bytes really do come from that catalogue.
         //
-        // ── THE HOST BELOW IS NOT YET CONFIRMED AGAINST A REAL RESPONSE ──────────────────────
-        // This was pinned to Tenor until Google shut that API down. Klipy's docs are not
-        // reachable from the environment this was written in, so the pattern below is the
-        // registrable domain rather than the exact CDN subdomain, which nobody has seen yet.
+        // ── CONFIRMED IN PRODUCTION, AND DELIBERATELY NOT NARROWER ───────────────────────────
+        // This was pinned to Tenor until Google shut that API down, and when it was repointed at
+        // Klipy their docs were unreachable, so the registrable domain was a considered guess
+        // rather than a verified host. It has since been confirmed the only way that counts: a
+        // real GIF attached and rendered in the live feed, which it could not have done if this
+        // create rule had refused the write.
         //
-        // Before deploying: make ONE real call (the app key is enough) and read the host off
-        // `file.md.gif.url`. If it is not under klipy.com, widen this to whatever it actually
-        // is, and update the KLIPY constant in scripts/test-rules.mjs to match.
+        // It stays at the registrable domain rather than tightening to the exact subdomain that
+        // was observed. A CDN is free to answer from media1, media2, cdn or anything else on any
+        // given day, and pinning to one of those buys nothing — Klipy already controls every
+        // name under klipy.com, so narrowing WITHIN their domain protects against nobody, while
+        // a subdomain that rotates would break attachments intermittently and look like a bug in
+        // the picker. The boundary that matters is "their domain, not an arbitrary one", and that
+        // is exactly what this expresses.
         //
-        // Failing closed is deliberate and safe here: if the host is wrong the media write is
-        // rejected, and Feed2 already treats a failed GIF attach as "the post stands without
-        // it" rather than losing the words. A wrong pin costs a missing GIF, never a lost post.
+        // Failing closed remains deliberate: if the host were ever wrong the media write is
+        // rejected, and Feed2 treats a failed GIF attach as "the post stands without it" rather
+        // than losing the words. A wrong pin costs a missing GIF, never a lost post.
         allow create: if request.auth != null
             && request.resource.data.uid == request.auth.uid
             && request.resource.data.type == "gif"

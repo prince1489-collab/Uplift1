@@ -261,6 +261,92 @@ key, no API restriction to set, and no connection to the Firebase project at all
    console rather than in this repo, so it could be switched on years from now without anyone
    seeing the code.)
 
+### The URL pin
+
+`firestore.rules` pins the stored GIF URL to `*.klipy.com`, so a client cannot write an arbitrary
+URL into the feed — a tracking pixel that fires for every viewer, a host that logs the IP of
+everyone who follows you, or an image swapped for something else after it was seen.
+
+Confirmed working in production: a real GIF attached and rendered, which it could not have done
+if the rule had refused the write.
+
+It is deliberately the registrable domain rather than one exact CDN subdomain. A CDN may answer
+from `media1`, `media2`, `cdn` or anything else on a given day, and narrowing within a domain
+KLIPY already controls entirely would protect against nobody while risking attachments that fail
+intermittently and look like a bug in the picker.
+
+### Verify it took
+
+Console → **Storage** → **Rules** should show the new text and a fresh *Last published*. Then
+set a profile photo from the app to confirm a normal upload still works, and try a file over
+2MB to confirm it is refused with a message about the file rather than a permissions error.
+
+## GIFs — getting a KLIPY app key
+
+GIF search needs `VITE_KLIPY_KEY`. Without it the composer simply hides the "Add a GIF" button,
+so the app works fine until you set it.
+
+### Why KLIPY and not Tenor
+
+This was written for Tenor first, and that was wrong. **Google closed the Tenor API to new
+clients on 13 January 2026 and shut the public API down entirely on 30 June 2026.** Searching the
+Google Cloud API Library for "Tenor" now returns nothing because there is nothing to return; X,
+Discord, WhatsApp and Bluesky all had to migrate off it.
+
+KLIPY is where that migration went — built by the ex-Tenor founders and engineering team as a
+near drop-in replacement, with a lifetime-free tier. WhatsApp is replacing Tenor with it, and it
+already backs Canva, Figma, Miro and Outlook.
+
+### Get the key
+
+Nothing to do with Google Cloud. At **[partner.klipy.com](https://partner.klipy.com)**:
+
+1. Create an account → **Add Platform** → generate an app key.
+2. Add it in **two places**, because two systems build the bundle and Vite bakes `VITE_`
+   variables in at build time:
+   - **Vercel** → Environment Variables → `VITE_KLIPY_KEY`, type **Config** (not Secret — it
+     ships in a public bundle either way), Preview + Production. Then **redeploy**: setting it
+     without a new build changes nothing.
+   - **Codemagic** → Environment variables → group **`seen_web`** → `VITE_KLIPY_KEY`, same
+     value, not secure. `codemagic.yaml` already references that group in both workflows.
+
+   Setting it in Vercel only gives you GIFs on the web and no GIF button at all on iOS and
+   Android, with nothing in any log to explain it.
+
+The free tier's test key allows **100 calls an hour**, and a production key is requested from the
+same panel. One call is one sheet-open or one search, so 100/hour is comfortable for testing and
+a small group, and is the first thing to outgrow.
+
+### About the key being public
+
+It ships in the bundle, deliberately — `src/klipy.js` explains why a proxy route would be a 13th
+serverless function and fail the Vercel build. A KLIPY app key reaches KLIPY and nothing else.
+
+Worth saying because the Tenor version of these instructions had a real hazard that this one does
+not: a **Google Cloud** key minted in `uplift-6d9ea` would, without API restrictions, have been
+usable against Firestore, Identity Toolkit, FCM and the Play Developer API — every API-key-
+accepting service enabled on that project. None of that applies here. There is no Google Cloud
+key, no API restriction to set, and no connection to the Firebase project at all.
+
+### Two things to check in the Partner Panel
+
+1. **Content filter.** The app requests `content_filter=high` on every call, which is a constant
+   in `src/klipy.js` so no call site can loosen it — KLIPY defaults to *medium*, so leaving it
+   out would be a choice rather than a neutral omission. If the panel also exposes an
+   account-level filter or a blocked-keyword list, set those to the strictest available too.
+   This is a 13+ app and the entire safety argument for GIFs is that someone else rated the
+   catalogue and we asked for the safest tier.
+2. **Advertisements — leave the Ads API OFF.** When creating a key, KLIPY offers *"Want to
+   start earning? Enable the Ads API"* as a toggle, off by default. Leave it off. With it on,
+   sponsored items are interleaved into results as `type: "ad"`, which would put adverts inside
+   the compose flow of a wellbeing app used by 13-year-olds.
+
+   (An earlier version of this file said ads were inherent to the free tier and warned that
+   filtering them might breach the terms. That was wrong — they are opt-in. `src/klipy.js`
+   still drops `type: "ad"` items, but as a second line of defence: the toggle lives in a web
+   console rather than in this repo, so it could be switched on years from now without anyone
+   seeing the code.)
+
 ### The one unconfirmed thing
 
 `firestore.rules` pins the stored GIF URL to the provider's domain, so a client cannot write an
