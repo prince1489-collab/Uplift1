@@ -136,6 +136,53 @@ await check("public: a non-string text is refused",
 await check("public: you still cannot post as someone else",
   assertFails(addDoc(collection(B, "publicMessages"), publicMsg("uidA", "not mine to send"))));
 
+// ── Attached media — the only part of the feed that is NOT world-readable ────────────────────
+// Everything above in publicMessages is `allow read: if true`. Media is the exception, because
+// the promise made about it was "only people in your Focused Feed can see them" — and a filter
+// in the client is not that promise, it is a picture of it.
+const TENOR = "https://media.tenor.com/abc123/happy.gif";
+const media = (uid, extra = {}) => ({
+  uid, type: "gif", url: TENOR, previewUrl: TENOR,
+  width: 320, height: 240, description: "someone waving", ...extra,
+});
+
+// A posts a message and attaches a GIF to it.
+const msgWithMedia = await addDoc(collection(A, "publicMessages"), publicMsg("uidA", "look at this"));
+await check("author can attach a GIF to their own message",
+  assertSucceeds(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"), media("uidA"))));
+await check("you cannot attach media to someone else's message as them",
+  assertFails(setDoc(doc(B, "publicMessages", msgWithMedia.id, "media", "other"), media("uidA"))));
+
+// The URL pin. Without it "attach a GIF" accepts any URL a client cares to write.
+await check("a non-Tenor url is refused (tracking pixel / IP-logging host)",
+  assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil"),
+    media("uidA", { url: "https://evil.example.com/pixel.gif", previewUrl: "https://evil.example.com/pixel.gif" }))));
+await check("a lookalike host is refused (tenor.com.evil.example)",
+  assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil2"),
+    media("uidA", { url: "https://media.tenor.com.evil.example/x.gif", previewUrl: TENOR }))));
+await check("a Tenor url is not enough on its own — the preview is pinned too",
+  assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil3"),
+    media("uidA", { previewUrl: "https://evil.example.com/pixel.gif" }))));
+await check("a non-gif type is refused (photos get their own rule when they exist)",
+  assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil4"), media("uidA", { type: "image" }))));
+
+// THE READ GATE. B follows A; C does not.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users", "uidB", "follows", "uidA"), { uid: "uidA", name: "A" });
+});
+await check("a follower CAN see the GIF",
+  assertSucceeds(getDoc(doc(B, "publicMessages", msgWithMedia.id, "media", "item"))));
+await check("a NON-follower cannot see the GIF, even though the message itself is public",
+  assertFails(getDoc(doc(C, "publicMessages", msgWithMedia.id, "media", "item"))));
+await check("the author can always see their own GIF",
+  assertSucceeds(getDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"))));
+
+// Write-once. A published GIF that has already been seen must not become a different one.
+await check("media cannot be edited after it is published",
+  assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"),
+    media("uidA", { url: "https://media.tenor.com/zzz/switched.gif" }))));
+await check("the author can delete their own media",
+  assertSucceeds(deleteDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"))));
 
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);

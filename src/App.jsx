@@ -21,6 +21,7 @@ import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
+import MessageMedia from "./MessageMedia";
 import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -4221,6 +4222,11 @@ export default function App() {
                                         </div>
                                         <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
                                       </div>
+                                      {/* Mounted only when the message says it has something.
+                                          That condition is what keeps the follow-gated read in
+                                          firestore.rules off the hot path: a feed of plain text
+                                          messages fetches nothing extra at all. */}
+                                      {m.hasMedia && <MessageMedia db={db} messageId={m.id} />}
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 

@@ -195,6 +195,53 @@ Console → **Storage** → **Rules** should show the new text and a fresh *Last
 set a profile photo from the app to confirm a normal upload still works, and try a file over
 2MB to confirm it is refused with a message about the file rather than a permissions error.
 
+## GIFs — getting and restricting the Tenor key
+
+GIF search needs `VITE_TENOR_KEY`. Without it the composer simply hides the "Add a GIF" button,
+so the app works fine until you set it.
+
+### Get the key
+
+Tenor v2 uses a **Google Cloud API key**. In the [Google Cloud console](https://console.cloud.google.com):
+
+1. Pick or create a project → **APIs & Services** → **Library** → enable **Tenor API**.
+2. **Credentials** → **Create credentials** → **API key**.
+3. Add it to Vercel as `VITE_TENOR_KEY`, then **redeploy** — Vite bakes `VITE_` variables into
+   the bundle at build time, so setting it without a new build changes nothing.
+
+### Restrict it — and the part that will catch you out
+
+This key ships inside the JavaScript bundle. That is deliberate (`src/tenor.js` explains why: a
+proxy route would be a 13th serverless function, which fails the Vercel build), and what it is
+worth to a thief is read-only GIF search against your free quota — no user data, nothing
+writable. Still worth restricting so the quota stays yours.
+
+**Application restrictions → Websites**, with `https://www.seenapp.app/*`.
+
+**The catch: that will break GIFs in the Android and iOS apps.** A referrer restriction checks
+the `Referer` header, and the Capacitor build is a WebView whose origin is
+`capacitor://localhost` — it does not send a referrer Google will recognise. This is the same
+shape of trap as the invite link, which had to be built on the production origin rather than
+`window.location.origin` for exactly this reason.
+
+So pick one:
+
+- **Unrestricted key.** Simplest, works everywhere, quota is theft-able. Given what the key can
+  do, this is a defensible choice for now — set a low daily quota cap in the console and watch it.
+- **Two keys.** A referrer-restricted `VITE_TENOR_KEY` for the web build, and a separate
+  unrestricted one for the native builds, injected by Codemagic. More moving parts; genuinely
+  tighter for the web, which is where most traffic will be.
+
+Either way, set a **quota limit** in the console (APIs & Services → Tenor API → Quotas). That is
+the control that actually caps the damage, and it works regardless of which option you pick.
+
+### Verify
+
+Open the composer, tap **Add a GIF**, and confirm the sheet fills with results. If it says
+"GIFs aren't switched on yet" the variable is missing from that build; if it says "Couldn't
+reach the GIF library" the key exists but is being refused — usually a restriction mismatch, and
+on a phone that is almost always the referrer problem above.
+
 ## The CLI (fallback)
 
 Only needed if you have a machine you can run commands on and want to deploy outside GitHub.

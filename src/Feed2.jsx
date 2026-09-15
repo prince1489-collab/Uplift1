@@ -25,6 +25,8 @@ import { awardPoints, claimFirstToday } from "./points";
 import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
+import GifPicker from "./GifPicker";
+import { isTenorConfigured } from "./tenor";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -396,7 +398,16 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
       // rather than a privacy boundary. Every other exclusion below is deliberate and stays:
       // yourself, the synthetic system row, people you follow (they belong in the Focused Feed),
       // and anyone you have blocked.
-      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !focusedSet.has(m.uid) && !isBlocked(m.uid))
+      //
+      // `hasMedia` is the newest exclusion and the only one that is about the AUDIENCE rather
+      // than the source. A post carrying a GIF was promised to "people in your Focused Feed",
+      // and this rotation is the one surface that shows you to strangers — so a post with
+      // something attached does not enter it at all. Showing it here minus its GIF would be
+      // worse than not showing it: a caption with nothing to caption reads as broken.
+      //
+      // firestore.rules enforces the same thing for anyone reading the database directly. This
+      // filter is what makes the app agree with the rules rather than rely on them.
+      .filter((m) => m.uid && m.uid !== myUid && m.uid !== "system" && m.text && !m.hasMedia && !focusedSet.has(m.uid) && !isBlocked(m.uid))
       .slice(0, 25)
       .map((m) => ({ type: "message", id: m.id, ts: Number(m.timestamp) || 0, msg: m }));
     // A blocked person must not surface via a kind moment or a shared reflection either.
@@ -1156,6 +1167,8 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
   const [phrasing, setPhrasing] = useState("idle"); // idle | loading | ready | none
   const [ideas, setIdeas] = useState([]);
   const [suggestNote, setSuggestNote] = useState("");
+  const [gif, setGif] = useState(null);           // the chosen Tenor result, attached on submit
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const len = text.trim().length;
   const canAnon = Number(sparkBalance) >= ANON_MIN_BALANCE;
 
@@ -1215,8 +1228,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
 
     // 2. Publish. Same field shape the rest of the app writes, so the production build —
     //    which reads publicMessages unfiltered — renders it with no changes of its own.
+    let posted;
     try {
-      await addDoc(collection(db, "publicMessages"), {
+      posted = await addDoc(collection(db, "publicMessages"), {
         uid: myUid ?? currentUser.uid,
         sender: anon ? "Anonymous" : (profile?.fullName ?? "Someone"),
         text: clean,
@@ -1234,6 +1248,37 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
       setReason(writeFailure(err, "Your post"));
       setState("rejected");
       return;
+    }
+
+    // 3. The GIF, if there is one — written AFTER the message and flagged on it LAST.
+    //
+    // That order is the whole point. `hasMedia` is what tells every reader to go and fetch the
+    // media document, so setting it before the document exists would publish a post that
+    // promises a GIF nobody can load. Writing the media first and the flag last means the only
+    // failure available is a post that is missing its GIF — degraded, but never broken, and
+    // never inconsistent for anyone who reads it.
+    //
+    // Deliberately not rolled back or surfaced as an error: the words are the post and they are
+    // already live. Refusing the whole thing, or making someone re-type it, because a decoration
+    // did not attach would be the wrong trade in an app about saying something to a person.
+    if (gif) {
+      try {
+        await setDoc(doc(db, "publicMessages", posted.id, "media", "item"), {
+          uid: myUid ?? currentUser.uid,
+          type: "gif",
+          url: gif.url,
+          previewUrl: gif.previewUrl,
+          width: gif.width,
+          height: gif.height,
+          // Carried so the alt text survives without another Tenor call on every render.
+          description: gif.description,
+          tenorId: gif.id,
+          createdAt: Date.now(),
+        });
+        await updateDoc(doc(db, "publicMessages", posted.id), { hasMedia: true });
+      } catch (err) {
+        console.error("[post] GIF attach failed, post stands without it:", err?.code || err?.message);
+      }
     }
 
     // Waters the Kindness Tree, same as a reflection. This was missing entirely — the post
@@ -1288,6 +1333,32 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
               {suggestNote || "Couldn't fetch suggestions just now — your own words are good."}
             </p>
           )}
+          {/* The chosen GIF, shown before it is sent rather than after. Capped in height so a
+              tall one cannot push the Share button off the bottom of the sheet. */}
+          {gif && (
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+              style={{ animation: "seenFadeUp 200ms ease both" }}>
+              <img src={gif.previewUrl} alt={gif.description}
+                className="max-h-44 w-full object-contain" />
+              <button onClick={() => setGif(null)} aria-label="Remove GIF"
+                className="absolute right-2 top-2 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/70 transition-colors">
+                <X size={13} />
+              </button>
+              <p className="px-3 py-1.5 text-[10px] text-slate-400">
+                Only people in your Focused Feed will see this
+              </p>
+            </div>
+          )}
+
+          {/* Hidden entirely when there is no Tenor key, rather than shown as a button that
+              opens a sheet explaining it does not work. */}
+          {!gif && isTenorConfigured() && state !== "done" && (
+            <button onClick={() => setShowGifPicker(true)}
+              className="w-full rounded-xl border border-dashed border-teal-200 py-2 text-[12px] font-semibold text-teal-600 hover:border-teal-300 hover:bg-teal-50 transition-colors flex items-center justify-center gap-1.5">
+              🎬 Add a GIF
+            </button>
+          )}
+
           <div className="flex items-center justify-between">
             <button onClick={() => { if (canAnon) setAnon((a) => !a); }} disabled={!canAnon}
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
@@ -1333,6 +1404,10 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
           </p>
         </div>
       </div>
+
+      {showGifPicker && (
+        <GifPicker onClose={() => setShowGifPicker(false)} onPick={(g) => setGif(g)} />
+      )}
     </div>,
     document.body
   );

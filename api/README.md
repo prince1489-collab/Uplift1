@@ -44,3 +44,19 @@ means nothing can be published at all.
 | `GNEWS_API_KEY` | goodnews |
 | `STRIPE_SECRET_KEY` · `STRIPE_WEBHOOK_SECRET` · `STRIPE_PRICE_ID` | create-checkout-session, create-portal-session, webhook |
 | `APP_URL` | create-checkout-session, create-portal-session (both defaulted) |
+
+### Client-side variables
+
+`VITE_`-prefixed variables are a different thing from the table above. Vite **inlines them into
+the bundle at build time**, so they are readable by anyone who opens the site — they are
+configuration, not secrets, and nothing that must stay private may be given one.
+
+| Variable | Used by |
+|---|---|
+| `VITE_FIREBASE_VAPID_KEY` | web push registration (`src/App.jsx`) |
+| `VITE_TENOR_KEY` | GIF search (`src/tenor.js`) — see DEPLOY.md for how to restrict it |
+
+Both are absent-safe: without the VAPID key web push does not register, and without the Tenor
+key the composer hides the "Add a GIF" button entirely rather than offering one that fails.
+A rebuild is needed after changing either, because the value is baked in — setting it in Vercel
+and redeploying nothing will change nothing.

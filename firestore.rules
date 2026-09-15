@@ -40,6 +40,51 @@ service cloud.firestore {
         allow create: if request.auth != null;
         allow delete: if isAdmin();
       }
+
+      // ── Attached media (GIFs now; photos later) ──
+      //
+      // THIS IS THE ONE PLACE IN THE FEED THAT IS NOT WORLD-READABLE, and that is the whole
+      // reason it is a subcollection rather than two more fields on the message.
+      //
+      // The requirement is "only people in your Focused Feed can see them". Its neighbours above
+      // are all `allow read: if true`, and the Worldwide/Focused split is drawn in the client —
+      // which makes it a presentation choice, not a boundary. Anyone can point the SDK at
+      // publicMessages and read every document in it. Keeping media on the message document and
+      // filtering in the feed would have looked identical in the app while being worth nothing
+      // to the person who was promised it.
+      //
+      // Your Focused Feed is the people YOU follow, so the question is whether the READER follows
+      // the AUTHOR — users/{reader}/follows/{author}. exists() in a rule is not bound by that
+      // path's own owner-only read rule, so this works without opening anyone's follow list.
+      //
+      // The cost is one document read per media item shown. That is why media lives here and the
+      // message carries only a `hasMedia` flag: a feed of ordinary text messages pays nothing,
+      // and the client only ever asks for this document when there is something to fetch.
+      match /media/{mediaId} {
+        allow read: if request.auth != null
+            && (resource.data.uid == request.auth.uid
+                || exists(/databases/$(database)/documents/users/$(request.auth.uid)/follows/$(resource.data.uid))
+                || isAdmin());
+
+        // The URL is pinned to Tenor's CDN. Without this, "attach a GIF" is a field that accepts
+        // any URL a client cares to write — a tracking pixel that fires on every viewer, a host
+        // that logs the IP of everyone who follows you, or an image swapped for something else
+        // after moderation. The app never needs another host, so the rule says so, and the
+        // whole safety argument for GIFs (someone else rates the catalogue) only holds while
+        // the bytes really do come from that catalogue.
+        allow create: if request.auth != null
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.type == "gif"
+            && request.resource.data.url is string
+            && request.resource.data.url.matches('https://media[0-9]*[.]tenor[.]com/.*')
+            && request.resource.data.previewUrl is string
+            && request.resource.data.previewUrl.matches('https://media[0-9]*[.]tenor[.]com/.*');
+
+        // No update: a media item is written once with its message. Allowing edits would let a
+        // published, already-seen GIF be swapped for another one after the fact.
+        allow delete: if request.auth != null
+            && (resource.data.uid == request.auth.uid || isAdmin());
+      }
     }
 
     // ── User profiles ──
