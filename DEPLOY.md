@@ -242,12 +242,16 @@ key, no API restriction to set, and no connection to the Firebase project at all
    account-level filter or a blocked-keyword list, set those to the strictest available too.
    This is a 13+ app and the entire safety argument for GIFs is that someone else rated the
    catalogue and we asked for the safest tier.
-2. **Advertisements.** KLIPY's free tier interleaves sponsored items into results as
-   `type: "ad"` — that is how the tier is free. `src/klipy.js` drops them, because an advert
-   inside the compose flow of a wellbeing app used by 13-year-olds should be a decision someone
-   makes rather than a default nobody noticed. **Check their terms on whether filtering ads is
-   permitted on the free tier**, and if it is not, that is a reason to reconsider the provider
-   rather than to quietly show the ads.
+2. **Advertisements — leave the Ads API OFF.** When creating a key, KLIPY offers *"Want to
+   start earning? Enable the Ads API"* as a toggle, off by default. Leave it off. With it on,
+   sponsored items are interleaved into results as `type: "ad"`, which would put adverts inside
+   the compose flow of a wellbeing app used by 13-year-olds.
+
+   (An earlier version of this file said ads were inherent to the free tier and warned that
+   filtering them might breach the terms. That was wrong — they are opt-in. `src/klipy.js`
+   still drops `type: "ad"` items, but as a second line of defence: the toggle lives in a web
+   console rather than in this repo, so it could be switched on years from now without anyone
+   seeing the code.)
 
 ### The one unconfirmed thing
 

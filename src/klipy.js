@@ -74,10 +74,15 @@ function pickGif(item, order) {
 // Klipy's shape → ours. One place, so nothing downstream knows what `file.md.gif.url` is and a
 // change at their end lands in a single function.
 function normalise(item) {
-  // SPONSORED ITEMS ARE DROPPED. Klipy's free tier interleaves ads into results as
-  // `type: "ad"`, which is how the tier is free. An advert inside the compose flow of a
-  // wellbeing app used by 13-year-olds is not something to let through by omission — if it is
-  // ever wanted it should be a decision someone makes, not a default nobody noticed.
+  // SPONSORED ITEMS ARE DROPPED, as a second line of defence rather than the first.
+  //
+  // Klipy can interleave adverts into results as `type: "ad"`, but that is OPT-IN: the Ads API
+  // is a toggle on the key, off by default, and Seen's key has it off. So in practice nothing
+  // here should ever be an ad. This check exists anyway because the toggle lives in a web
+  // console rather than in this repo — somebody could switch it on years from now, for revenue,
+  // without ever seeing this file — and an advert inside the compose flow of a wellbeing app
+  // used by 13-year-olds should be a decision someone makes deliberately, not something that
+  // starts appearing because a setting changed.
   if (item?.type !== "gif") return null;
 
   const full = pickGif(item, FULL_QUALITY_ORDER);
