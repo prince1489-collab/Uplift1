@@ -83,6 +83,9 @@ let started = false;
 // Call once after the user is authenticated. Idempotent.
 export async function registerNativePush({ db, uid, onOpenLink } = {}) {
   if (!isNativeApp() || !db || !uid || started) return;
+  // Latched HERE, before the first await, so a re-render while the permission prompt is still
+  // open cannot start a second run and register the listeners twice. It is released again below
+  // if permission is refused — see there for why.
   started = true;
 
   // Loaded lazily so the web bundle never pulls in native-only code.
@@ -105,7 +108,18 @@ export async function registerNativePush({ db, uid, onOpenLink } = {}) {
 
   try {
     const perm = await FirebaseMessaging.requestPermissions();
-    if (perm?.receive !== "granted") return;
+    if (perm?.receive !== "granted") {
+      // RELEASE THE LATCH. It used to stay closed here, so dismissing the Android 13+
+      // notification prompt once meant no later mount ever asked again — the user was silently
+      // excluded from notifications for the rest of the process, and the app looked like push
+      // was simply broken. Only the catch below reset it, and a refusal is not an exception.
+      //
+      // That is the wrong way round. A refusal is the outcome most likely to be reconsidered:
+      // someone who swipes the prompt away while reading a message should be asked again next
+      // time they open the app, not written off.
+      started = false;
+      return;
+    }
 
     // Keep the stored token fresh.
     await FirebaseMessaging.addListener("tokenReceived", (event) => {

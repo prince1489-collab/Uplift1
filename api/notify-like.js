@@ -13,7 +13,7 @@
 //     so the notification body can't be attacker-chosen.
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken } from "./_auth.js";
+import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken, linkFor } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (!cors(req, res)) return;
@@ -65,7 +65,10 @@ export default async function handler(req, res) {
     // One dead device must not stop the others being told, so each send is settled on its own
     // and a permanently-dead token is pruned individually.
     const results = await Promise.allSettled(
-      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform)))
+      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform, {
+        title: isSticker ? "Someone reacted ✨" : "Your words landed ❤️",
+        link: linkFor("hearts"),
+      })))
     );
     let sent = 0;
     await Promise.all(results.map(async (result, i) => {

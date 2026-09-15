@@ -11,7 +11,7 @@
 // reply you actually sent, and its text cannot be chosen by the caller.
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken } from "./_auth.js";
+import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken, linkFor } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (!cors(req, res)) return;
@@ -47,7 +47,10 @@ export default async function handler(req, res) {
       : `${name} sent you a private reply 💬`;
 
     const results = await Promise.allSettled(
-      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform)))
+      rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform, {
+        title: "Someone wrote to you 💬",
+        link: linkFor("replies"),
+      })))
     );
     let sent = 0;
     await Promise.all(results.map(async (result, i) => {

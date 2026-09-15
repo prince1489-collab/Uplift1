@@ -887,8 +887,10 @@ function WelcomeMoment({ firstName, onClose }) {
 // above actual messages from actual people. Standing status belongs on Grow; congratulation for
 // nothing belongs nowhere. If a row isn't something a person did or something the app is asking
 // of you, it does not go in the bell.
-function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenReply }) {
-  const [open, setOpen] = useState(false);
+function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenReply, openOnMount = false }) {
+  // Initial state rather than an effect: when a notification tap brings you here, the bell should
+  // already be open on the first paint. Opening it a frame later reads as the app twitching.
+  const [open, setOpen] = useState(openOnMount);
   // Resolved once per mount — the boundary must not move under the user mid-session.
   const [visitStart] = useState(resolveVisitStart);
   // Keep the "last active" stamp fresh while the tab is open, so a long session that is
@@ -1523,6 +1525,15 @@ export default function App() {
   // Referral: detect ?ref=UID in URL and persist to localStorage
   const [pendingReferralUid] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("ref") || null; } catch { return null; }
+  });
+  // Where a tapped notification wants us. Read once at mount, and validated against a closed set
+  // rather than trusted: this value arrives from outside the app, so it decides between known
+  // destinations and can never be a destination itself.
+  const [openTarget] = useState(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get("open");
+      return v === "replies" || v === "hearts" ? v : null;
+    } catch { return null; }
   });
   const [isSending, setIsSending] = useState(false);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
@@ -2498,6 +2509,18 @@ export default function App() {
       url.searchParams.delete("ref");
       window.history.replaceState({}, "", url.toString());
     } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Strip ?open= once it has been read. Without this the parameter survives in the address bar,
+  // so every later reload reopens the bell — and copying the URL to someone hands them a link
+  // that opens a panel about events they do not have.
+  useEffect(() => {
+    if (!openTarget) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("open");
+      window.history.replaceState({}, "", url.toString());
+    } catch { /* ignore */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-add buddy from invite link (?add=UID)
@@ -3653,7 +3676,8 @@ export default function App() {
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell db={db} currentUser={currentUser}
-                      nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply} />
+                      nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply}
+                      openOnMount={Boolean(openTarget)} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu

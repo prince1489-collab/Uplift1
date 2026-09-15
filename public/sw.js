@@ -18,7 +18,13 @@ messaging.onBackgroundMessage((payload) => {
   // Messages are sent as data-only (no notification field) so this is the single
   // display path — the compat SDK won't auto-show a duplicate.
   const { title = "Seen", body = "" } = payload.data ?? {};
-  const link = payload.webpush?.fcmOptions?.link ?? "/";
+  // `payload.webpush` is what this used to read, and it does not exist. `webpush` is a SEND-side
+  // key of the FCM v1 REST API; what arrives here is a MessagePayload, which carries `data`,
+  // `notification`, `fcmOptions`, `from` and `messageId` — FCM maps the sender's
+  // webpush.fcmOptions.link onto the top-level `fcmOptions`. So the link was ALWAYS undefined and
+  // always fell through to "/", while `data.link` — which every sender sets — was never read.
+  // Both are checked now, nearest-the-spec first.
+  const link = payload.fcmOptions?.link ?? payload.data?.link ?? "/";
   self.registration.showNotification(title, {
     body,
     icon: "/icon-192.png",
@@ -31,10 +37,23 @@ messaging.onBackgroundMessage((payload) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const link = event.notification.data?.link || "/";
+  // Focus AND navigate. This used to return client.focus() on the first window it found, whatever
+  // page that window happened to be on, so the link was thrown away for anyone with a tab already
+  // open — openWindow was only ever reached when there were no windows at all. Tapping "Kalpana
+  // replied to you" brought a stale tab forward and left you wherever you already were.
+  //
+  // navigate() can reject (a cross-origin target, or a client that does not allow it), so the
+  // focus is not made conditional on it: being brought to the front and staying put is a worse
+  // outcome than not moving, but it is much better than nothing happening at all.
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client) return client.focus();
+        if ("focus" in client) {
+          if ("navigate" in client) {
+            return client.navigate(link).then((c) => (c || client).focus()).catch(() => client.focus());
+          }
+          return client.focus();
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(link);
     })

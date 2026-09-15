@@ -2,7 +2,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 // Shared with notify-like/notify-reply so the Android payload shape exists in exactly one place.
-import { androidNotification, tokensFor, dropDeadToken } from "./_auth.js";
+import { androidNotification, tokensFor, dropDeadToken, linkFor, APP_URL } from "./_auth.js";
 
 function initAdmin() {
   if (!getApps().length) {
@@ -10,7 +10,8 @@ function initAdmin() {
   }
 }
 
-const APP_URL = "https://www.seenapp.app";
+// APP_URL is imported rather than redeclared. It was a second copy of the same string, and two
+// copies of a base URL drift exactly once — silently, in whichever file nobody remembered.
 
 // One morning push per day. On Sundays we replace the daily kindness nudge with a combined
 // weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
@@ -88,16 +89,16 @@ async function personalNews(db, uid, since) {
 export function newsMessage(news) {
   if (news.replies > 0) {
     return news.replies === 1
-      ? { title: "Someone wrote to you 💬", body: `${news.replyName || "Someone"} sent you a private word of kindness.` }
-      : { title: "Someone wrote to you 💬", body: `${news.replies} private replies are waiting for you.` };
+      ? { title: "Someone wrote to you 💬", body: `${news.replyName || "Someone"} sent you a private word of kindness.`, open: "replies" }
+      : { title: "Someone wrote to you 💬", body: `${news.replies} private replies are waiting for you.`, open: "replies" };
   }
   if (news.hearts > 0) {
     const who = news.heartName && news.heartCountry
       ? `${news.heartName} in ${news.heartCountry}`
       : (news.heartName || "Someone");
     return news.hearts === 1
-      ? { title: "Your words landed ❤️", body: `${who} felt something you wrote.` }
-      : { title: "Your words landed ❤️", body: `${news.hearts} people felt something you wrote.` };
+      ? { title: "Your words landed ❤️", body: `${who} felt something you wrote.`, open: "hearts" }
+      : { title: "Your words landed ❤️", body: `${news.hearts} people felt something you wrote.`, open: "hearts" };
   }
   return null;
 }
@@ -180,10 +181,14 @@ export default async function handler(req, res) {
     // backgrounded), while a web token must NOT have one or sw.js draws a second notification.
     const pushTo = async (uid, rows, msg) => {
       const results = await Promise.allSettled(rows.map((r) => {
+        // Only the personal messages have somewhere specific to go. The world line and the
+        // evergreen one are about nobody in particular, so they open the app and stop there —
+        // sending those to the bell would promise an event that is not in it.
+        const link = msg.open ? linkFor(msg.open) : APP_URL;
         const payload = {
           token: r.token,
-          data: { title: msg.title, body: msg.body, link: APP_URL },
-          webpush: { fcmOptions: { link: APP_URL } },
+          data: { title: msg.title, body: msg.body, link },
+          webpush: { fcmOptions: { link } },
           apns: { payload: { aps: { alert: { title: msg.title, body: msg.body }, sound: "default" } } },
         };
         if (r.platform === "android") payload.android = androidNotification(msg.title, msg.body);
