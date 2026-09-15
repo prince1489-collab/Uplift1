@@ -1874,7 +1874,7 @@ const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onSticker, onUpgrade, onDelete, onReply }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onSticker, onUpgrade, onDelete, onEdit, onReply }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
   const [myEmoji, setMyEmoji] = useState(null);
@@ -2165,6 +2165,21 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
             style={{ fontSize: 11, fontWeight: 700, width: "auto", padding: "0 10px", height: 34, color: "#A82E2C" }}
             onClick={() => { onReply(); onClose?.(); }}>
             💬 Reply
+          </button>
+        </>
+      )}
+      {/* Edit sits before Delete, and unlike Delete it takes one tap. Deleting is irreversible so
+          it asks twice; editing opens a sheet you can still close, and the sheet screens the
+          result exactly as a new post would. */}
+      {mine && onEdit && (
+        <>
+          <div className="seen-qrb-sep" />
+          <button
+            className="seen-qrb-btn"
+            title="Edit your message"
+            style={{ fontSize: 15, width: "auto", padding: "0 8px", height: 34 }}
+            onClick={() => { onEdit(); onClose?.(); }}>
+            ✏️
           </button>
         </>
       )}

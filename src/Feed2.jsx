@@ -1154,8 +1154,16 @@ function apiFailure(err, what) {
 // feeling statuses and custom replies) BEFORE it is written. Unlike the feelings path,
 // which allows a post through when moderation is unreachable, this one fails CLOSED: a
 // feeling is 60 chars inside a constrained flow, this is free text going to a feed.
-export function PostComposer({ profile, myUid, currentUser, db, streak = 0, sparkBalance = 0, onPosted, onClose }) {
-  const [text, setText] = useState("");
+// `editing` turns this into an edit sheet for an existing post: pass the message document.
+//
+// The same component rather than a second sheet, and the reason is the moderation block below.
+// Two fail-closed screening paths is how one of them quietly stops failing closed — the copy
+// that nobody is looking at gets a well-meaning "just let it through if the service is down"
+// six months later. An edit that skipped screening would also make screening optional for
+// everyone: post something warm, rewrite it to anything. Reusing this keeps that impossible.
+export function PostComposer({ profile, myUid, currentUser, db, streak = 0, sparkBalance = 0, editing = null, onPosted, onClose }) {
+  const isEditing = Boolean(editing?.id);
+  const [text, setText] = useState(editing?.text ?? "");
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
   const [reason, setReason] = useState("");
@@ -1226,7 +1234,30 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
       return;
     }
 
-    // 2. Publish. Same field shape the rest of the app writes, so the production build —
+    // 2a. An EDIT is a different write and stops here.
+    //
+    // `editedAt` is not decoration and not optional — firestore.rules refuses a text change that
+    // arrives without it. Anyone who already hearted this post keeps their heart, so the post has
+    // to be honest that it is not the post they hearted.
+    //
+    // No drops, deliberately: the award belongs to the act of writing something, and rewording it
+    // is not a second act. Awarding again would also make editing a way to farm them.
+    if (isEditing) {
+      try {
+        await updateDoc(doc(db, "publicMessages", editing.id), { text: clean, editedAt: Date.now() });
+      } catch (err) {
+        setFailKind("unavailable");
+        setReason(writeFailure(err, "That edit"));
+        setState("rejected");
+        return;
+      }
+      setState("done");
+      onPosted?.();
+      setTimeout(() => onClose?.(), 900);
+      return;
+    }
+
+    // 2b. Publish. Same field shape the rest of the app writes, so the production build —
     //    which reads publicMessages unfiltered — renders it with no changes of its own.
     let posted;
     try {
@@ -1299,7 +1330,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
       <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
         <div className="px-5 pb-2 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">Share some kindness</h2>
+          <h2 className="text-lg font-bold text-slate-800">{isEditing ? "Edit your message" : "Share some kindness"}</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
         </div>
         <div className="px-5 pb-8 space-y-3">
@@ -1352,7 +1383,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
 
           {/* Hidden entirely when there is no Klipy key, rather than shown as a button that
               opens a sheet explaining it does not work. */}
-          {!gif && isKlipyConfigured() && state !== "done" && (
+          {!gif && !isEditing && isKlipyConfigured() && state !== "done" && (
             <button onClick={() => setShowGifPicker(true)}
               className="w-full rounded-xl border border-dashed border-teal-200 py-2 text-[12px] font-semibold text-teal-600 hover:border-teal-300 hover:bg-teal-50 transition-colors flex items-center justify-center gap-1.5">
               🎬 Add a GIF
@@ -1360,6 +1391,11 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
           )}
 
           <div className="flex items-center justify-between">
+            {/* Hidden when editing. Whether a post carries your name is a property of the post as
+                published — people saw it one way — and changing that after the fact is a separate
+                decision that should not arrive free with a typo fix. firestore.rules agrees: the
+                update rule permits text, editedAt and hasMedia, and `sender` is not among them. */}
+            {isEditing ? <span /> : (
             <button onClick={() => { if (canAnon) setAnon((a) => !a); }} disabled={!canAnon}
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
                 !canAnon ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
@@ -1367,6 +1403,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
                 : "border-slate-200 bg-white text-slate-500"}`}>
               {!canAnon ? "🔒 Posting as you" : anon ? "🕶️ Name hidden" : "👤 Posting as you"}
             </button>
+            )}
             <span className={`text-[11px] ${len > MAX_LEN - 10 ? "text-amber-600" : "text-slate-400"}`}>{len}/{MAX_LEN}</span>
           </div>
           {/* Say why it's locked rather than leaving a dead button. */}
@@ -1391,14 +1428,16 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
             </div>
           )}
           {state === "done" && (
-            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-[12px] font-semibold text-teal-700">Shared ✓ — it's in the feed now</div>
+            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-[12px] font-semibold text-teal-700">{isEditing ? "Saved ✓ — your message is updated" : "Shared ✓ — it's in the feed now"}</div>
           )}
           <button onClick={submit} disabled={!len || state === "checking"}
             className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {state === "checking" ? (<><Loader2 size={16} className="animate-spin" /> Checking kindness…</>) : "Share"}
+            {state === "checking" ? (<><Loader2 size={16} className="animate-spin" /> Checking kindness…</>) : (isEditing ? "Save changes" : "Share")}
           </button>
           <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            {anon
+            {isEditing
+              ? "Edits are screened like new posts. Anyone who already reacted keeps their reaction, so your message will show that it was edited."
+              : anon
               ? "Your name and country won't be shown. Posts are still linked to your account so they can be moderated, so this isn't fully anonymous."
               : "Every post is screened before anyone sees it. You can delete yours at any time."}
           </p>

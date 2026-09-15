@@ -2050,6 +2050,8 @@ export default function App() {
   const [glimpse, setGlimpse] = useState(null); // { uid, country } → tapped feed name
   // v2 Feed 2.0 (preview): free-text posts, focused-feed selection, kind moments — all device-local
   const [postComposerOpen, setPostComposerOpen] = useState(false);
+  // The message being edited, or null for a new post. Same sheet either way.
+  const [editingPost, setEditingPost] = useState(null);
   const [localPosts, setLocalPosts] = useState(() => loadLocalPosts());
   const removeLocalPost = (id) => {
     setLocalPosts((prev) => {
@@ -3464,7 +3466,11 @@ export default function App() {
               // so the globe is worth showing.
               setShowMapPrompt(true);
             }}
-            onClose={() => setPostComposerOpen(false)} />
+            editing={editingPost}
+            // Cleared on close, not on open. Leaving it set would pre-fill the NEXT new post with
+            // the words of the last thing edited — and the composer reads it once, as initial
+            // state, so a stale value is invisible until somebody opens the sheet expecting blank.
+            onClose={() => { setPostComposerOpen(false); setEditingPost(null); }} />
         )}
         {replyTarget && (
           <PrivateReplySheet
@@ -4168,6 +4174,7 @@ export default function App() {
                                             onSticker={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
                                             onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
                                             onReply={() => setReplyTarget(m)}
+                                            onEdit={() => { setEditingPost(m); setPostComposerOpen(true); setReactionBarId(null); }}
                                             onDelete={() => { handleDeleteMessage(m.id, m.sparkReward ?? 0); setReactionBarId(null); }}
                                           />
                                         </div>
@@ -4232,6 +4239,16 @@ export default function App() {
                                               before the stored text dropped its own punctuation —
                                               without it those would now show two pairs. */}
                                           {m.proverbOriginal ? `“${stripQuotes(m.text)}”` : m.text}
+                                          {/* ALWAYS VISIBLE, unlike the timestamp below, which is
+                                              hidden until tapped. This marker exists for the
+                                              person who already reacted — their heart stays on
+                                              the post, so the post has to admit the words moved.
+                                              A marker they have to tap to discover would not do
+                                              that job. firestore.rules refuses a text change that
+                                              arrives without editedAt, so it cannot be skipped. */}
+                                          {m.editedAt && (
+                                            <span className="ml-1.5 text-[10px] font-normal opacity-50">· edited</span>
+                                          )}
                                           {/* Only a proverb has these. The translation is
                                               already above as the message itself. */}
                                           {m.proverbOriginal && (

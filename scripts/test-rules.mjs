@@ -136,6 +136,55 @@ await check("public: a non-string text is refused",
 await check("public: you still cannot post as someone else",
   assertFails(addDoc(collection(B, "publicMessages"), publicMsg("uidA", "not mine to send"))));
 
+// ── Editing your own post ────────────────────────────────────────────────────────────────────
+// The update rule used to be "are you the author" and nothing else, which made the text field
+// writable without moderation — post something warm, rewrite it to anything, and
+// api/moderate-message.js never sees what ends up in the feed. These tests exist because that
+// bypass is the reason the rule was tightened, and a rule that silently loosens again would look
+// exactly like a working edit feature.
+const mineForEdit = await addDoc(collection(A, "publicMessages"), publicMsg("uidA", "Happy birthday Sam"));
+
+await check("author can edit their own post, marking it edited",
+  assertSucceeds(updateDoc(doc(A, "publicMessages", mineForEdit.id),
+    { text: "Happy birthday Sam!", editedAt: 1700000001000 })));
+await check("somebody else cannot edit your post",
+  assertFails(updateDoc(doc(B, "publicMessages", mineForEdit.id),
+    { text: "not yours to change", editedAt: 1700000002000 })));
+
+// THE MARKER IS NOT OPTIONAL. It is the entire protection for anyone who already reacted: the
+// heart stays, so the post has to admit it is not the post they hearted.
+await check("text cannot change WITHOUT editedAt — the marker cannot be skipped",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id), { text: "quietly different" })));
+
+// hasMedia still has to work: Feed2 sets it immediately after a GIF attaches, and it does not
+// touch the text, so it must pass without pretending to be an edit.
+await check("hasMedia can still be set on a post whose text is unchanged",
+  assertSucceeds(updateDoc(doc(A, "publicMessages", mineForEdit.id), { hasMedia: true })));
+
+// The fields an author must NOT be able to rewrite.
+await check("sparkReward is not editable (delete claws it back, so it would refund drops never earned)",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id), { sparkReward: 99999 })));
+await check("timestamp is not editable",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id), { timestamp: 1 })));
+await check("uid is not editable — a post cannot be reassigned to someone else",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id), { uid: "uidB" })));
+await check("sender is not editable — the name on a post cannot change after the fact",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id), { sender: "Someone Else" })));
+await check("a permitted key cannot smuggle a forbidden one alongside it",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id),
+    { text: "fine words", editedAt: 1700000003000, sparkReward: 99999 })));
+
+// The same bounds a create is held to.
+await check("an edit to 500 characters is allowed",
+  assertSucceeds(updateDoc(doc(A, "publicMessages", mineForEdit.id),
+    { text: "x".repeat(500), editedAt: 1700000004000 })));
+await check("an edit to 501 characters is refused",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id),
+    { text: "x".repeat(501), editedAt: 1700000005000 })));
+await check("a post cannot be edited to empty",
+  assertFails(updateDoc(doc(A, "publicMessages", mineForEdit.id),
+    { text: "", editedAt: 1700000006000 })));
+
 // ── Attached media — the only part of the feed that is NOT world-readable ────────────────────
 // Everything above in publicMessages is `allow read: if true`. Media is the exception, because
 // the promise made about it was "only people in your Focused Feed can see them" — and a filter

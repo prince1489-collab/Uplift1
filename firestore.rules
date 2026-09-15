@@ -23,8 +23,38 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500;
+      // ── Editing your own post ──
+      //
+      // This used to be `uid == request.auth.uid` and nothing else, which meant the author could
+      // rewrite ANY field from a console: the text, the sparkReward, the timestamp. Nobody did,
+      // because the app offered no button — but the text half of that is a MODERATION BYPASS,
+      // and a big one. Post something warm, then rewrite it to anything, and
+      // api/moderate-message.js never sees the words that end up in the feed. An edit feature is
+      // the reason to close it rather than the reason it opened.
+      //
+      // Three keys, and nothing else:
+      //   text      — the edit itself, held to the same 500-character abuse ceiling as a create
+      //   editedAt  — the marker (see below)
+      //   hasMedia  — set by Feed2 immediately after a GIF attaches, on a post it just created
+      //
+      // `sparkReward` is deliberately NOT in that list. It is what handleDeleteMessage claws
+      // back, so a writable one would let somebody inflate a post's value and then delete it for
+      // a refund of drops they never earned.
+      //
+      // AND THE MARKER CANNOT BE SKIPPED. If `text` changes, `editedAt` must change with it.
+      // That is enforced here rather than trusted to the client because the marker is the whole
+      // protection for anyone who already reacted: their heart stays on the post, so the post
+      // has to be honest that it is not the post they hearted. A client that could quietly amend
+      // the words and leave no trace would make the marker decorative.
       allow update: if request.auth != null
-          && resource.data.uid == request.auth.uid;
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['text', 'editedAt', 'hasMedia'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && (request.resource.data.text == resource.data.text
+              || request.resource.data.diff(resource.data).affectedKeys().hasAny(['editedAt']));
       allow delete: if request.auth != null
           && (resource.data.uid == request.auth.uid || isAdmin());
 
