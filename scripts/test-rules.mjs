@@ -140,9 +140,13 @@ await check("public: you still cannot post as someone else",
 // Everything above in publicMessages is `allow read: if true`. Media is the exception, because
 // the promise made about it was "only people in your Focused Feed can see them" — and a filter
 // in the client is not that promise, it is a picture of it.
-const TENOR = "https://media.tenor.com/abc123/happy.gif";
+// Shape taken from Klipy's file.<quality>.gif.url. The exact CDN subdomain is unconfirmed
+// (their docs were unreachable when this was written) — see firestore.rules. What the
+// tests below actually assert is the property that matters: the host must be the
+// provider's, and near-misses must not pass.
+const KLIPY = "https://cdn.klipy.com/abc123/happy.gif";
 const media = (uid, extra = {}) => ({
-  uid, type: "gif", url: TENOR, previewUrl: TENOR,
+  uid, type: "gif", url: KLIPY, previewUrl: KLIPY,
   width: 320, height: 240, description: "someone waving", ...extra,
 });
 
@@ -154,13 +158,13 @@ await check("you cannot attach media to someone else's message as them",
   assertFails(setDoc(doc(B, "publicMessages", msgWithMedia.id, "media", "other"), media("uidA"))));
 
 // The URL pin. Without it "attach a GIF" accepts any URL a client cares to write.
-await check("a non-Tenor url is refused (tracking pixel / IP-logging host)",
+await check("a non-provider url is refused (tracking pixel / IP-logging host)",
   assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil"),
     media("uidA", { url: "https://evil.example.com/pixel.gif", previewUrl: "https://evil.example.com/pixel.gif" }))));
-await check("a lookalike host is refused (tenor.com.evil.example)",
+await check("a lookalike host is refused (klipy.com.evil.example)",
   assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil2"),
-    media("uidA", { url: "https://media.tenor.com.evil.example/x.gif", previewUrl: TENOR }))));
-await check("a Tenor url is not enough on its own — the preview is pinned too",
+    media("uidA", { url: "https://cdn.klipy.com.evil.example/x.gif", previewUrl: KLIPY }))));
+await check("a provider url is not enough on its own — the preview is pinned too",
   assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "evil3"),
     media("uidA", { previewUrl: "https://evil.example.com/pixel.gif" }))));
 await check("a non-gif type is refused (photos get their own rule when they exist)",
@@ -180,7 +184,7 @@ await check("the author can always see their own GIF",
 // Write-once. A published GIF that has already been seen must not become a different one.
 await check("media cannot be edited after it is published",
   assertFails(setDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"),
-    media("uidA", { url: "https://media.tenor.com/zzz/switched.gif" }))));
+    media("uidA", { url: "https://cdn.klipy.com/zzz/switched.gif" }))));
 await check("the author can delete their own media",
   assertSucceeds(deleteDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"))));
 

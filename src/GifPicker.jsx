@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Search, Loader2 } from "lucide-react";
-import { featuredGifs, searchGifs, isTenorConfigured } from "./tenor";
+import { featuredGifs, searchGifs, isKlipyConfigured } from "./klipy";
 
 // Long enough that a normal typing speed produces one request per word rather than one per
 // letter, short enough that it still feels like it is searching as you type.
@@ -20,11 +20,11 @@ export default function GifPicker({ onClose, onPick }) {
   // Whether there is a key is known at mount, not discovered — so it is the INITIAL state
   // rather than something an effect sets on the way past. Same end result, one less render,
   // and it keeps the mount effect to the job effects are for.
-  const [state, setState] = useState(() => (isTenorConfigured() ? "loading" : "unconfigured"));
+  const [state, setState] = useState(() => (isKlipyConfigured() ? "loading" : "unconfigured"));
   const abortRef = useRef(null);
 
   const run = useCallback(async (q) => {
-    if (!isTenorConfigured()) { setState("unconfigured"); return; }
+    if (!isKlipyConfigured()) { setState("unconfigured"); return; }
 
     // Abort the request in flight. Without this an early slow response can land after a later
     // fast one and repaint the grid with results for a query already typed past — the grid
@@ -46,9 +46,9 @@ export default function GifPicker({ onClose, onPick }) {
     }
   }, []);
 
-  // First open: Tenor's curated front page, so the sheet is never an empty box asking for input.
+  // First open: Klipy's trending page, so the sheet is never an empty box asking for input.
   useEffect(() => {
-    if (!isTenorConfigured()) return; // already the initial state; nothing to fetch
+    if (!isKlipyConfigured()) return; // already the initial state; nothing to fetch
     const controller = new AbortController();
     abortRef.current = controller;
     featuredGifs(controller.signal)
@@ -154,9 +154,9 @@ export default function GifPicker({ onClose, onPick }) {
           )}
         </div>
 
-        {/* Tenor's terms require attribution wherever their results are shown. */}
+        {/* Attribution, as the provider's terms require wherever their results are shown. */}
         <div className="flex-shrink-0 border-t border-slate-100 px-5 py-2">
-          <p className="text-center text-[10px] text-slate-400">GIFs via Tenor</p>
+          <p className="text-center text-[10px] text-slate-400">GIFs via KLIPY</p>
         </div>
       </div>
     </div>,

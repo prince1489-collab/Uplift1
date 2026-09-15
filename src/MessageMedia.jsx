@@ -60,7 +60,7 @@ export default function MessageMedia({ db, messageId }) {
       style={{ maxWidth: 260 }}>
       <img
         src={media.url}
-        // Tenor's own description, stored with the message so the alt text survives without
+        // Klipy's own title, stored with the message so the alt text survives without
         // another call to them. A screen reader says "someone waving" rather than "image".
         alt={media.description || "GIF"}
         loading="lazy"

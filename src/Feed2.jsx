@@ -26,7 +26,7 @@ import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 import GifPicker from "./GifPicker";
-import { isTenorConfigured } from "./tenor";
+import { isKlipyConfigured } from "./klipy";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -1167,7 +1167,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
   const [phrasing, setPhrasing] = useState("idle"); // idle | loading | ready | none
   const [ideas, setIdeas] = useState([]);
   const [suggestNote, setSuggestNote] = useState("");
-  const [gif, setGif] = useState(null);           // the chosen Tenor result, attached on submit
+  const [gif, setGif] = useState(null);           // the chosen Klipy result, attached on submit
   const [showGifPicker, setShowGifPicker] = useState(false);
   const len = text.trim().length;
   const canAnon = Number(sparkBalance) >= ANON_MIN_BALANCE;
@@ -1270,9 +1270,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
           previewUrl: gif.previewUrl,
           width: gif.width,
           height: gif.height,
-          // Carried so the alt text survives without another Tenor call on every render.
+          // Carried so the alt text survives without another Klipy call on every render.
           description: gif.description,
-          tenorId: gif.id,
+          klipyId: gif.id,
           createdAt: Date.now(),
         });
         await updateDoc(doc(db, "publicMessages", posted.id), { hasMedia: true });
@@ -1350,9 +1350,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
             </div>
           )}
 
-          {/* Hidden entirely when there is no Tenor key, rather than shown as a button that
+          {/* Hidden entirely when there is no Klipy key, rather than shown as a button that
               opens a sheet explaining it does not work. */}
-          {!gif && isTenorConfigured() && state !== "done" && (
+          {!gif && isKlipyConfigured() && state !== "done" && (
             <button onClick={() => setShowGifPicker(true)}
               className="w-full rounded-xl border border-dashed border-teal-200 py-2 text-[12px] font-semibold text-teal-600 hover:border-teal-300 hover:bg-teal-50 transition-colors flex items-center justify-center gap-1.5">
               🎬 Add a GIF

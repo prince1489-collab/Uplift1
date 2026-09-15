@@ -54,9 +54,9 @@ configuration, not secrets, and nothing that must stay private may be given one.
 | Variable | Used by |
 |---|---|
 | `VITE_FIREBASE_VAPID_KEY` | web push registration (`src/App.jsx`) |
-| `VITE_TENOR_KEY` | GIF search (`src/tenor.js`) — see DEPLOY.md for how to restrict it |
+| `VITE_KLIPY_KEY` | GIF search (`src/klipy.js`) — a KLIPY app key, nothing to do with Google Cloud |
 
-Both are absent-safe: without the VAPID key web push does not register, and without the Tenor
+Both are absent-safe: without the VAPID key web push does not register, and without the KLIPY
 key the composer hides the "Add a GIF" button entirely rather than offering one that fails.
 A rebuild is needed after changing either, because the value is baked in — setting it in Vercel
 and redeploying nothing will change nothing.
