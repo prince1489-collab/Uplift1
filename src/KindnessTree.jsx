@@ -147,6 +147,39 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
   const showCanopy = eff >= 6;
   const showBlossom = eff >= 10;
   const showButterflies = ambient && eff >= 8;
+
+  // ── One visible thing per late stage ────────────────────────────────────────────────────────
+  // Measured before this existed: from First blossom (10) to Tree of Life (16) every stage drew
+  // the SAME picture — canopy, butterflies, seven blossoms — differing only by +6px of stem and
+  // +4.9px of canopy radius on a 200px canvas. About 3% per stage, across 27,500 to 250,000
+  // drops, which is most of a year of use. A reward that stops varying stops being a reward, and
+  // it stopped exactly where the climb gets long.
+  //
+  // "Budding" was the sharpest case: the stage is NAMED for buds and blurbed "The first buds are
+  // forming", and blossoms started one stage later, so it drew none. It was "In leaf" plus 3%.
+  //
+  // ORDERED BY WHEN PEOPLE ARRIVE, NOT BY GRANDEUR. At regular use the back of the ladder lands
+  // at 4.5 months (Flourishing), 6 (Grand tree), 9.6 (Ancient tree) and 16 (Tree of Life), and
+  // few people are still here at six months. Saving the best drawing for stage 16 spends it on
+  // almost nobody — so the bird and the fruit sit at 11 and 13, inside the first five months, and
+  // the top of the ladder gets statelier rather than busier.
+  //
+  // The exception is the second sapling at Tree of Life. A tree that has made another tree is the
+  // payoff of the whole ladder; it should be rare, and it should mean something to have got there.
+  const showBuds = eff >= 9 && eff < 10;   // closed, and only at Budding — they OPEN at 10
+  const blossomCount = eff >= 11 ? 16 : 7;
+  const showBird = eff >= 11;
+  const showPetalFall = eff >= 12;
+  const showFruit = eff >= 13;
+  const richCanopy = eff >= 14;
+  const showSurfaceRoots = eff >= 15;
+  const showSapling = eff >= 16;
+  // Points around the canopy, used by buds, blossoms and fruit so they never sit on top of each
+  // other. The 0.61 phase offset is what keeps fruit clear of the blossoms above it.
+  const onCanopy = (i, n, radius = 0.7, phase = 0) => {
+    const ang = ((i + phase) / n) * Math.PI * 2;
+    return [100 + Math.cos(ang) * canopyR * radius, stemTopY + Math.sin(ang) * canopyR * radius];
+  };
   const trunkW = 3 + t * 9;
   const sky = ambient ? skyFor(hour, darkMode) : null;
   // While the replay is running we drive geometry frame by frame, so CSS transitions
@@ -282,6 +315,17 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
         {/* canopy for trees */}
         {showCanopy && (
           <g style={{ transformOrigin: `100px ${stemTopY}px`, transition: grow }}>
+            {/* Grand tree — two more lobes rising above the crown. BEHIND the others, and only a
+                shade deeper: drawn on top in a dark green they read as a second, darker tree
+                overlapping this one, which looks like a rendering fault rather than a fuller
+                canopy. Behind, they extend the silhouette upward, which is what a big old tree
+                actually does. */}
+            {richCanopy && (
+              <>
+                <circle cx={100 - canopyR * 0.34} cy={stemTopY - canopyR * 0.62} r={canopyR * 0.56} fill="#3c9349" />
+                <circle cx={100 + canopyR * 0.42} cy={stemTopY - canopyR * 0.5} r={canopyR * 0.54} fill="#37883f" />
+              </>
+            )}
             <circle cx="100" cy={stemTopY} r={canopyR} fill="#3f9d4f" />
             <circle cx={100 - canopyR * 0.55} cy={stemTopY + canopyR * 0.15} r={canopyR * 0.7} fill="#4caf50" />
             <circle cx={100 + canopyR * 0.55} cy={stemTopY + canopyR * 0.1} r={canopyR * 0.72} fill="#43a047" />
@@ -289,13 +333,41 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
           </g>
         )}
 
-        {/* blossoms */}
-        {showBlossom && Array.from({ length: 7 }).map((_, i) => {
-          const ang = (i / 7) * Math.PI * 2;
-          const bx = 100 + Math.cos(ang) * canopyR * 0.7;
-          const by = stemTopY + Math.sin(ang) * canopyR * 0.7;
+        {/* Budding — closed buds, and nothing else. Tight, pale, unopened: the picture the
+            stage's own name has been promising. They become the blossoms below at stage 10,
+            which is what makes arriving there look like something happening. */}
+        {showBuds && Array.from({ length: 7 }).map((_, i) => {
+          const [bx, by] = onCanopy(i, 7);
+          return (
+            // Pink first and dominant, with only a small sepal at the foot. The first version
+            // put a green base over the pink and at this scale the green won — the buds read as
+            // smudges on the leaves rather than as anything about to open.
+            <g key={i} style={{ transformOrigin: `${bx}px ${by}px`, animation: "seenLeafPop 600ms ease both", animationDelay: `${i * 80}ms` }}>
+              <ellipse cx={bx} cy={by - 0.6} rx={2.6} ry={3.8} fill="#f4bcd0" />
+              <ellipse cx={bx - 0.7} cy={by - 1.4} rx={1} ry={1.8} fill="#fbdce6" />
+              <path d={`M ${bx - 2.4} ${by + 2.4} q 2.4 2 4.8 0 q -2.4 1 -4.8 0 z`} fill="#4d8c3f" />
+            </g>
+          );
+        })}
+
+        {/* blossoms — seven at First blossom, and the canopy fills with them at Blooming */}
+        {showBlossom && Array.from({ length: blossomCount }).map((_, i) => {
+          const [bx, by] = onCanopy(i, blossomCount, i % 2 ? 0.78 : 0.58);
           return <circle key={i} cx={bx} cy={by} r={3.4} fill={i % 2 ? "#f9a8d4" : "#fbcfe8"}
-            style={{ animation: "seenLeafPop 600ms ease both", animationDelay: `${i * 80}ms` }} />;
+            style={{ animation: "seenLeafPop 600ms ease both", animationDelay: `${i * 60}ms` }} />;
+        })}
+
+        {/* Flourishing — fruit. Offset around the canopy so it hangs below the blossoms rather
+            than sitting among them, and given a stem so it reads as fruit and not a berry. */}
+        {showFruit && Array.from({ length: 5 }).map((_, i) => {
+          const [fx, fy] = onCanopy(i, 5, 0.66, 0.61);
+          return (
+            <g key={i} style={{ transformOrigin: `${fx}px ${fy}px`, animation: "seenLeafPop 700ms ease both", animationDelay: `${300 + i * 90}ms` }}>
+              <path d={`M ${fx} ${fy - 4.6} q 1.6 -1.4 3 -1.2`} stroke="#5b7c3a" strokeWidth="1" fill="none" strokeLinecap="round" />
+              <circle cx={fx} cy={fy} r={3.1} fill="#e4572e" />
+              <circle cx={fx - 0.9} cy={fy - 1} r={1} fill="#f6a192" opacity="0.8" />
+            </g>
+          );
         })}
 
         {/* butterflies visit a grown tree */}
@@ -303,7 +375,68 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
           <text key={i} x={i ? 44 : 148} y={i ? 96 : 74} fontSize="13"
             style={{ animation: `seenButterfly ${7 + i * 2}s ease-in-out ${i * 2.2}s infinite` }}>🦋</text>
         ))}
+
+        {/* Blooming — a bird settles in. Placed on the canopy's upper right rather than floating,
+            because a tree big enough to be nested in is the thing being said. Only animated in
+            the ambient (hero) rendering; in the small stage-list swatches it simply sits. */}
+        {showBird && (
+          <g style={{ transformOrigin: `${100 + canopyR * 0.62}px ${stemTopY - canopyR * 0.5}px`,
+            animation: ambient ? "seenButterfly 9s ease-in-out 1.4s infinite" : "none" }}>
+            <ellipse cx={100 + canopyR * 0.62} cy={stemTopY - canopyR * 0.5} rx="5.4" ry="3.6" fill="#f59e0b" />
+            <circle cx={100 + canopyR * 0.62 + 4.4} cy={stemTopY - canopyR * 0.5 - 2.4} r="2.6" fill="#fbbf24" />
+            <path d={`M ${100 + canopyR * 0.62 + 6.6} ${stemTopY - canopyR * 0.5 - 2.6} l 3 1 l -3 1 z`} fill="#ea580c" />
+            <ellipse cx={100 + canopyR * 0.62 - 1} cy={stemTopY - canopyR * 0.5} rx="3" ry="1.8" fill="#d97706" />
+          </g>
+        )}
       </g>
+
+      {/* Full bloom — petals come loose and drift past. Outside the drink group so they keep
+          falling while the tree lifts, and ambient-only: in a 56px stage swatch a falling petal
+          is a speck crossing the frame, which reads as a rendering fault rather than as weather. */}
+      {showPetalFall && ambient && [0, 1, 2, 3].map((i) => (
+        <circle key={i} cx={78 + i * 15} cy={stemTopY + 6} r={2.4} fill={i % 2 ? "#f9a8d4" : "#fbcfe8"}
+          style={{ "--spin": `${200 + i * 90}deg`,
+            animation: `seenPetalFall ${5.5 + i * 1.3}s linear ${i * 1.7}s infinite` }} />
+      ))}
+
+      {/* Ancient tree — buttress roots break the surface. Deliberately NOT inside the clipped
+          underground group above: the whole point is that these are the ones that have pushed out
+          of the soil, which is what an old tree looks like and what no younger stage shows. */}
+      {showSurfaceRoots && (
+        <g style={{ transition: grow }}>
+          {/* Drawn as TRUNK, not as root, and clearly ABOVE the soil line. Two earlier attempts
+              failed the same way: a root-coloured wedge sitting inside the mound merged straight
+              into the fan of underground roots already drawn there, and Grand tree and Ancient
+              tree were indistinguishable side by side. A buttress is the trunk flaring out as it
+              meets the ground — same bark, silhouetted against the mound's edge — which is both
+              what an old tree looks like and the one shape no younger stage draws. */}
+          {[-1, 1].map((dir) => (
+            <g key={dir}>
+              <path
+                d={`M ${100 + dir * trunkW * 0.5} 156
+                    Q ${100 + dir * trunkW * 0.8} 170 ${100 + dir * 21} 177
+                    L ${100 + dir * trunkW * 0.5} 177 Z`}
+                fill="#7a5230" />
+              <path
+                d={`M ${100 + dir * trunkW * 0.5} 156
+                    Q ${100 + dir * trunkW * 0.8} 170 ${100 + dir * 21} 177`}
+                fill="none" stroke="#5f3f24" strokeWidth="1" strokeLinecap="round" opacity="0.55" />
+            </g>
+          ))}
+        </g>
+      )}
+
+      {/* Tree of Life — a second sapling, at the foot of the first. The top of the ladder, and
+          the only stage that adds another plant rather than another detail: a tree that has made
+          a tree is the whole idea of the thing, and it is worth sixteen months to arrive at. */}
+      {showSapling && (
+        <g style={{ transformOrigin: "142px 178px", animation: "seenLeafPop 900ms ease both", animationDelay: "500ms" }}>
+          <rect x="141" y="160" width="2.6" height="18" rx="1.3" fill="#4d8c3f" />
+          <ellipse cx="136" cy="163" rx="7" ry="3.8" fill="#4caf50" transform="rotate(-26 136 163)" />
+          <ellipse cx="149" cy="159" rx="7" ry="3.8" fill="#43a047" transform="rotate(26 149 159)" />
+          <ellipse cx="137" cy="170" rx="5.6" ry="3.2" fill="#43a047" transform="rotate(-22 137 170)" />
+        </g>
+      )}
 
       {/* Watering — a can leans in from the top left, its rose sprays a fan of fine
           droplets over the soil, then it rights itself and leaves. One-shot over

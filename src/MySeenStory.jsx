@@ -15,8 +15,8 @@ import { getPoints } from "./points";
 import { playLevelUp, playGrowthSwell } from "./sounds";
 import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
+import { claimStageUp } from "./treeMilestone";
 
-const STAGE_SEEN_KEY = "seen_v2_tree_stage_seen"; // highest stage already celebrated
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
 // around here. Growth starts on that beat: water arrives, then the tree responds.
@@ -156,7 +156,7 @@ function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
   );
 }
 
-export default function MySeenStory({ db, currentUser, liveStats, profile, sparkBalance = 0, darkMode = false, onOpenTree }) {
+export default function MySeenStory({ db, currentUser, liveStats, profile, sparkBalance = 0, darkMode = false, onOpenTree, onGoTo }) {
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
   // Pour on open. Points are only ever awarded on Connect / Practice / Reflect, and this
@@ -280,6 +280,29 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const pct = next ? Math.max(0, Math.min(100, Math.round(((balance - stage.min) / (next.min - stage.min)) * 100))) : 100;
   const first = (profile?.fullName || "").trim().split(" ")[0] || "you";
 
+  // What, if anything, is still open today — read from the same per-day records the two habit
+  // tabs already keep, so this needs no new state and cannot disagree with them.
+  //
+  // NOTHING is deliberately a valid answer. On a day where both are done, or a day somebody has
+  // not touched either and does not want to be asked, this renders nothing at all. A reward
+  // surface that always has a task on it stops being a reward surface.
+  const onward = useMemo(() => {
+    const d = new Date();
+    const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const readLocal = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
+    // A prompt held for tonight is a promise this person made a few hours ago, so it outranks a
+    // prompt they have not looked at.
+    let pinned = null;
+    try { pinned = localStorage.getItem(`seen_reflect_pin_${dayKey}`); } catch { /* ignore */ }
+    if (pinned) return { emoji: "📖", text: "You're holding a question for later — Reflect is where it's waiting", go: () => onGoTo?.("journal") };
+    const hyt = readLocal(`seen_hyt_state_${dayKey}`);
+    const planned = hyt?.planned && Object.values(hyt.planned).some(Boolean);
+    const doneAny = hyt?.done && Object.values(hyt.done).some(Boolean);
+    if (planned && !doneAny) return { emoji: "🌱", text: "You said you'd do one today — tick it off in Practice when it happens", go: () => onGoTo?.("hyt") };
+    if (!hyt) return { emoji: "🌱", text: "Two small things are waiting in Practice", go: () => onGoTo?.("hyt") };
+    return null;
+  }, [onGoTo]);
+
   // ── Grow-from-seed replay ──────────────────────────────────────────────────
   // On open, walk the tree from bare soil up to where it actually is, so the whole
   // journey is something you watch rather than a state you arrive at. `replay` is a
@@ -315,13 +338,14 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
 
   // ── Milestone moment ───────────────────────────────────────────────────────
   // Fires once per stage, the first time you reach it — never on every visit.
+  //
+  // The latch lives in treeMilestone.js now, because App.jsx wants to announce the same event
+  // when you are anywhere else in the app. Whoever asks first claims it; App skips while the Grow
+  // tab is open precisely so that this one wins here, where the tree is on screen and the full
+  // petals-and-name treatment is worth waiting for.
   const [milestone, setMilestone] = useState(null);
   useEffect(() => {
-    let seen = -1;
-    try { seen = Number(localStorage.getItem(STAGE_SEEN_KEY) ?? -1); } catch { /* ignore */ }
-    if (stageIdx <= seen) return;
-    try { localStorage.setItem(STAGE_SEEN_KEY, String(stageIdx)); } catch { /* ignore */ }
-    if (seen < 0) return; // first ever visit — record where they are, don't celebrate
+    if (!claimStageUp(stageIdx)) return;
     // Let the growth replay finish before celebrating on top of it.
     const t = setTimeout(() => {
       setMilestone(TREE_STAGES[stageIdx]);
@@ -358,7 +382,13 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
               <p className="text-[11px] font-semibold text-teal-700">Fully grown — {balance.toLocaleString()} drops of kindness 🌸</p>
             )}
           </div>
-          <span className="mt-3 inline-block text-[11px] font-semibold text-teal-600">Tap to tend your tree →</span>
+          {/* Says what the tap does. It read "Tap to tend your tree →", and tapping opens the
+              stage list — tending is the watering animation, and that fires when you EARN
+              something, not when you press this. A label naming an action the control does not
+              perform is a small lie on the app's most earnest screen. The watering stays where it
+              is: it lands at the moment kindness does, and moving it onto a button would turn a
+              reward into a fidget. */}
+          <span className="mt-3 inline-block text-[11px] font-semibold text-teal-600">See how it grows →</span>
         </button>
 
         {/* Reflective one-liner */}
@@ -379,10 +409,44 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           <MetricTile emoji="🪞" value={journalCount ?? 0} label="Reflections" delay={440} onOpen={() => setOpenCard("reflections")} />
         </div>
 
-        <p className="text-center text-[10px] text-slate-400 leading-relaxed pb-4"
+        <p className="text-center text-[10px] text-slate-400 leading-relaxed"
           style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "520ms" }}>
           A gentle mirror of your journey — never a score.
         </p>
+
+        {/* ── Where this ends up ──────────────────────────────────────────────────────────────
+            This sentence lived at the bottom of the stage sheet, in 10px grey, behind a
+            seventeen-item list — the least visible thing in the app, and the most motivating. A
+            concrete outcome outside the app is the strongest reason anyone has to keep going.
+
+            It also said "may". That hedge is gone because the intention is real; what stays is a
+            promise no bigger than the one actually being made. */}
+        <div className="mt-1 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center"
+          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "560ms" }}>
+          <p className="text-[13px] font-bold leading-snug text-emerald-800">
+            🌍 A fully grown tree here plants a real one.
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
+            Every stage you pass is a step toward a tree in the ground, planted in your name.
+          </p>
+        </div>
+
+        {/* ── A way back to the doing ─────────────────────────────────────────────────────────
+            Grow is the only tab with nothing to do on it, which is right — it is where you come
+            to see, not to act. But it was also a dead end, and a reward surface that does not
+            hand you back to the thing being rewarded is a page people stop returning to.
+
+            Names whichever habit tab has something outstanding today, and says nothing at all on
+            a day when neither does. It never counts what was missed. */}
+        {onward && (
+          <button onClick={onward.go}
+            className="mb-4 flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform"
+            style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "600ms" }}>
+            <span className="text-base leading-none" aria-hidden>{onward.emoji}</span>
+            <span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-slate-700">{onward.text}</span>
+            <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
+          </button>
+        )}
       </div>
 
       {openCard && <MetricCard card={METRIC_CARDS[openCard]} onClose={() => setOpenCard(null)} />}

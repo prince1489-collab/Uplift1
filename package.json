@@ -32,6 +32,7 @@
     "test:rules:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-rules.mjs\"",
     "test:reactions:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-reactions.mjs\"",
     "check:tree": "node scripts/check-tree.cjs",
+    "render:tree": "node scripts/render-tree-stages.mjs",
     "check:proverbs": "node scripts/check-proverbs.cjs",
     "check:hyt": "node scripts/check-hyt.cjs",
     "check:journal": "node scripts/check-journal-prompts.cjs",

@@ -19,7 +19,7 @@ import IntroStep from "./IntroStep";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
-import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
+import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
 import GoodNewsCard from "./GoodNewsCard";
@@ -29,6 +29,7 @@ import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setEveningCue } from "./eveningCue";
+import { claimStageUp } from "./treeMilestone";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -2942,13 +2943,30 @@ export default function App() {
   const treeStage = useMemo(() => treeStageFor(sparkBalance + treePoints), [sparkBalance, treePoints]);
 
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
-  // Growth chime. It used to fire on the retired spark-only ladder, which meant it could sound
-  // at a moment when nothing the user could see had changed — and stay silent when the tree
-  // visibly grew. It now follows the tree, which is the thing being celebrated.
+  // ── Reaching a new stage of the tree, wherever you happen to be ─────────────────────────────
+  // This used to be a chime and nothing else. The actual celebration — petals, the stage name
+  // drawing itself in — lived inside the Grow tab and fired only when somebody opened it, and
+  // nothing in the app sends anyone there. So the biggest reward in the product was: a sound, on
+  // a phone that is very often muted, and then a party waiting inside a room you have no reason
+  // to walk into. Earn a stage on Tuesday, find out on Friday, if at all.
+  //
+  // It now says something you can see, on whatever tab you are on, and the tap takes you to the
+  // tree. The chime stays as a bonus for people with sound on rather than being the whole event.
+  //
+  // Skipped while Grow is already open: MySeenStory claims the same latch and has the better
+  // version of this moment when the tree is on screen to do it to.
+  const [stageUp, setStageUp] = useState(null);
   const prevStageRef = useRef(treeStage.min);
   useEffect(() => {
-    if (treeStage.min > prevStageRef.current) playLevelUp();
+    const rose = treeStage.min > prevStageRef.current;
     prevStageRef.current = treeStage.min;
+    if (!rose || activeTab === "impact") return;
+    if (!claimStageUp(TREE_STAGES.indexOf(treeStage))) return;
+    playLevelUp();
+    setStageUp(treeStage);
+    const t = setTimeout(() => setStageUp(null), 7000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeStage.min]);
   // World-map ambient drone — starts when the globe opens, stops when it closes.
   useEffect(() => {
@@ -3919,7 +3937,7 @@ export default function App() {
                 <Support country={profile?.country} />
               </Suspense>
             ) : activeTab === "impact" ? (
-              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} />
+              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} />
             ) : (
             /* No onScroll here on purpose. React's onScroll is a non-passive listener on a
                scroll container that renders hundreds of messages; FeedDatePill subscribes to
@@ -4392,6 +4410,26 @@ export default function App() {
               <SendingIndicator visible={isSending} />
             </main>
             )} {/* end activeTab === "feed" */}
+
+            {/* Your tree grew, and you are not looking at it. Sits under the tabs rather than over
+                the send bar so it never covers what someone is in the middle of doing, and takes
+                itself away after seven seconds whether or not it is tapped — this is news, not an
+                errand. */}
+            {stageUp && (
+              <div className="pointer-events-none fixed inset-x-0 top-[104px] z-[240] flex justify-center px-4">
+                <button
+                  onClick={() => { setStageUp(null); setActiveTab("impact"); }}
+                  className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-left shadow-lg active:scale-[0.98] transition-transform"
+                  style={{ animation: "seenFadeUp 320ms ease both" }}>
+                  <span className="text-xl leading-none" aria-hidden>🌳</span>
+                  <span className="min-w-0">
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-emerald-600">Your tree grew</span>
+                    <span className="block text-[13px] font-bold leading-snug text-slate-800">{stageUp.name}</span>
+                    <span className="block text-[11px] leading-snug text-slate-500">{stageUp.blurb}</span>
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* First-time "tap to send" coach-mark — floats above the Send bar for brand-new
                 users, never while the guided tour runs; vanishes on first send/tap. */}

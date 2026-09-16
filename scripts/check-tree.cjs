@@ -71,6 +71,62 @@ const worst = Math.max(...ratios);
 if (worst > 3) fail.push(`largest step is ${worst.toFixed(2)}× — steps above 3× stall progress`);
 else ok.push(`largest step ${worst.toFixed(2)}×, smallest ${Math.min(...ratios).toFixed(2)}×`);
 
+// 4. EVERY STAGE MUST DRAW SOMETHING DIFFERENT FROM THE ONE BEFORE IT.
+//
+// The ladder had the right numbers and the wrong picture. Measured across TreeScene: from First
+// blossom (10) to Tree of Life (16) every stage drew the SAME features — canopy, butterflies,
+// seven blossoms — separated only by +6px of stem and +4.9px of canopy radius on a 200px canvas.
+// Roughly 3% of the image per stage, over 27,500 to 250,000 drops. Somebody could climb the whole
+// back half of the ladder and never see it change.
+//
+// "Budding" was the sharpest case: the stage is named for buds, its blurb says "The first buds
+// are forming", and blossoms did not start until the stage AFTER it.
+//
+// This asserts what the numbers cannot: that arriving somewhere looks like arriving somewhere.
+// It reads the gate expressions out of the source, so a feature added without a gate, or two
+// gates set to the same index, fails here rather than in a screenshot six months later.
+const GATE = /const\s+(show[A-Za-z]+|richCanopy|blossomCount)\s*=\s*([^;]+);/g;
+const gates = [...src.matchAll(GATE)]
+  .map(([, name, expr]) => {
+    // Only `eff`-gated features take part: `ambient` and friends are about WHERE the tree is
+    // drawn, not how far it has grown.
+    const nums = [...expr.matchAll(/eff\s*>=\s*(\d+)/g)].map((m) => Number(m[1]));
+    const upper = [...expr.matchAll(/eff\s*<\s*(\d+)/g)].map((m) => Number(m[1]));
+    const ternary = [...expr.matchAll(/eff\s*>=\s*(\d+)\s*\?/g)].map((m) => Number(m[1]));
+    return nums.length || ternary.length ? { name, from: Math.min(...nums, ...ternary), to: upper.length ? Math.min(...upper) : Infinity } : null;
+  })
+  .filter(Boolean);
+
+if (gates.length < 6) {
+  fail.push(`only parsed ${gates.length} stage-gated features out of TreeScene — the gates have been rewritten and this check is no longer looking at anything`);
+} else {
+  const featuresAt = (i) => gates.filter((g) => i >= g.from && i < g.to).map((g) => g.name).sort().join(",");
+  // A stage may differ by feature OR by growing enough that scale alone carries it. Both are real
+  // ways of looking different, and the early stages use the second: the plant goes 8 → 14 → 20px,
+  // which is +75% and then +43%, and nobody needs a new ornament to see that. By the top it is
+  // 98 → 104, or +6%, which is where scale stops doing any work and a feature has to take over.
+  //
+  // 15% is where the two regimes meet on this curve — it is satisfied through Rooted and demands
+  // a feature from Young tree onward. Without this the check fires on Seed → Sprouting, which is
+  // a seed becoming a shoot, and a guard that cries wolf on the most obvious change in the set
+  // gets switched off.
+  const MIN_GROWTH = 1.15;
+  const stemH = (i) => 8 + (i / (stages.length - 1)) * 96;
+  const flat = [];
+  for (let i = 1; i < stages.length; i++) {
+    const sameFeatures = featuresAt(i) === featuresAt(i - 1);
+    const grew = stemH(i) / stemH(i - 1) >= MIN_GROWTH;
+    if (sameFeatures && !grew) {
+      flat.push(`${stages[i - 1].name} → ${stages[i].name} (+${((stemH(i) / stemH(i - 1) - 1) * 100).toFixed(0)}% size, no new feature)`);
+    }
+  }
+  if (flat.length) {
+    fail.push(`arriving at these stages looks like nothing happened: ${flat.join("; ")}`);
+  } else {
+    ok.push(`all ${stages.length} stages differ from the one before, by feature or by ${((MIN_GROWTH - 1) * 100).toFixed(0)}%+ growth`);
+  }
+}
+
 for (const line of ok) console.log(`  ok   ${line}`);
 for (const line of fail) console.error(`  FAIL ${line}`);
 
