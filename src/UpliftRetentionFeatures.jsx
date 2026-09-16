@@ -723,18 +723,36 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
 // sticker path rather than two that could both fire for the same person on the same message.
 
 
-// ── Reaction counts float beside the bubble ──────────────────────────────────
-// The reaction strip's box, in px: its height, and the gap above it. Referenced twice each — by
-// the strip itself and by the heart glow, which subtracts BOTH so the ring keeps hugging the
-// message rather than growing past it. They must agree, so they are constants.
+// ── Reaction counts hang off the bubble ──────────────────────────────────────
+// The reaction strip's box, in px: its height, and its offset. Referenced twice each — by the
+// strip itself and by the heart glow, which subtracts BOTH so the ring keeps hugging the message
+// rather than growing past it. They must agree, so they are constants.
 //
-// The gap used to be a Tailwind `mt-1` class while the glow subtracted the height alone, and the
-// 4px difference was visible: the ring's bottom edge fell 4px below the bubble's own border,
+// The offset used to be a Tailwind `mt-1` class while the glow subtracted the height alone, and
+// the 4px difference was visible: the ring's bottom edge fell 4px below the bubble's own border,
 // drawing a second, pink, full-width line underneath. Read as "a box behind it" — correctly, as
 // that is exactly what it was. It only appeared on hearted messages, since the glow only renders
 // when there is a heart, which is what made it look intermittent.
+//
+// ── WHY IT IS NEGATIVE ───────────────────────────────────────────────────────────────────────
+// At +4 the chip sat entirely BELOW the bubble, on its own line, hard against the right edge,
+// with nothing joining the two. Measured off a screenshot: bubble's last row at y=1463, chip's
+// first at y=1479 — six CSS pixels, so the spacing was never the problem. It read as a small
+// object that happened to be underneath a message rather than as a reaction to it.
+//
+// That was a regression from a fix. The heart badge used to hang over the bubble at
+// `absolute -bottom-3 right-1`, and it moved into normal flow when hearts and stickers were
+// merged, because two floating rows on opposite edges of one 18px band was the original "the
+// stickers fall just below the message" complaint. Flow solved the collision and cost the
+// attachment. There is genuinely only one row now, so it can hang again with nothing to hit.
+//
+// TEN IS NOT A TASTE VALUE. It is exactly the bubble's own bottom padding (`py-2.5`), which makes
+// it the deepest the chip can be pulled while still being unable to overlap a letter — even on a
+// message whose last line runs the full width. Rendered at 4, -10 and -14 against the real
+// stylesheet: -14 looks slightly more tucked and crosses into the text box, which is the one
+// thing here worth not risking.
 const REACTION_STRIP_H = 26;
-const REACTION_STRIP_MT = 4;
+const REACTION_STRIP_MT = -10;
 
 export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, myReactionId = null, onServerReaction, onMyReactionChange, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});

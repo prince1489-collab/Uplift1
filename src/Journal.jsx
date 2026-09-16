@@ -703,7 +703,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             editingId ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"
           }`}>
             <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
-              {editingId ? "You answered" : pinned ? "You're holding this one" : evening ? "Tonight's prompt" : "This morning's prompt"}
+              {editingId ? "You answered" : pinned ? "Saved for tonight" : evening ? "Tonight's prompt" : "This morning's prompt"}
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
             {/* Three swaps, where Practice allows one, and the difference is deliberate rather
@@ -744,10 +744,13 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
                 </div>
               ) : (
               <div className="mt-2 flex items-center gap-3">
+                {/* Says which of the two things is actually happening. Somebody who said yes to
+                    the nudge is owed the time; somebody who said no is owed the truth that nothing
+                    will arrive, so they know to come back on their own. */}
                 <p className="flex-1 text-[11px] font-semibold text-teal-700">
                   {profile?.eveningReminders
-                    ? "Waiting for you — there'll be a nudge this evening."
-                    : "Waiting for you — come back to it whenever."}
+                    ? "Held for tonight — we'll nudge you around 8."
+                    : "Held for tonight — it'll be here when you come back."}
                 </p>
                 <button onClick={releaseThought}
                   className="flex-shrink-0 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
@@ -767,12 +770,21 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
                   // swap link went, and effectively invisible.
                   <p className="flex-1 text-[11px] font-semibold text-slate-600">that's all of them for today — write about anything 🌱</p>
                 )}
-                {/* Only before the evening. After it, "come back later today" is an offer of a
-                    few hours, and the prompt will have rotated by the time they arrive. */}
+                {/* Says what it does, before you do it.
+
+                    It read "Hold this thought", which is warmer and tells you nothing: the pin is
+                    the visible half and the evening nudge — the half people actually want — was
+                    only mentioned in a card AFTER the tap. The owner asked for "a remind me tap
+                    for prompts that are easier to answer at the end of the day" while this button
+                    was already shipped and doing exactly that, which is as clear a sign as you get
+                    that the name was not carrying it.
+
+                    Still only before the evening. After it, "later today" is an offer of an hour
+                    or two, and the prompt on screen is already an evening one. */}
                 {!evening && (
                   <button onClick={holdThought}
                     className="ml-auto flex-shrink-0 rounded-full border border-teal-200 bg-teal-50/60 px-2.5 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
-                    Hold this thought
+                    Remind me tonight
                   </button>
                 )}
               </div>
