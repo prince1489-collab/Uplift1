@@ -505,7 +505,12 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               {t.emoji} {t.label}
             </span>
           ) : e.prompt ? (
-            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-teal-600" title={e.prompt}>{e.prompt}</span>
+            // Slate, not the primary accent. The question an old entry was written against was
+            // the loudest thing in this list, in the same red as the save button and the section
+            // label above it — five accented things on one page, and three of them about last
+            // week. It is context for something already written; today's empty box is the thing
+            // that wants the eye.
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-500" title={e.prompt}>{e.prompt}</span>
           ) : <span />}
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-[10px] text-slate-400">{fmtDate(e.date)}</span>
@@ -815,15 +820,58 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               the app talking about its own persistence at the exact moment you had just done
               the thing. It now says you completed it, because that is what happened.
               It reverts to "Save changes" the instant you type, or editing looks impossible. */}
+          {/* ── The dimming, which has never worked ────────────────────────────────────────────
+              `disabled:opacity-100` used to sit in the base string, beside `disabled:opacity-50`
+              in the branch below. Both landed on the element at once, and CSS resolves a conflict
+              by stylesheet order rather than by the order classes appear in the attribute —
+              Tailwind emits opacity-100 last, so it won every time. Measured off a screenshot: the
+              button read (214,68,66), full strength, above an empty box with the placeholder still
+              showing.
+
+              It was added so the green "✓ Completed" state would stay solid rather than fading,
+              which is right — it just leaked one branch too far. It now lives only in that branch.
+
+              The result is the whole of the "the box comes first" signal: dormant until there is
+              something to save, solid the moment there is. On a page whose loudest element is a
+              full-width bar in the primary red, that is not a detail. */}
           <button
             onClick={handleSave}
             disabled={saving || !text.trim() || isCompleted}
-            className={`w-full rounded-full py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-100 ${
-              isCompleted ? "bg-emerald-600" : "bg-teal-600 hover:bg-teal-700 disabled:opacity-50"
+            className={`w-full rounded-full py-2.5 text-sm font-bold text-white transition-colors ${
+              isCompleted ? "bg-emerald-600 disabled:opacity-100" : "bg-teal-600 hover:bg-teal-700 disabled:opacity-50"
             }`}>
             {saving ? "Saving…" : isCompleted ? "✓ Completed" : editingId ? "Save changes" : "Add reflection"}
           </button>
         </div>
+
+        {/* Order: the memory, then the calendar. It used to be the other way round, which put
+            the single most affecting thing in the tab — a reflection you wrote a month ago,
+            surfacing unannounced — BELOW a navigation control. Content before navigation.
+
+            Deliberately not moved above the writing box. That would push the prompt down the
+            page, which is the thing this file has already been corrected for once. */}
+        {/* On this day — resurface a past reflection. Collapsed to a SINGLE line: it is a
+            lovely thing to stumble on, but it is not what you came to the tab to do, and at two
+            lines of preview plus a heading row it was the third stacked card between the
+            writing box and your entries. One line still shows enough to recognise it, and it
+            opens on a tap. */}
+        {onThisDay && (
+          <button
+            onClick={() => setExpandPast((v) => !v)}
+            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2.5 transition-colors hover:bg-violet-50">
+            <div className="flex items-center gap-1.5">
+              <History size={13} className="text-violet-400 flex-shrink-0" />
+              {/* Both measured on violet-50, not on white: violet-500 was 3.86:1 and slate-500
+                  only reaches 4.34:1 against this tint. The whole card is a button, so its
+                  label and date are interactive text and have to clear 4.5. */}
+              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700 flex-shrink-0">{onThisDay.label}</p>
+              <span className="text-[10px] text-slate-600 ml-auto flex-shrink-0">{fmtDate(onThisDay.entry.date)}</span>
+            </div>
+            <p className={`mt-1 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ${expandPast ? "" : "line-clamp-1"}`}>
+              {onThisDay.entry.text}
+            </p>
+          </button>
+        )}
 
         {/* Your rhythm and your calendar, in ONE row. They were two full-width cards stacked
             directly on top of each other — an amber card saying "Reflections this week: 1 of 3"
@@ -853,28 +901,6 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           </div>
         )}
 
-        {/* On this day — resurface a past reflection. Collapsed to a SINGLE line: it is a
-            lovely thing to stumble on, but it is not what you came to the tab to do, and at two
-            lines of preview plus a heading row it was the third stacked card between the
-            writing box and your entries. One line still shows enough to recognise it, and it
-            opens on a tap. */}
-        {onThisDay && (
-          <button
-            onClick={() => setExpandPast((v) => !v)}
-            className="w-full text-left rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2.5 transition-colors hover:bg-violet-50">
-            <div className="flex items-center gap-1.5">
-              <History size={13} className="text-violet-400 flex-shrink-0" />
-              {/* Both measured on violet-50, not on white: violet-500 was 3.86:1 and slate-500
-                  only reaches 4.34:1 against this tint. The whole card is a button, so its
-                  label and date are interactive text and have to clear 4.5. */}
-              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700 flex-shrink-0">{onThisDay.label}</p>
-              <span className="text-[10px] text-slate-600 ml-auto flex-shrink-0">{fmtDate(onThisDay.entry.date)}</span>
-            </div>
-            <p className={`mt-1 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ${expandPast ? "" : "line-clamp-1"}`}>
-              {onThisDay.entry.text}
-            </p>
-          </button>
-        )}
 
         {/* Log.
             It used to open straight into Year → Month → Week folders, and nothing else. Reading

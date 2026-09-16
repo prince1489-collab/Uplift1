@@ -41,6 +41,72 @@ const loadJSON = (k, fallback) => {
 };
 const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
 
+// ── The last seven days ──────────────────────────────────────────────────────
+// This tab is called Practice and showed no evidence that anybody had ever practised. Two cards
+// and then 575 of 1800 pixels of empty screen, measured off a recording — every day, forever,
+// whether it was someone's first morning or their hundredth.
+//
+// IT IS NOT A STREAK, and the difference is the whole design rather than a caveat on it:
+//
+//   • no number. Nothing to beat, nothing to protect, no "best ever".
+//   • a gap is drawn exactly like a gap — no red, no break, no word anywhere for a day that
+//     was missed. Miss Tuesday and Tuesday is simply a hollow dot, which is what an untouched
+//     day looks like before you have ever started.
+//   • it shows PRESENCE, never absence. Seven hollow dots read as a week not yet begun. That is
+//     true, and it is fine.
+//
+// A streak works by making a gap cost something. In an app whose roadmap rules out guilt as a
+// mechanic, on a tab someone opens on the days they are least able to act, that is the exact
+// wrong lever. What this does instead is the same thing Reflect's month calendar already does,
+// brought to the tab that never had it.
+//
+// Reads the per-day records the tab already writes — no new storage, no migration, and per-device
+// like everything else here.
+const WEEK = 7;
+const anyDone = (rec) => Boolean(rec?.done && SLOTS.some((s) => rec.done[s]));
+
+// `today` is passed in rather than read back out of localStorage, and that is not a micro-
+// optimisation: it is the live state object, so the last dot fills in the same render as the tick
+// instead of a beat later when the write has settled. It also makes the memo's dependency on
+// `state.done` a real one rather than a hint the linter has to be argued with.
+function lastSevenDays(todayRec, dayKey) {
+  const out = [];
+  const now = new Date();
+  for (let i = WEEK - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = todayKey(d);
+    out.push({
+      key,
+      // Any one of the day's two counts. "Doing one is plenty" is what the tab says, so one is
+      // what fills the dot.
+      did: key === dayKey ? anyDone(todayRec) : anyDone(loadJSON(stateKey(key), null)),
+      isToday: key === dayKey,
+    });
+  }
+  return out;
+}
+
+function WeekDots({ days }) {
+  const done = days.filter((d) => d.did).length;
+  return (
+    <div
+      className="mt-2.5 flex items-center gap-1.5 px-1"
+      // One label for the row rather than seven unlabelled dots, which a screen reader would
+      // read out as seven pieces of nothing.
+      role="img"
+      aria-label={done === 0 ? "No days marked in the last week" : `${done} of the last 7 days have something marked`}>
+      {days.map((d) => (
+        <span key={d.key} aria-hidden
+          className={`h-1.5 rounded-full transition-colors ${d.isToday ? "w-4" : "w-1.5"} ${
+            d.did ? "bg-teal-400" : d.isToday ? "bg-slate-300" : "bg-slate-200"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── "how does this work?" sheet ──────────────────────────────────────────────
 // Line sits outside the sheet rather than inside it: a component defined during render is a
 // new component type every pass, so React remounts the whole list on each render instead of
@@ -329,6 +395,11 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
   const pickArea = (id) => { if (canSwap) update({ ...state, area: id }); };
   const clearArea = () => update({ ...state, area: null });
 
+  // Recomputed when today's ticks change, so the last dot fills the moment a prompt is marked
+  // rather than on the next visit. `day` is in here because it is the thing that moves at
+  // midnight for an app somebody left open overnight.
+  const week = useMemo(() => lastSevenDays(state, day), [state, day]);
+
   const doneCount = items.filter((i) => state.done[i.slot]).length;
   const plannedCount = items.filter((i) => state.planned?.[i.slot] && !state.done[i.slot]).length;
   const allDone = doneCount === SLOTS.length;
@@ -354,9 +425,20 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
               </span>
             </button>
           </div>
-          <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">
-            One act of kindness, one bit of self-care. Small and real — do what feels right.
-          </p>
+          {/* The two lines of standing explainer that used to sit here are gone — "One act of
+              kindness, one bit of self-care. Small and real — do what feels right." — printed
+              above the cards every day, for ever, whether it was your first visit or your two
+              hundredth.
+
+              Reflect had exactly this and the reasoning for removing it is already written down
+              in Journal.jsx: "It said the same two lines every single day above the one thing the
+              tab is for, and pushed the prompt below the fold." The same judgement, applied to
+              the same pattern, on the tab it was never applied to — the ⓘ beside the heading
+              explains all of it properly for anyone who wants it.
+
+              What takes the space is the one thing the tab could never show: that you have done
+              this before. */}
+          <WeekDots days={week} />
         </div>
 
         {items.map((item) => (
