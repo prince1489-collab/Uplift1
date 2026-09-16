@@ -99,6 +99,10 @@
     {
       "path": "/api/rotate-champions",
       "schedule": "0 0 * * 0"
+    },
+    {
+      "path": "/api/goodnews",
+      "schedule": "20 5 * * *"
     }
   ],
   "rewrites": [

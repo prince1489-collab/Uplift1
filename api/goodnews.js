@@ -20,14 +20,31 @@ const CATEGORIES = {
 };
 const CATEGORY_KEYS = Object.keys(CATEGORIES);
 
-// ── Global RSS sources (positive/uplifting news, all categories merged) ───────
+// ── Sources, in two tiers ────────────────────────────────────────────────────
+//
+// Both tiers are used. The split is not about excluding anyone — it is about knowing what a
+// story arrived through, because the two tiers need different amounts of trust.
+//
+// CURATED feeds exist to publish uplifting or curious material. Choosing among them is choosing
+// between good things. MAJOR feeds are general news: on any given day their top-news output is
+// mostly war, disaster and crime, and asking a categoriser to find the most uplifting item in
+// that pool is a different question with a worse failure mode — the winner on a grim day is a
+// rescue at a catastrophe, which is technically uplifting and lands very badly unbidden in a
+// wellbeing app used by 13-year-olds.
+//
+// Keeping the majors is the owner's decision, made with that spelled out. What follows is the
+// machinery that makes it survivable: a deterministic blocklist every story must clear before a
+// model sees it, a keyword fallback that will not touch the majors, and a day with no card at
+// all in preference to a bad one.
 
-const GLOBAL_FEEDS = [
+const CURATED_FEEDS = [
   // Human interest / inspiring
   "https://www.goodnewsnetwork.org/feed/",
   "https://www.positive.news/feed/",
   "https://www.goodnewsnetwork.org/category/heroes/feed/",
   "https://www.goodnewsnetwork.org/category/kindness/feed/",
+  "https://www.goodnewsnetwork.org/category/animals/feed/",
+  "https://www.sunnyskyz.com/rss.php",
   // Science / technology
   "https://www.sciencedaily.com/rss/top/science.xml",
   "https://newatlas.com/feed/",
@@ -38,10 +55,11 @@ const GLOBAL_FEEDS = [
   "https://www.odditycentral.com/feed",
   "https://twistedsifter.com/feed/",
   "https://www.atlasobscura.com/feeds/latest",
-  // Animals / community
-  "https://www.goodnewsnetwork.org/category/animals/feed/",
-  "https://www.sunnyskyz.com/rss.php",
-  // Major global outlets — Claude filters for uplifting stories only
+];
+
+// General outlets. Their uplifting stories are real and worth having; everything around them is
+// why the guards above this line exist.
+const MAJOR_FEEDS = [
   "https://feeds.apnews.com/rss/apf-topnews",           // Associated Press
   "https://feeds.reuters.com/reuters/topNews",            // Reuters
   "http://feeds.bbci.co.uk/news/rss.xml",                // BBC News
@@ -52,6 +70,44 @@ const GLOBAL_FEEDS = [
   "https://feeds.a.dj.com/rss/RSSWorldNews.xml",         // Wall Street Journal
   "https://rss.dw.com/rdf/rss-en-all",                   // Deutsche Welle (DW)
 ];
+
+const GLOBAL_FEEDS = [...CURATED_FEEDS, ...MAJOR_FEEDS];
+const CURATED = new Set(CURATED_FEEDS);
+
+// ── The blocklist ────────────────────────────────────────────────────────────
+//
+// Deterministic, and it runs FIRST — before Claude, before keywords, on every story from every
+// tier. That ordering is the point: a model is a judgement, and a judgement is exactly one thing
+// standing between a war headline and a child. This is the layer that does not depend on
+// anything behaving well today.
+//
+// Deliberately blunt. It will drop perfectly good stories — an article about a charity tackling
+// child poverty contains "child" and "poverty" and will not make it through. That is the right
+// trade here: the cost of a false positive is one fewer nice story in a day, and the cost of a
+// false negative is a bereavement headline in a feed someone opened to feel less alone.
+const BLOCKED = new RegExp([
+  // Death and violence
+  "\\b(kill|killed|killing|murder|dead|death|deaths|died|dying|fatal|fatalit|homicide|massacre)",
+  "\\b(shoot|shooting|shooter|stabb|gunman|gunmen|terror|bomb|blast|explosion|militant)",
+  "\\b(war|warfare|troops|missile|airstrike|strike[sd]? on|invasion|occupation|ceasefire|hostage)",
+  // Harm to people
+  "\\b(abuse|assault|rape|traffick|kidnap|abduct|torture|slavery|exploit)",
+  "\\b(suicide|self.harm|overdose)",
+  // Disaster
+  "\\b(earthquake|tsunami|hurricane|wildfire|famine|drought|flooding|catastroph|disaster|evacuat)",
+  "\\b(crash|crashes|collision|derail|capsiz|sank|wreckage)",
+  // Crime and courts
+  "\\b(arrest|convict|sentenc|charged with|guilty|prison|jail|lawsuit|fraud|scandal|corrupt)",
+  // Illness and distress
+  "\\b(outbreak|epidemic|pandemic|virus|cancer|terminal|hospice|coma)",
+  // Politics, which is not unsafe but is not what this app is for
+  "\\b(election|president|prime minister|parliament|congress|senate|tariff|sanction|protest|riot)",
+].join("|"), "i");
+
+function isBlocked(story) {
+  return BLOCKED.test(`${story.title || ""} ${story.description || ""}`);
+}
+
 
 // ── GNews broad queries (one call each, not per category) ─────────────────────
 
@@ -146,12 +202,22 @@ function parseFeed(xml, limit = 15) {
 }
 
 async function fetchRss(url) {
+  // Source and tier are stamped HERE, and the blocklist is applied HERE, so that every later
+  // stage — Claude, keywords, the story-of-the-day pick — is working from an already-filtered
+  // pool. A guard that each caller has to remember to apply is a guard that one caller will
+  // eventually forget.
+  const feedHost = (() => {
+    try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return null; }
+  })();
+  const tier = CURATED.has(url) ? "curated" : "major";
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 SeenApp/1.0", Accept: "application/rss+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) throw new Error(`RSS ${res.status}`);
-  return parseFeed(await res.text());
+  return parseFeed(await res.text())
+    .map((item) => ({ ...item, source: feedHost, tier }))
+    .filter((item) => !isBlocked(item));
 }
 
 // ── GNews ─────────────────────────────────────────────────────────────────────
@@ -252,6 +318,64 @@ function keywordCategorise(story) {
   return null; // skip
 }
 
+// ── The story of the day ─────────────────────────────────────────────────────
+//
+// One story, the same one for everybody, refreshed once a day. Shared on purpose: a thing two
+// people can both have read is worth more in an app about connection than a personalised list
+// nobody else saw.
+//
+// Curated first, always. A major-outlet story is used only when no curated feed produced
+// anything that day — so on a normal day the majors are a fallback rather than the source, which
+// is the practical half of keeping them at all.
+function pickStoryOfTheDay(result) {
+  const ordered = [];
+  for (const key of CATEGORY_KEYS) {
+    for (const st of result[key]?.stories ?? []) ordered.push({ ...st, category: key });
+  }
+  const live = ordered.filter((st) => st.link && st.title && !isBlocked(st));
+  return live.find((st) => st.tier === "curated") || live.find((st) => st.tier === "major") || null;
+}
+
+// The ~200 words the owner asked for. The endpoint previously carried an RSS blurb cut to 220
+// CHARACTERS, which is a different thing entirely and reads like a teaser.
+//
+// Returns null rather than a half-summary if anything goes wrong, and the caller then publishes
+// nothing. A day with no card is unremarkable; a day with a mangled one is the only version of
+// this feature anybody would remember.
+async function summariseStory(story) {
+  if (!ANTHROPIC_KEY) return null;
+  try {
+    const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 600,
+      messages: [{
+        role: "user",
+        content: `Write about 200 words on this news story for a kindness and wellbeing app used by people aged 13 and over.
+
+Title: ${story.title}
+Summary: ${story.description || "(none)"}
+Source: ${story.source || "unknown"}
+
+Rules:
+- Warm and plain. No hype, no "amazing", no exclamation marks.
+- Only what the title and summary support. Invent no names, numbers, quotes or outcomes.
+- If the story turns out to involve death, violence, crime, disaster, illness or politics,
+  reply with exactly: UNSUITABLE
+- No preamble. Start with the story.`,
+      }],
+    });
+    const text = (response.content[0]?.text || "").trim();
+    // The model gets a way out, and it is honoured. A categoriser forced to always produce
+    // something will always produce something, including on the day it should have declined.
+    if (!text || /^UNSUITABLE/i.test(text)) return null;
+    return text;
+  } catch (err) {
+    console.error("[goodnews] summary failed:", err.message);
+    return null;
+  }
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -346,6 +470,16 @@ export default async function handler(req, res) {
       const globalCounts = Object.fromEntries(CATEGORY_KEYS.map((k) => [k, 0]));
 
       for (const story of allStories) {
+        // CURATED ONLY when Claude is unavailable, and this is the important line in the
+        // fallback. keywordCategorise matches on POSITIVE words — "rescue" scores kind, "hero"
+        // and "surviv" score inspiring — so run over general news it actively selects FOR
+        // disaster coverage that happens to contain an uplifting word. The blocklist above
+        // already drops those, but a fallback whose whole method is keyword-matching should not
+        // be the last thing standing between a bereavement headline and a 13-year-old.
+        //
+        // A thinner day is the cost, and it is the right one: the curated feeds publish nothing
+        // but this sort of story, so the fallback still has plenty to choose from.
+        if (story.tier !== "curated") continue;
         const cat = keywordCategorise(story);
         if (!cat) continue;
         const counts = story.isLocal ? localCounts : globalCounts;
@@ -373,11 +507,63 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", cacheHeader);
     res.setHeader("Vary", "");
 
+    // ── The daily write ───────────────────────────────────────────────────────
+    //
+    // Called with the cron secret, this also stores ONE story at meta/goodNewsToday, and that is
+    // what every client reads. Clients never call this endpoint.
+    //
+    // Not an optimisation — a hard requirement. GNews's free tier is 100 requests a DAY, so a
+    // client-side fetch-on-open exhausts it before lunch at a few dozen users, and then the
+    // feature fails for everybody in a way that looks like a bug rather than a quota.
+    //
+    // meta/{docId} is world-readable and admin-writable (firestore.rules), so the owner can
+    // delete a story from the Firebase console and the card disappears for everyone. That is the
+    // backstop for a story that clears the blocklist and still lands wrong — which, with general
+    // news in the pool, will happen eventually.
+    const isCron = process.env.CRON_SECRET
+      && req.headers?.authorization === `Bearer ${process.env.CRON_SECRET}`;
+    let stored = null;
+    if (isCron) {
+      const pick = pickStoryOfTheDay(result);
+      const summary = pick ? await summariseStory(pick) : null;
+      if (pick && summary) {
+        try {
+          const { cert, getApps, initializeApp } = await import("firebase-admin/app");
+          const { getFirestore } = await import("firebase-admin/firestore");
+          if (!getApps().length) {
+            initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) });
+          }
+          stored = {
+            title: pick.title,
+            summary,
+            link: pick.link,
+            source: pick.source || null,
+            tier: pick.tier || null,
+            category: pick.category || null,
+            emoji: CATEGORIES[pick.category]?.emoji || "✨",
+            label: CATEGORIES[pick.category]?.label || "Good news",
+            image: pick.image || null,
+            publishedAt: Date.now(),
+          };
+          await getFirestore().collection("meta").doc("goodNewsToday").set(stored);
+        } catch (err) {
+          console.error("[goodnews] store failed:", err.message);
+          stored = null;
+        }
+      } else {
+        // FAIL CLOSED. Nothing suitable today means yesterday's card stays until it is replaced,
+        // and the client hides anything older than 48 hours. Publishing the least-bad remaining
+        // story on a thin day is exactly how this feature would earn its bad reputation.
+        console.log("[goodnews] nothing suitable today — leaving the existing card alone");
+      }
+    }
+
     return res.status(200).json({
       categories: result,
       countryCode: countryCode || null,
       fetched: new Date().toISOString(),
       categorisedBy: claudeAssignments ? "claude" : "keywords",
+      storyOfTheDay: stored,
     });
 
   } catch (err) {

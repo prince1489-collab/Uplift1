@@ -22,6 +22,7 @@ import HaveYouTried from "./HaveYouTried";
 import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
+import GoodNewsCard from "./GoodNewsCard";
 import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -3846,6 +3847,12 @@ export default function App() {
                 onReplyPrivately={(m) => setReplyTarget(m)}
                 onOpenGlobe={() => setShowMap(true)} />
             )}
+
+            {/* One uplifting story a day, between the world and the people you follow.
+                Collapsed, because a 200-word article sitting open here every day would push the
+                messages from actual people off the first screen, and those are what the tab is
+                for. It renders nothing at all on a day with no story. */}
+            {activeTab === "feed" && <GoodNewsCard db={db} />}
 
             {/* Between the two feeds, because that is where the difference is visible. */}
             {activeTab === "feed" && (
