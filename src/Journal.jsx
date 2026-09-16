@@ -11,7 +11,8 @@ import { createPortal } from "react-dom";
 import { collection, addDoc, updateDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
-import { pickDailyPrompt } from "./JournalPrompts";
+import { pickDailyPrompt, isEveningNow } from "./JournalPrompts";
+import { setEveningCue } from "./eveningCue";
 import { writeFailure } from "./writeFailure";
 import { awardPoints, POINTS } from "./points";
 import { markDone } from "./invitations";
@@ -29,6 +30,19 @@ const RECENT_ENTRIES = 10;
 // How many times a day the prompt can be rerolled. See the note at the swap link for why this
 // is three here and one in Practice.
 const PROMPT_SWAPS = 3;
+
+// ── Drafts, and the pinned prompt ────────────────────────────────────────────────────────────
+// Both are per-device and per-day, so localStorage rather than Firestore — except for the one
+// bit the evening reminder needs to see, which eveningCue.js sends on separately.
+const draftKey = (d) => `seen_reflect_draft_${d}`;
+const pinKey = (d) => `seen_reflect_pin_${d}`;
+const readDraft = (d) => { try { return localStorage.getItem(draftKey(d)) || ""; } catch { return ""; } };
+const writeDraft = (d, v) => {
+  try {
+    if (v && v.trim()) localStorage.setItem(draftKey(d), v);
+    else localStorage.removeItem(draftKey(d));
+  } catch { /* ignore */ }
+};
 const WEEKS_ACTIVE_MILESTONES = [4, 8, 12, 26, 52];
 
 function pad(n) { return String(n).padStart(2, "0"); }
@@ -334,7 +348,15 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const uid = currentUser?.uid;
   const type = "reflection"; // v2: single-category journal
   const [date, setDate] = useState(todayStr());
-  const [text, setText] = useState("");
+  // ── A half-written entry survives leaving the tab ──────────────────────────────────────────
+  // This was `useState("")` with nothing behind it. Write three sentences, switch to Connect to
+  // check something, come back: gone. On the one screen in the app whose entire job is to get
+  // somebody writing — and the failure is silent, so what it teaches is "don't start unless you
+  // can finish", which is the opposite of a habit.
+  //
+  // Keyed by date so an entry begun for yesterday is not handed to today, and cleared on save so
+  // reopening shows an empty box rather than a copy of what was already stored.
+  const [text, setText] = useState(() => readDraft(todayStr()));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [entries, setEntries] = useState([]);
@@ -386,7 +408,49 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
       return next;
     });
   };
-  const prompt = pickDailyPrompt(uid, type, promptOffset);
+  // ── "Hold this thought" ────────────────────────────────────────────────────────────────────
+  // Every prompt here used to look backwards, and the app's one notification arrives at nine in
+  // the morning — so the question most people met was one they could not answer yet. Half of the
+  // fix is the morning bank in JournalPrompts.js. This is the other half: a question that lands
+  // at the wrong moment should be able to WAIT, rather than being swapped away or ignored.
+  //
+  // A pinned prompt stops rotating, survives the hour changing, and is what the evening reminder
+  // quotes back. It is stored as the text rather than an index because the bank it came from is
+  // chosen by the hour — an index would point somewhere else by evening, which is the exact bug
+  // it exists to prevent.
+  const [pinned, setPinned] = useState(() => { try { return localStorage.getItem(pinKey(todayStr())) || ""; } catch { return ""; } });
+  const evening = isEveningNow();
+  const rotating = pickDailyPrompt(uid, type, promptOffset, evening);
+  const prompt = pinned || rotating;
+
+  // ── Consent for the evening push, asked where it means something ───────────────────────────
+  // A notification is a different thing from an in-app pin, so turning one on silently because
+  // somebody tapped "hold this thought" would be helping themselves to their lock screen.
+  //
+  // But a separate settings toggle asking "would you like a reminder about the thing you just
+  // asked to be reminded about" is a dialog nobody needs, buried where nobody looks. So the
+  // question is asked HERE, once, at the only moment it is obviously relevant — and the answer,
+  // either way, is remembered on the profile so it is never asked again. `undefined` means
+  // never asked; false is a real answer and is respected.
+  const askEvening = profile?.eveningReminders === undefined;
+  const [offerNudge, setOfferNudge] = useState(false);
+  const answerEvening = (yes) => {
+    setOfferNudge(false);
+    if (!db || !uid) return;
+    updateDoc(doc(db, "users", uid), { eveningReminders: yes }).catch(() => {});
+  };
+
+  const holdThought = () => {
+    setPinned(rotating);
+    try { localStorage.setItem(pinKey(todayStr()), rotating); } catch { /* ignore */ }
+    setEveningCue(db, uid, { kind: "pinned", text: rotating });
+    if (askEvening) setOfferNudge(true);
+  };
+  const releaseThought = () => {
+    setPinned("");
+    try { localStorage.removeItem(pinKey(todayStr())); } catch { /* ignore */ }
+    setEveningCue(db, uid, null);
+  };
 
   // Derived stats
   const counts = {};
@@ -487,9 +551,33 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   const editingId = entryForDate?.id ?? null;
   // Load the day's entry into the box when the selected date (or its entry) changes.
   // Keyed on the id so an unrelated snapshot never wipes what's being typed.
+  //
+  // Falls back to the saved DRAFT rather than to an empty string. Without that this effect fires
+  // on mount and wipes the very draft restored a moment earlier in useState — the restore would
+  // have been dead code, and silently so.
   useEffect(() => {
-    setText(entryForDate?.text ?? "");
+    setText(entryForDate?.text ?? readDraft(date));
   }, [date, entryForDate?.id]);
+
+  // Keep the draft written as it is typed. Debounced because this runs on every keystroke and a
+  // synchronous localStorage write per character is felt on a slow phone.
+  useEffect(() => {
+    if (editingId) return;            // editing a saved entry — there is nothing to draft
+    const t = setTimeout(() => writeDraft(date, text), 400);
+    return () => clearTimeout(t);
+  }, [text, date, editingId]);
+
+  // An unfinished draft is one of the three things that earn an evening reminder, and it is the
+  // most honest of them: you started this. Only for today, only once there is enough to be worth
+  // coming back to, and withdrawn the moment the box is emptied or the entry is saved.
+  const DRAFT_CUE_MIN = 15;
+  useEffect(() => {
+    if (editingId || pinned || date !== todayStr()) return;
+    const t = setTimeout(() => {
+      if (text.trim().length >= DRAFT_CUE_MIN) setEveningCue(db, uid, { kind: "draft", text: text.trim() });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [text, date, editingId, pinned, db, uid]);
   // While editing, show the prompt that entry was actually written against.
   const activePrompt = entryForDate?.prompt || prompt;
 
@@ -525,6 +613,12 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
       // to it is still reflecting, and the bell's "a quiet minute?" invitation should stop
       // asking either way.
       try { markDone("reflect"); } catch { /* ignore */ }
+      // It is written. Clear the draft and release the pin, and — the part that matters most —
+      // take down the evening cue, so tonight's reminder does not arrive about a reflection that
+      // is already saved. A nudge to do something you have done is the fastest way to teach
+      // somebody the app is not paying attention.
+      writeDraft(date, "");
+      if (pinned) releaseThought(); else setEveningCue(db, uid, null);
       playCheckIn();
     } catch (err) {
       // A reflection is something the user wrote. Losing it silently is the worst
@@ -604,7 +698,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             editingId ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"
           }`}>
             <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
-              {editingId ? "You answered" : "Today's prompt"}
+              {editingId ? "You answered" : pinned ? "You're holding this one" : evening ? "Tonight's prompt" : "This morning's prompt"}
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
             {/* Three swaps, where Practice allows one, and the difference is deliberate rather
@@ -619,15 +713,64 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
 
                 Still bounded, because an endless carousel is its own way of not writing. The
                 offset key is per-day, so this resets on its own tomorrow. */}
-            {!editingId && (promptOffset < PROMPT_SWAPS ? (
-              <button onClick={nextPrompt}
-                className="mt-2 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
-                Ask me something else →
-              </button>
+            {!editingId && (pinned ? (
+              // ── Held ──────────────────────────────────────────────────────────────────────
+              // Not everything worth answering can be answered at the moment it is asked, and
+              // until now the only options were to swap it away or to close the tab. A question
+              // you are still thinking about at lunchtime is the opposite of a failed session.
+              offerNudge ? (
+                <div className="mt-2.5 rounded-lg border border-teal-200 bg-teal-50/70 px-3 py-2.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
+                  <p className="text-[12px] font-semibold leading-snug text-teal-800">
+                    Want a quiet nudge about it this evening?
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-teal-700/80">
+                    Only on days you've held a question or started writing — never otherwise.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={() => answerEvening(true)}
+                      className="rounded-full bg-teal-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-teal-700 transition-colors">
+                      Yes, nudge me
+                    </button>
+                    <button onClick={() => answerEvening(false)}
+                      className="rounded-full border border-teal-200 bg-white px-3 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+                      No thanks
+                    </button>
+                  </div>
+                </div>
+              ) : (
+              <div className="mt-2 flex items-center gap-3">
+                <p className="flex-1 text-[11px] font-semibold text-teal-700">
+                  {profile?.eveningReminders
+                    ? "Waiting for you — there'll be a nudge this evening."
+                    : "Waiting for you — come back to it whenever."}
+                </p>
+                <button onClick={releaseThought}
+                  className="flex-shrink-0 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
+                  Let it go
+                </button>
+              </div>
+              )
             ) : (
-              // slate-300 measured 1.48:1 on this tint — the only thing explaining where the
-              // swap link went, and effectively invisible.
-              <p className="mt-2 text-[11px] font-semibold text-slate-600">that's all of them for today — write about anything 🌱</p>
+              <div className="mt-2 flex items-center gap-3">
+                {promptOffset < PROMPT_SWAPS ? (
+                  <button onClick={nextPrompt}
+                    className="text-[11px] font-semibold text-teal-600 hover:text-teal-700">
+                    Ask me something else →
+                  </button>
+                ) : (
+                  // slate-300 measured 1.48:1 on this tint — the only thing explaining where the
+                  // swap link went, and effectively invisible.
+                  <p className="flex-1 text-[11px] font-semibold text-slate-600">that's all of them for today — write about anything 🌱</p>
+                )}
+                {/* Only before the evening. After it, "come back later today" is an offer of a
+                    few hours, and the prompt will have rotated by the time they arrive. */}
+                {!evening && (
+                  <button onClick={holdThought}
+                    className="ml-auto flex-shrink-0 rounded-full border border-teal-200 bg-teal-50/60 px-2.5 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+                    Hold this thought
+                  </button>
+                )}
+              </div>
             ))}
           </div>
 

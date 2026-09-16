@@ -17,7 +17,18 @@ function initAdmin() {
 // weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
 // prompt the wellbeing part on ALTERNATE Sundays — nudging it weekly would ask for a check-in
 // that isn't due yet. Off-weeks keep the community-vote + journal prompts.
-const DAILY_MESSAGE  = { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." };
+// Two evergreen lines rather than one, alternating by day. The second names PRACTICE, which no
+// notification this app has ever sent has mentioned — so the tab built to be a daily habit has
+// had no daily cue, while the one push a day pointed at Connect six mornings out of seven.
+//
+// It does not quote the prompt. The prompt is chosen on the device (pickDaily is seeded by uid
+// and the local date, with no server copy), so naming it here would mean either duplicating that
+// logic or sending a different one from the one they will see. Pointing at the tab is honest and
+// the tap costs the same.
+const DAILY_MESSAGES = [
+  { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." },
+  { title: "Good morning ☀️", body: "Two small things are waiting in Practice — one kind, one for you.", open: "practice" },
+];
 // Both of these used to open with "Vote for this week's community greetings." There is no
 // voting screen: CommunityArena is imported in App.jsx and never rendered, and the picker's
 // community category was retired. So every user was sent to a feature that does not exist,
@@ -31,6 +42,55 @@ const WEEKLY_MESSAGE_LITE = {
   title: "Your weekly check-in 🌱",
   body: "A quiet minute to look back — add a line to your journal.",
 };
+
+// ── The evening slot ─────────────────────────────────────────────────────────────────────────
+// Seen sends ONE notification a day, at nine in the morning, and that number is deliberate: a
+// second daily push that arrives whether or not it has anything to say is how a wellbeing app
+// gets muted, and a muted app has no cues at all.
+//
+// But nine in the morning is the wrong hour for half of what the app wants to say. Reflect's
+// prompts look back on a day; at 9am there is no day to look back on. So there is a second slot
+// at eight in the evening which, on almost every day, sends NOTHING.
+//
+// It fires only when the person left something open themselves a few hours earlier — they held a
+// journal prompt for later, started writing and did not finish, or said "I'll do this today"
+// about a kindness prompt. That is the whole distinction: "write in your journal" is the app
+// asking again, and "you said you'd come back to this" is a promise they made to themselves.
+// Every line below states something true and offers to finish it. None of them counts what would
+// be lost, because the roadmap rules guilt out as a mechanic and a notification is the easiest
+// place in a product to break that rule by accident.
+//
+// Opt-in, and off unless `eveningReminders` is explicitly true on the user document.
+const EVENING_HOUR = 20;
+
+export function eveningMessage(cue) {
+  if (!cue || !cue.text) return null;
+  const text = String(cue.text).slice(0, 110);
+  if (cue.kind === "pinned") {
+    return { title: "You held onto this 🌙", body: `"${text}" — still here when you are.`, open: "reflect" };
+  }
+  if (cue.kind === "draft") {
+    return { title: "You started writing 🌙", body: "A few words are waiting in Reflect, just as you left them.", open: "reflect" };
+  }
+  if (cue.kind === "planned") {
+    // The prompt already reads "Have you tried… x?", so it is quoted whole rather than
+    // reassembled into a sentence that would ask the question twice.
+    return { title: "The one you chose today 🌱", body: text, open: "practice" };
+  }
+  return null;
+}
+
+// Today, in the RECIPIENT's calendar rather than the server's. The cue carries the date it was
+// written on, and comparing them is the whole of its expiry: a cue nobody came back to simply
+// stops matching at their midnight. No sweep, no cleanup job, no stale state to go wrong.
+function localDateKey(timezone, now) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(now);
+    return parts; // en-CA formats as YYYY-MM-DD, which is what the client writes
+  } catch { return ""; }
+}
 
 function localHour(timezone, now) {
   try {
@@ -159,13 +219,35 @@ export default async function handler(req, res) {
     const snap = await db.collection("users").get();
 
     // Only send to users whose local time is 9am, and who have a stored timezone.
-    const entries = snap.docs
-      .map((d) => ({ uid: d.id, rows: tokensFor(d.data()), timezone: d.data().timezone }))
+    const everyone = snap.docs
+      .map((d) => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          rows: tokensFor(data),
+          timezone: data.timezone,
+          eveningOn: data.eveningReminders === true,
+          cue: data.eveningCue || null,
+        };
+      })
       .filter((e) => e.rows.length && e.timezone)
-      .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }))
-      .filter((e) => e.hour === 9);
+      .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }));
 
-    if (!entries.length) return res.status(200).json({ sent: 0, total: snap.size, matched: 0 });
+    const entries = everyone.filter((e) => e.hour === 9);
+
+    // The evening slot. Three conditions, all of them narrowing, and the result on an ordinary
+    // day is an empty list: it is eight in the evening for you, you turned this on, and you left
+    // something open TODAY in your own calendar — not the server's, which is why the cue carries
+    // a date rather than a timestamp.
+    const eveningEntries = everyone.filter((e) =>
+      e.hour === EVENING_HOUR
+      && e.eveningOn
+      && e.cue?.date
+      && e.cue.date === localDateKey(e.timezone, now));
+
+    if (!entries.length && !eveningEntries.length) {
+      return res.status(200).json({ sent: 0, total: snap.size, matched: 0, evening: 0 });
+    }
 
     // Fortnightly parity (UTC week index) decides whether this Sunday includes the wellbeing prompt.
     const wellbeingWeek = Math.floor(now.getTime() / (7 * 24 * 60 * 60 * 1000)) % 2 === 0;
@@ -207,6 +289,18 @@ export default async function handler(req, res) {
     const world = await worldOvernight(db, since);
     const worldMsg = worldMessage(world);
 
+    // ── The evening pass ────────────────────────────────────────────────────────────────────
+    // Before the morning one, so that if anything below throws, the people who asked to be
+    // reminded of their own promise have already been.
+    let eveningSent = 0;
+    for (const e of eveningEntries) {
+      const msg = eveningMessage(e.cue);
+      if (!msg) continue;
+      const before = sent;
+      await pushTo(e.uid, e.rows, msg);
+      if (sent > before) eveningSent += 1;
+    }
+
     // Ordering, most specific first: something a person did FOR YOU beats the Sunday ritual,
     // which beats what the world did, which beats the evergreen line. Telling someone about the
     // journal while an unread private message sits waiting would be the wrong thing to say.
@@ -216,7 +310,10 @@ export default async function handler(req, res) {
       const personal = newsMessage(news);
       if (personal) personalised += 1;
       const weekly = e.day === "Sun" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : null;
-      const msg = personal ?? weekly ?? worldMsg ?? DAILY_MESSAGE;
+      // Alternates by day so neither evergreen line becomes wallpaper. UTC day number is fine
+      // here: it only has to change once a day, not align with anybody's midnight.
+      const evergreen = DAILY_MESSAGES[Math.floor(now.getTime() / 86400000) % DAILY_MESSAGES.length];
+      const msg = personal ?? weekly ?? worldMsg ?? evergreen;
       await pushTo(e.uid, e.rows, msg);
     }
 
@@ -224,7 +321,12 @@ export default async function handler(req, res) {
     // user, so one stale browser registration could take a working phone offline.
     await Promise.all(dead.map(({ uid, row }) => dropDeadToken(db, uid, row).catch(() => {})));
 
-    return res.status(200).json({ sent, matched: entries.length, personalised, total: snap.size, world, errors });
+    return res.status(200).json({
+      sent, matched: entries.length, personalised, total: snap.size, world, errors,
+      // Reported separately, because "how many evening reminders went out" is the number to watch
+      // on this feature. It should be small, and on most days zero.
+      eveningMatched: eveningEntries.length, eveningSent,
+    });
   } catch (err) {
     console.error("[send-reminder]", err?.code, err?.message);
     return res.status(500).json({ error: err?.code || "internal", message: err?.message });

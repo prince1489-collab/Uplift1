@@ -14,7 +14,7 @@
     "check:rules": "node scripts/check-rules.cjs",
     "check:icons": "python3 scripts/gen-icons.py --check",
     "check:android-config": "node scripts/check-android-config.cjs",
-    "check": "npm run check:flags && npm run check:android-config && npm run check:privacy && npm run check:rules && npm run check:tree && npm run check:proverbs && npm run test:tokens && npm run check:icons && npm run build && npm run check:css && npm run lint",
+    "check": "npm run check:flags && npm run check:android-config && npm run check:privacy && npm run check:rules && npm run check:tree && npm run check:proverbs && npm run check:hyt && npm run check:journal && npm run test:tokens && npm run test:evening && npm run check:icons && npm run build && npm run check:css && npm run lint",
     "preview": "vite preview",
     "ios:sync": "vite build && cap sync ios",
     "deploy:rules": "npx --yes firebase-tools deploy --only firestore:rules",
@@ -24,6 +24,7 @@
     "firebase": "npx --yes firebase-tools",
     "deploy:login": "npx --yes firebase-tools login",
     "test:tokens": "node scripts/test-tokens.mjs",
+    "test:evening": "node scripts/test-evening.mjs",
     "test:rules": "node scripts/test-rules.mjs",
     "test:reactions": "node scripts/test-reactions.mjs",
     "test:storage": "node scripts/test-storage-rules.mjs",
@@ -32,6 +33,8 @@
     "test:reactions:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-reactions.mjs\"",
     "check:tree": "node scripts/check-tree.cjs",
     "check:proverbs": "node scripts/check-proverbs.cjs",
+    "check:hyt": "node scripts/check-hyt.cjs",
+    "check:journal": "node scripts/check-journal-prompts.cjs",
     "check:css": "node scripts/check-css.cjs"
   },
   "dependencies": {

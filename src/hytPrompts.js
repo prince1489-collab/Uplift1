@@ -19,6 +19,17 @@
 //
 // The 14 themed areas below are still here and still good. They are now reached deliberately
 // through "Pick an area" by someone who knows they fit, rather than assigned at random.
+//
+// ── THE SAME FIVE TESTS APPLY TO SELF CARE ───────────────────────────────────────────────────
+// They were written for the kindness bank and the self-care bank never got the treatment, so it
+// carried the identical bug one layer down: six of the sixty adult prompts assumed a JOB — a
+// lunch break, a desk, meetings, clocking off, annual leave. The adult band is 18-49, which is
+// full of students, carers, people between jobs and people who work for themselves, and every
+// one of them met a prompt they could not do about one day in ten. Same finding, same reasoning,
+// same fix: generalised rather than deleted, so they still land for the employed majority.
+//
+// scripts/check-hyt.cjs guards the shape of every line in this file. It cannot guard the MEANING
+// of one — see its header for what that costs and what to do about it.
 export const HYT_EVERYDAY = [
   "Have you tried… replying to the message you've been putting off?",
   "Have you tried… saying thank you to someone who was just doing their job?",
@@ -697,7 +708,7 @@ export const SELF_CARE = {
     "Have you tried… letting yourself take up space in a conversation?",
     "Have you tried… going to bed before you're exhausted rather than after?",
     "Have you tried… reminding yourself that most people are thinking about themselves, not you?",
-    "Have you tried… putting your phone in another room 30 minutes before you sleep tonight?",
+    "Have you tried… letting a compliment land instead of explaining it away?",
     "Have you tried… speaking to yourself the way you'd speak to your best mate?",
     "Have you tried… taking three slow breaths before you open that stressful message?",
     "Have you tried… drinking a glass of water and stretching after a long stint of homework?",
@@ -708,15 +719,15 @@ export const SELF_CARE = {
     "Have you tried… going to bed 30 minutes earlier tonight, as a gift to tomorrow-you?",
     "Have you tried… asking one person for help with something that's been weighing on you?",
     "Have you tried… reminding yourself that a bad test doesn't make you a bad person?",
-    "Have you tried… putting on a song you love and moving about for one whole track?",
+    "Have you tried… noticing something you're good at that has nothing to do with school?",
     "Have you tried… noticing that everyone's highlight reel online hides their messy days too?",
     "Have you tried… giving yourself permission to log off and rest without guilt?",
     "Have you tried… texting a friend just to say hi, with nothing you need from them?",
     "Have you tried… breaking that big task into three smaller, less scary steps?",
-    "Have you tried… eating something proper when you notice you're getting snappy or foggy?",
+    "Have you tried… putting the thing you're dreading first, so it stops following you round?",
     "Have you tried… letting yourself not have your whole future figured out yet?",
     "Have you tried… taking a proper break instead of pushing through when your brain is fried?",
-    "Have you tried… writing your worries on paper so they stop rattling round your head?",
+    "Have you tried… letting a message sit unanswered until you have the energy to reply?",
     "Have you tried… being patient with your body while it's busy growing and changing?",
     "Have you tried… saying no to plans when you honestly just need a quiet night in?",
     "Have you tried… unfollowing the comparison and following things that make you laugh?",
@@ -759,14 +770,14 @@ export const SELF_CARE = {
     "Have you tried… deciding one thing on your list is not actually your job?",
     "Have you tried… eating something without a screen in front of you?",
     "Have you tried… letting tomorrow-you deal with it, deliberately rather than guiltily?",
-    "Have you tried… taking your full lunch break away from your desk today?",
+    "Have you tried… stopping properly for lunch, away from wherever you spent the morning?",
     "Have you tried… going to bed 30 minutes earlier tonight, as a gift to tomorrow-you?",
     "Have you tried… speaking to yourself today the way you'd speak to a friend?",
-    "Have you tried… turning off work notifications once you've clocked off?",
+    "Have you tried… turning off the notifications that keep following you after hours?",
     "Have you tried… saying no to one thing this week so you can properly rest?",
-    "Have you tried… drinking a glass of water before your third coffee of the morning?",
-    "Have you tried… stepping outside for a short walk between meetings?",
-    "Have you tried… letting 'good enough' be enough on something small today?",
+    "Have you tried… finishing the day without checking whether you did enough?",
+    "Have you tried… stepping outside for a short walk between two things on your list?",
+    "Have you tried… eating something you actually fancy rather than whatever's quickest?",
     "Have you tried… putting your phone down and giving your eyes a proper rest?",
     "Have you tried… asking for help before you're completely running on empty?",
     "Have you tried… blocking out 20 minutes in your diary that's just for you?",
@@ -775,8 +786,8 @@ export const SELF_CARE = {
     "Have you tried… letting the washing-up wait so you can sit down for ten minutes?",
     "Have you tried… texting someone you've been meaning to catch up with for ages?",
     "Have you tried… taking a few slow breaths before the thing you are dreading?",
-    "Have you tried… leaving work on time today, even if the list isn't finished?",
-    "Have you tried… eating a proper meal at the table instead of at your keyboard?",
+    "Have you tried… stopping for the day on time, even if the list isn't finished?",
+    "Have you tried… eating a proper meal at a table instead of in front of a screen?",
     "Have you tried… protecting one evening this week with absolutely no plans?",
     "Have you tried… reminding yourself that rest is productive, not a reward you earn?",
     "Have you tried… putting your feet up for ten minutes without your phone nearby?",
@@ -789,14 +800,14 @@ export const SELF_CARE = {
     "Have you tried… booking the appointment you've been quietly putting off?",
     "Have you tried… having a proper lie-in this weekend without setting an alarm?",
     "Have you tried… noticing when you're doom-scrolling and closing the app for now?",
-    "Have you tried… asking for the day to be a little kinder, starting with your break?",
+    "Have you tried… asking out loud for the one thing that would make today easier?",
     "Have you tried… making a cup of tea and drinking it while it's still hot?",
     "Have you tried… celebrating finishing something instead of racing to the next thing?",
     "Have you tried… going for a walk without a podcast, just to hear your own thoughts?",
     "Have you tried… letting someone do you a favour without feeling you owe them?",
     "Have you tried… switching your phone to greyscale to make it less of a pull tonight?",
     "Have you tried… doing one thing today purely because it brings you joy?",
-    "Have you tried… taking your annual leave instead of letting the days quietly expire?",
+    "Have you tried… planning a whole day off from everything, and putting it in the diary?",
     "Have you tried… unclenching your jaw and dropping your shoulders right now?",
     "Have you tried… ending the day by naming one thing you're grateful for?",
   ],
@@ -826,7 +837,7 @@ export const SELF_CARE = {
     "Have you tried… sitting with a cuppa and savouring it slowly, with no rush?",
     "Have you tried… doing a few gentle stretches when you first get up in the morning?",
     "Have you tried… letting yourself rest in the afternoon without a shred of guilt?",
-    "Have you tried… writing down a memory that still makes you smile?",
+    "Have you tried… letting a conversation go on longer than you had planned to?",
     "Have you tried… saying yes to an invitation, even if part of you wants to stay in?",
     "Have you tried… speaking to yourself as kindly as you would to an old friend?",
     "Have you tried… opening the window for some fresh air and a bit of daylight?",
@@ -848,7 +859,7 @@ export const SELF_CARE = {
     "Have you tried… sitting quietly with your thoughts and letting the day settle?",
     "Have you tried… asking a neighbour round for a cuppa and a proper natter?",
     "Have you tried… moving your body a little each day, however gently, to stay supple?",
-    "Have you tried… letting go of a worry that isn't really yours to carry?",
+    "Have you tried… going somewhere you haven't been in a while, just to see it again?",
     "Have you tried… looking through old photographs and savouring the good times?",
     "Have you tried… being patient with your body on the days it moves more slowly?",
     "Have you tried… joining something local so a familiar face becomes part of your week?",
@@ -906,7 +917,34 @@ export function todayKey(d = new Date()) {
 // Picking an area steers, it doesn't reroll: the prompt inside a chosen area is still fixed
 // by the day hash, so re-picking the same area always gives the same prompt and there is
 // nothing to shop for. The one-a-day cap on swapping lives in HaveYouTried.jsx.
-export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null }) {
+// ── Self-care prompts you cannot act on before the evening ───────────────────────────────────
+// A recording of the app at 07:30 shows the self-care card offering something about sleep. There
+// is nothing wrong with the prompt; it is simply eight hours early, and a prompt you cannot do
+// yet is a soft version of a prompt you cannot do at all — the failure this whole bank was
+// rewritten to remove.
+//
+// An explicit list rather than a regex over words like "tonight". Twelve prompts mention the
+// evening and only these eight are actually BOUND to it: "doing one small thing now so
+// tonight-you has less to do" is a morning prompt that happens to say tonight, and "protecting
+// one evening this week" is planning, which you can do at any hour. A pattern cannot tell those
+// apart; a person can, once.
+//
+// Spelled out in full so check-hyt.cjs can assert every line here still exists in a bank — the
+// failure mode of a list like this is a prompt being reworded and quietly falling out of it.
+export const SELF_EVENING_ONLY = new Set([
+  "Have you tried… putting your phone in another room while you sleep tonight?",
+  "Have you tried… going to bed before you're exhausted rather than after?",
+  "Have you tried… going to bed 30 minutes earlier tonight, as a gift to tomorrow-you?",
+  "Have you tried… writing tomorrow's worries down tonight so your mind can switch off?",
+  "Have you tried… switching your phone to greyscale to make it less of a pull tonight?",
+  "Have you tried… ending the day by naming one thing you're grateful for?",
+  "Have you tried… getting a good night's rest by winding down a little earlier?",
+]);
+
+// `evening` is a stored fact about the day rather than a live reading of the clock, and that is
+// deliberate — see the note where HaveYouTried freezes it. Passing the current hour straight
+// through would swap the task under somebody at six in the evening.
+export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null, evening = true }) {
   const day = todayKey(date);
   // Resolved against the areas this BAND may have, not against all of them. Filtering the
   // picker alone would leak: `chosenArea` is stored on the device, so anyone who picked
@@ -917,7 +955,11 @@ export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand
     ? areasForBand(ageBand).find((a) => a.id === chosenArea) || null
     : null;
   const kindnessList = area ? area.prompts : HYT_EVERYDAY;
-  const selfList = SELF_CARE[ageBand] || SELF_CARE.adult;
+  // Kindness prompts are hour-agnostic by construction (five tests, none of them about time), so
+  // only the self-care pool narrows. Filtering the pool rather than walking past a bad pick keeps
+  // the choice an ordinary hash into a list, which is what makes it identical on two devices.
+  const allSelf = SELF_CARE[ageBand] || SELF_CARE.adult;
+  const selfList = evening ? allSelf : allSelf.filter((p) => !SELF_EVENING_ONLY.has(p));
 
   // Prompt within a list. Both slots use their swap as an offset along whichever list they
   // are drawing from.

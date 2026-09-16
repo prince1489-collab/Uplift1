@@ -97,9 +97,11 @@ function HowItWorksSheet({ ageBand, onClose }) {
 }
 
 // ── a single daily prompt card ───────────────────────────────────────────────
-function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, onSwap, children }) {
+function PromptCard({ item, done, planned, swapped, canSwap, celebrate, drops, onToggle, onPlan, onSwap, children }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-3.5 transition-all ${done ? "border-teal-200" : "border-slate-200"}`}>
+    <div className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-3.5 transition-all ${
+      done ? "border-teal-200" : planned ? "border-teal-200 ring-1 ring-teal-100" : "border-slate-200"
+    }`}>
       {/* A real-world act deserves more than a strike-through. Brief, then it gets out
           of the way — the acknowledgement matters, lingering on it doesn't. */}
       {celebrate && (
@@ -120,8 +122,14 @@ function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, 
             <RefreshCw size={11} /> try another
           </button>
         )}
-        {!done && !canSwap && swapped && (
-          <span className="ml-auto text-[10px] font-semibold text-slate-300">swapped — back tomorrow</span>
+        {/* Why the swap control vanished. It used to say nothing on this card: the explanation
+            lived inside AreaPicker, which only the kindness slot renders — so spending the day's
+            swap on the area picker silently removed self-care's "try another" with no account of
+            where it went. Any card that loses the control now says why it lost it. */}
+        {!done && !canSwap && (
+          <span className="ml-auto text-[10px] font-semibold text-slate-300">
+            {swapped ? "swapped — back tomorrow" : "today's swap is used"}
+          </span>
         )}
       </div>
       <button onClick={onToggle} aria-pressed={done}
@@ -138,6 +146,33 @@ function PromptCard({ item, done, swapped, canSwap, celebrate, drops, onToggle, 
           {item.text}
         </span>
       </button>
+
+      {/* ── The gap between deciding and having done it ────────────────────────────────────────
+          A prompt had two states, untouched and ticked, and nothing in between. But the act
+          happens out in the world, hours later — so the moment someone decides is the moment the
+          app loses them, and it had no way to hear that decision. Saying you will do a thing is
+          the best-evidenced single lever in behaviour change, and here it is one button.
+
+          It pays NOTHING. An intention is not a kindness, and putting drops on one is exactly the
+          transactional framing the Kindness Tree was chosen over the Kindness Jar to avoid. The
+          150 still lands on the tick, where the act is.
+
+          And nothing happens if the day ends with this still unticked: no red, no carry-over, no
+          mention of it tomorrow. That is not softness, it is what makes the button usable — a
+          promise that is held against you is one you learn not to make. */}
+      {!done && (
+        planned ? (
+          <p className="mt-2.5 flex items-center gap-1.5 text-[11px] font-semibold text-teal-600">
+            <Check size={12} strokeWidth={3} className="flex-shrink-0" />
+            Planned for today — tick it when it happens
+          </p>
+        ) : (
+          <button onClick={onPlan}
+            className="mt-2.5 w-full rounded-xl border border-teal-100 bg-teal-50/60 py-1.5 text-[11px] font-semibold text-teal-600 hover:bg-teal-50 active:scale-[0.98] transition-all">
+            I'll do this today
+          </button>
+        )
+      )}
       {children}
     </div>
   );
@@ -207,20 +242,46 @@ function AreaPicker({ current, canPick, ageBand, onPick, onClear }) {
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
-export default function HaveYouTried({ currentUser, dob, onKindAct }) {
+// Before this hour, self-care prompts that can only be acted on at night are held back — see
+// SELF_EVENING_ONLY in hytPrompts.js. Five in the afternoon, so "tonight" is close enough to be
+// a plan rather than a thing eight hours away.
+const EVENING_FROM = 17;
+
+export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
-  const [state, setState] = useState(() => loadJSON(stateKey(day), { done: {}, swaps: {} }));
+  const [state, setState] = useState(() => {
+    const saved = loadJSON(stateKey(day), null);
+    if (saved) return saved;
+    // ── The evening flag is decided ONCE, on the first open of the day, and then stored ───────
+    // It would be simpler to read the clock on every render, and wrong: someone who opens
+    // Practice at eight in the morning and comes back at eight in the evening would find a
+    // different task waiting, with their morning one gone. A prompt that changes under you is
+    // worse than a prompt that is slightly early.
+    return { done: {}, swaps: {}, planned: {}, evening: new Date().getHours() >= EVENING_FROM };
+  });
   const [showHow, setShowHow] = useState(false);
 
   const items = useMemo(
-    () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: state.area ?? null }),
-    [uid, state.swaps, state.area, day, ageBand]
+    () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: state.area ?? null, evening: state.evening !== false }),
+    [uid, state.swaps, state.area, state.evening, day, ageBand]
   );
   const [celebrating, setCelebrating] = useState(null); // slot showing its completion moment
 
   const update = (next) => { setState(next); saveJSON(stateKey(day), next); };
+
+  // Saying you will. No points, no sound, no celebration — those belong to the tick, because
+  // that is where the act is. Reported upward so the evening reminder can quote back the thing
+  // this person chose, rather than asking again from scratch.
+  const plan = (slot, text) => {
+    if (state.done[slot] || state.planned?.[slot]) return;
+    // A flag, not a timestamp. Nothing here ever asks WHEN the promise was made — only whether
+    // one is outstanding — and the evening cue carries its own time to Firestore.
+    update({ ...state, planned: { ...(state.planned ?? {}), [slot]: true } });
+    try { navigator.vibrate?.([6]); } catch { /* ignore */ }
+    try { onPlanChange?.(text); } catch { /* ignore */ }
+  };
 
   const toggle = (slot) => {
     const nowDone = !state.done[slot];
@@ -233,6 +294,10 @@ export default function HaveYouTried({ currentUser, dob, onKindAct }) {
       // Only on ticking, never on un-ticking: changing your mind about one prompt shouldn't
       // reset the clock the bell's "one small act today" invitation measures.
       try { markDone("practice"); } catch { /* ignore */ }
+      // If this was the one they planned, the promise is kept — clear it, so tonight's reminder
+      // has nothing left to remind them of. An evening nudge about something already done is the
+      // fastest way to teach somebody the app is not paying attention.
+      if (state.planned?.[slot]) { try { onPlanChange?.(null); } catch { /* ignore */ } }
       setCelebrating(slot);
       setTimeout(() => setCelebrating((c) => (c === slot ? null : c)), 2200);
       // Bonus once when both of today's prompts are complete.
@@ -265,6 +330,7 @@ export default function HaveYouTried({ currentUser, dob, onKindAct }) {
   const clearArea = () => update({ ...state, area: null });
 
   const doneCount = items.filter((i) => state.done[i.slot]).length;
+  const plannedCount = items.filter((i) => state.planned?.[i.slot] && !state.done[i.slot]).length;
   const allDone = doneCount === SLOTS.length;
 
   return (
@@ -298,11 +364,13 @@ export default function HaveYouTried({ currentUser, dob, onKindAct }) {
             key={item.slot}
             item={item}
             done={Boolean(state.done[item.slot])}
+            planned={Boolean(state.planned?.[item.slot])}
             swapped={Boolean(state.swaps?.[item.slot])}
             canSwap={canSwap}
             celebrate={celebrating === item.slot}
             drops={POINTS.practice}
             onToggle={() => toggle(item.slot)}
+            onPlan={() => plan(item.slot, item.text)}
             onSwap={() => swap(item.slot)}
           >
             {/* Only the kindness slot has areas to choose between; self-care has one bank. */}
@@ -325,7 +393,13 @@ export default function HaveYouTried({ currentUser, dob, onKindAct }) {
           </div>
         ) : (
           <p className="text-center text-[11px] text-slate-400 pt-1">
-            {doneCount === 0 ? "Whenever you're ready — one is plenty." : "One done — lovely."}
+            {doneCount > 0
+              ? "One done — lovely."
+              : plannedCount > 0
+              // Says the plan back, and nothing more. No "don't forget", no time, no countdown —
+              // this line is read on a day that may not go the way anyone hoped.
+              ? "Planned. Come back and tick it whenever it happens."
+              : "Whenever you're ready — one is plenty."}
           </p>
         )}
       </div>

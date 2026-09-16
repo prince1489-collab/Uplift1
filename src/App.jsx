@@ -28,6 +28,7 @@ import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
+import { setEveningCue } from "./eveningCue";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -84,6 +85,11 @@ import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
 import { publicUrl } from "./apiBase";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
+
+// Every destination a tapped notification is allowed to name. The mirror of OPEN_TARGETS in
+// api/_auth.js — the sender builds `?open=x` from its copy and this decides what x may be, so a
+// value added to one and not the other is a notification that quietly lands on the feed.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice"]);
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -1563,10 +1569,15 @@ export default function App() {
   // Where a tapped notification wants us. Read once at mount, and validated against a closed set
   // rather than trusted: this value arrives from outside the app, so it decides between known
   // destinations and can never be a destination itself.
+  //
+  // `replies` and `hearts` open the bell, where both are listed. `reflect` and `practice` are the
+  // evening reminder's two destinations and open their tab — a nudge about a prompt you held onto
+  // has to land on the prompt, not on the feed. This set is the mirror of OPEN_TARGETS in
+  // api/_auth.js; a value in one and not the other is a notification that goes nowhere.
   const [openTarget] = useState(() => {
     try {
       const v = new URLSearchParams(window.location.search).get("open");
-      return v === "replies" || v === "hearts" ? v : null;
+      return OPEN_TARGETS.has(v) ? v : null;
     } catch { return null; }
   });
   const [isSending, setIsSending] = useState(false);
@@ -2574,6 +2585,10 @@ export default function App() {
   // that opens a panel about events they do not have.
   useEffect(() => {
     if (!openTarget) return;
+    // reflect and practice name a tab rather than the bell. Done here, next to the strip, so
+    // there is one place that says what each target means.
+    if (openTarget === "reflect") setActiveTab("journal");
+    if (openTarget === "practice") setActiveTab("hyt");
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("open");
@@ -3715,7 +3730,7 @@ export default function App() {
                   <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell db={db} currentUser={currentUser}
                       nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply}
-                      openOnMount={Boolean(openTarget)} />
+                      openOnMount={openTarget === "replies" || openTarget === "hearts"} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
@@ -3891,7 +3906,12 @@ export default function App() {
             )}
 
             {activeTab === "hyt" ? (
-              <HaveYouTried currentUser={currentUser} dob={profile?.dob} onKindAct={creditKindAct} />
+              <HaveYouTried currentUser={currentUser} dob={profile?.dob} onKindAct={creditKindAct}
+                // Saying "I'll do this today" is the only thing in Practice that leaves the
+                // device. It is what lets tonight's reminder name the act this person chose
+                // instead of asking again from scratch — and passing null when they tick it is
+                // what stops the reminder arriving about something already done.
+                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)} />
             ) : activeTab === "journal" ? (
               <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode} inline onKindAct={creditKindAct} />
             ) : activeTab === "support" ? (

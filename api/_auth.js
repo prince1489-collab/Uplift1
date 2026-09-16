@@ -167,7 +167,13 @@ export async function dropDeadToken(db, uid, row) {
 // The values name the EVENT rather than the screen. Both currently open the bell, because the
 // bell is where replies and hearts are both listed, but a notification about a reply should not
 // have to be rewritten the day that stops being true.
-const OPEN_TARGETS = new Set(["replies", "hearts"]);
+// `reflect` and `practice` are the evening reminder's destinations, and unlike the two above they
+// name a SCREEN, because that is where the thing being reminded about lives: a nudge about a
+// journal prompt you held onto has to land on that prompt.
+//
+// Kept in step with the identical set in src/App.jsx, which decides what `?open=` may be when it
+// arrives. A value added here and not there is a notification that silently opens the feed.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice"]);
 
 export function linkFor(target) {
   return OPEN_TARGETS.has(target) ? `${APP_URL}/?open=${target}` : APP_URL;
