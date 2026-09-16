@@ -362,7 +362,10 @@ Rules:
 - Only what the title and summary support. Invent no names, numbers, quotes or outcomes.
 - If the story turns out to involve death, violence, crime, disaster, illness or politics,
   reply with exactly: UNSUITABLE
-- No preamble. Start with the story.`,
+- No preamble. Start with the story.
+- Plain prose only. No markdown of any kind: no headings, no #, no bullet points, no bold,
+  no italics. Paragraphs separated by a blank line, nothing else.
+- No title or headline of your own. The app shows the story's own headline above your text.`,
       }],
     });
     const text = (response.content[0]?.text || "").trim();

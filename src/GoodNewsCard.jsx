@@ -13,13 +13,43 @@
 // the point: a thing two people can both have read is worth more here than a personalised list
 // nobody else saw.
 //
-// ── WHY IT IS COLLAPSED ──────────────────────────────────────────────────────
+// ── WHY IT IS COLLAPSED, AND WHY IT IS NOW ONE LINE ─────────────────────────
 // Connect is the screen about people who wrote to you. A daily 200-word article sitting open
 // above them would push the messages off the first screen every single day, which inverts what
-// the tab is for. Headline and category only, until someone wants more.
+// the tab is for.
+//
+// It used to show the headline too, which ran to three lines — so "collapsed" still cost a
+// third of the first screen, and the control that opened it was a 10px grey chevron in the
+// corner beside all that text. One line now: the category, a sweep through it, and words that
+// say what the tap does. The headline is part of the story and belongs with it.
 
 import React, { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
+
+// ── The summary arrives as prose, usually ────────────────────────────────────
+// Haiku is asked for plain prose and mostly obliges, but one day it returned a markdown heading
+// and the card — which renders the text verbatim — put `# A Foster Care Village Opens Its Doors`
+// on the owner's home screen.
+//
+// The prompt is now explicit about it (api/goodnews.js), but this card reads FIRESTORE, not the
+// API: a story already stored would keep its hash until the next cron. So the strip happens on
+// read as well. Two cheap guards on opposite sides of a daily job are better than one.
+//
+// Deliberately not a markdown renderer. The summary is meant to be prose; anything that turned
+// up here formatted is a mistake being cleaned up, not a feature being supported.
+function asPlainText(s) {
+  return String(s || "")
+    .split("\n")
+    .map((line) => line
+      .replace(/^\s{0,3}#{1,6}\s+/, "")       // # heading
+      .replace(/^\s{0,3}>\s?/, "")            // > blockquote
+      .replace(/^\s{0,3}[-*+]\s+/, "• ")      // - bullet, kept as a bullet
+    )
+    .join("\n")
+    .replace(/\*\*(.+?)\*\*/g, "$1")          // **bold**
+    .replace(/(^|\s)_(.+?)_(?=\s|$)/g, "$1$2") // _italic_, only when it wraps a word
+    .trim();
+}
 
 // Older than this and the card hides itself. The cron fails closed — a day with nothing suitable
 // leaves the previous story in place rather than publishing the least-bad remaining one — so
@@ -52,25 +82,34 @@ export default function GoodNewsCard({ db }) {
   return (
     <div className="px-3 pb-2">
       <div className="overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/50">
+        {/* One row, one tap. The whole row is the control — not the chevron — and it says so,
+            because a chevron alone is a target you have to already know about. */}
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-start gap-2.5 px-3.5 py-3 text-left active:scale-[0.99] transition-transform"
-          aria-expanded={open}>
-          <span className="text-base leading-none mt-0.5" aria-hidden>{story.emoji || "✨"}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-700/70">
-              {story.label || "Good news"} · today
-            </span>
-            <span className={`mt-0.5 block text-[13px] font-semibold leading-snug text-slate-800 ${open ? "" : "line-clamp-2"}`}>
-              {story.title}
-            </span>
+          className="seen-news-row flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left active:scale-[0.99] transition-transform"
+          aria-expanded={open}
+          aria-label={open ? "Close today's story" : `Read today's story: ${story.title}`}>
+          <span className="text-base leading-none" aria-hidden>{story.emoji || "✨"}</span>
+          <span className="seen-attract min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-wide">
+            {story.label || "Good news"} · today
           </span>
-          <span className={`mt-1 text-[10px] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden>▾</span>
+          <span className="flex-shrink-0 text-[10px] font-semibold text-amber-700/70">
+            {open ? "Close" : "Tap to read"}
+          </span>
+          {/* A filled disc rather than a bare glyph — the same shape as the chevron on the
+              Worldwide heading above, so both say "press me" in the same voice. */}
+          <span aria-hidden
+            className={`seen-news-chev flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] leading-none text-white transition-transform ${open ? "rotate-180" : ""}`}>
+            ▾
+          </span>
         </button>
 
         {open && (
           <div className="px-3.5 pb-3.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
-            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">{story.summary}</p>
+            {/* The headline lives here now, unclamped. Collapsed it cost three lines of the
+                first screen every day; expanded, it is the first thing you want to read. */}
+            <p className="mb-1.5 text-[14px] font-bold leading-snug text-slate-800">{story.title}</p>
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">{asPlainText(story.summary)}</p>
             <div className="mt-2.5 flex items-center justify-between gap-2">
               {/* Named, because a reader deciding what to make of a story is entitled to know
                   where it came from — and because the sources here are not all the same kind of

@@ -241,10 +241,20 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 .seen-feed-header--pinned            { position: sticky; top: -8px; z-index: 32; }
 .seen-feed-header .seen-feed-meta    { color: #64748b; }
 .seen-feed-title--world              { color: #B93878; }
+/* The heading-as-a-button. Its colours also drive the .seen-attract sweep on the words, so the
+   pill and the highlight can never drift apart. */
+.seen-world-pill                     { border-color: #FBCBE2; background-color: #FEF2F8; --attract-base: #B93878; --attract-hi: #4A122E; }
+.seen-world-pill__chev               { background-color: #DB4E97; }
+/* The daily story's row. Same idea, amber instead of pink — one cue, two places. */
+.seen-news-row                       { --attract-base: #B45309; --attract-hi: #451A03; }
+.seen-news-chev                      { background-color: #D97706; }
 .seen-feed-title--focus              { color: #A82E2C; }
 [data-dark-shell] .seen-feed-header                 { background-color: #0d1117 !important; }
 [data-dark-shell] .seen-feed-header .seen-feed-meta { color: #8792a6 !important; }
 [data-dark-shell] .seen-feed-title--world           { color: #F9A8CE !important; }
+[data-dark-shell] .seen-world-pill                  { border-color: #4A122E !important; background-color: #1c1020 !important; --attract-base: #F9A8CE; --attract-hi: #FFFFFF; }
+[data-dark-shell] .seen-world-pill__chev            { background-color: #B93878 !important; }
+[data-dark-shell] .seen-news-row                    { --attract-base: #FCD34D; --attract-hi: #FFFFFF; }
 [data-dark-shell] .seen-feed-title--focus           { color: #FFA09A !important; }
 
 /* ── Accent colour remaps (Phase 0 contrast audit) ─────────────────────────────
@@ -563,6 +573,61 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   animation: seenShimmerSlide 2.2s ease-in-out infinite;
   animation-delay: 1s;
   pointer-events: none;
+}
+
+/* ─── "This is worth a tap" ───────────────────────────────────────────────────
+   A slow highlight sweeping through the TEXT, for the two things on Connect that people were
+   walking past: the Worldwide Feed heading, which opens the globe, and the daily story.
+
+   .seen-shimmer above sweeps white across a BACKGROUND, which is why it is not reused here —
+   both of these sit on near-white surfaces (slate-50, amber-50) where a white sweep is
+   invisible. Clipping the gradient to the glyphs works on any surface.
+
+   Not a blink. A blink reads as a warning light rather than an invitation, and anything
+   flashing more than three times a second is a seizure risk; one pass every 4.5 seconds is
+   noticeable at the edge of vision and calm in the middle of it.
+
+   Colours come from the call site as variables, because currentColor is useless here — the
+   element's own colour has to be transparent for the clip to show, which would make
+   currentColor transparent too.
+
+   THE HIGHLIGHT IS DARKER THAN THE BASE, on light backgrounds, which is the opposite of what a
+   shimmer usually does and is not a mistake. These are 11px bold labels — real text somebody has
+   to read, and not large enough to qualify for WCAG's relaxed 3:1 threshold. On a near-white
+   card no LIGHTER tone reaches 4.5:1: amber-700 sits at 5.8:1 and amber-300 at about 1.6:1, so a
+   conventional light glint would drop a couple of letters to unreadable on every pass. Sweeping
+   into a deeper tone gives the same sense of something moving while contrast only ever improves.
+   In the dark shell the logic flips with the background and the highlight is the lighter one. */
+@keyframes seenAttractSweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -100% 0; }
+}
+/* Guarded: without background-clip:text the text would be transparent on a background the
+   browser is not drawing — i.e. invisible. Inside @supports, an engine that cannot do it simply
+   never gets the rule and shows ordinary coloured text. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .seen-attract {
+    background-image: linear-gradient(100deg,
+      var(--attract-base) 0%, var(--attract-base) 40%,
+      var(--attract-hi) 50%,
+      var(--attract-base) 60%, var(--attract-base) 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* WKWebView — the iOS Capacitor shell — ignores `color: transparent` with background-clip
+       and paints the text solid over the gradient. This is the property it does honour. */
+    -webkit-text-fill-color: transparent;
+    animation: seenAttractSweep 4.5s linear infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seen-attract {
+    animation: none;
+    background-image: none;
+    color: var(--attract-base);
+    -webkit-text-fill-color: var(--attract-base);
+  }
 }
 
 /* ─── Message timestamps (Suggestion 7) ─────────────────────────────────── */

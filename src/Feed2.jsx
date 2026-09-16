@@ -454,15 +454,31 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
       <div className="flex items-center justify-between px-1 pb-1">
         {/* The globe is the best thing in the app and it was three taps deep in an overflow
             menu, next to Sign out. This heading is already the word "worldwide" sitting on the
-            home screen — so it is the one control in the product that should open it. */}
+            home screen — so it is the one control in the product that should open it.
+
+            It did not LOOK like one. Bare 11px text and a 9px chevron at 60% opacity next to a
+            heading that is not a button ("Focused Feed") read as a label, so people did not
+            press it. It is now a pill with a filled chevron, and the words carry the slow sweep
+            from index.css — the same cue as the daily story below, so the screen has one way of
+            saying "there is something here" rather than two. */}
         <button
           type="button"
           onClick={() => onOpenGlobe?.()}
           disabled={!onOpenGlobe}
           title={onOpenGlobe ? "Open the world map" : undefined}
-          className="seen-feed-title--world flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide disabled:cursor-default">
-          🌍 Worldwide Feed
-          {onOpenGlobe && <span aria-hidden className="text-[9px] opacity-60">▸</span>}
+          className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide disabled:cursor-default ${
+            onOpenGlobe
+              ? "seen-world-pill rounded-full border py-1 pl-2 pr-1.5 active:scale-95 transition-transform"
+              : "seen-feed-title--world"
+          }`}>
+          <span aria-hidden>🌍</span>
+          <span className={onOpenGlobe ? "seen-attract" : undefined}>Worldwide Feed</span>
+          {onOpenGlobe && (
+            <span aria-hidden
+              className="seen-world-pill__chev flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] leading-none text-white">
+              ▸
+            </span>
+          )}
         </button>
         <span className="seen-feed-meta text-[10px] font-semibold">
           {items.length > 1

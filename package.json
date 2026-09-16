@@ -25,9 +25,11 @@
     "deploy:login": "npx --yes firebase-tools login",
     "test:tokens": "node scripts/test-tokens.mjs",
     "test:rules": "node scripts/test-rules.mjs",
+    "test:reactions": "node scripts/test-reactions.mjs",
     "test:storage": "node scripts/test-storage-rules.mjs",
     "test:storage:emulated": "npx --yes firebase-tools emulators:exec --only storage --project demo-seen \"node scripts/test-storage-rules.mjs\"",
     "test:rules:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-rules.mjs\"",
+    "test:reactions:emulated": "npx --yes firebase-tools emulators:exec --only firestore --project demo-seen \"node scripts/test-reactions.mjs\"",
     "check:tree": "node scripts/check-tree.cjs",
     "check:proverbs": "node scripts/check-proverbs.cjs",
     "check:css": "node scripts/check-css.cjs"

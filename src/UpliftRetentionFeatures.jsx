@@ -17,6 +17,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { startCheckout } from "./payments";
 import { StickerPicker, STICKERS } from "./StickerReactions";
+import { HEART, announceReaction, setMyReaction } from "./reactions";
 import { authedPost } from "./apiBase";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
@@ -712,121 +713,14 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
   );
 }
 
-const REACTION_EMOJIS = ["❤️"];
-
-// Throttle the like push-notification per message so rapid like/unlike/like (or double-taps)
-// can't spam the recipient. The Firestore reaction write still happens every time — only the
-// push is rate-limited. Keyed by messageId → last-notified timestamp (in-memory, per session).
-const LIKE_NOTIFY_COOLDOWN_MS = 60 * 1000;
-const lastLikeNotifyAt = new Map();
-function shouldNotifyLike(messageId) {
-  const now = Date.now();
-  const last = lastLikeNotifyAt.get(messageId) ?? 0;
-  if (now - last < LIKE_NOTIFY_COOLDOWN_MS) return false;
-  lastLikeNotifyAt.set(messageId, now);
-  return true;
-}
-
-// ── + button to open tray, per-emoji full-screen animation callbacks ──────────
-export function MessageReactions({ db, messageId, currentUser, onReact }) {
-  const [reactions, setReactions] = useState({});
-  const [open, setOpen] = useState(false);
-  const [popping, setPopping] = useState(null);
-
-  useEffect(() => {
-    if (!db || !messageId) return;
-    return onSnapshot(collection(db, "publicMessages", messageId, "reactions"), (snap) => {
-      const r = {};
-      snap.forEach((d) => { r[d.id] = d.data(); });
-      setReactions(r);
-    }, () => {});
-  }, [db, messageId]);
-
-  const react = async (emoji) => {
-    if (!db || !currentUser || !messageId) return;
-    const EMOJIS_ALL = ["❤️"];
-
-    // Find which emoji (if any) this user has already reacted with on this message
-    const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
-    const isSameEmoji = currentEmoji === emoji;
-
-    await runTransaction(db, async (tx) => {
-      // Remove old emoji if switching to a different one
-      if (currentEmoji && !isSameEmoji) {
-        const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
-        const oldSnap = await tx.get(oldRef);
-        const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
-        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
-        delete oldReactedAt[currentUser.uid];
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, reactedAt: oldReactedAt });
-      }
-      // Toggle the tapped emoji
-      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-      const snap = await tx.get(rRef);
-      const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
-      const uids = data.uids ?? [];
-      const reactedAt = { ...(data.reactedAt ?? {}) };
-      if (isSameEmoji) {
-        // Tap same emoji = remove it
-        const newUids = uids.filter((u) => u !== currentUser.uid);
-        delete reactedAt[currentUser.uid];
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, reactedAt });
-      } else {
-        // New emoji = add it
-        reactedAt[currentUser.uid] = Date.now();
-        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], reactedAt });
-      }
-    });
-
-    setPopping(emoji);
-    setTimeout(() => setPopping(null), 400);
-    setOpen(false);
-    if (!isSameEmoji && onReact) onReact(emoji); // only burst on new/changed reaction
-  };
-
-  return (
-    <div className="mt-1 flex flex-wrap items-center gap-1">
-      {/* + button to toggle emoji tray — counts shown as side badges on bubble */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ minHeight: 36 }}
-        className={`flex items-center gap-0.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-          open ? "border-teal-300 bg-teal-50 text-teal-600" : "border-slate-200 text-slate-400 hover:border-teal-200 hover:text-teal-500"
-        }`}>
-        {open ? "✕" : "💛 React"}
-      </button>
-
-      {/* Emoji tray with per-emoji tooltips */}
-      {open && (
-        <div className="flex gap-1">
-          {REACTION_EMOJIS.map((e) => {
-            const LABELS = { "❤️": "Love this" };
-            const myCurrentEmoji = REACTION_EMOJIS.find((x) => reactions[x]?.uids?.includes(currentUser?.uid));
-            const isMyPick = myCurrentEmoji === e;
-            return (
-              <div key={e} className="relative group/emoji">
-                <button onClick={() => react(e)}
-                  style={{ animation: popping === e ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}
-                  className={`flex h-10 w-10 items-center justify-center rounded-full border text-lg shadow-sm hover:scale-110 active:scale-95 transition-all ${
-                    isMyPick
-                      ? "border-teal-400 bg-teal-50 ring-1 ring-teal-300"
-                      : "border-slate-200 bg-white hover:border-teal-200"
-                  }`}>
-                  {e}
-                </button>
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[9px] text-white opacity-0 shadow-lg transition-opacity group-hover/emoji:opacity-100 z-50">
-                  {isMyPick ? "Tap to remove" : LABELS[e]}
-                  <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+// MessageReactions lived here — a "+ React" tray with its own copy of the reaction transaction,
+// imported by App.jsx and rendered by nothing. It is gone, and not only for tidiness: it was a
+// THIRD writer of the same documents, and "one reaction per person" is an agreement that only
+// holds while there is one writer. Dead code that can break an invariant the moment somebody
+// renders it is worse than dead code.
+//
+// shouldNotifyLike went with it, to reactions.js, where it is now one throttle shared with the
+// sticker path rather than two that could both fire for the same person on the same message.
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
@@ -842,9 +736,8 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 const REACTION_STRIP_H = 26;
 const REACTION_STRIP_MT = 4;
 
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, localStickers = null, messageTs = 0 }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, myReactionId = null, onServerReaction, onMyReactionChange, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});
-  const EMOJIS = ["❤️"];
 
   useEffect(() => {
     if (!db || !messageId) return;
@@ -855,32 +748,48 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     }, () => {});
   }, [db, messageId]);
 
-  const userAlreadyReacted = reactions["❤️"]?.uids?.includes(currentUser?.uid);
-  const serverCount = reactions["❤️"]?.count ?? 0;
-  // Optimistic +1 while waiting for Firestore to confirm the reaction
-  const displayCount = serverCount + (localHearted && !userAlreadyReacted ? 1 : 0);
-  const active = displayCount > 0 ? ["❤️"] : EMOJIS.filter((e) => (reactions[e]?.count ?? 0) > 0);
+  // ── What the server says I have on this message ────────────────────────────────────────────
+  // At most one document can hold me, so this is a single id or nothing. It is reported upward
+  // rather than used directly: App merges it with the optimistic value and hands the result back
+  // as `myReactionId`, so the chips, the picker's selection ring and the next write all read one
+  // number. Deriving it here from a prop that App itself computed would be a loop; deriving it
+  // only from the snapshot cannot be.
+  const uid = currentUser?.uid;
+  const serverReactionId = useMemo(() => {
+    if (!uid) return null;
+    for (const [id, d] of Object.entries(reactions)) {
+      if ((d?.uids ?? []).includes(uid)) return id;
+    }
+    return null;
+  }, [reactions, uid]);
+
+  // Reports (messageId, id) rather than just the id so App can pass ONE stable callback for the
+  // whole feed. A per-message closure would be a new function on every App render, which would
+  // re-run this effect on every render of every message in the list.
+  useEffect(() => { onServerReaction?.(messageId, serverReactionId); }, [messageId, serverReactionId, onServerReaction]);
+
+  // The count a person should see, for any one reaction document.
+  //
+  // Self-healing by construction: my own membership is taken from `myReactionId`, which is the
+  // optimistic answer, and the server's own record of me is subtracted out. While the two agree
+  // the adjustments cancel exactly; while they disagree the number is what the person just did.
+  // Nothing has to be cleared when the snapshot catches up — it simply stops differing.
+  const countFor = (id) => {
+    const d = reactions[id];
+    const server = d?.count ?? 0;
+    const onServer = (d?.uids ?? []).includes(uid);
+    const isMine = myReactionId === id;
+    return Math.max(0, server - (onServer ? 1 : 0) + (isMine ? 1 : 0));
+  };
+
+  const displayCount = countFor(HEART);
+  const active = displayCount > 0 ? [HEART] : [];
 
   // The stickers on this message. This listener was ALREADY reading these documents and
   // discarding them, while StickerDisplay opened a second listener on the same collection to
   // render them in a second row below the bubble. One listener, one row.
-  //
-  // localStickers is the same idea as localHearted above, one level more specific: a map of
-  // sticker id → the intent of the tap this person just made, held in App.jsx so it survives
-  // the picker closing. It exists because a sticker's write is a full Firestore round trip and
-  // the chip used to wait for it.
-  //
-  // The arithmetic is deliberately self-healing. A local opinion only contributes while it
-  // DISAGREES with the server, so the moment the snapshot catches up it folds to zero on its
-  // own — no clearing pass, no window in which the count is briefly doubled.
   const stickers = STICKERS
-    .map((def) => {
-      const data = reactions[def.id];
-      const onServer = (data?.uids ?? []).includes(currentUser?.uid);
-      const opinion = localStickers?.[def.id];
-      const delta = opinion === true && !onServer ? 1 : opinion === false && onServer ? -1 : 0;
-      return { def, data, count: Math.max(0, (data?.count ?? 0) + delta), isMine: opinion ?? onServer };
-    })
+    .map((def) => ({ def, count: countFor(def.id), isMine: myReactionId === def.id }))
     .filter((x) => x.count > 0);
   // Bounded: this row floats over the card, so it cannot be allowed to wrap onto a second line
   // and collide with the message underneath. Past three, the overflow chip carries the rest and
@@ -903,147 +812,85 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
 
   if (active.length === 0 && displayCount === 0 && stickers.length === 0 && !showBeFirst) return null;
 
+  // The heart chip. Tapping it either sets the heart as my one reaction — replacing a sticker if
+  // I had one — or, if the heart already IS my reaction, takes it back.
+  //
+  // The write itself lives in reactions.js and is shared with the sticker picker, because "one
+  // reaction per person" is an agreement that two separate writers cannot keep. What stays here
+  // is the part that is genuinely the heart's: the ripple ledger.
   const toggle = (emoji) => {
     if (!db || !currentUser || !messageId) return;
     if (senderUid && senderUid === currentUser.uid) return; // can't react to your own message
-    const EMOJIS_ALL = ["❤️"];
-    const currentEmoji = EMOJIS_ALL.find((e) => reactions[e]?.uids?.includes(currentUser.uid));
-    const isSame = currentEmoji === emoji;
 
-    // Optimistic local update
-    setReactions((prev) => {
-      const updated = { ...prev };
-      if (currentEmoji && !isSame) {
-        const old = { ...(updated[currentEmoji] ?? { count: 0, uids: [] }) };
-        old.uids = (old.uids ?? []).filter((u) => u !== currentUser.uid);
-        old.count = Math.max(0, old.uids.length);
-        const countries = { ...(old.countries ?? {}) };
-        delete countries[currentUser.uid];
-        updated[currentEmoji] = { ...old, countries };
-      }
-      const existing = { ...(updated[emoji] ?? { count: 0, uids: [] }) };
-      if (isSame) {
-        existing.uids = (existing.uids ?? []).filter((u) => u !== currentUser.uid);
-        existing.count = Math.max(0, existing.uids.length);
-      } else {
-        existing.uids = [...(existing.uids ?? []), currentUser.uid];
-        existing.count = existing.uids.length;
-      }
-      updated[emoji] = existing;
-      return updated;
-    });
+    const isSame = myReactionId === emoji;
+    const nextId = isSame ? null : emoji;
+    const myCountry = reactorCountry ?? null;
 
+    // Paint first. onMyReactionChange puts the new value in App's optimistic map, which comes
+    // straight back down as `myReactionId` — so the chip moves in the same frame as the tap and
+    // the network happens behind it.
+    onMyReactionChange?.(nextId);
     if (!isSame && onReact) onReact(emoji);
 
-    const myCountry = reactorCountry ?? null;
-    const notifyOwner = senderUid && senderUid !== currentUser.uid;
-    const ownerRef = notifyOwner
-      ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
-      : null;
+    setMyReaction({ db, uid: currentUser.uid, messageId, fromId: myReactionId, toId: nextId, country: myCountry })
+      .then(() => {
+        announceReaction({
+          db, currentUser, messageId, senderUid,
+          reaction: nextId ? { id: HEART, emoji: HEART } : null,
+          country: myCountry, reactorName,
+        });
+      })
+      .catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
 
-    // Reaction doc write — own transaction so reactionsReceived failure can't roll it back
-    runTransaction(db, async (tx) => {
-      if (currentEmoji && !isSame) {
-        const oldRef = doc(db, "publicMessages", messageId, "reactions", currentEmoji);
-        const oldSnap = await tx.get(oldRef);
-        const oldData = oldSnap.exists() ? oldSnap.data() : { count: 0, uids: [] };
-        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        const oldCountries = { ...(oldData.countries ?? {}) };
-        delete oldCountries[currentUser.uid];
-        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
-        delete oldReactedAt[currentUser.uid];
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
-      }
-      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-      const snap = await tx.get(rRef);
-      const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
-      const uids = data.uids ?? [];
-      const countries = { ...(data.countries ?? {}) };
-      const reactedAt = { ...(data.reactedAt ?? {}) };
-      if (isSame) {
-        const newUids = uids.filter((u) => u !== currentUser.uid);
-        delete countries[currentUser.uid];
-        delete reactedAt[currentUser.uid];
-        tx.set(rRef, { count: Math.max(0, newUids.length), uids: newUids, countries, reactedAt });
-      } else {
-        const dup = uids.includes(currentUser.uid);
-        countries[currentUser.uid] = myCountry;
-        reactedAt[currentUser.uid] = Date.now();
-        tx.set(rRef, { count: dup ? uids.length : uids.length + 1, uids: dup ? uids : [...uids, currentUser.uid], countries, reactedAt });
-      }
-    }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
+    if (!senderUid || senderUid === currentUser.uid) return;
 
-    // Globe notification — best-effort, separate from the reaction so it can't block the count
-    if (ownerRef) {
-      // My own record of who I reacted to — powers "ripple" attribution when I later
-      // send a greeting (see handleSendMessage in App.jsx). Best-effort, invisible to UX.
-      const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
-      if (isSame) {
-        deleteDoc(ownerRef).catch(() => {});
-        deleteDoc(myReactionRef).catch(() => {});
-      } else {
-        const reactedAt = Date.now();
-        const myName = (reactorName || "").trim().split(" ")[0] || "Someone";
-        setDoc(ownerRef, {
-          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactorName: myName, reactedAt,
-        })
-          // Push notification to message owner (best-effort; throttled per message so rapid
-          // like/unlike/like can't spam the recipient).
-          //
-          // Chained onto the write rather than fired alongside it. notify-like is
-          // authenticated now and proves the like really happened by reading THIS document,
-          // so the two running in parallel raced an HTTP call to Vercel against a Firestore
-          // round trip — the endpoint would frequently find nothing and refuse, and likes
-          // would quietly stop pushing. Ordering only became load-bearing when the endpoint
-          // stopped trusting the request body.
-          //
-          // It also means a failed write sends nothing, which is right: there is no like to
-          // announce. And the throttle is only spent when a notification is actually
-          // attempted, rather than on a write that never landed.
-          .then(() => {
-            if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-              authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
-                .catch(() => {});
-            }
-          })
-          .catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
-
-        // Write outgoingReactions then immediately check if this reactor already sent
-        // a greeting within the ripple window ("send → react" ordering). If yes,
-        // credit the ripple to the original sender right now rather than waiting for
-        // the reactor's next send.
-        const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
-        setDoc(myReactionRef, {
-          senderUid, messageId, country: myCountry, reactedAt, converted: false,
-        }).then(async () => {
-          try {
-            const cutoff = reactedAt - RIPPLE_WINDOW_MS;
-            // lastGreetingAt is passed in from the cached profile — avoids a per-like profile read.
-            if (lastGreetingAt >= cutoff) {
-              // Reactor already sent within the window — credit the ripple now.
-              await Promise.all([
-                setDoc(
-                  doc(db, "users", senderUid, "ripples", currentUser.uid),
-                  {
-                    originatorUid: senderUid,
-                    responderUid: currentUser.uid,
-                    reactedAt,
-                    greetedAt: lastGreetingAt,
-                    responderCountry: myCountry,
-                    createdAt: reactedAt,
-                  },
-                  { merge: true }
-                ),
-                setDoc(myReactionRef, { converted: true }, { merge: true }),
-              ]);
-            }
-          } catch (err) {
-            console.error("[ripple on-react]", err?.code, err?.message);
-          }
-        }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
-      }
+    // ── Ripples — heart-only, and deliberately so ──────────────────────────────────────────
+    // My own record of who I reacted to, which powers ripple attribution when I later send a
+    // greeting (see handleSendMessage in App.jsx). Best-effort and invisible in the UI.
+    //
+    // Note what is NOT here: switching from a heart to a sticker leaves this row alone. It
+    // records that I reacted to this person, which is still true — swapping which reaction is
+    // not un-reacting.
+    const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
+    if (isSame) {
+      deleteDoc(myReactionRef).catch(() => {});
+      return;
     }
+
+    // Write outgoingReactions then immediately check if this reactor already sent
+    // a greeting within the ripple window ("send → react" ordering). If yes,
+    // credit the ripple to the original sender right now rather than waiting for
+    // the reactor's next send.
+    const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
+    const reactedAt = Date.now();
+    setDoc(myReactionRef, {
+      senderUid, messageId, country: myCountry, reactedAt, converted: false,
+    }).then(async () => {
+      try {
+        const cutoff = reactedAt - RIPPLE_WINDOW_MS;
+        // lastGreetingAt is passed in from the cached profile — avoids a per-like profile read.
+        if (lastGreetingAt >= cutoff) {
+          // Reactor already sent within the window — credit the ripple now.
+          await Promise.all([
+            setDoc(
+              doc(db, "users", senderUid, "ripples", currentUser.uid),
+              {
+                originatorUid: senderUid,
+                responderUid: currentUser.uid,
+                reactedAt,
+                greetedAt: lastGreetingAt,
+                responderCountry: myCountry,
+                createdAt: reactedAt,
+              },
+              { merge: true }
+            ),
+            setDoc(myReactionRef, { converted: true }, { merge: true }),
+          ]);
+        }
+      } catch (err) {
+        console.error("[ripple on-react]", err?.code, err?.message);
+      }
+    }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
   };
 
   // Zero reactions but recent + not mine → invite the first (real) heart.
@@ -1102,8 +949,8 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
       className="flex flex-nowrap items-center justify-end gap-0.5"
       style={{ zIndex: 3, height: REACTION_STRIP_H, marginTop: REACTION_STRIP_MT }}>
       {active.map((e) => {
-        const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
-        const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
+        const mine2 = myReactionId === e;
+        const count = countFor(e);
         // On your OWN message the badge can't toggle (you can't react to yourself), so the
         // whole thing opens the "who felt this" viewer.
         //
@@ -1897,10 +1744,9 @@ const QUICK_GIFT_AMOUNT = 5;
 
 // ── Private-chat invite button shown in the QuickReactBar ─────────────
 // Visible to ALL users; non-premium see a locked version that nudges upgrade.
-export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onSticker, onUpgrade, onDelete, onEdit, onReply }) {
+export function QuickReactBar({ db, messageId, senderUid, senderName, currentUser, profile, mine, isPremium, onClose, onWave, onGift, onReact, onSticker, myReactionId = null, onUpgrade, onDelete, onEdit, onReply }) {
   const [waved, setWaved] = useState(false);
   const [gifted, setGifted] = useState(false);
-  const [myEmoji, setMyEmoji] = useState(null);
   const [popping, setPopping] = useState(null);
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
@@ -1910,13 +1756,10 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
   const [showStickers, setShowStickers] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => {
-    if (!db || !messageId || !currentUser) return;
-    return onSnapshot(collection(db, "publicMessages", messageId, "reactions"), (snap) => {
-      const found = QUICK_EMOJIS.find((e) => snap.docs.find((d) => d.id === e && (d.data().uids ?? []).includes(currentUser.uid)));
-      setMyEmoji(found ?? null);
-    }, () => {});
-  }, [db, messageId, currentUser]);
+  // This bar used to open a SECOND listener on the same reactions collection, purely to work out
+  // which emoji was mine — while ReactionSideBadges sat on the same collection for the same
+  // message doing the same read. It is now told, via `myReactionId`, so opening the bar costs
+  // nothing and the bar and the chip can never disagree about what you sent.
 
   const isOther = !mine && senderUid && senderUid !== currentUser?.uid;
 
@@ -1961,124 +1804,77 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     setTimeout(() => onClose?.(), 320);
   };
 
+  // The ❤️ in the reaction bar. Same gesture as the chip on the bubble, so the same writer —
+  // this used to be a FOURTH independent copy of the reaction transaction, and its idea of "what
+  // I already have" was QUICK_EMOJIS, a list containing only the heart. Tapping it while you had
+  // a sticker left both on the message, which is the bug this round is about; it could not have
+  // been fixed in ReactionSideBadges alone.
   const handleEmoji = (emoji) => {
     if (!db || !currentUser || !messageId) return;
     if (senderUid && senderUid === currentUser.uid) { onClose?.(); return; } // can't react to your own message
-    const isSame = myEmoji === emoji;
-    const prevEmoji = myEmoji;
+
+    const isSame = myReactionId === emoji;
+    const nextId = isSame ? null : emoji;
+    const myCountry = profile?.country ?? null;
 
     // ── Instant UI response ──────────────────────────────────────
-    setMyEmoji(isSame ? null : emoji);
     setPopping(emoji);
     setTimeout(() => setPopping(null), 400);
     if (!isSame) onReact?.(emoji);
+    // Same callback the sticker picker uses. The bar closes itself, so the optimistic value has
+    // to live in App rather than here.
+    onSticker?.(nextId, null);
     onClose?.();
 
-    // ── Firestore write in background (no await) ─────────────────
-    // onSnapshot corrects any inconsistency if this fails.
-    const myCountry = profile?.country ?? null;
-    const notifyOwner = senderUid && senderUid !== currentUser.uid;
-    const ownerRef = notifyOwner
-      ? doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`)
-      : null;
+    setMyReaction({ db, uid: currentUser.uid, messageId, fromId: myReactionId, toId: nextId, country: myCountry })
+      .then(() => {
+        announceReaction({
+          db, currentUser, messageId, senderUid,
+          reaction: nextId ? { id: HEART, emoji: HEART } : null,
+          country: myCountry, reactorName: profile?.fullName ?? "",
+        });
+      })
+      .catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
 
-    // Reaction doc write — own transaction so reactionsReceived failure can't roll it back
-    runTransaction(db, async (tx) => {
-      if (prevEmoji && !isSame) {
-        const oldRef = doc(db, "publicMessages", messageId, "reactions", prevEmoji);
-        const oldSnap = await tx.get(oldRef);
-        const oldData = oldSnap.exists() ? oldSnap.data() : {};
-        const oldUids = (oldData.uids ?? []).filter((u) => u !== currentUser.uid);
-        const oldCountries = { ...(oldData.countries ?? {}) };
-        delete oldCountries[currentUser.uid];
-        const oldReactedAt = { ...(oldData.reactedAt ?? {}) };
-        delete oldReactedAt[currentUser.uid];
-        tx.set(oldRef, { count: Math.max(0, oldUids.length), uids: oldUids, countries: oldCountries, reactedAt: oldReactedAt });
-      }
-      const rRef = doc(db, "publicMessages", messageId, "reactions", emoji);
-      const snap = await tx.get(rRef);
-      const data = snap.exists() ? snap.data() : {};
-      const uids = data.uids ?? [];
-      const countries = { ...(data.countries ?? {}) };
-      const reactedAt = { ...(data.reactedAt ?? {}) };
-      if (isSame) {
-        const next = uids.filter((u) => u !== currentUser.uid);
-        delete countries[currentUser.uid];
-        delete reactedAt[currentUser.uid];
-        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
-      } else {
-        const dup = uids.includes(currentUser.uid);
-        countries[currentUser.uid] = myCountry;
-        reactedAt[currentUser.uid] = Date.now();
-        tx.set(rRef, { count: dup ? uids.length : uids.length + 1, uids: dup ? uids : [...uids, currentUser.uid], countries, reactedAt });
-      }
-    }).catch((err) => { console.error("[reaction write]", err?.code, err?.message); });
+    if (!senderUid || senderUid === currentUser.uid) return;
 
-    // Globe notification — best-effort, separate so it can't block the count
-    if (ownerRef) {
-      const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
-      if (isSame) {
-        deleteDoc(ownerRef).catch(() => {});
-        deleteDoc(myReactionRef).catch(() => {});
-      } else {
-        const reactedAt = Date.now();
-        const myName = (profile?.fullName || "").trim().split(" ")[0] || "Someone";
-        setDoc(ownerRef, {
-          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-          emoji, country: myCountry, reactorName: myName, reactedAt,
-        })
-          // Push notification to message owner (best-effort; throttled per message so rapid
-          // like/unlike/like can't spam the recipient).
-          //
-          // Chained onto the write rather than fired alongside it. notify-like is
-          // authenticated now and proves the like really happened by reading THIS document,
-          // so the two running in parallel raced an HTTP call to Vercel against a Firestore
-          // round trip — the endpoint would frequently find nothing and refuse, and likes
-          // would quietly stop pushing. Ordering only became load-bearing when the endpoint
-          // stopped trusting the request body.
-          //
-          // It also means a failed write sends nothing, which is right: there is no like to
-          // announce. And the throttle is only spent when a notification is actually
-          // attempted, rather than on a write that never landed.
-          .then(() => {
-            if (emoji === "❤️" && shouldNotifyLike(messageId)) {
-              authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
-                .catch(() => {});
-            }
-          })
-          .catch((err) => { console.error("[reactionsReceived write]", err?.code, err?.message); });
-
-        const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
-        setDoc(myReactionRef, {
-          senderUid, messageId, country: myCountry, reactedAt, converted: false,
-        }).then(async () => {
-          try {
-            const cutoff = reactedAt - RIPPLE_WINDOW_MS;
-            // profile.lastGreetingAt is already in scope — avoids a composite index on publicMessages.
-            const lastGreetingAt = profile?.lastGreetingAt ?? 0;
-            if (lastGreetingAt >= cutoff) {
-              await Promise.all([
-                setDoc(
-                  doc(db, "users", senderUid, "ripples", currentUser.uid),
-                  {
-                    originatorUid: senderUid,
-                    responderUid: currentUser.uid,
-                    reactedAt,
-                    greetedAt: lastGreetingAt,
-                    responderCountry: myCountry,
-                    createdAt: reactedAt,
-                  },
-                  { merge: true }
-                ),
-                setDoc(myReactionRef, { converted: true }, { merge: true }),
-              ]);
-            }
-          } catch (err) {
-            console.error("[ripple on-react]", err?.code, err?.message);
-          }
-        }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
-      }
+    // Ripple ledger — heart-only, as on the bubble chip. Swapping a heart for a sticker leaves
+    // it alone: it records that I reacted to this person, which stays true.
+    const myReactionRef = doc(db, "users", currentUser.uid, "outgoingReactions", messageId);
+    if (isSame) {
+      deleteDoc(myReactionRef).catch(() => {});
+      return;
     }
+    const RIPPLE_WINDOW_MS = 48 * 60 * 60 * 1000;
+    const reactedAt = Date.now();
+    setDoc(myReactionRef, {
+      senderUid, messageId, country: myCountry, reactedAt, converted: false,
+    }).then(async () => {
+      try {
+        const cutoff = reactedAt - RIPPLE_WINDOW_MS;
+        // profile.lastGreetingAt is already in scope — avoids a composite index on publicMessages.
+        const lastGreetingAt = profile?.lastGreetingAt ?? 0;
+        if (lastGreetingAt >= cutoff) {
+          await Promise.all([
+            setDoc(
+              doc(db, "users", senderUid, "ripples", currentUser.uid),
+              {
+                originatorUid: senderUid,
+                responderUid: currentUser.uid,
+                reactedAt,
+                greetedAt: lastGreetingAt,
+                responderCountry: myCountry,
+                createdAt: reactedAt,
+              },
+              { merge: true }
+            ),
+            setDoc(myReactionRef, { converted: true }, { merge: true }),
+          ]);
+        }
+      } catch (err) {
+        console.error("[ripple on-react]", err?.code, err?.message);
+      }
+    }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
   };
 
   // Confirm only once the write lands. These previously flipped to a tick BEFORE the
@@ -2159,8 +1955,9 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
     <div className="seen-qrb" onClick={(e) => e.stopPropagation()}>
       {QUICK_EMOJIS.map((emoji) => (
         <button key={emoji}
-          className={`seen-qrb-btn${myEmoji === emoji ? " seen-qrb-btn--picked" : ""}`}
-          onClick={() => handleEmoji(emoji)} title={emoji}
+          className={`seen-qrb-btn${myReactionId === emoji ? " seen-qrb-btn--picked" : ""}`}
+          onClick={() => handleEmoji(emoji)}
+          title={myReactionId === emoji ? "Take your heart back" : "Send a heart"}
           style={{ animation: popping === emoji ? "seenReactionPop 380ms cubic-bezier(0.34,1.56,0.64,1) both" : "none" }}>
           {emoji}
         </button>
@@ -2239,17 +2036,17 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           reactorCountry={profile?.country ?? null}
           reactorName={profile?.fullName ?? ""}
           onClose={() => setShowStickers(false)}
+          // What I currently have on this message — a sticker id, "❤️", or nothing. It does two
+          // jobs: the grid rings the one that is mine so re-tapping it is never a surprise, and
+          // the write is told what to clear, which is how a heart gets replaced rather than
+          // joined by a sticker.
+          myReactionId={myReactionId}
           // onSticker, NOT onReact. This used to call onReact(sticker.emoji), and that was the
-          // phantom heart: onReact treats "❤️" as a heart tap and applies an optimistic +1 to
-          // the badge, while the picker only ever writes a sticker document — a count with
-          // nothing behind it, which survived until reload because the optimistic set is never
-          // cleared. Removing sticker_love defuses it today, but a separate callback is what
-          // stops it coming back the next time someone adds a heart-ish sticker.
-          //
-          // The whole sticker, plus the picker's intent — the id is what the optimistic chip is
-          // keyed on, and the intent is which way the toggle went. Passing only the glyph meant
-          // the caller could burst but could not draw anything.
-          onPick={(sticker, intent) => onSticker?.(sticker, intent)}
+          // phantom heart: onReact treats "❤️" as a heart tap and applied an optimistic +1 to
+          // the badge, while the picker only ever wrote a sticker document — a count with
+          // nothing behind it. The two callbacks now converge on one piece of App state, but
+          // they stay separate so a heart-ish sticker can never be mistaken for the heart.
+          onPick={(nextId) => onSticker?.(nextId)}
         />
       )}
     </div>

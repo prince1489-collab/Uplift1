@@ -36,7 +36,7 @@ import {
   useStreak, computeSparkReward,
   StreakBadge, StreakFreezeButton,
   SparkGiftButton,
-  LiveGreeterCount, MessageReactions,
+  LiveGreeterCount,
   ProfileCard,
   WaveBackButton, ReactionSideBadges,
   GiftOverlay,
@@ -1574,16 +1574,29 @@ export default function App() {
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [reactionBarId, setReactionBarId] = useState(null);
   const [reactionBarFlip, setReactionBarFlip] = useState(false); // render bar below bubble when no room above (top of feed)
-  const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
-  // The same idea for stickers, one level more specific: { [messageId]: { [stickerId]: boolean } },
-  // where the boolean is which way the tap went. A heart only ever needs "I just sent one",
-  // because the badge it feeds is a single glyph; a sticker chip has to know WHICH sticker, and
-  // the picker's write is a toggle, so it also has to be able to say "I just took that back".
+  // ── My reaction on each message ────────────────────────────────────────────────────────────
+  // One reaction per person per message — a heart or a sticker, never both — so the whole of
+  // what someone has done to a message is a single id. Two maps, merged here and handed back
+  // down so every consumer reads the same answer:
   //
-  // It lives up here rather than in ReactionSideBadges because the picker that sets it is a
-  // portal mounted from the reaction bar, and it closes itself the moment you tap — the state
-  // has to outlive the component that produced it.
-  const [localStickers, setLocalStickers] = useState({});
+  //   serverReaction — what Firestore says, reported up by ReactionSideBadges, which is already
+  //                    listening to the reactions of every message in the feed.
+  //   localReaction  — what this person just did, before the write has landed. `undefined` means
+  //                    no opinion, `null` means "I took mine back", a string is the reaction.
+  //
+  // It lives up here rather than in ReactionSideBadges because the sticker picker is a portal
+  // mounted from the reaction bar and closes itself the instant you tap it — the optimistic
+  // value has to outlive the component that produced it. And because the picker needs the merged
+  // answer too: it rings the sticker that is yours, and the write is told what to clear.
+  const [serverReaction, setServerReaction] = useState({});
+  const [localReaction, setLocalReaction] = useState({});
+  const reactionIdFor = useCallback(
+    (id) => (localReaction[id] !== undefined ? localReaction[id] : (serverReaction[id] ?? null)),
+    [localReaction, serverReaction],
+  );
+  const noteServerReaction = useCallback((messageId, rid) => {
+    setServerReaction((prev) => (prev[messageId] === rid ? prev : { ...prev, [messageId]: rid }));
+  }, []);
   const longPressTimer = useRef(null);
   const longPressTriggered = useRef(false);
   // Decide whether the long-press reaction bar should flip below the bubble — it normally floats
@@ -4190,27 +4203,30 @@ export default function App() {
                                               triggerReactionBurst(emoji);
                                               haptic([5]);
                                               playHeart();
-                                              if (emoji === "❤️" && !mine) setLocalHeartedMessageIds(prev => new Set([...prev, m.id]));
                                             }}
-                                            // Stickers get the burst and the haptic but never
-                                            // the optimistic heart — a sticker is not a heart,
-                                            // and this handler has no branch that could treat
-                                            // it as one. They get their OWN optimistic chip,
-                                            // which is a different thing in a different place.
-                                            //
-                                            // Fired the instant the sticker is tapped, before
-                                            // the write leaves the phone, and then again with
-                                            // the real outcome if the toggle went the other way
-                                            // — intent null means "I was wrong, defer to the
-                                            // server" and drops the entry rather than asserting
-                                            // the opposite.
-                                            onSticker={(sticker, intent) => {
-                                              if (intent === true) { triggerReactionBurst(sticker.emoji); haptic([6, 20, 6]); }
-                                              setLocalStickers((prev) => {
-                                                const forMsg = { ...(prev[m.id] ?? {}) };
-                                                if (intent === null || intent === undefined) delete forMsg[sticker.id];
-                                                else forMsg[sticker.id] = intent;
-                                                return { ...prev, [m.id]: forMsg };
+                                            // What I have on this message right now, merged from
+                                            // the server and whatever I just did. The picker uses
+                                            // it twice: to ring the sticker that is mine, and to
+                                            // tell the write what to clear — which is how a
+                                            // sticker REPLACES a heart instead of joining it.
+                                            myReactionId={reactionIdFor(m.id)}
+                                            // Fired the instant a sticker is tapped, before the
+                                            // write leaves the phone. `nextId` is the reaction I
+                                            // now have — a sticker id, or null if I tapped the
+                                            // one I already had and took it back. `undefined`
+                                            // arrives only when the write failed and means
+                                            // "forget what I said", so the server's answer wins
+                                            // again rather than being contradicted.
+                                            onSticker={(nextId, sticker) => {
+                                              if (sticker) { triggerReactionBurst(sticker.emoji); haptic([6, 20, 6]); }
+                                              setLocalReaction((prev) => {
+                                                if (nextId === undefined) {
+                                                  if (!(m.id in prev)) return prev;
+                                                  const next = { ...prev };
+                                                  delete next[m.id];
+                                                  return next;
+                                                }
+                                                return { ...prev, [m.id]: nextId };
                                               });
                                             }}
                                             onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
@@ -4327,7 +4343,7 @@ export default function App() {
                                           )}
                                           </div>
                                         </div>
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} localStickers={localStickers[m.id]} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} myReactionId={reactionIdFor(m.id)} onServerReaction={noteServerReaction} onMyReactionChange={(rid) => setLocalReaction((prev) => ({ ...prev, [m.id]: rid }))} messageTs={m.timestamp} />
                                       </div>
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
