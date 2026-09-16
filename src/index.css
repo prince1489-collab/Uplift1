@@ -938,3 +938,15 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
    so without this the rail's own padding + top border would leave a visible empty gap
    under the greeting. :empty collapses it whenever it has no banners to show. */
 .seen-header-rail:empty { display: none; }
+
+/* The boot bar. A track something moves along, rather than a spinner — on an otherwise empty
+   screen a spinner reads as "stuck" and this reads as "working". See src/BootScreen.jsx. */
+@keyframes seenBootSlide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No travelling element for anyone who has asked for less movement — the bar simply sits
+     there, which still reads as a progress affordance. */
+  [style*="seenBootSlide"] { animation: none !important; transform: none !important; width: 100% !important; opacity: 0.5; }
+}

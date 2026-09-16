@@ -23,6 +23,7 @@ import KindnessTreePanel, { treeStageFor } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
 import GoodNewsCard from "./GoodNewsCard";
+import BootScreen from "./BootScreen";
 import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -72,6 +73,7 @@ import {
 
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   increment, limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -109,7 +111,38 @@ const auth = isNativeApp()
 // so a returning user is restored on launch instead of seeing the sign-in screen again.
 // (initializeAuth already sets persistence natively, so only the web branch needs this.)
 if (!isNativeApp()) setPersistence(auth, indexedDBLocalPersistence).catch(() => {});
-const db = getFirestore(app);
+// ── Firestore, with a cache that survives closing the app ────────────────────
+//
+// This was plain getFirestore(app), which in the Web SDK means a MEMORY-ONLY cache: nothing
+// survives a launch. So every cold start went to the network for the profile before anything
+// could paint, and the app sat on a blank screen with a spinner for about six seconds on a
+// phone — measured off a recording of a real sign-in.
+//
+// The auth session was already kept in IndexedDB (just above) precisely so a returning user is
+// not sent back to the sign-in screen. The data never got the same treatment, so the app
+// remembered WHO you were instantly and then waited on the network to find out ANYTHING about
+// you. With persistence, the profile resolves from disk on the first tick and the server
+// confirmation arrives behind it.
+//
+// The subscription was already written for this: it ignores a cached result only when the
+// document does NOT exist (`!snap.exists() && snap.metadata?.fromCache`), so an existing profile
+// served from cache releases the loading gate immediately, exactly as intended.
+//
+// persistentMultipleTabManager because without it a SECOND tab fails to enable persistence at
+// all — and people do leave the site open on a laptop and then open it again.
+//
+// Falls back to the old behaviour rather than failing: persistence is unavailable in private
+// windows and where storage is blocked, and a slower app is a far better outcome than one that
+// will not start. Anything already written against `db` is unaffected either way.
+const db = (() => {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(app);
+  }
+})();
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 const messaging = (() => { try { return getMessaging(app); } catch { return null; } })();
@@ -3337,21 +3370,7 @@ export default function App() {
   // Hold the loader until the profile read positively resolves, so an already-onboarded
   // user is never shown the onboarding screen during a transient cold-start read error.
   if (isAuthLoading || (isRealSignedInUser && !profileChecked)) {
-    return (
-      <div className="grid h-screen place-items-center bg-slate-50">
-        {profileLoadError ? (
-          <div className="flex flex-col items-center gap-3 px-6 text-center">
-            <p className="text-sm text-slate-600">Having trouble loading your profile.</p>
-            <button onClick={() => window.location.reload()}
-              className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white">
-              Reload
-            </button>
-          </div>
-        ) : (
-          <Loader2 className="animate-spin text-teal-600" />
-        )}
-      </div>
-    );
+    return <BootScreen error={profileLoadError} />;
   }
 
   if (!isRealSignedInUser) {
@@ -3581,17 +3600,7 @@ export default function App() {
             // This device has already completed onboarding for this user; the profile is
             // just still syncing. Never show the onboarding form here — show a recoverable
             // loader instead so an existing user is never asked to re-onboard.
-            <div className="grid flex-1 place-items-center bg-slate-50">
-              {profileLoadError ? (
-                <div className="flex flex-col items-center gap-3 px-6 text-center">
-                  <p className="text-sm text-slate-600">Having trouble loading your profile.</p>
-                  <button onClick={() => window.location.reload()}
-                    className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white">Reload</button>
-                </div>
-              ) : (
-                <Loader2 className="animate-spin text-teal-600" />
-              )}
-            </div>
+            <BootScreen error={profileLoadError} />
           ) : (
             <>
               {profileLoadError && (
