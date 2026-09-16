@@ -830,12 +830,19 @@ export function MessageReactions({ db, messageId, currentUser, onReact }) {
 
 
 // ── Reaction counts float beside the bubble ──────────────────────────────────
-// The height of the one reaction strip, in px. Referenced twice — by the strip itself and by
-// the heart glow, which subtracts it so the ring keeps hugging the message rather than growing
-// to enclose the chips. They must agree, so it is one constant.
+// The reaction strip's box, in px: its height, and the gap above it. Referenced twice each — by
+// the strip itself and by the heart glow, which subtracts BOTH so the ring keeps hugging the
+// message rather than growing past it. They must agree, so they are constants.
+//
+// The gap used to be a Tailwind `mt-1` class while the glow subtracted the height alone, and the
+// 4px difference was visible: the ring's bottom edge fell 4px below the bubble's own border,
+// drawing a second, pink, full-width line underneath. Read as "a box behind it" — correctly, as
+// that is exactly what it was. It only appeared on hearted messages, since the glow only renders
+// when there is a heart, which is what made it look intermittent.
 const REACTION_STRIP_H = 26;
+const REACTION_STRIP_MT = 4;
 
-export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, messageTs = 0 }) {
+export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine, onReact, onViewReactors, reactorCountry, reactorName, lastGreetingAt = 0, localHearted = false, localStickers = null, messageTs = 0 }) {
   const [reactions, setReactions] = useState({});
   const EMOJIS = ["❤️"];
 
@@ -857,9 +864,24 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   // The stickers on this message. This listener was ALREADY reading these documents and
   // discarding them, while StickerDisplay opened a second listener on the same collection to
   // render them in a second row below the bubble. One listener, one row.
+  //
+  // localStickers is the same idea as localHearted above, one level more specific: a map of
+  // sticker id → the intent of the tap this person just made, held in App.jsx so it survives
+  // the picker closing. It exists because a sticker's write is a full Firestore round trip and
+  // the chip used to wait for it.
+  //
+  // The arithmetic is deliberately self-healing. A local opinion only contributes while it
+  // DISAGREES with the server, so the moment the snapshot catches up it folds to zero on its
+  // own — no clearing pass, no window in which the count is briefly doubled.
   const stickers = STICKERS
-    .map((def) => ({ def, data: reactions[def.id] }))
-    .filter((x) => (x.data?.count ?? 0) > 0);
+    .map((def) => {
+      const data = reactions[def.id];
+      const onServer = (data?.uids ?? []).includes(currentUser?.uid);
+      const opinion = localStickers?.[def.id];
+      const delta = opinion === true && !onServer ? 1 : opinion === false && onServer ? -1 : 0;
+      return { def, data, count: Math.max(0, (data?.count ?? 0) + delta), isMine: opinion ?? onServer };
+    })
+    .filter((x) => x.count > 0);
   // Bounded: this row floats over the card, so it cannot be allowed to wrap onto a second line
   // and collide with the message underneath. Past three, the overflow chip carries the rest and
   // opens the panel that can show them all properly.
@@ -867,7 +889,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
   const shownStickers = stickers.slice(0, STICKER_SLOTS);
   const hiddenStickerCount = stickers
     .slice(STICKER_SLOTS)
-    .reduce((n, x) => n + (x.data?.count ?? 0), 0);
+    .reduce((n, x) => n + x.count, 0);
 
   // Invite the FIRST real heart on a recent, un-reacted greeting from someone else — so a post
   // that would otherwise get no response gets a GENUINE reaction (never a fabricated one).
@@ -1034,8 +1056,8 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     return (
       <button
         onClick={(e) => { e.stopPropagation(); toggle("❤️"); }}
-        className="mt-1 ml-auto flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
-        style={{ zIndex: 3, height: REACTION_STRIP_H }}
+        className="ml-auto flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
+        style={{ zIndex: 3, height: REACTION_STRIP_H, marginTop: REACTION_STRIP_MT }}
         title="Be the first to send a heart">
         🤍 Be first
       </button>
@@ -1053,10 +1075,13 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         // because the strip cannot wrap — see the note on it below. The glow only ever renders
         // when a heart exists, and a heart always renders a chip, so the strip is always there
         // to offset against.
+        //
+        // Height AND gap. Subtracting the height alone left the ring 4px low, which is the line
+        // that appeared under hearted bubbles.
         <div
           aria-hidden="true"
           className="seen-heart-glow pointer-events-none absolute inset-x-0 top-0"
-          style={{ bottom: REACTION_STRIP_H }}
+          style={{ bottom: REACTION_STRIP_H + REACTION_STRIP_MT }}
           data-tier={glowTier}
         />
       )}
@@ -1074,8 +1099,8 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
         the heart plus at most three stickers plus an overflow chip is about 150px, and anything
         beyond that is folded into the "+N". */}
     <div
-      className="mt-1 flex flex-nowrap items-center justify-end gap-0.5"
-      style={{ zIndex: 3, height: REACTION_STRIP_H }}>
+      className="flex flex-nowrap items-center justify-end gap-0.5"
+      style={{ zIndex: 3, height: REACTION_STRIP_H, marginTop: REACTION_STRIP_MT }}>
       {active.map((e) => {
         const mine2 = reactions[e]?.uids?.includes(currentUser?.uid) || (e === "❤️" && localHearted && !userAlreadyReacted);
         const count = e === "❤️" ? displayCount : (reactions[e]?.count ?? 0);
@@ -1112,9 +1137,7 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
 
       {/* Stickers, in the same strip. These used to be inert decoration; tapping one now opens
           the same panel the heart count does, so "who sent me that hug?" is answerable. */}
-      {shownStickers.map(({ def, data }) => {
-        const isMine = (data.uids ?? []).includes(currentUser?.uid);
-        const count = data.count ?? 0;
+      {shownStickers.map(({ def, count, isMine }) => {
         return (
           <button
             key={def.id}
@@ -2222,7 +2245,11 @@ export function QuickReactBar({ db, messageId, senderUid, senderName, currentUse
           // nothing behind it, which survived until reload because the optimistic set is never
           // cleared. Removing sticker_love defuses it today, but a separate callback is what
           // stops it coming back the next time someone adds a heart-ish sticker.
-          onPick={(sticker) => onSticker?.(sticker.emoji)}
+          //
+          // The whole sticker, plus the picker's intent — the id is what the optimistic chip is
+          // keyed on, and the intent is which way the toggle went. Passing only the glyph meant
+          // the caller could burst but could not draw anything.
+          onPick={(sticker, intent) => onSticker?.(sticker, intent)}
         />
       )}
     </div>

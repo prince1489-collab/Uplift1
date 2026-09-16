@@ -1575,6 +1575,15 @@ export default function App() {
   const [reactionBarId, setReactionBarId] = useState(null);
   const [reactionBarFlip, setReactionBarFlip] = useState(false); // render bar below bubble when no room above (top of feed)
   const [localHeartedMessageIds, setLocalHeartedMessageIds] = useState(new Set());
+  // The same idea for stickers, one level more specific: { [messageId]: { [stickerId]: boolean } },
+  // where the boolean is which way the tap went. A heart only ever needs "I just sent one",
+  // because the badge it feeds is a single glyph; a sticker chip has to know WHICH sticker, and
+  // the picker's write is a toggle, so it also has to be able to say "I just took that back".
+  //
+  // It lives up here rather than in ReactionSideBadges because the picker that sets it is a
+  // portal mounted from the reaction bar, and it closes itself the moment you tap — the state
+  // has to outlive the component that produced it.
+  const [localStickers, setLocalStickers] = useState({});
   const longPressTimer = useRef(null);
   const longPressTriggered = useRef(false);
   // Decide whether the long-press reaction bar should flip below the bubble — it normally floats
@@ -4186,8 +4195,24 @@ export default function App() {
                                             // Stickers get the burst and the haptic but never
                                             // the optimistic heart — a sticker is not a heart,
                                             // and this handler has no branch that could treat
-                                            // it as one.
-                                            onSticker={(emoji) => { triggerReactionBurst(emoji); haptic([6, 20, 6]); }}
+                                            // it as one. They get their OWN optimistic chip,
+                                            // which is a different thing in a different place.
+                                            //
+                                            // Fired the instant the sticker is tapped, before
+                                            // the write leaves the phone, and then again with
+                                            // the real outcome if the toggle went the other way
+                                            // — intent null means "I was wrong, defer to the
+                                            // server" and drops the entry rather than asserting
+                                            // the opposite.
+                                            onSticker={(sticker, intent) => {
+                                              if (intent === true) { triggerReactionBurst(sticker.emoji); haptic([6, 20, 6]); }
+                                              setLocalStickers((prev) => {
+                                                const forMsg = { ...(prev[m.id] ?? {}) };
+                                                if (intent === null || intent === undefined) delete forMsg[sticker.id];
+                                                else forMsg[sticker.id] = intent;
+                                                return { ...prev, [m.id]: forMsg };
+                                              });
+                                            }}
                                             onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
                                             onReply={() => setReplyTarget(m)}
                                             onEdit={() => { setEditingPost(m); setPostComposerOpen(true); setReactionBarId(null); }}
@@ -4243,13 +4268,37 @@ export default function App() {
 
                                             Dark mode needs nothing here: index.css already remaps
                                             bg-teal-50 / bg-emerald-100 to low-alpha tints of the same hues,
-                                            and the text-*-900 remaps sit next to them. */}
+                                            and the text-*-900 remaps sit next to them.
+
+                                            Frame and fill on the outside, padding on the inside.
+                                            They used to be the same element, which meant anything
+                                            put above the words had the bubble's 14px of side
+                                            padding around it and could not reach the edge. That
+                                            is why a GIF lived OUTSIDE the bubble as its own
+                                            bordered card with a gap above it — and why it read as
+                                            a second post rather than part of this one.
+
+                                            overflow-hidden is what clips the GIF's top corners to
+                                            the bubble's radius; tailClass is empty today, so
+                                            there is no tail for it to cut off. */}
                                         <div
-                                          className={`border px-3.5 py-2.5 text-[14px] font-semibold select-none ${topRadius} ${botRadius} ${tailClass} ${
+                                          className={`overflow-hidden border select-none ${topRadius} ${botRadius} ${tailClass} ${
                                             mine
                                               ? "bg-emerald-100 border-emerald-200 text-emerald-900"
                                               : "bg-teal-50 border-teal-200 text-teal-900"
                                           }`}>
+                                          {/* Mounted only when the message says it has something.
+                                              That condition is what keeps the follow-gated read in
+                                              firestore.rules off the hot path: a feed of plain
+                                              text messages fetches nothing extra at all.
+
+                                              Above the words, full-bleed, inside the same frame —
+                                              one post. It renders nothing for someone who is not
+                                              allowed to see it, and a bubble with nothing above
+                                              the words is just a bubble, which is exactly what a
+                                              stranger should see. */}
+                                          {m.hasMedia && <MessageMedia db={db} messageId={m.id} />}
+                                          <div className="px-3.5 py-2.5 text-[14px] font-semibold">
                                           {/* A proverb is a quotation, so the bubble presents it
                                               as one. `stripQuotes` covers the messages written
                                               before the stored text dropped its own punctuation —
@@ -4276,14 +4325,10 @@ export default function App() {
                                               )}
                                             </span>
                                           )}
+                                          </div>
                                         </div>
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} localHearted={localHeartedMessageIds.has(m.id) && !mine} localStickers={localStickers[m.id]} messageTs={m.timestamp} />
                                       </div>
-                                      {/* Mounted only when the message says it has something.
-                                          That condition is what keeps the follow-gated read in
-                                          firestore.rules off the hot path: a feed of plain text
-                                          messages fetches nothing extra at all. */}
-                                      {m.hasMedia && <MessageMedia db={db} messageId={m.id} />}
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
 

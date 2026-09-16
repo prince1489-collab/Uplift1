@@ -17,7 +17,7 @@
 // The heart is the app's primary gesture and it owns that glyph. A sticker says something the
 // heart cannot — a hug, applause, hang in there — which is the only reason to have stickers.
 
-import React, { useState } from "react";
+import React, { useRef } from "react";
 import { createPortal } from "react-dom";
 import { deleteDoc, doc, runTransaction, setDoc } from "firebase/firestore";
 import { authedPost } from "./apiBase";
@@ -53,80 +53,115 @@ function shouldNotifySticker(messageId) {
 }
 
 export function StickerPicker({ db, currentUser, messageId, senderUid, reactorCountry = null, reactorName = "", onClose, onPick }) {
-  const [sending, setSending] = useState(false);
+  // A ref rather than state, because this component closes itself the instant a sticker is
+  // picked — a setState afterwards would be a write to a tree that is already gone. The latch
+  // only exists to swallow a double-tap in the frame before the sheet unmounts.
+  const sending = useRef(false);
 
-  const handlePick = async (sticker) => {
-    if (sending || !db || !currentUser || !messageId) return;
+  // ── PAINT FIRST, WRITE AFTER ────────────────────────────────────────────────────────────────
+  // This used to `await runTransaction` before it did ANYTHING visible: the sheet stayed open,
+  // no burst, no haptic and no chip until Firestore had answered. On mobile data that is most of
+  // a second of nothing, which is what "it takes a while for the effect to come through" was.
+  //
+  // The heart has never worked that way — ReactionSideBadges.toggle sets its optimistic state,
+  // fires the burst, and leaves the transaction running un-awaited behind it. So a heart landed
+  // in the same frame as the tap and a sticker did not, for no reason other than which function
+  // you happened to be in. This is now the heart's shape.
+  //
+  // onPick carries an INTENT — true for "I just added this", false for "I just took it back",
+  // null for "forget what I said". The optimistic chip is drawn from that, and the write's real
+  // outcome corrects it: the transaction is a toggle, so a second tap removes the sticker, and a
+  // guess of "added" that turned out to be a removal has to be taken back rather than left
+  // sitting there as a phantom.
+  const handlePick = (sticker) => {
+    if (sending.current || !db || !currentUser || !messageId) return;
     // You cannot react to your own message. Every heart path has checked this since it was
     // written; the sticker path never did, so your own stickers appeared in your own
     // "Who felt this" and, once the code below existed, would have notified you of yourself.
     if (senderUid && senderUid === currentUser.uid) { onClose?.(); return; }
-    setSending(true);
-    let added = false;
-    try {
-      const rRef = doc(db, "publicMessages", messageId, "reactions", sticker.id);
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(rRef);
-        const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
-        const uids = data.uids ?? [];
-        // countries and reactedAt are carried forward and written back. The old code did a bare
-        // tx.set of { count, uids } with no merge, which meant a sticker on a message that
-        // already had hearts would have WIPED those two maps had the ids ever collided — and,
-        // more immediately, it left sticker reactors with no country and no timestamp, so they
-        // sorted to the bottom of the panel and lit no country on the globe.
-        const countries = { ...(data.countries ?? {}) };
-        const reactedAt = { ...(data.reactedAt ?? {}) };
-        if (uids.includes(currentUser.uid)) {
-          const next = uids.filter(u => u !== currentUser.uid);
-          delete countries[currentUser.uid];
-          delete reactedAt[currentUser.uid];
-          tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
-        } else {
-          countries[currentUser.uid] = reactorCountry ?? null;
-          reactedAt[currentUser.uid] = Date.now();
-          tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
-          added = true;
-        }
-      });
+    sending.current = true;
 
-      // ── Tell the person. ──────────────────────────────────────────────────────────────────
-      // None of this existed. A sticker wrote its reaction document and stopped there: no
-      // reactionsReceived row, so it never appeared in the recipient's bell or their globe, and
-      // no push, so their phone stayed silent. Someone sent warmth and the app quietly absorbed
-      // it. In an app whose whole purpose is making a person feel noticed, that was the worst
-      // thing on the card.
-      //
-      // Shape and ordering copied deliberately from the heart path: notify-like re-reads this
-      // document to prove the reaction happened, so the POST is CHAINED onto the write rather
-      // than fired beside it — run in parallel and the endpoint often finds nothing yet.
-      if (senderUid && senderUid !== currentUser.uid) {
+    // Everything the person can see happens here, before a byte leaves the phone.
+    onPick?.(sticker, true);
+    onClose?.();
+
+    let added = false;
+    const rRef = doc(db, "publicMessages", messageId, "reactions", sticker.id);
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(rRef);
+      const data = snap.exists() ? snap.data() : { count: 0, uids: [] };
+      const uids = data.uids ?? [];
+      // countries and reactedAt are carried forward and written back. The old code did a bare
+      // tx.set of { count, uids } with no merge, which meant a sticker on a message that
+      // already had hearts would have WIPED those two maps had the ids ever collided — and,
+      // more immediately, it left sticker reactors with no country and no timestamp, so they
+      // sorted to the bottom of the panel and lit no country on the globe.
+      const countries = { ...(data.countries ?? {}) };
+      const reactedAt = { ...(data.reactedAt ?? {}) };
+      if (uids.includes(currentUser.uid)) {
+        const next = uids.filter(u => u !== currentUser.uid);
+        delete countries[currentUser.uid];
+        delete reactedAt[currentUser.uid];
+        tx.set(rRef, { count: Math.max(0, next.length), uids: next, countries, reactedAt });
+        // Assigned on BOTH branches. A transaction body can be replayed if the document changes
+        // underneath it, and a flag that is only ever set to true would survive a retry that
+        // went the other way.
+        added = false;
+      } else {
+        countries[currentUser.uid] = reactorCountry ?? null;
+        reactedAt[currentUser.uid] = Date.now();
+        tx.set(rRef, { count: uids.length + 1, uids: [...uids, currentUser.uid], countries, reactedAt });
+        added = true;
+      }
+    })
+      // Two-argument then, not .then().catch(). A trailing catch would also swallow anything
+      // thrown by the success handler below and report it as "the write failed" — taking the
+      // chip back off a reaction that had in fact landed.
+      .then(() => {
+        // The optimistic guess was "added". Correct it if the toggle went the other way.
+        if (!added) onPick?.(sticker, false);
+
+        // ── Tell the person. ────────────────────────────────────────────────────────────────
+        // None of this existed. A sticker wrote its reaction document and stopped there: no
+        // reactionsReceived row, so it never appeared in the recipient's bell or their globe,
+        // and no push, so their phone stayed silent. Someone sent warmth and the app quietly
+        // absorbed it. In an app whose whole purpose is making a person feel noticed, that was
+        // the worst thing on the card.
+        //
+        // Shape and ordering copied deliberately from the heart path: notify-like re-reads this
+        // document to prove the reaction happened, so the POST is CHAINED onto the write rather
+        // than fired beside it — run in parallel and the endpoint often finds nothing yet. That
+        // chain is why this block sits inside .then() and not beside the transaction: not
+        // awaiting the write is what made the sticker instant, and it must not cost the
+        // notification that made it arrive.
+        if (!(senderUid && senderUid !== currentUser.uid)) return;
         const ownerRef = doc(db, "users", senderUid, "reactionsReceived", `${messageId}_${currentUser.uid}`);
         if (!added) {
           deleteDoc(ownerRef).catch(() => {});
-        } else {
-          const myName = (reactorName || "").trim().split(" ")[0] || "Someone";
-          const reactedAt = Date.now();
-          setDoc(ownerRef, {
-            messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
-            emoji: sticker.emoji, stickerId: sticker.id, stickerLabel: sticker.label,
-            country: reactorCountry ?? null, reactorName: myName, reactedAt,
-          })
-            .then(() => {
-              if (shouldNotifySticker(messageId)) {
-                authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
-                  .catch(() => {});
-              }
-            })
-            .catch((err) => { console.error("[sticker reactionsReceived]", err?.code, err?.message); });
+          return;
         }
-      }
-
-      onPick?.(sticker);
-    } catch (err) {
-      console.error("Sticker react error:", err);
-    }
-    setSending(false);
-    onClose?.();
+        const myName = (reactorName || "").trim().split(" ")[0] || "Someone";
+        const reactedAt = Date.now();
+        setDoc(ownerRef, {
+          messageId, ownerUid: senderUid, reactorUid: currentUser.uid,
+          emoji: sticker.emoji, stickerId: sticker.id, stickerLabel: sticker.label,
+          country: reactorCountry ?? null, reactorName: myName, reactedAt,
+        })
+          .then(() => {
+            if (shouldNotifySticker(messageId)) {
+              authedPost(currentUser, "/api/notify-like", { ownerUid: senderUid, messageId })
+                .catch(() => {});
+            }
+          })
+          .catch((err) => { console.error("[sticker reactionsReceived]", err?.code, err?.message); });
+      }, (err) => {
+        console.error("Sticker react error:", err);
+        // Nothing was written, so the optimistic chip is a lie. null rather than false: the
+        // truth is now whatever the server already said, not "not mine" — this person may have
+        // sent the same sticker from another device.
+        onPick?.(sticker, null);
+      })
+      .catch((err) => { console.error("[sticker follow-up]", err?.code, err?.message); });
   };
 
   return createPortal(
@@ -160,7 +195,6 @@ export function StickerPicker({ db, currentUser, messageId, senderUid, reactorCo
             <button
               key={s.id}
               onClick={() => handlePick(s)}
-              disabled={sending}
               className={`flex flex-col items-center gap-2 rounded-2xl border p-3 transition-all active:scale-90 hover:scale-105 ${s.bg}`}
             >
               <span className={`text-3xl leading-none select-none ${s.anim}`}>{s.emoji}</span>

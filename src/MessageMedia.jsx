@@ -17,6 +17,13 @@
 // media message would be a permanent open subscription in exchange for updates that cannot
 // happen.
 //
+// ── IT IS PART OF THE BUBBLE, NOT A CARD BESIDE IT ───────────────────────────────────────────
+// This renders BARE — no margin, no border, no radius of its own — because it is mounted inside
+// the message bubble, above the words, and the bubble's own frame and overflow-hidden are what
+// give it its edges. It used to be a sibling after the bubble with `mt-1.5 rounded-2xl border`,
+// and a gap plus a second border plus a second radius is the complete recipe for "two separate
+// posts", which is exactly how it read.
+//
 // ── NOT BEING ALLOWED TO SEE IT IS NOT AN ERROR ──────────────────────────────────────────────
 // A non-follower's read fails with permission-denied, and that is the feature working. It is
 // handled by rendering nothing — no broken image, no padlock, no "you can't see this". A post
@@ -51,13 +58,22 @@ export default function MessageMedia({ db, messageId }) {
   // the bubble is one height, then jumps to another as each image arrives, and a feed being
   // scrolled shifts under the reader's thumb. Falls back to 4:3 for anything written without
   // them rather than collapsing to nothing.
+  //
+  // Clamped, because the bubble is the full width of the column now rather than capped at 260px:
+  // an unclamped 9:16 GIF would be about 600px tall and would be the entire screen, with the
+  // words it belongs to pushed off the bottom. Past 4:5 the reserved box stops getting taller and
+  // object-cover crops instead — the message stays visible with its GIF, which is the right way
+  // round for a post whose point is the sentence.
   const w = Number(media.width) || 0;
   const h = Number(media.height) || 0;
-  const ratio = w > 0 && h > 0 ? `${w} / ${h}` : "4 / 3";
+  const TALLEST = 5 / 4; // height ÷ width
+  const ratio = w > 0 && h > 0 ? `${w} / ${Math.min(h, w * TALLEST)}` : "4 / 3";
 
   return (
-    <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
-      style={{ maxWidth: 260 }}>
+    // The hairline is what stops the two halves reading as a picture with a caption welded under
+    // it: black/5 is the same divider the proverb block inside the bubble already uses, so a GIF
+    // post and a proverb post are divided the same way.
+    <div className="border-b border-black/5 bg-slate-100">
       <img
         src={media.url}
         // Klipy's own title, stored with the message so the alt text survives without
