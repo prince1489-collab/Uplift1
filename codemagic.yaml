@@ -107,7 +107,7 @@ workflows:
         #          submissions
         # Both mean the same thing — that version already shipped, so pick the next one. They are
         # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
-        MARKETING_VERSION: "1.8"
+        MARKETING_VERSION: "1.9"
       node: 20
       xcode: latest
       cocoapods: default
@@ -281,7 +281,18 @@ workflows:
         # device. That happened: production carried a broken versionCode 2 and internal carried
         # versionCode 3, both displaying "1.2", and there was no way to tell which one a phone
         # had installed without uninstalling.
-        ANDROID_VERSION_NAME: "1.8"
+        #
+        # BUMP IT LAST. Every push to this branch builds (see `triggering` above), so a bump
+        # followed by any further commit manufactures a second build wearing the same name — and
+        # the second one is the one you want, which is the worst way round. That is how 1.8
+        # happened: stamped at 13:22, then a real fix landed at 15:13, and both finished.
+        # `cancel_previous_builds` does not save you here — it only kills a build still running,
+        # and these were nearly two hours apart. So the version moves in the SAME push as the last
+        # change of a batch, never ahead of it.
+        #
+        # Deliberately a rule and not a check: there is no honest way for a script to know which
+        # commit is the last of a batch, and a guard that guessed would fire on every push.
+        ANDROID_VERSION_NAME: "1.9"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
