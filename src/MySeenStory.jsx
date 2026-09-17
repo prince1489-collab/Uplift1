@@ -10,7 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { X } from "lucide-react";
-import { treeStageFor, TREE_STAGES, TreeScene, useWatering } from "./KindnessTree";
+import { treeStageFor, TREE_STAGES, TreeScene, useWatering, WATERING_MS } from "./KindnessTree";
 import { getPoints } from "./points";
 import { playLevelUp, playGrowthSwell } from "./sounds";
 import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
@@ -21,7 +21,12 @@ const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
 // around here. Growth starts on that beat: water arrives, then the tree responds.
 const GROWTH_DELAY_MS = 2000;
-const MILESTONE_DELAY_MS = GROWTH_DELAY_MS + REPLAY_MS + 300; // just after the final growth note
+// Just after the final growth note — and after the watering can has finished, which the old
+// arithmetic missed. useWatering(true) runs for WATERING_MS from mount, so at 6,500ms the pour was
+// still going and the celebration landed on top of it. The sequence this file is otherwise careful
+// about is water, then grow, then celebrate; taking the max of the two makes that true of what you
+// actually see rather than only of the growth half.
+const MILESTONE_DELAY_MS = Math.max(GROWTH_DELAY_MS + REPLAY_MS, WATERING_MS) + 300;
 const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
@@ -113,8 +118,26 @@ function MetricCard({ card, onClose }) {
   );
 }
 
-// ── milestone celebration — petals + the new stage name drawing in ───────────
-function MilestoneOverlay({ stage, onDone }) {
+// ── milestone celebration ────────────────────────────────────────────────────
+// Effects only: the warm glow and the petals falling past the tree. The WORDS are not in here.
+//
+// THE BUG THIS SPLIT EXISTS FOR. This component used to carry the announcement too, in a
+// `absolute inset-x-0 bottom-6` block with no backdrop. Because it is `inset-0` over the whole
+// hero BUTTON rather than over the tree, "bottom-6" is not under the tree — it is 24px up from the
+// card's bottom edge, which is exactly where the card already puts "N drops · M more until X" and
+// the "See how it grows →" link. Measured in a browser: the block spanned 517-556px and the
+// progress line 517-530px, so they printed straight through each other. The hero ALSO renders the
+// stage name in flow, in the same size and weight, so during the celebration the name appeared
+// twice at once, one copy sitting on other text.
+//
+// None of that is visible in the source — the two halves are 250 lines apart and neither says
+// anything about the other. It is obvious in a picture, which is what scripts/render-milestone.mjs
+// is for.
+//
+// The fix is not a z-index or a scrim. The words go back into the FLOW (see the hero below), where
+// they take the place of the card's own name and blurb for a few seconds. Nothing is positioned,
+// so nothing can collide, and the name is announced once.
+function MilestoneEffects({ onDone }) {
   useEffect(() => {
     const t = setTimeout(() => onDone?.(), 4200);
     return () => clearTimeout(t);
@@ -131,14 +154,6 @@ function MilestoneOverlay({ stage, onDone }) {
           animation: `seenPetalFall ${2.6 + (i % 4) * 0.5}s cubic-bezier(0.35,0.6,0.5,1) ${i * 0.16}s both`,
         }}>{p}</span>
       ))}
-      <div className="absolute inset-x-0 bottom-6 text-center">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600"
-          style={{ animation: "seenFadeUp 600ms ease 500ms both" }}>New stage reached</p>
-        <p className="mt-1 text-xl font-extrabold text-slate-800"
-          style={{ animation: "seenStageReveal 1100ms cubic-bezier(0.2,0.9,0.3,1) 700ms both" }}>
-          {stage.name}
-        </p>
-      </div>
     </div>
   );
 }
@@ -365,9 +380,34 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           <div className="mx-auto" style={{ width: 210, height: 210 }}>
             <TreeScene stageIdx={stageIdx} growth={replay} watering={watering} size={210} ambient darkMode={darkMode} />
           </div>
-          {milestone && <MilestoneOverlay stage={milestone} onDone={() => setMilestone(null)} />}
-          <p className="mt-1 text-xl font-extrabold text-slate-800">{stage.name}</p>
-          <p className="text-[12px] text-slate-500 mt-0.5">{stage.blurb}</p>
+          {milestone && <MilestoneEffects onDone={() => setMilestone(null)} />}
+          {/* The name, and for a few seconds the announcement of it — in the SAME place, one at a
+              time. The celebration used to be painted over this region from an absolutely
+              positioned overlay, which put two copies of the stage name on screen at once and
+              printed the announcement through the progress line and the link below it. Swapping
+              the content instead of covering it makes the collision impossible rather than
+              tuned-around.
+
+              min-h keeps the progress bar and the link still while the two states change over:
+              name+blurb and eyebrow+name are within a few pixels of each other, so this is a
+              guard, not a correction. */}
+          <div className="min-h-[52px]">
+            {milestone ? (
+              <>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600"
+                  style={{ animation: "seenFadeUp 600ms ease 200ms both" }}>New stage reached</p>
+                <p className="text-xl font-extrabold text-slate-800"
+                  style={{ animation: "seenStageReveal 1100ms cubic-bezier(0.2,0.9,0.3,1) 400ms both" }}>
+                  {milestone.name}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-xl font-extrabold text-slate-800">{stage.name}</p>
+                <p className="text-[12px] text-slate-500 mt-0.5">{stage.blurb}</p>
+              </>
+            )}
+          </div>
           <div className="mt-4 mx-auto max-w-xs">
             {next ? (
               <>

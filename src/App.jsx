@@ -4403,8 +4403,18 @@ export default function App() {
             {/* Your tree grew, and you are not looking at it. Sits under the tabs rather than over
                 the send bar so it never covers what someone is in the middle of doing, and takes
                 itself away after seven seconds whether or not it is tapped — this is news, not an
-                errand. */}
-            {stageUp && (
+                errand.
+
+                Hidden on Grow, because there it is news you are already looking at. It is only
+                RAISED off Grow (the activeTab guard where stageUp is set), but nothing lowered it
+                when somebody crossed a stage on another tab and then walked over to the tree
+                inside its seven seconds — leaving a card announcing the tree, pinned over the tab
+                bar, on the screen showing the tree.
+
+                In the render condition rather than a setStageUp(null) effect on purpose: this file
+                already carries react-hooks/set-state-in-effect errors and the lint total is a
+                tracked number. The existing timeout still clears the state. */}
+            {stageUp && activeTab !== "impact" && (
               <div className="pointer-events-none fixed inset-x-0 top-[104px] z-[240] flex justify-center px-4">
                 <button
                   onClick={() => { setStageUp(null); setActiveTab("impact"); }}
