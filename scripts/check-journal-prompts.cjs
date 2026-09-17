@@ -95,6 +95,32 @@ const eveningPool = grateful.length + kindness.length + anytime.length;
 if (morningPool < MIN_POOL) fail.push(`the morning pool is ${morningPool} prompts, under ${MIN_POOL} — it repeats within ${morningPool} days`);
 if (eveningPool < MIN_POOL) fail.push(`the evening pool is ${eveningPool} prompts, under ${MIN_POOL}`);
 
+// ── 5. Every prompt has pointers, and every pointer set names a real prompt ───────────────────
+// src/JournalHints.js is keyed by the prompt TEXT rather than by an index, which keeps the banks
+// as plain string arrays. The price of that choice is a silent failure mode: reword a prompt and
+// its pointers stop matching, and the only symptom is three lines quietly missing from under one
+// question on one day of the rotation. Nobody would ever notice. So it is asserted from both
+// directions — no prompt without hints, no hints without a prompt.
+const HINTS_SRC = fs.readFileSync(path.join(__dirname, "..", "src", "JournalHints.js"), "utf8");
+const hintBody = HINTS_SRC.slice(HINTS_SRC.indexOf("export const PROMPT_HINTS = {"));
+const hinted = [...hintBody.matchAll(/^\s*"((?:[^"\\]|\\.)*)":\s*\[([^\]]*)\]/gm)]
+  .map((m) => ({ prompt: m[1].replace(/\\"/g, '"'), count: (m[2].match(/"/g) || []).length / 2 }));
+const hintedSet = new Set(hinted.map((h) => h.prompt));
+
+if (!hinted.length) {
+  fail.push("parsed no pointer sets out of JournalHints.js — the file's shape has changed and this check sees nothing");
+} else {
+  for (const p of all) {
+    if (!hintedSet.has(p)) fail.push(`no pointers for "${p}" — reworded without updating JournalHints.js?`);
+  }
+  for (const h of hinted) {
+    if (!seen.has(h.prompt)) fail.push(`JournalHints.js has pointers for a prompt that no bank contains — "${h.prompt}"`);
+    // Three is the shape the file is written to; two reads as thin and four as a menu.
+    if (h.count !== 3) fail.push(`"${h.prompt}" has ${h.count} pointers, expected 3`);
+  }
+  ok.push(`${hinted.length} prompts have 3 pointers each (${hinted.length * 3} in all)`);
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────────────────────
 ok.push(`morning pool ${morningPool} (${morning.length} + ${anytime.length} anytime)`);
 ok.push(`evening pool ${eveningPool} (${grateful.length} + ${kindness.length} + ${anytime.length} anytime)`);

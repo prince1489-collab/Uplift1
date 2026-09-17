@@ -12,6 +12,7 @@ import { collection, addDoc, updateDoc, onSnapshot, query, orderBy, deleteDoc, d
 import { playCheckIn } from "./sounds";
 import { ArrowLeft, Trash2, BookOpen, History, ChevronRight, Folder, Calendar, Share2, X, Check } from "lucide-react";
 import { pickDailyPrompt, isEveningNow } from "./JournalPrompts";
+import { PROMPT_HINTS } from "./JournalHints";
 import { setEveningCue } from "./eveningCue";
 import { writeFailure } from "./writeFailure";
 import { awardPoints, POINTS } from "./points";
@@ -706,6 +707,19 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
               {editingId ? "You answered" : pinned ? "Saved for tonight" : evening ? "Tonight's prompt" : "This morning's prompt"}
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug text-slate-800">{activePrompt}</p>
+            {/* ── Pointers ────────────────────────────────────────────────────────────────────
+                Three fragments under the question, written for that question. Not chips: nothing
+                to tap, nothing that puts words in the box. The commonest reason this box stays
+                empty is not that somebody has nothing to say, it is that they cannot find a way
+                into the question — so these open a door and then get out of the way.
+
+                Hidden while editing a saved entry: the words are already there, and hints about
+                how to start are noise on top of something finished. */}
+            {!editingId && PROMPT_HINTS[activePrompt] && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+                {PROMPT_HINTS[activePrompt].join("  ·  ")}
+              </p>
+            )}
             {/* Three swaps, where Practice allows one, and the difference is deliberate rather
                 than drift.
 
