@@ -368,6 +368,15 @@ Rules:
 - No title or headline of your own. The app shows the story's own headline above your text.`,
       }],
     });
+    // A summary that ran into the ceiling is a half-summary, and this function's whole contract
+    // is not to return one. 600 tokens against a 200-word brief is roughly double what is needed,
+    // so this should never fire — but it was not checked, and the failure it would produce is a
+    // story that stops mid-sentence, which is indistinguishable from a rendering bug. It was
+    // worth a day of tracing the difference once; it is not worth it twice.
+    if (response.stop_reason === "max_tokens") {
+      console.error("[goodnews] summary hit the token ceiling — publishing nothing today");
+      return null;
+    }
     const text = (response.content[0]?.text || "").trim();
     // The model gets a way out, and it is honoured. A categoriser forced to always produce
     // something will always produce something, including on the day it should have declined.

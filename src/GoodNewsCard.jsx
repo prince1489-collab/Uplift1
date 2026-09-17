@@ -80,13 +80,46 @@ export default function GoodNewsCard({ db }) {
   if (!story) return null;
 
   return (
-    <div className="px-3 pb-2">
-      <div className="overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/50">
+    // ── WHY THIS IS A FLEX COLUMN WITH min-h-0 ON EVERY RUNG ─────────────────────────────────
+    // An expanded story used to stop mid-sentence with no way to reach the rest, and the reason
+    // was not in this file's text handling — nothing here truncates. It was the layout.
+    //
+    // This card is mounted (App.jsx) as a SIBLING ABOVE the feed scroller, inside a shell that is
+    // h-[100dvh] flex-col overflow-hidden. The feed below is `flex-1`, whose basis is 0%, so it
+    // cannot give any height back. Every other sibling — the header, the tab bar, the Worldwide
+    // board — carries flex-shrink-0. This one does not. So the entire overflow of an expanded
+    // story landed here, flex squashed the card to whatever space was left, and the
+    // overflow-hidden below (which is only there to clip the corners to the radius) cut the
+    // paragraphs off. The only scroller in the tab was a sibling, so nothing could scroll to them.
+    //
+    // The fix is to keep being shrinkable and make the shrink SCROLL instead of CLIP. Adding
+    // flex-shrink-0 would look like the obvious answer and is the wrong one: it just moves the
+    // overflow up to the shell, which clips it too, with less to show for it.
+    //
+    // min-h-0 on every rung is the part that actually does the work. A flex child defaults to
+    // min-height:auto, which refuses to shrink below its content — that default is precisely what
+    // turns "scrollable" back into "clipped", and it has to be cancelled all the way down.
+    <div className="flex min-h-0 flex-col px-3 pb-2">
+      {/* The cap is about what sits BELOW this card. With the feed unable to shrink, an expanded
+          story took the whole area under the tabs and pushed the send bar off the bottom of the
+          screen entirely.
+
+          Measured against the real proportions rather than guessed: on a normal phone the chrome
+          above is about a third of the display, so the card is squash-limited and 58dvh barely
+          binds — what it buys there is the composer staying on screen. The feed below is a sliver
+          while a story is open, and that is the honest trade: somebody who opened a story is
+          reading it. The cap earns its keep on a tall screen, where an expanded story would
+          otherwise take four fifths of the display.
+
+          Either way the body scrolls inside whatever height it ends up with, so cap or squash,
+          the reading works the same. */}
+      <div className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/50 ${open ? "max-h-[58dvh]" : ""}`}>
         {/* One row, one tap. The whole row is the control — not the chevron — and it says so,
-            because a chevron alone is a target you have to already know about. */}
+            because a chevron alone is a target you have to already know about.
+            flex-shrink-0 so "Close" and the chevron never scroll away from under the thumb. */}
         <button
           onClick={() => setOpen((o) => !o)}
-          className="seen-news-row flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left active:scale-[0.99] transition-transform"
+          className="seen-news-row flex w-full flex-shrink-0 items-center gap-2.5 px-3.5 py-2.5 text-left active:scale-[0.99] transition-transform"
           aria-expanded={open}
           aria-label={open ? "Close today's story" : `Read today's story: ${story.title}`}>
           <span className="text-base leading-none" aria-hidden>{story.emoji || "✨"}</span>
@@ -105,12 +138,40 @@ export default function GoodNewsCard({ db }) {
         </button>
 
         {open && (
-          <div className="px-3.5 pb-3.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
-            {/* The headline lives here now, unclamped. Collapsed it cost three lines of the
-                first screen every day; expanded, it is the first thing you want to read. */}
-            <p className="mb-1.5 text-[14px] font-bold leading-snug text-slate-800">{story.title}</p>
-            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">{asPlainText(story.summary)}</p>
-            <div className="mt-2.5 flex items-center justify-between gap-2">
+          <>
+            {/* The scrolling part: the headline and the story, and nothing else.
+
+                ── THE SOFT BOTTOM EDGE ───────────────────────────────────────────────────────
+                A hard cut is what made a scrollable story read as a broken one, so the last few
+                pixels of text fade out rather than stopping dead against the strip below.
+
+                It is a MASK, not a gradient laid over the top. A gradient has to be painted in
+                the card's own colour, and this card's background is bg-amber-50/50 in light and
+                rgba(245,158,11,0.12) in dark (index.css) over different surfaces again — so any
+                fixed colour would be a visible band in one theme or the other. A mask fades the
+                CONTENT to transparent and has no colour to get wrong.
+
+                pb-5 pairs with it: the mask sits on the element's box, not the scrolled content,
+                so without that padding the final line of a fully-scrolled story would sit in the
+                faded zone and read as ghosted. With it, the fade has nothing but padding to work
+                on once you reach the end — and on a story too short to scroll, nothing at all. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3.5 pb-5"
+              style={{
+                animation: "seenFadeUp 200ms ease both",
+                WebkitMaskImage: "linear-gradient(to bottom, #000 calc(100% - 18px), transparent)",
+                maskImage: "linear-gradient(to bottom, #000 calc(100% - 18px), transparent)",
+              }}>
+              {/* The headline lives here now, unclamped. Collapsed it cost three lines of the
+                  first screen every day; expanded, it is the first thing you want to read. */}
+              <p className="mb-1.5 text-[14px] font-bold leading-snug text-slate-800">{story.title}</p>
+              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">{asPlainText(story.summary)}</p>
+            </div>
+
+            {/* Lifted OUT of the scroller and pinned. These two were at the bottom of the block
+                that was being clipped, which meant that on any story long enough to matter the
+                attribution and the link to the original were the first things to become
+                unreachable — the worst possible half to lose. */}
+            <div className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-amber-100 px-3.5 pb-3 pt-2">
               {/* Named, because a reader deciding what to make of a story is entitled to know
                   where it came from — and because the sources here are not all the same kind of
                   publication. */}
@@ -122,7 +183,7 @@ export default function GoodNewsCard({ db }) {
                 </a>
               )}
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
