@@ -32,56 +32,105 @@
 // the Worldwide rotation, so in practice this path is the belt to that filter's braces.
 
 import React, { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromCache } from "firebase/firestore";
+
+// Tallest a GIF is allowed to be, in CSS px. Measured off a recording: at the previous clamp a
+// portrait GIF rendered 332px tall in a 655px feed viewport — 51% of everything visible — and the
+// words it belonged to were below the fold. A cap in pixels rather than a ratio is the version
+// that can be promised: whatever shape somebody picks, the sentence underneath is on screen with
+// it. Roughly a quarter of the feed.
+const MAX_H = 180;
+// The width the bubble gives a GIF on a phone, used only to turn a shape into a height.
+const COL_W = 360;
+// Assumed shape before the real dimensions arrive. It barely matters: at a 180px cap a GIF has to
+// be WIDER than 2:1 to render shorter than the cap, and almost none are — so the reserved box and
+// the final box are the same height for nearly every GIF, and nothing moves when it lands.
+const PLACEHOLDER_RATIO = 4 / 3;
 
 export default function MessageMedia({ db, messageId }) {
+  // Three states, not two. `null` meant both "still loading" and "you cannot see this", which is
+  // why the feed jumped: the component rendered NOTHING until the document landed, then appeared
+  // at full height and shoved the message down the screen. The aspect-ratio box was reserving
+  // space beautifully and reserving it too late to matter.
+  const [state, setState] = useState("loading"); // loading | ready | none
   const [media, setMedia] = useState(null);
 
   useEffect(() => {
     if (!db || !messageId) return;
     let alive = true;
-    getDoc(doc(db, "publicMessages", messageId, "media", "item"))
-      .then((snap) => {
-        if (!alive || !snap.exists()) return;
-        const d = snap.data();
-        if (d?.type !== "gif" || !d?.url) return;
-        setMedia(d);
-      })
-      // permission-denied lands here and is deliberately silent — see the note above.
-      .catch(() => {});
+    const ref = doc(db, "publicMessages", messageId, "media", "item");
+
+    const use = (snap) => {
+      const d = snap.exists() ? snap.data() : null;
+      if (!d || d.type !== "gif" || !d.url) { setState("none"); return false; }
+      setMedia(d); setState("ready"); return true;
+    };
+
+    // Cache first. Firestore persistence is on (see App.jsx), so a GIF this device has already
+    // seen resolves with no network at all — which is the difference between a GIF that is there
+    // when you arrive and one that appears six seconds later, as it did on the recording.
+    //
+    // getDoc does NOT do this for you: it goes to the server and only falls back to the cache
+    // when offline. The cache miss is cheap and synchronous-ish, so the cost of trying is a
+    // rejected promise on first view.
+    getDocFromCache(ref)
+      .then((snap) => { if (alive) use(snap); })
+      .catch(() => {})
+      .finally(() => {
+        // Always follow up with the server: the cached copy may be stale, and on a miss this is
+        // the only read that will ever return anything.
+        if (!alive) return;
+        getDoc(ref)
+          .then((snap) => { if (alive) use(snap); })
+          // permission-denied lands here and is deliberately silent — see the note above. `none`
+          // rather than a broken image or a padlock.
+          .catch(() => { if (alive) setState("none"); });
+      });
+
     return () => { alive = false; };
   }, [db, messageId]);
 
-  if (!media) return null;
+  if (state === "none") return null;
 
-  // The stored dimensions reserve the right amount of space BEFORE the GIF loads. Without them
-  // the bubble is one height, then jumps to another as each image arrives, and a feed being
-  // scrolled shifts under the reader's thumb. Falls back to 4:3 for anything written without
-  // them rather than collapsing to nothing.
+  // ── The reserved box ───────────────────────────────────────────────────────────────────────
+  // Rendered from the moment this mounts, which is the moment the message says it has something —
+  // so the space exists before anyone knows what shape the GIF is, and nothing below it moves when
+  // the picture lands.
   //
-  // Clamped, because the bubble is the full width of the column now rather than capped at 260px:
-  // an unclamped 9:16 GIF would be about 600px tall and would be the entire screen, with the
-  // words it belongs to pushed off the bottom. Past 4:5 the reserved box stops getting taller and
-  // object-cover crops instead — the message stays visible with its GIF, which is the right way
-  // round for a post whose point is the sentence.
-  const w = Number(media.width) || 0;
-  const h = Number(media.height) || 0;
-  const TALLEST = 5 / 4; // height ÷ width
-  const ratio = w > 0 && h > 0 ? `${w} / ${Math.min(h, w * TALLEST)}` : "4 / 3";
+  // It does mean a stranger briefly sees a grey rectangle on a post they will not be shown the
+  // contents of. That is a smaller leak than it looks: `hasMedia` is already on the world-readable
+  // message document, media posts are filtered out of the Worldwide rotation entirely, and the
+  // Focused Feed only contains people you follow — so the permission-denied path is the belt to
+  // that filter's braces rather than something people meet.
+  const w = Number(media?.width) || 0;
+  const h = Number(media?.height) || 0;
+  const natural = w > 0 && h > 0 ? h / w : PLACEHOLDER_RATIO;
+
+  if (state === "loading") {
+    return (
+      <div className="border-b border-black/5 bg-slate-100"
+        style={{ height: Math.min(MAX_H, Math.round(COL_W * PLACEHOLDER_RATIO)) }} aria-hidden />
+    );
+  }
 
   return (
     // The hairline is what stops the two halves reading as a picture with a caption welded under
     // it: black/5 is the same divider the proverb block inside the bubble already uses, so a GIF
     // post and a proverb post are divided the same way.
-    <div className="border-b border-black/5 bg-slate-100">
+    // Height, not aspect-ratio. The box is as tall as the GIF wants up to the cap, and object-cover
+    // crops anything taller — so a portrait GIF becomes a wide strip of itself rather than half
+    // the screen, and the message under it is always in view.
+    <div className="border-b border-black/5 bg-slate-100 overflow-hidden"
+      style={{ height: Math.min(MAX_H, Math.round(COL_W * natural)) }}>
       <img
         src={media.url}
         // Klipy's own title, stored with the message so the alt text survives without
         // another call to them. A screen reader says "someone waving" rather than "image".
         alt={media.description || "GIF"}
-        loading="lazy"
-        className="w-full object-cover"
-        style={{ aspectRatio: ratio }}
+        // NOT lazy. This sits at the top of a post in a feed somebody has just opened, so it is
+        // almost always already on screen — deferring it bought nothing and cost the wait the
+        // recording shows.
+        className="h-full w-full object-cover"
       />
     </div>
   );

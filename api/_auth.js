@@ -72,10 +72,32 @@ export const APP_URL = "https://www.seenapp.app";
 // Exported so send-reminder.js, which builds its own multicast payload, uses the SAME block.
 // Two copies of this would drift, and the way you would find out is a user reporting that
 // notifications stopped — months later, from the sender nobody remembered to update.
+//
+// ── NO clickAction, AND THAT IS THE FIX ──────────────────────────────────────────────────────
+// This used to send `clickAction: "FCM_PLUGIN_ACTIVITY"`. That string is a cordova-plugin-fcm
+// convention: it asks Android to start the activity whose intent-filter declares the ACTION
+// named "FCM_PLUGIN_ACTIVITY". This app is Capacitor — it uses @capacitor-firebase/messaging,
+// there is no cordova FCM plugin anywhere in package.json, and a repo-wide grep finds that string
+// in exactly one place: the line that was sending it.
+//
+// So Android looked for an activity handling an action nothing declares, found none, and did
+// NOTHING. The notification arrived, looked right, and tapping it dismissed the shade and
+// returned you to the launcher. Recorded on a real phone, twice.
+//
+// Omitting it is not a workaround — it is the documented default. A notification-type FCM message
+// with no click_action launches the app's launcher activity, which is exactly what is wanted, and
+// the plugin then hands the payload to its notificationActionPerformed listener (see
+// src/nativePush.js), which reads `link` and routes on `?open=`.
+//
+// WHY THIS HID FOR SO LONG: until tokensFor became a union, the phone's token was never used. The
+// web registration overwrote it, every push went to Chrome, and sw.js opened the website — which
+// is the "notifications take me to the web link" complaint. The native tap path was never
+// exercised, so a dead clickAction sat behind a bug that made it unreachable. Fixing the routing
+// is what surfaced it.
 export function androidNotification(title, body) {
   return {
     priority: "high",
-    notification: { title, body, sound: "default", clickAction: "FCM_PLUGIN_ACTIVITY" },
+    notification: { title, body, sound: "default" },
   };
 }
 
