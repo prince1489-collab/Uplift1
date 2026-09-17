@@ -107,7 +107,7 @@ workflows:
         #          submissions
         # Both mean the same thing — that version already shipped, so pick the next one. They are
         # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
-        MARKETING_VERSION: "1.9"
+        MARKETING_VERSION: "2.0"
       node: 20
       xcode: latest
       cocoapods: default
@@ -292,7 +292,7 @@ workflows:
         #
         # Deliberately a rule and not a check: there is no honest way for a script to know which
         # commit is the last of a batch, and a guard that guessed would fire on every push.
-        ANDROID_VERSION_NAME: "1.9"
+        ANDROID_VERSION_NAME: "2.0"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
