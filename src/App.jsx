@@ -12,7 +12,6 @@ import { AnimationLayer, useAnimations, useSparkCounter,
   CountryReveal, LiveCountTick, StreakBadgeWithPulse,
   ReactionBurstLayer, useReactionBurst, FLAG_MAP } from "./MicroAnimations";
 
-import ProfilePhotoStep from "./ProfilePhotoStep";
 import SignInStep from "./SignInStep";
 import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
@@ -80,7 +79,6 @@ import {
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
@@ -150,7 +148,6 @@ const db = (() => {
     return getFirestore(app);
   }
 })();
-const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 const messaging = (() => { try { return getMessaging(app); } catch { return null; } })();
 
@@ -3026,13 +3023,15 @@ export default function App() {
       // the overlay. Setting it up-front means the "Let's go" welcome covers the feed the whole
       // time it loads → welcome screen first, then feed (no flash). Reset on error below.
       setShowWelcomeMoment(true);
-      let profilePhotoUrl = profile?.profilePhotoUrl || "";
-      if (data.profilePhoto instanceof File) {
-        const ext = data.profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
-        const photoRef = ref(storage, `profilePhotos/${user.uid}/avatar.${ext}`);
-        await uploadBytes(photoRef, data.profilePhoto, { contentType: data.profilePhoto.type });
-        profilePhotoUrl = await getDownloadURL(photoRef);
-      }
+      // Onboarding does not ask for a photo. The form above (see Onboarding) collects country,
+      // name, email and date of birth and nothing else, so an upload branch lived here for a
+      // `data.profilePhoto` that no caller has ever set — dead code that nonetheless read, to
+      // anyone auditing upload paths, as a second place avatars enter the bucket.
+      //
+      // The one real path is the profile-edit sheet in UpliftRetentionFeatures.jsx, and it now
+      // screens what it uploads. If onboarding ever regains a photo step it must go through the
+      // same prepare-and-screen route; see the note at the top of ProfilePhotoStep.jsx.
+      const profilePhotoUrl = profile?.profilePhotoUrl || "";
       await setDoc(userProfileRef(user.uid), {
         fullName: data.fullName, email: normalizedEmail, country: data.country, dob: data.dob,
         mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
@@ -3082,16 +3081,6 @@ export default function App() {
       setPendingProfileData(null); setPendingOnboardingDetails(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       setShowWelcomeMoment(false); // save failed — drop the welcome overlay, show the form + error
-      // Reworded now that storage.rules genuinely enforces a 2MB image-only limit: this is the
-      // error a real person hits with a large photo, and "Storage rules are blocking photo
-      // upload" told them about our configuration rather than about their file. The step's own
-      // check catches both cases first, so reaching this means something rarer — hence the
-      // suggestion to continue, since a profile photo is optional and losing the whole signup
-      // over one is the worst outcome available.
-      if (error?.code === "storage/unauthorized") {
-        setOnboardingError("That photo couldn't be uploaded — it may be too large (2MB max) or not an image. You can skip it and add one later.");
-        return;
-      }
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
       if (error?.code === "unavailable") { setOnboardingError("Firebase is temporarily unavailable."); return; }
       setOnboardingError(error?.code ? `Unable to save your profile (${error.code}).` : "Unable to save your profile right now.");

@@ -40,6 +40,12 @@ means nothing can be published at all.
 |---|---|
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | moderate-message, post-suggest, feeling-suggest, submit-greeting, notify-feeling, notify-like, send-reminder, rotate-champions, webhook |
 | `ANTHROPIC_API_KEY` | moderate-message, post-suggest, feeling-suggest, submit-greeting, goodnews |
+
+`ANTHROPIC_API_KEY` has one consumer that treats its absence as a hard stop rather than a
+degraded mode: the **image** branch of `moderate-message`, which screens profile photos. Text
+falls back to a word list when the key is missing; pixels have no equivalent, so the endpoint
+answers `checked: false` and the client refuses the upload. If avatars stop saving with "we
+couldn't check that photo just now", this key is the first thing to look at.
 | `CRON_SECRET` | send-reminder, rotate-champions |
 | `GNEWS_API_KEY` | goodnews |
 | `STRIPE_SECRET_KEY` · `STRIPE_WEBHOOK_SECRET` · `STRIPE_PRICE_ID` | create-checkout-session, create-portal-session, webhook |

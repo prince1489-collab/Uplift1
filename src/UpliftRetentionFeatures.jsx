@@ -19,6 +19,7 @@ import { startCheckout } from "./payments";
 import { StickerPicker, STICKERS } from "./StickerReactions";
 import { HEART, announceReaction, setMyReaction } from "./reactions";
 import { authedPost } from "./apiBase";
+import { prepareImage, PREPARED_TYPE } from "./imagePrep";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 import { syncPublicProfile, readPublicProfile } from "./publicProfile";
@@ -1375,8 +1376,12 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
   const [country, setCountry] = useState(profile?.country ?? "");
   const [mostDays, setMostDays] = useState(profile?.mostDays ?? "");
   const [anotherLife, setAnotherLife] = useState(profile?.anotherLife ?? "");
-  const [photoFile, setPhotoFile] = useState(null);
+  // The PREPARED blob — imagePrep's re-encoded JPEG, not the user's file. What gets screened is
+  // what gets uploaded, and there is deliberately nowhere in this component that holds the
+  // original bytes after the check.
+  const [photoBlob, setPhotoBlob] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(profile?.profilePhotoUrl ?? "");
+  const [checkingPhoto, setCheckingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef(null);
@@ -1392,8 +1397,12 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
   // the upload starts, is the entire value of checking here as well.
   const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
-  const handlePhotoChange = (e) => {
+  const handlePhotoChange = async (e) => {
     const file = e.target.files?.[0];
+    // Clear the input straight away so the SAME file can be picked again after a rejection —
+    // otherwise the value is unchanged, no change event fires, and the button looks broken to
+    // somebody who wants to retry after an outage.
+    e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setError("That file isn't an image. Please choose a photo.");
@@ -1404,21 +1413,55 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
       return;
     }
     setError("");
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setCheckingPhoto(true);
+    try {
+      // Re-encode FIRST. Everything after this point handles our JPEG, never the picked file:
+      // the EXIF (including the GPS coordinates a phone photo carries) is gone, the bytes are a
+      // couple of hundred kilobytes, and the picture below is the picture that was reviewed.
+      // See src/imagePrep.js.
+      const prepared = await prepareImage(file);
+      const verdict = await authedPost(currentUser, "/api/moderate-message", {
+        image: { base64: prepared.base64, mediaType: prepared.mediaType },
+        context: "avatar",
+      });
+      // No verdict is a refusal, not a pass. The image path has no word-list fallback, because
+      // there is no word list for pixels — see the header of api/moderate-message.js.
+      if (!verdict.checked || !verdict.ok) {
+        URL.revokeObjectURL(prepared.previewUrl);
+        setError(!verdict.checked
+          ? "We couldn't check that photo just now. Please try again in a moment."
+          : (verdict.reason || "That photo didn't pass our safety check — please choose another."));
+        return;
+      }
+      if (photoPreview.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+      setPhotoBlob(prepared.blob);
+      setPhotoPreview(prepared.previewUrl);
+    } catch (err) {
+      console.error("[profile] photo check failed:", err?.status ?? err?.message);
+      setError(err?.message === "decode_failed"
+        ? "We couldn't read that image. Please choose another."
+        : "We couldn't check that photo just now. Please try again in a moment.");
+    } finally {
+      setCheckingPhoto(false);
+    }
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !country || saving) return;
+    // Not while a photo is still being reviewed: saving mid-check would write the profile with
+    // the OLD avatar and silently drop the new one the user is watching a spinner for.
+    if (!name.trim() || !country || saving || checkingPhoto) return;
     setSaving(true);
     setError("");
     try {
       let profilePhotoUrl = profile?.profilePhotoUrl ?? "";
-      if (photoFile) {
+      if (photoBlob) {
         const storage = getStorage();
-        const ext = photoFile.name.split(".").pop()?.toLowerCase() || "jpg";
-        const photoRef = ref(storage, `profilePhotos/${currentUser.uid}/avatar.${ext}`);
-        await uploadBytes(photoRef, photoFile, { contentType: photoFile.type });
+        // A fixed name and a fixed type, both ours. The extension used to be taken from the end
+        // of the user's filename and pasted into the object path — the exact trick storage.rules
+        // calls out by name — and the contentType came from the file. Neither is user-supplied
+        // any more, because neither the name nor the bytes are.
+        const photoRef = ref(storage, `profilePhotos/${currentUser.uid}/avatar.jpg`);
+        await uploadBytes(photoRef, photoBlob, { contentType: PREPARED_TYPE });
         profilePhotoUrl = await getDownloadURL(photoRef);
       }
       const fields = {
@@ -1471,15 +1514,23 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
               }
               <button
                 onClick={() => fileRef.current?.click()}
-                className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-teal-600 flex items-center justify-center shadow-lg hover:bg-teal-700 transition-colors">
+                disabled={checkingPhoto}
+                className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-teal-600 flex items-center justify-center shadow-lg hover:bg-teal-700 transition-colors disabled:opacity-40">
                 <Camera size={14} className="text-white" />
               </button>
             </div>
             <button
               onClick={() => fileRef.current?.click()}
-              className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
-              Change photo
+              disabled={checkingPhoto}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors disabled:opacity-40">
+              {checkingPhoto ? "Checking your photo…" : "Change photo"}
             </button>
+            {/* Said plainly, once, where the choice is made. People are entitled to know a photo
+                they upload is looked at before it appears beside their name — and saying so here
+                is also what makes a rejection read as a rule rather than a fault. */}
+            <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+              Photos are checked automatically before they appear.
+            </p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
           </div>
 
@@ -1552,7 +1603,7 @@ function EditProfileSheet({ db, currentUser, profile, onClose, onSaved }) {
           {/* Save */}
           <button
             onClick={handleSave}
-            disabled={!name.trim() || !country || saving}
+            disabled={!name.trim() || !country || saving || checkingPhoto}
             className="w-full rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-40">
             {saving ? "Saving…" : "Save changes"}
           </button>

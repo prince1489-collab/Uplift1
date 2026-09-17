@@ -73,7 +73,12 @@ Not ephemeral — these are stored. See §2.1 on the moderation call.
 
 | Type | Collected | Required | Purpose | Notes |
 |---|---|---|---|---|
-| Photos | Yes | Optional | App functionality, Personalisation | Profile photo, stored as a base64 data URL on the profile (`ProfilePhotoStep.jsx:7`), mirrored to `publicProfiles` |
+| Photos | Yes | Optional | App functionality, Personalisation | Profile photo, uploaded to Cloud Storage at `profilePhotos/{uid}/avatar.jpg` with its URL on the profile and mirrored to `publicProfiles` |
+
+This row used to say the photo was held as a base64 data URL on the profile document, citing
+`ProfilePhotoStep.jsx`. That file was never rendered — onboarding has no photo step — and the
+real path has always been a Storage object. Worth stating, because the difference matters to
+the deletion answer below: removing the profile document does not remove the image.
 
 **App activity**
 
@@ -112,10 +117,16 @@ data" is not a position worth defending later.
 
 ### 2.1 Sharing — answer "No", and here is why
 
-Message text is sent to **Anthropic** for the kindness check (`api/moderate-message.js:106`)
-and for phrasing suggestions (`api/post-suggest.js:57`). Firebase, Vercel and Anthropic are all
+Message text is sent to **Anthropic** for the kindness check, for phrasing suggestions
+(`api/post-suggest.js:57`), and — since profile photos began being screened — **the profile photo
+itself** (the image branch in `api/moderate-message.js`). Firebase, Vercel and Anthropic are all
 **service providers processing on your behalf**, which under Play's definitions is *processing*,
 not *sharing with a third party*.
+
+Note on the photo specifically: the app re-encodes it client-side before it leaves the device
+(`src/imagePrep.js`), so what is transmitted — and what is stored — is a resized JPEG with no EXIF,
+meaning no camera metadata and no GPS coordinates. The answer to "shared" stays **No** for the
+reason above.
 
 Two things follow:
 1. Answer **No** to "shared" for every data type.

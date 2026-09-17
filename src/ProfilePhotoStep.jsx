@@ -1,4 +1,17 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+//
+// ── NOT CURRENTLY RENDERED ───────────────────────────────────────────────────────────────────
+// Onboarding (src/App.jsx) asks for country, name, email and date of birth, and no photo. This
+// step was imported there and never mounted, alongside an upload branch guarded on a field no
+// caller set — so on paper the app had two avatar upload paths and in fact it had one. Both the
+// import and that branch have been removed; this file is kept because the step itself is good
+// and a photo at signup is a reasonable thing to want back.
+//
+// IF IT COMES BACK, IT DOES NOT COME BACK AS IT IS. It currently hands its parent a data URL of
+// the user's ORIGINAL file — metadata, EXIF GPS and all — and nothing looks at the picture. The
+// live path (EditProfileSheet in UpliftRetentionFeatures.jsx) now runs every photo through
+// prepareImage() and then /api/moderate-message before it will hold it, and this must do the
+// same. scripts/check-avatar-screening.cjs will refuse the build if a new upload path skips it.
 
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
