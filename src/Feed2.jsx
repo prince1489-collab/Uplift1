@@ -17,7 +17,7 @@ import {
   doc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc,
   setDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
-import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search } from "lucide-react";
+import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile, searchProfiles } from "./publicProfile";
 import { writeFailure } from "./writeFailure";
@@ -421,16 +421,34 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
   const [idx, setIdx] = useState(0);
   const [open, setOpen] = useState(false); // actions revealed for the current message
+  // Set the first time somebody presses an arrow, and never cleared while the card is mounted.
+  // See the rotation effect below for why it is one-way.
+  const [manual, setManual] = useState(false);
 
   // Keep the index in range as the list changes.
   useEffect(() => { if (idx >= items.length) setIdx(0); }, [items.length, idx]);
 
-  // Auto-rotate — paused while the actions are open so people can act without it moving.
+  // Auto-rotate — paused while the actions are open so people can act without it moving, and
+  // stopped outright once somebody has taken the wheel.
+  //
+  // `manual` is deliberately one-way. Somebody who presses an arrow is reading, not watching, and
+  // a timer that pulls the card forward two seconds later is precisely what they pressed a button
+  // to escape — a timeout that "resumes after a while" is the same bug with a delay on it. It
+  // resets when the card unmounts, so leaving the tab and coming back starts the rotation again.
   useEffect(() => {
-    if (open || items.length <= 1) return;
+    if (manual || open || items.length <= 1) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(t);
-  }, [open, items.length]);
+  }, [manual, open, items.length]);
+
+  // Wraps, so back from the first is the last. Without that, the two arrows are dead ends at both
+  // ends of a list nobody can see the shape of.
+  const step = (d) => {
+    if (items.length <= 1) return;
+    setManual(true);
+    setOpen(false);
+    setIdx((i) => (i + d + items.length) % items.length);
+  };
 
   const like = (id) => {
     const nowLiked = !likes[id];
@@ -480,10 +498,34 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
             </span>
           )}
         </button>
-        <span className="seen-feed-meta text-[10px] font-semibold">
-          {items.length > 1
-            ? <span className="tabular-nums">{idx + 1}/{items.length}</span>
-            : items.length === 0 && pulse.count > 0 ? "today so far" : "from strangers"}
+        {/* The counter was a read-only position in a rotation nobody could steer: a message that
+            caught your eye on its way out was simply gone, and "12/30" said exactly how much of
+            the feed you could not reach. The arrows make the number mean something — it is now a
+            place in a list rather than a countdown.
+
+            They flank the counter rather than sitting on the card, because the card itself is
+            already a tap target (it opens the like/reply row) and a second gesture on the same
+            surface would fight it. This row is a sibling of that button, so no stopPropagation
+            is needed and none is implied.
+
+            Hidden entirely below two items, on the same condition the counter already uses —
+            one message with two dead arrows beside it is worse than no arrows. */}
+        <span className="seen-feed-meta flex items-center gap-0.5 text-[10px] font-semibold">
+          {items.length > 1 ? (
+            <>
+              <button type="button" onClick={() => step(-1)} aria-label="Previous message"
+                className="-my-1 flex h-6 w-5 items-center justify-center rounded-full opacity-60 hover:opacity-100 active:scale-90 transition-all">
+                <ChevronLeft size={13} />
+              </button>
+              <span className="tabular-nums">{idx + 1}/{items.length}</span>
+              <button type="button" onClick={() => step(1)} aria-label="Next message"
+                className="-my-1 flex h-6 w-5 items-center justify-center rounded-full opacity-60 hover:opacity-100 active:scale-90 transition-all">
+                <ChevronRight size={13} />
+              </button>
+            </>
+          ) : (
+            items.length === 0 && pulse.count > 0 ? "today so far" : "from strangers"
+          )}
         </span>
       </div>
 
@@ -1088,6 +1130,25 @@ export function FollowingPanel({ follows = [], messages = [], db, currentUser, b
 // that inconsistently, worst in WebKit. Opaque and unblurred is both cheaper and steadier.
 const TWO_FEEDS_KEY = "seen_two_feeds_intro_v1";
 
+// One row of the card below. The glyph sits in a fixed-width column so both feed names start at
+// the same x — the previous version was two ordinary sentences with the emphasis inline, so
+// nothing lined up and the block read as ragged prose rather than as two things being told apart.
+//
+// Module scope, not nested inside TwoFeedsIntro: a component declared during render is a new type
+// on every render, which remounts its subtree and is what react/no-unstable-nested-components is
+// there to catch.
+function TwoFeedsRow({ arrow, name, nameClass, what }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span aria-hidden className="w-4 shrink-0 pt-px text-center text-[13px] font-bold text-slate-400">{arrow}</span>
+      <div className="min-w-0">
+        <p className={`text-[12px] font-bold leading-snug ${nameClass}`}>{name}</p>
+        <p className="text-[12px] leading-snug text-slate-600">{what}</p>
+      </div>
+    </div>
+  );
+}
+
 // Two feeds sit on this screen and nothing ever said they were different things.
 //
 // Every explanation the app had was REACTIVE — it appeared only once someone was already
@@ -1100,6 +1161,24 @@ const TWO_FEEDS_KEY = "seen_two_feeds_intro_v1";
 // This sits BETWEEN them, where the difference is physically on the screen and the arrows point
 // at the real thing. Not a modal: the retired guided tour is proof enough that people dismiss an
 // overlay standing between them and the app, and learn nothing from it.
+//
+// ── WHY IT LOOKED LIKE CLUTTER, WHICH WAS A COLOUR BUG AND NOT A LAYOUT ONE ───────────────────
+// It was written as `bg-teal-50/60 border-teal-100 text-teal-700`, which reads as "a quiet mint
+// note". It is not. index.html redefines Tailwind's palette for the sunset rebrand, so in this
+// app `teal-50` is #FFF1F0 and `teal-700` is #A82E2C — and a stranger's message bubble is
+// `bg-teal-50 border-teal-200`. The explainer was rendering in the EXACT fill of the messages it
+// was explaining, wedged between two of them. Nothing about the code said so; you have to know
+// the palette is remapped, and the class names actively tell you it is not.
+//
+// So the card now takes no accent fill at all. White, a slate hairline, a radius, and its own
+// margins instead of the full-bleed `-mx-3.5 border-y` band it used to be — because a square
+// edge-to-edge strip between two columns of rounded bubbles is the other half of "untidy".
+//
+// The two feed names carry `seen-feed-title--world` and `seen-feed-title--focus`, which are the
+// SAME classes the two real headers use (index.css). That is the whole trick: the words in the
+// explanation are the colour of the bars they are pointing at, so the mapping is visible rather
+// than described, and dark mode needs nothing added here because those classes already carry
+// their own [data-dark-shell] values.
 export function TwoFeedsIntro({ onFindPeople }) {
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(TWO_FEEDS_KEY) === "1"; } catch { return false; }
@@ -1112,24 +1191,24 @@ export function TwoFeedsIntro({ onFindPeople }) {
   };
 
   return (
-    <div className="-mx-3.5 mb-2 border-y border-teal-100 bg-teal-50/60 px-3.5 py-2.5">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700">Two feeds, on purpose</p>
-          <p className="text-[12px] leading-snug text-slate-600">
-            <span className="font-semibold text-slate-700">Above</span> — kind words from strangers, anywhere in the world.
-          </p>
-          <p className="text-[12px] leading-snug text-slate-600">
-            <span className="font-semibold text-slate-700">Below</span> — only the people you choose to follow.
-          </p>
-        </div>
+    <div className="mb-2.5 mt-1 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Two feeds, on purpose</p>
         <button onClick={close} aria-label="Got it" title="Got it"
-          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-teal-600/60 hover:bg-teal-100/70 hover:text-teal-700 transition-colors">
-          <X size={14} />
+          className="-mr-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+          <X size={13} />
         </button>
       </div>
+
+      <div className="space-y-2.5">
+        <TwoFeedsRow arrow="↑" name="Worldwide Feed (above)" nameClass="seen-feed-title--world"
+          what="Kind words from strangers, anywhere in the world." />
+        <TwoFeedsRow arrow="↓" name="Focused Feed (below)" nameClass="seen-feed-title--focus"
+          what="Only the people you choose to follow." />
+      </div>
+
       <button onClick={() => { close(); onFindPeople?.(); }}
-        className="mt-2 flex items-center gap-1.5 rounded-full border border-teal-300 bg-white px-3 py-1 text-[11px] font-bold text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-100 active:scale-[0.98] transition-all">
         <Search size={11} />
         Find people you know
       </button>

@@ -38,14 +38,35 @@ import { doc, getDoc, getDocFromCache } from "firebase/firestore";
 // portrait GIF rendered 332px tall in a 655px feed viewport — 51% of everything visible — and the
 // words it belonged to were below the fold. A cap in pixels rather than a ratio is the version
 // that can be promised: whatever shape somebody picks, the sentence underneath is on screen with
-// it. Roughly a quarter of the feed.
-const MAX_H = 180;
-// The width the bubble gives a GIF on a phone, used only to turn a shape into a height.
+// it.
+//
+// 200 rather than the 180 this started at, because the cap now means something different. It used
+// to CROP to that height, so 180 was the most of a GIF anyone would ever see; it now SCALES to it,
+// so a wide GIF is shorter than the cap and only a tall one reaches it. The average post got
+// shorter with the change, which is what paid for the extra twenty pixels.
+const MAX_H = 200;
+// The width the bubble gives a GIF on a phone. With the fit below it is one of the two walls the
+// picture is scaled to sit inside, rather than a number used only to derive a height.
 const COL_W = 360;
-// Assumed shape before the real dimensions arrive. It barely matters: at a 180px cap a GIF has to
-// be WIDER than 2:1 to render shorter than the cap, and almost none are — so the reserved box and
-// the final box are the same height for nearly every GIF, and nothing moves when it lands.
+// Assumed shape before the real dimensions arrive. It barely matters: the reserved box and the
+// final box are the same height for any GIF at least as tall as 200/360, which is nearly all of
+// them — so nothing moves when the picture lands.
 const PLACEHOLDER_RATIO = 4 / 3;
+
+// Fit the WHOLE frame inside the column, rather than filling the column and cutting off what does
+// not fit.
+//
+// This is the difference the last round got wrong. A fixed height plus object-cover means a GIF
+// taller than the cap loses its top and bottom — which on a picture carrying a written sign is
+// not a crop, it is the message. Scaling both dimensions keeps every pixel: a wide GIF (nearly
+// all of them) still fills the full width exactly as before, and a tall one becomes narrower
+// instead of becoming partial.
+function fit(ratio) {
+  const width = Math.min(COL_W, Math.round(MAX_H / ratio));
+  // Clamped as well as derived: rounding the width up can put the height a pixel over the cap on
+  // a very tall GIF, and the cap is a promise about what is left on screen underneath.
+  return { width, height: Math.min(MAX_H, Math.round(width * ratio)) };
+}
 
 export default function MessageMedia({ db, messageId }) {
   // Three states, not two. `null` meant both "still loading" and "you cannot see this", which is
@@ -109,7 +130,7 @@ export default function MessageMedia({ db, messageId }) {
   if (state === "loading") {
     return (
       <div className="border-b border-black/5 bg-slate-100"
-        style={{ height: Math.min(MAX_H, Math.round(COL_W * PLACEHOLDER_RATIO)) }} aria-hidden />
+        style={{ height: fit(PLACEHOLDER_RATIO).height }} aria-hidden />
     );
   }
 
@@ -117,11 +138,17 @@ export default function MessageMedia({ db, messageId }) {
     // The hairline is what stops the two halves reading as a picture with a caption welded under
     // it: black/5 is the same divider the proverb block inside the bubble already uses, so a GIF
     // post and a proverb post are divided the same way.
-    // Height, not aspect-ratio. The box is as tall as the GIF wants up to the cap, and object-cover
-    // crops anything taller — so a portrait GIF becomes a wide strip of itself rather than half
-    // the screen, and the message under it is always in view.
-    <div className="border-b border-black/5 bg-slate-100 overflow-hidden"
-      style={{ height: Math.min(MAX_H, Math.round(COL_W * natural)) }}>
+    // Height, not aspect-ratio, and the height is whatever fit() says the WHOLE picture needs at
+    // this shape — so the box is as tall as the GIF wants up to the cap, the message under it is
+    // always in view, and nothing is ever cut off to get there.
+    <div className="border-b border-black/5 overflow-hidden"
+      // Full width, not the fitted width, so the picture still reaches the bubble's edges and
+      // clips to its top radius — the thing that makes a GIF and its words read as one post.
+      // A tall GIF is therefore centred with a little of the bubble showing either side, which
+      // is why there is no background colour here any more: the letterboxing is the bubble's own
+      // fill rather than a grey strip laid over it. The loading box above keeps its grey, because
+      // that one has to be visible.
+      style={{ height: fit(natural).height }}>
       <img
         src={media.url}
         // Klipy's own title, stored with the message so the alt text survives without
@@ -130,7 +157,10 @@ export default function MessageMedia({ db, messageId }) {
         // NOT lazy. This sits at the top of a post in a feed somebody has just opened, so it is
         // almost always already on screen — deferring it bought nothing and cost the wait the
         // recording shows.
-        className="h-full w-full object-cover"
+        //
+        // contain, not cover: cover is what cropped the sign off the bottom of a GIF somebody
+        // chose BECAUSE of what it said.
+        className="h-full w-full object-contain"
       />
     </div>
   );
