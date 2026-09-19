@@ -274,7 +274,20 @@ async function categoriseWithClaude(stories) {
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 1024,
+    // ── THIS CEILING NEVER FIT, AND NOBODY KNEW ────────────────────────────────────────────
+    // The caller sends up to 120 stories and asks for one JSON object back per story. An entry
+    // is `{"i":103,"c":"weirdWonderful"},` — about 31 characters, call it 9 tokens. A hundred
+    // and twenty of those is ~1,060 tokens, against a ceiling of 1,024. It did not *sometimes*
+    // overflow; it could never fit.
+    //
+    // The failure was invisible because it looked like a handled error. The array came back
+    // truncated, the `\[[\s\S]*\]` match found no closing bracket, this threw "Claude returned
+    // no JSON array", and the caller caught it and fell back to keyword matching — which logs a
+    // line nobody reads and quietly drops every story that matches none of five regexes.
+    //
+    // That is what made the daily card repeat: a small pool, a deterministic pick, and no memory
+    // of yesterday. Same root cause as the summariser ceiling, found the same week.
+    max_tokens: 4096,
     messages: [{
       role: "user",
       content: `You are categorising news stories for an uplifting news app. Assign each story to exactly one category.
@@ -295,10 +308,17 @@ ${list}`,
     }],
   });
 
+  // Say which failure this is. "No JSON array" was the symptom of a truncated reply for as long
+  // as this has existed, and the message sent everyone looking at the parser instead of the cap.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(`categoriser hit the token ceiling on ${stories.length} stories`);
+  }
   const text = response.content[0]?.text || "";
   const raw = text.match(/\[[\s\S]*\]/)?.[0];
   if (!raw) throw new Error("Claude returned no JSON array");
-  return JSON.parse(raw); // [{ i, c }]
+  const parsed = JSON.parse(raw); // [{ i, c }]
+  console.log(`[goodnews] categorised ${parsed.length} of ${stories.length} stories`);
+  return parsed;
 }
 
 // Keyword fallback when Claude is unavailable
@@ -327,14 +347,30 @@ function keywordCategorise(story) {
 // Curated first, always. A major-outlet story is used only when no curated feed produced
 // anything that day — so on a normal day the majors are a fallback rather than the source, which
 // is the practical half of keeping them at all.
-function pickStoryOfTheDay(result) {
+//
+// ── AND IT MUST NOT BE THE ONE ALREADY ON THE CARD ───────────────────────────────────────────
+// This took the FIRST curated story every day, from feeds in a fixed order, with no memory of
+// what went out yesterday. A story that sits at the top of a slow-moving curated feed for a week
+// is therefore the story of the day for a week. That is exactly what happened: the same fox
+// rescue published on three consecutive days, each time with a freshly written summary, so the
+// card refreshed and looked frozen.
+//
+// `recent` is the last fortnight of published links. Skipping them is the whole fix — the pick
+// stays deterministic, which keeps "the same story for everybody" true, but it can no longer be
+// the same story as yesterday.
+function pickStoryOfTheDay(result, recent = new Set()) {
   const ordered = [];
   for (const key of CATEGORY_KEYS) {
     for (const st of result[key]?.stories ?? []) ordered.push({ ...st, category: key });
   }
-  const live = ordered.filter((st) => st.link && st.title && !isBlocked(st));
+  const live = ordered.filter((st) => st.link && st.title && !isBlocked(st) && !recent.has(st.link));
   return live.find((st) => st.tier === "curated") || live.find((st) => st.tier === "major") || null;
 }
+
+// How many recently-published links to remember. A fortnight is long enough that a slow feed
+// cannot cycle back round within it, and short enough that a genuinely good story can return
+// later in the year.
+const STORY_HISTORY = 14;
 
 // The ~200 words the owner asked for. The endpoint previously carried an RSS blurb cut to 220
 // CHARACTERS, which is a different thing entirely and reads like a teaser.
@@ -566,15 +602,40 @@ export default async function handler(req, res) {
       && req.headers?.authorization === `Bearer ${process.env.CRON_SECRET}`;
     let stored = null;
     if (isCron) {
-      const pick = pickStoryOfTheDay(result);
+      // Firestore is opened BEFORE the pick now, not inside the write, because the pick needs to
+      // know what has already been published. A failure to read the history is not a reason to
+      // skip the day — an empty set just means the old behaviour, which published something.
+      let db = null;
+      let recent = new Set();
+      try {
+        const { cert, getApps, initializeApp } = await import("firebase-admin/app");
+        const { getFirestore } = await import("firebase-admin/firestore");
+        if (!getApps().length) {
+          initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) });
+        }
+        db = getFirestore();
+        const [hist, today] = await Promise.all([
+          db.collection("meta").doc("goodNewsHistory").get(),
+          db.collection("meta").doc("goodNewsToday").get(),
+        ]);
+        const links = hist.exists ? hist.data()?.links : null;
+        if (Array.isArray(links)) recent = new Set(links);
+        // The card's OWN link goes in whatever the history says. Two reasons, and both are real:
+        // the history does not exist yet on the first run after this change — so without it the
+        // very story that caused this would be free to be picked again tomorrow — and if the
+        // history write ever fails, the thing on screen is still the one thing we can be certain
+        // has been published. One extra read to make "never the same as what is up right now" a
+        // property rather than a hope.
+        const onCard = today.exists ? today.data()?.link : null;
+        if (onCard) recent.add(onCard);
+      } catch (err) {
+        console.error("[goodnews] could not read the story history:", err.message);
+      }
+
+      const pick = pickStoryOfTheDay(result, recent);
       const summary = pick ? await summariseStory(pick) : null;
-      if (pick && summary) {
+      if (pick && summary && db) {
         try {
-          const { cert, getApps, initializeApp } = await import("firebase-admin/app");
-          const { getFirestore } = await import("firebase-admin/firestore");
-          if (!getApps().length) {
-            initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) });
-          }
           stored = {
             title: pick.title,
             summary,
@@ -587,7 +648,17 @@ export default async function handler(req, res) {
             image: pick.image || null,
             publishedAt: Date.now(),
           };
-          await getFirestore().collection("meta").doc("goodNewsToday").set(stored);
+          await db.collection("meta").doc("goodNewsToday").set(stored);
+          // Remember it, so tomorrow cannot pick it again. Written AFTER the card, and in its own
+          // try, because the order of the two failures matters: a card with no history entry
+          // repeats once, which is the bug we already had. A history entry with no card would
+          // burn a good story that nobody ever saw.
+          try {
+            await db.collection("meta").doc("goodNewsHistory")
+              .set({ links: [pick.link, ...[...recent]].slice(0, STORY_HISTORY), at: Date.now() });
+          } catch (err) {
+            console.error("[goodnews] could not record the story history:", err.message);
+          }
           // Say so. A successful run used to log NOTHING, which meant "no goodnews lines in the
           // log" was ambiguous between "it worked" and "it never ran" — and during a two-day
           // outage that ambiguity was the difference between a diagnosis and a guess. The word
@@ -606,7 +677,7 @@ export default async function handler(req, res) {
         // this comment was written after: failing closed is right, but a feature that fails
         // closed SILENTLY looks identical to one that is working, and this one went two days
         // before anybody noticed. An error line at least puts it in the view people check.
-        console.error(`[goodnews] nothing to publish today (story=${pick ? "found" : "none"}, summary=${summary ? "ok" : "none"}) — leaving the existing card alone`);
+        console.error(`[goodnews] nothing to publish today (story=${pick ? "found" : "none"}, summary=${summary ? "ok" : "none"}, db=${db ? "ok" : "unavailable"}) — leaving the existing card alone`);
       }
     }
 
