@@ -342,16 +342,23 @@ function pickStoryOfTheDay(result) {
 // Returns null rather than a half-summary if anything goes wrong, and the caller then publishes
 // nothing. A day with no card is unremarkable; a day with a mangled one is the only version of
 // this feature anybody would remember.
-async function summariseStory(story) {
-  if (!ANTHROPIC_KEY) return null;
-  try {
-    const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 600,
-      messages: [{
-        role: "user",
-        content: `Write about 200 words on this news story for a kindness and wellbeing app used by people aged 13 and over.
+//
+// ── THE CEILING WAS NOT GENEROUS, AND THAT COST TWO DAYS OF CARDS ────────────────────────────
+// This ran at max_tokens: 600 with a comment claiming that was "roughly double what is needed"
+// for 200 words. Two hundred words IS about 270 tokens, so the arithmetic was right and the
+// premise was wrong: the model was asked for "ABOUT 200 words" and then given six formatting
+// rules, and what comes back is routinely 350-450 words — 470 to 600 tokens, right on the line.
+//
+// While the over-run was simply truncated it was invisible, because the card clipped the text
+// anyway. The moment a guard turned "truncated" into "publish nothing", the daily story stopped
+// appearing and stayed stopped, because this endpoint fails closed by design.
+//
+// So the fix is not the guard, which is correct. It is three things the guard exposed: a ceiling
+// that could actually be reached, a brief with no upper bound in it, and no second chance.
+const SUMMARY_MAX_TOKENS = 1200; // ~4x a 200-word answer: a backstop, not a budget
+
+function summaryPrompt(story, extra = "") {
+  return `Write 150 to 220 words on this news story for a kindness and wellbeing app used by people aged 13 and over.
 
 Title: ${story.title}
 Summary: ${story.description || "(none)"}
@@ -365,22 +372,45 @@ Rules:
 - No preamble. Start with the story.
 - Plain prose only. No markdown of any kind: no headings, no #, no bullet points, no bold,
   no italics. Paragraphs separated by a blank line, nothing else.
-- No title or headline of your own. The app shows the story's own headline above your text.`,
-      }],
+- No title or headline of your own. The app shows the story's own headline above your text.
+- Stop when the story is told. Do not pad to reach a length.${extra}`;
+}
+
+async function summariseStory(story) {
+  if (!ANTHROPIC_KEY) return null;
+  try {
+    const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+
+    const ask = (extra) => client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: SUMMARY_MAX_TOKENS,
+      messages: [{ role: "user", content: summaryPrompt(story, extra) }],
     });
+
+    let response = await ask("");
+
     // A summary that ran into the ceiling is a half-summary, and this function's whole contract
-    // is not to return one. 600 tokens against a 200-word brief is roughly double what is needed,
-    // so this should never fire — but it was not checked, and the failure it would produce is a
-    // story that stops mid-sentence, which is indistinguishable from a rendering bug. It was
-    // worth a day of tracing the difference once; it is not worth it twice.
+    // is not to return one. With the ceiling at 1200 this should now be unreachable — but an
+    // unreachable branch that silently costs a whole day of cards is exactly what was here
+    // before, so it gets a second chance rather than a shrug. One more call costs a fraction of
+    // a penny; the alternative costs everybody the card.
     if (response.stop_reason === "max_tokens") {
-      console.error("[goodnews] summary hit the token ceiling — publishing nothing today");
-      return null;
+      console.error("[goodnews] summary hit the token ceiling — retrying once, shorter");
+      response = await ask("\n- IMPORTANT: keep it under 200 words.");
+      if (response.stop_reason === "max_tokens") {
+        console.error("[goodnews] retry hit the ceiling too — publishing nothing today");
+        return null;
+      }
     }
+
     const text = (response.content[0]?.text || "").trim();
     // The model gets a way out, and it is honoured. A categoriser forced to always produce
     // something will always produce something, including on the day it should have declined.
-    if (!text || /^UNSUITABLE/i.test(text)) return null;
+    if (!text) { console.error("[goodnews] summary came back empty"); return null; }
+    if (/^UNSUITABLE/i.test(text)) {
+      console.error("[goodnews] model declined the story as unsuitable");
+      return null;
+    }
     return text;
   } catch (err) {
     console.error("[goodnews] summary failed:", err.message);
@@ -558,6 +588,11 @@ export default async function handler(req, res) {
             publishedAt: Date.now(),
           };
           await getFirestore().collection("meta").doc("goodNewsToday").set(stored);
+          // Say so. A successful run used to log NOTHING, which meant "no goodnews lines in the
+          // log" was ambiguous between "it worked" and "it never ran" — and during a two-day
+          // outage that ambiguity was the difference between a diagnosis and a guess. The word
+          // count is here because the failure this feature actually had was about length.
+          console.log(`[goodnews] published "${pick.title}" (${summary.split(/\s+/).length} words)`);
         } catch (err) {
           console.error("[goodnews] store failed:", err.message);
           stored = null;
@@ -566,7 +601,12 @@ export default async function handler(req, res) {
         // FAIL CLOSED. Nothing suitable today means yesterday's card stays until it is replaced,
         // and the client hides anything older than 48 hours. Publishing the least-bad remaining
         // story on a thin day is exactly how this feature would earn its bad reputation.
-        console.log("[goodnews] nothing suitable today — leaving the existing card alone");
+        //
+        // console.error, not console.log, and the distinction is the whole lesson of the outage
+        // this comment was written after: failing closed is right, but a feature that fails
+        // closed SILENTLY looks identical to one that is working, and this one went two days
+        // before anybody noticed. An error line at least puts it in the view people check.
+        console.error(`[goodnews] nothing to publish today (story=${pick ? "found" : "none"}, summary=${summary ? "ok" : "none"}) — leaving the existing card alone`);
       }
     }
 
