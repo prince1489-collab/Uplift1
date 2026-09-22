@@ -16,6 +16,9 @@ import { playLevelUp, playGrowthSwell } from "./sounds";
 import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
 import { claimStageUp } from "./treeMilestone";
+import { CERTIFICATES, earnedCount, claimCertificate } from "./certificates";
+import { drawCertificate } from "./certificateImage";
+import { useBackLayer } from "./backStack";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -118,6 +121,156 @@ function MetricCard({ card, onClose }) {
   );
 }
 
+// ── Certificates ─────────────────────────────────────────────────────────────
+// Seven of them, earned on days somebody showed up. The row is a ledger, not a scoreboard: the
+// ones behind you are in colour, the next one names its number so the target is a fact rather
+// than a mystery, and the rest stay quiet. Nothing here says how far BEHIND anyone is.
+function CertificatesRow({ activeDays, newCert, onOpen }) {
+  const earned = earnedCount(activeDays);
+  const next = CERTIFICATES[earned];
+  return (
+    <div style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "500ms" }}>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <p className="flex-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Your certificates</p>
+        {next && (
+          <span className="text-[10px] font-semibold text-slate-300">
+            {next.days - activeDays} more {next.days - activeDays === 1 ? "day" : "days"}
+          </span>
+        )}
+      </div>
+      {/* The announcement sits IN FLOW above the row rather than floating over it — the same
+          lesson MilestoneEffects carries in its own header, learned on the tree card. A button,
+          not a toast, because the useful thing to do with a new certificate is open it. */}
+      {newCert && (
+        <button onClick={() => onOpen(newCert)}
+          className="mb-2 flex w-full items-center gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-left active:scale-[0.99] transition-transform"
+          style={{ animation: "seenFadeUp 420ms ease both" }}>
+          <span className="text-lg leading-none" aria-hidden>{newCert.emoji}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-700">New certificate</span>
+            <span className="block text-[13px] font-bold leading-snug text-slate-800">{newCert.name} of kindness</span>
+          </span>
+          <span className="flex-shrink-0 text-[11px] font-semibold text-amber-700">Open →</span>
+        </button>
+      )}
+      {/* Horizontal, because seven of anything in a column would own the screen. overflow-x with
+          the scrollbar hidden is the same treatment the app gives every other side-scrolling row. */}
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "none" }}>
+        {CERTIFICATES.map((c, i) => {
+          const got = i < earned;
+          const isNext = i === earned;
+          return (
+            <button
+              key={c.days}
+              onClick={got ? () => onOpen(c) : undefined}
+              disabled={!got}
+              aria-label={got ? `Open your ${c.name} certificate` : `${c.name} — ${c.days} days, not yet earned`}
+              className={`flex w-[92px] flex-shrink-0 flex-col items-center gap-1 rounded-2xl border px-2 py-2.5 transition-all ${
+                got
+                  ? "border-emerald-200 bg-white active:scale-[0.97]"
+                  : isNext
+                    ? "border-dashed border-slate-300 bg-white/60"
+                    : "border-slate-100 bg-slate-50"
+              }`}>
+              <span className="text-xl leading-none" style={{ opacity: got ? 1 : 0.35 }} aria-hidden>{c.emoji}</span>
+              <span className={`text-[11px] font-bold leading-tight ${got ? "text-slate-700" : "text-slate-400"}`}>{c.name}</span>
+              <span className="text-[9px] font-semibold text-slate-400">{got ? "earned" : `${c.days} days`}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// The sheet. Draws the real PNG on open and shares that exact file — what you look at is what
+// gets sent, rather than a second rendering nobody checked.
+function CertificateSheet({ cert, name, since, onClose }) {
+  useBackLayer(true, onClose);
+  const [url, setUrl] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const blobRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    let made = "";
+    drawCertificate({ name, days: cert.days, emoji: cert.emoji, since })
+      .then((blob) => {
+        if (!alive) return;
+        blobRef.current = blob;
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      })
+      .catch(() => { if (alive) setNote("Couldn't draw your certificate just now."); });
+    return () => { alive = false; if (made) URL.revokeObjectURL(made); };
+  }, [cert, name, since]);
+
+  const share = async () => {
+    const blob = blobRef.current;
+    if (!blob || busy) return;
+    setBusy(true);
+    setNote("");
+    const file = new File([blob], `seen-${cert.days}-days.png`, { type: "image/png" });
+    try {
+      // canShare BEFORE share: a browser that has navigator.share but refuses files throws only
+      // once the sheet is already up, which reads as the share failing rather than never starting.
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "My Seen certificate" });
+        setBusy(false);
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      setNote("Saved to your downloads.");
+    } catch (err) {
+      // Dismissing the share sheet is not a failure and must not look like one.
+      if (err?.name !== "AbortError") {
+        // Said out loud, unlike the bare `catch {}` on the profile-card share, where a failure
+        // is indistinguishable from a button that does nothing.
+        console.error("[certificate] share failed:", err?.message);
+        setNote("Couldn't share that — try saving it instead.");
+      }
+    }
+    setBusy(false);
+  };
+
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[245] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up flex max-h-[92dvh] flex-col rounded-t-3xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
+        <div className="flex flex-shrink-0 items-center justify-between px-5 pb-3">
+          <h2 className="text-lg font-bold text-slate-800">{cert.emoji} {cert.name}</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5">
+          {url ? (
+            <img src={url} alt={`Certificate for ${cert.days} days of kindness`}
+              className="mx-auto w-full max-w-[320px] rounded-2xl border border-slate-200 shadow-sm" />
+          ) : (
+            <div className="mx-auto aspect-[4/5] w-full max-w-[320px] rounded-2xl bg-slate-100" />
+          )}
+          <p className="mt-3 text-center text-[12px] leading-relaxed text-slate-500">{cert.blurb}</p>
+        </div>
+
+        <div className="flex-shrink-0 border-t border-slate-100 px-5 pb-6 pt-3">
+          {note && <p className="mb-2 text-center text-[12px] font-semibold text-slate-500">{note}</p>}
+          <button onClick={share} disabled={!url || busy}
+            className="w-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40">
+            {busy ? "Sharing…" : "Share"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── milestone celebration ────────────────────────────────────────────────────
 // Effects only: the warm glow and the petals falling past the tree. The WORDS are not in here.
 //
@@ -179,6 +332,8 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   // animation could never actually play here. Opening the tab is the moment to show it.
   const { watering, startPour } = useWatering(true);
   const [openCard, setOpenCard] = useState(null); // which metric card is open
+  const [openCert, setOpenCert] = useState(null); // which certificate is being viewed
+  const [newCert, setNewCert] = useState(null);   // one just earned, announced above the row
   const hytTried = useMemo(() => hytCompletedCount(), []);
 
   // Live points → grow + water the hero tree (useWatering owns the pour timing + sound).
@@ -295,6 +450,21 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const pct = next ? Math.max(0, Math.min(100, Math.round(((balance - stage.min) / (next.min - stage.min)) * 100))) : 100;
   const first = (profile?.fullName || "").trim().split(" ")[0] || "you";
 
+  // Days somebody showed up — NOT the streak. Written by recordGreetingDay; see the long note
+  // there and in certificates.js for why a certificate must not be destroyed by a missed day.
+  const activeDays = Number(profile?.activeDays ?? 0);
+  // firstActiveDate is a YYYY-MM-DD key, stamped only from the moment that field shipped — so an
+  // older account has none and the certificate omits the line rather than inventing a date.
+  // Parsed at UTC noon so the displayed day cannot slide backwards in a western timezone.
+  const since = useMemo(() => {
+    const key = profile?.firstActiveDate;
+    if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+    const d = new Date(`${key}T12:00:00Z`);
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  }, [profile?.firstActiveDate]);
+
   // What, if anything, is still open today — read from the same per-day records the two habit
   // tabs already keep, so this needs no new state and cannot disagree with them.
   //
@@ -358,6 +528,20 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   // when you are anywhere else in the app. Whoever asks first claims it; App skips while the Grow
   // tab is open precisely so that this one wins here, where the tree is on screen and the full
   // petals-and-name treatment is worth waiting for.
+  // A certificate crossing, claimed once. Same latch shape as the tree stage below — and the same
+  // first-run rule, which matters more here: every existing account gets an activeDays count the
+  // moment the field appears, so without it the first launch after this update would announce a
+  // fistful of certificates nobody earned this morning.
+  useEffect(() => {
+    const won = claimCertificate(activeDays);
+    if (!won) return;
+    const t = setTimeout(() => {
+      setNewCert(won);
+      try { playLevelUp(); } catch { /* ignore */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [activeDays]);
+
   const [milestone, setMilestone] = useState(null);
   useEffect(() => {
     if (!claimStageUp(stageIdx)) return;
@@ -454,6 +638,9 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           A gentle mirror of your journey — never a score.
         </p>
 
+        <CertificatesRow activeDays={activeDays} newCert={newCert}
+          onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
+
         {/* ── Where this ends up ──────────────────────────────────────────────────────────────
             This sentence lived at the bottom of the stage sheet, in 10px grey, behind a
             seventeen-item list — the least visible thing in the app, and the most motivating. A
@@ -490,6 +677,10 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       </div>
 
       {openCard && <MetricCard card={METRIC_CARDS[openCard]} onClose={() => setOpenCard(null)} />}
+      {openCert && (
+        <CertificateSheet cert={openCert} name={profile?.fullName || ""} since={since}
+          onClose={() => setOpenCert(null)} />
+      )}
     </main>
   );
 }

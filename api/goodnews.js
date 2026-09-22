@@ -55,6 +55,12 @@ const CURATED_FEEDS = [
   "https://www.odditycentral.com/feed",
   "https://twistedsifter.com/feed/",
   "https://www.atlasobscura.com/feeds/latest",
+  // Added after a week in which every single card came from one outlet. More sources is not the
+  // fix for that (see interleaveByHost below) but it does give the "not the same source as
+  // yesterday" rule somewhere to go on a thin day.
+  "https://reasonstobecheerful.world/feed/",
+  "https://www.optimistdaily.com/feed/",
+  "https://www.thisiscolossal.com/feed/",
 ];
 
 // General outlets. Their uplifting stories are real and worth having; everything around them is
@@ -71,7 +77,33 @@ const MAJOR_FEEDS = [
   "https://rss.dw.com/rdf/rss-en-all",                   // Deutsche Welle (DW)
 ];
 
-const GLOBAL_FEEDS = [...CURATED_FEEDS, ...MAJOR_FEEDS];
+// ── ONE OUTLET WAS WINNING EVERY DAY, STRUCTURALLY ───────────────────────────────────────────
+// Four of the curated feeds are goodnewsnetwork.org (the main one plus heroes, kindness and
+// animals), and they were the first four in the list. Batches come back in fetch order, the
+// deduplicator preserves that order, the categoriser pushes into its buckets in that order, and
+// pickStoryOfTheDay then takes the FIRST curated story it finds. So the front of the queue was
+// four-fifths one publisher, and the card was that publisher's newest article almost every day.
+//
+// Round-robin by host fixes it where it starts, rather than compensating for it at the end:
+// one feed from each domain, then a second from each, and so on. Same feeds, same stories,
+// no single outlet able to own the head of the list.
+function interleaveByHost(urls) {
+  const byHost = new Map();
+  for (const url of urls) {
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep the raw string */ }
+    if (!byHost.has(host)) byHost.set(host, []);
+    byHost.get(host).push(url);
+  }
+  const queues = [...byHost.values()];
+  const out = [];
+  for (let i = 0; out.length < urls.length; i++) {
+    for (const q of queues) if (q[i]) out.push(q[i]);
+  }
+  return out;
+}
+
+const GLOBAL_FEEDS = [...interleaveByHost(CURATED_FEEDS), ...MAJOR_FEEDS];
 const CURATED = new Set(CURATED_FEEDS);
 
 // ── The blocklist ────────────────────────────────────────────────────────────
@@ -358,19 +390,40 @@ function keywordCategorise(story) {
 // `recent` is the last fortnight of published links. Skipping them is the whole fix — the pick
 // stays deterministic, which keeps "the same story for everybody" true, but it can no longer be
 // the same story as yesterday.
-function pickStoryOfTheDay(result, recent = new Set()) {
+function pickStoryOfTheDay(result, recent = new Set(), recentSources = new Set()) {
   const ordered = [];
   for (const key of CATEGORY_KEYS) {
     for (const st of result[key]?.stories ?? []) ordered.push({ ...st, category: key });
   }
   const live = ordered.filter((st) => st.link && st.title && !isBlocked(st) && !recent.has(st.link));
-  return live.find((st) => st.tier === "curated") || live.find((st) => st.tier === "major") || null;
+  const best = (pool) => pool.find((st) => st.tier === "curated") || pool.find((st) => st.tier === "major") || null;
+
+  // Prefer an outlet we have not run in the last few days. Interleaving the feeds stops one
+  // publisher owning the front of the queue; this stops it owning the WEEK, which is the part a
+  // reader actually notices.
+  //
+  // A preference, not a rule. If every remaining story is from a recent source, take the plain
+  // pick rather than publish nothing: a card from the same outlet twice in a week is a mild
+  // sameness, and no card at all is the feature looking broken again.
+  const fresh = live.filter((st) => !recentSources.has(sourceKey(st)));
+  return best(fresh) || best(live);
+}
+
+// What counts as "the same outlet". The registrable host, so goodnewsnetwork.org/feed and
+// goodnewsnetwork.org/category/kindness/feed are correctly one source rather than two.
+function sourceKey(story) {
+  try { return new URL(story.link).hostname.replace(/^www\./, ""); }
+  catch { return String(story.source || "").toLowerCase(); }
 }
 
 // How many recently-published links to remember. A fortnight is long enough that a slow feed
 // cannot cycle back round within it, and short enough that a genuinely good story can return
 // later in the year.
 const STORY_HISTORY = 14;
+
+// How many days an outlet sits out. Three is enough that a week never shows the same masthead
+// twice running, and small enough that the preference can nearly always be satisfied.
+const SOURCE_COOLDOWN = 3;
 
 // The ~200 words the owner asked for. The endpoint previously carried an RSS blurb cut to 220
 // CHARACTERS, which is a different thing entirely and reads like a teaser.
@@ -607,6 +660,7 @@ export default async function handler(req, res) {
       // skip the day — an empty set just means the old behaviour, which published something.
       let db = null;
       let recent = new Set();
+      let recentSources = new Set();
       try {
         const { cert, getApps, initializeApp } = await import("firebase-admin/app");
         const { getFirestore } = await import("firebase-admin/firestore");
@@ -620,6 +674,11 @@ export default async function handler(req, res) {
         ]);
         const links = hist.exists ? hist.data()?.links : null;
         if (Array.isArray(links)) recent = new Set(links);
+        // Only the last few sources, not the whole fortnight — with seventeen curated feeds a
+        // two-week source ban would routinely leave nothing eligible and fall through to the
+        // plain pick anyway, which is the rule doing nothing while looking like it does something.
+        const srcs = hist.exists ? hist.data()?.sources : null;
+        if (Array.isArray(srcs)) recentSources = new Set(srcs.slice(0, SOURCE_COOLDOWN));
         // The card's OWN link goes in whatever the history says. Two reasons, and both are real:
         // the history does not exist yet on the first run after this change — so without it the
         // very story that caused this would be free to be picked again tomorrow — and if the
@@ -632,7 +691,7 @@ export default async function handler(req, res) {
         console.error("[goodnews] could not read the story history:", err.message);
       }
 
-      const pick = pickStoryOfTheDay(result, recent);
+      const pick = pickStoryOfTheDay(result, recent, recentSources);
       const summary = pick ? await summariseStory(pick) : null;
       if (pick && summary && db) {
         try {
@@ -654,8 +713,11 @@ export default async function handler(req, res) {
           // repeats once, which is the bug we already had. A history entry with no card would
           // burn a good story that nobody ever saw.
           try {
-            await db.collection("meta").doc("goodNewsHistory")
-              .set({ links: [pick.link, ...[...recent]].slice(0, STORY_HISTORY), at: Date.now() });
+            await db.collection("meta").doc("goodNewsHistory").set({
+              links: [pick.link, ...[...recent]].slice(0, STORY_HISTORY),
+              sources: [sourceKey(pick), ...[...recentSources]].slice(0, STORY_HISTORY),
+              at: Date.now(),
+            });
           } catch (err) {
             console.error("[goodnews] could not record the story history:", err.message);
           }

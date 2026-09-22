@@ -237,7 +237,30 @@ export function useStreak(db, uid, profile) {
       let newStreak = 1;
       if (lastDate === today) newStreak = currentStreak;
       else if (lastDate === yKey) newStreak = currentStreak + 1;
-      tx.set(userRef, { streakDays: newStreak, lastGreetingDate: today }, { merge: true });
+
+      // ── DAYS YOU SHOWED UP, WHICH IS NOT THE STREAK ─────────────────────────────────────
+      // streakDays answers "how many days in a row", and any gap resets it to 1. That is the
+      // right number for the flame and the wrong one for a certificate: a wellbeing app whose
+      // reward for a year of kindness is destroyed by one missed Tuesday is running the guilt
+      // mechanic the roadmap rules out. So this counts days you turned up AT ALL, and a gap
+      // pauses it rather than erasing it.
+      //
+      // The increment rides in this transaction because it already knows the one thing that
+      // decides it — whether today is a day we have counted before. A separate writer would
+      // need the same read and could disagree with it.
+      //
+      // Seeded from the streak rather than from zero, because an account arriving here with an
+      // eleven-day streak has demonstrably shown up eleven times, and starting them at 0 would
+      // take something they had already earned. It is a floor, not a guess: max() means the
+      // real count overtakes it and never goes backwards.
+      const countedToday = lastDate === today;
+      const activeDays = Math.max(Number(data.activeDays ?? 0), currentStreak) + (countedToday ? 0 : 1);
+
+      const fields = { streakDays: newStreak, lastGreetingDate: today, activeDays };
+      // Stamped once and never rewritten — the certificate says when you began, and that date
+      // must not move every time somebody is kind.
+      if (!data.firstActiveDate) fields.firstActiveDate = today;
+      tx.set(userRef, fields, { merge: true });
     });
   }, [db, uid]);
 
