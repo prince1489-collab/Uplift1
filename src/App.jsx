@@ -3964,13 +3964,26 @@ export default function App() {
                   </p>
                 </div>
               )}
-              {/* Post-send map prompt — sticky so the auto-scroll-to-bottom can't hide it */}
+              {/* Post-send map prompt.
+
+                  IN FLOW, NOT STICKY, and the comment that used to be here is why it went wrong:
+                  "sticky so the auto-scroll-to-bottom can't hide it". There is no
+                  auto-scroll-to-bottom. Both send paths do `scrollTo({ top: 0 })` — the feed is
+                  newest-at-top and the send bar is at the bottom, so sending glides the feed UP so
+                  you watch your greeting land. This card sits at the top of the scroller, which is
+                  exactly where that scroll puts you, so it is on screen the moment it appears
+                  without any help.
+
+                  What the stickiness did instead: pin a rounded card with transparent margins to
+                  the top of the scrollport for its seven-second life, with messages sliding along
+                  underneath it and visible above, below and around its corners. That reads as a
+                  layout fault rather than a notice, which is exactly how it was reported.
+
+                  Being in flow also means it cannot fight the Focused Feed header, which is sticky
+                  in this same scroller at z-32 — this was z-30, so it passed under a bar it was
+                  never meant to meet. */}
               {showMapPrompt && (
-                <div
-                  className="sticky z-30"
-                  style={{ top: "8px" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <div onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowMapPrompt(false); setShowMap(true); }}
                     className="w-full mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
