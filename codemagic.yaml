@@ -267,29 +267,30 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        # ── THE "POST-PROCESSING FAILED" THAT IS NOT A FAILURE ────────────────────────────────
+        # ── THE "POST-PROCESSING FAILED" THAT IS NOT A FAILURE, AND WHAT DOES NOT FIX IT ─────
         # After uploading, this step polls App Store Connect until the build appears, then
-        # submits it to TestFlight. The default wait is about twenty minutes, and Apple's
-        # processing regularly takes longer. When it does, the log prints
+        # submits it to TestFlight. The default wait is about twenty minutes and Apple regularly
+        # takes longer, at which point the log prints sixteen lines of "Did not find build
+        # matching uploaded version yet" and then
         #
-        #   Did not find build matching uploaded version yet…   (sixteen times)
         #   The application binary was successfully uploaded … but the corresponding build is
         #   not available in App Store Connect. This usually happens when the uploaded
         #   application has one or more issues.
         #
         # which reads as a rejected binary and is nothing of the sort — its own first clause says
-        # the upload worked. The build turns up in App Store Connect minutes later.
+        # the upload worked, and the build turns up minutes later.
         #
-        # THE SECOND HALF IS THE EXPENSIVE ONE. The submit is downstream of the wait, so a build
-        # that outruns the timeout is uploaded and then silently never submitted. It sits at
-        # "Ready to Submit" while an older build holds the single Beta App Review slot that a
-        # version is allowed, and the newer builds cannot be picked for an external group at all.
-        # That happened to builds 65 and 66 of 2.6, and the symptom appears in App Store Connect
-        # rather than here — so nobody looks in this file for it.
+        # The expensive half is quieter: the submit happens AFTER that wait, so a build that
+        # outruns it is uploaded and then never submitted. It sits at "Ready to Submit" while an
+        # older build holds the single Beta App Review slot a version is allowed, and the newer
+        # builds cannot be chosen for an external group at all. That happened to builds 65 and 66.
         #
-        # Sixty minutes, then. The cost of waiting is a build agent sitting idle on a slow day;
-        # the cost of not waiting is a TestFlight release that quietly did not happen.
-        max_build_processing_wait: 60
+        # `max_build_processing_wait: 60` WAS TRIED HERE AND IS NOT A FIELD. Codemagic rejects the
+        # whole file with "extra fields not permitted", which blocks every build on the branch
+        # until it is removed — so do not reach for it again. The wait is a flag on the underlying
+        # app-store-connect CLI, not a key in this block; changing it means replacing this
+        # publishing section with an explicit script step, which is a bigger change than the
+        # problem currently justifies. Left as it is, deliberately, with the failure written down.
         # submit_to_app_store: false   # flip to true (with a release type) when ready to ship publicly
 
   # ── Android (Capacitor) ─────────────────────────────────────────────────────
