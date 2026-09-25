@@ -53,10 +53,31 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// The app icon, drawn at the top instead of the certificate's own emoji.
+//
+// It lives in public/, so a root-relative path is right on the web AND in the Capacitor build,
+// where it resolves against the bundle rather than the network — the same reasoning apiBase.js
+// spells out, pointing the other way. Same origin either way, so the canvas is not tainted and
+// toBlob still works.
+//
+// Resolves to null rather than rejecting: a certificate with the leaf emoji on it is a fine
+// certificate, and an image that failed to decode must not cost somebody their share.
+function loadIcon(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 // `days` is the TRUE count and is what the card states. `title` is the friendly name the app
 // uses in its own list ("2 months"); it is deliberately not printed as a claim about elapsed
 // time — see the note at the top of certificates.js.
-export async function drawCertificate({ name, days, emoji, since }) {
+//
+// `iconSrc` is overridable only so scripts can render this outside the app, where a root-relative
+// path has nothing to resolve against. Nothing in the app passes it.
+export async function drawCertificate({ name, days, emoji, since, iconSrc = "/icon-512.png" }) {
   // Without this the first draw measures against a fallback face and the layout shifts on the
   // second one — which, on a card that is generated once and shared, means shipping the wrong one.
   try { await document.fonts?.ready; } catch { /* a browser without the API just draws */ }
@@ -85,14 +106,29 @@ export async function drawCertificate({ name, days, emoji, since }) {
   ctx.textAlign = "center";
   const mid = W / 2;
 
-  ctx.font = `120px ${sans}`;
-  ctx.fillText(emoji || "🌿", mid, 300);
+  // The mark, clipped to its own radius. Clipped rather than trusted: whether the source PNG's
+  // corners are transparent or cream is not something this function should have an opinion about,
+  // and a square corner on a warm gradient is the one thing that would make this look pasted on.
+  const icon = await loadIcon(iconSrc);
+  if (icon) {
+    const S = 250;          // big enough to read as the app's mark, not a favicon
+    const ix = (W - S) / 2;
+    const iy = 95;
+    ctx.save();
+    roundRect(ctx, ix, iy, S, S, 48);
+    ctx.clip();
+    ctx.drawImage(icon, ix, iy, S, S);
+    ctx.restore();
+  } else {
+    ctx.font = `120px ${sans}`;
+    ctx.fillText(emoji || "🌿", mid, 300);
+  }
 
   ctx.fillStyle = MUTED;
   ctx.font = `700 26px ${sans}`;
   const eyebrow = "CERTIFICATE OF KINDNESS";
   ctx.letterSpacing = "8px";           // ignored where unsupported; the layout does not depend on it
-  ctx.fillText(eyebrow, mid, 390);
+  ctx.fillText(eyebrow, mid, 400);   // 10px lower than it was, for the larger mark above it
   ctx.letterSpacing = "0px";
 
   ctx.fillStyle = INK;
@@ -136,7 +172,30 @@ export async function drawCertificate({ name, days, emoji, since }) {
   ctx.font = `600 26px ${sans}`;
   ctx.fillText("seenapp.app", mid, 1210);
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("encode_failed");
-  return blob;
+  // ── IF THE MARK EVER TAINTS THE CANVAS, DROP THE MARK, NOT THE CERTIFICATE ─────────────────
+  // The icon is same-origin in every real build — served from public/ on the web, resolved
+  // against the bundle under capacitor:// and https://localhost on the phones — so this should
+  // not fire. But a tainted canvas makes toBlob THROW, and the failure that would produce is
+  // "Couldn't draw your certificate just now" on a screen somebody opened to celebrate
+  // something. That trade is not worth a logo.
+  //
+  // So: try the real thing; if the export is refused, wipe the icon area back to the background
+  // and export that instead. A certificate with a plain top is still a certificate.
+  try {
+    const blob = await new Promise((resolve, reject) => {
+      try { canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode_failed"))), "image/png"); }
+      catch (err) { reject(err); }
+    });
+    return blob;
+  } catch (err) {
+    if (!icon) throw err;   // nothing to blame but the encoder — let the caller hear it
+    console.error("[certificate] icon tainted the canvas, falling back:", err?.message);
+    ctx.save();
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 100, W, 250);
+    ctx.restore();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("encode_failed");
+    return blob;
+  }
 }
