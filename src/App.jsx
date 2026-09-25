@@ -29,6 +29,7 @@ import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./pub
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setEveningCue } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
+import { claimCertificate } from "./certificates";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -2965,6 +2966,29 @@ export default function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeStage.min]);
+  // ── A certificate, on whatever tab you are on ───────────────────────────────────────────────
+  // This was claimed only inside MySeenStory, which mounts on the Grow tab. So crossing fifteen
+  // days while reading the feed announced nothing at all, and the first visit to Grow afterwards
+  // announced it in a banner sitting BELOW four metric tiles — off the bottom of a phone. The
+  // chime went to a muted speaker. Reported as "there was no celebration", and correctly.
+  //
+  // Same shape as the tree stage-up above, deliberately: claimed here for anyone who is not
+  // looking at Grow, and left to MySeenStory when they are, because it has the better version of
+  // the moment with the certificates in front of them.
+  const [certUp, setCertUp] = useState(null);
+  useEffect(() => {
+    if (activeTab === "impact") return;
+    const won = claimCertificate(Number(profile?.activeDays ?? 0));
+    if (!won) return;
+    // Inside the timeout rather than called straight out: a synchronous setState in an effect is
+    // the react-hooks/set-state-in-effect error this file already carries several of, and the
+    // lint total is a number worth keeping still.
+    const t = setTimeout(() => { setCertUp(won); try { playLevelUp(); } catch { /* ignore */ } }, 400);
+    const gone = setTimeout(() => setCertUp(null), 9000);
+    return () => { clearTimeout(t); clearTimeout(gone); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.activeDays]);
+
   // World-map ambient drone — starts when the globe opens, stops when it closes.
   useEffect(() => {
     if (showMap) startMapAmbient(); else stopMapAmbient();
@@ -4439,6 +4463,26 @@ export default function App() {
                     <span className="block text-[13px] font-bold leading-snug text-slate-800">{stageUp.name}</span>
                     <span className="block text-[11px] leading-snug text-slate-500">{stageUp.blurb}</span>
                   </span>
+                </button>
+              </div>
+            )}
+
+            {/* The certificate equivalent, and hidden on Grow for the same reason: there, the row
+                itself is the announcement. Nine seconds rather than the tree's seven, because
+                this one asks you to go somewhere to look at it. */}
+            {certUp && activeTab !== "impact" && (
+              <div className="pointer-events-none fixed inset-x-0 top-[104px] z-[240] flex justify-center px-4">
+                <button
+                  onClick={() => { setCertUp(null); setActiveTab("impact"); }}
+                  className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-left shadow-lg active:scale-[0.98] transition-transform"
+                  style={{ animation: "seenFadeUp 320ms ease both" }}>
+                  <span className="text-xl leading-none" aria-hidden>{certUp.emoji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-700">New certificate</span>
+                    <span className="block text-[13px] font-bold leading-snug text-slate-800">{certUp.name} of kindness</span>
+                    <span className="block text-[11px] leading-snug text-slate-500">{certUp.blurb}</span>
+                  </span>
+                  <span className="flex-shrink-0 text-[11px] font-semibold text-amber-700">See it →</span>
                 </button>
               </div>
             )}

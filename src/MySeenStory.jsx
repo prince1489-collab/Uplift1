@@ -19,6 +19,7 @@ import { claimStageUp } from "./treeMilestone";
 import { CERTIFICATES, earnedCount, claimCertificate } from "./certificates";
 import { drawCertificate } from "./certificateImage";
 import { useBackLayer } from "./backStack";
+import { shareImage } from "./shareImage";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -211,28 +212,21 @@ function CertificateSheet({ cert, name, since, onClose }) {
     if (!blob || busy) return;
     setBusy(true);
     setNote("");
-    const file = new File([blob], `seen-${cert.days}-days.png`, { type: "image/png" });
     try {
-      // canShare BEFORE share: a browser that has navigator.share but refuses files throws only
-      // once the sheet is already up, which reads as the share failing rather than never starting.
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "My Seen certificate" });
-        setBusy(false);
-        return;
-      }
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      a.click();
-      setNote("Saved to your downloads.");
+      // Handed to shareImage, which knows the difference between a browser and a WebView. This
+      // used to call navigator.share directly, which does not exist in either of the WebViews
+      // this app actually ships in — so on a phone it fell through to an <a download> that a
+      // WebView discards, and then said "Saved to your downloads." See src/shareImage.js.
+      const result = await shareImage({
+        blob,
+        fileName: `seen-${cert.days}-days.png`,
+        title: "My Seen certificate",
+      });
+      // Only the browser path can honestly claim a download, and a dismissal says nothing at all.
+      if (result === "downloaded") setNote("Saved to your downloads.");
     } catch (err) {
-      // Dismissing the share sheet is not a failure and must not look like one.
-      if (err?.name !== "AbortError") {
-        // Said out loud, unlike the bare `catch {}` on the profile-card share, where a failure
-        // is indistinguishable from a button that does nothing.
-        console.error("[certificate] share failed:", err?.message);
-        setNote("Couldn't share that — try saving it instead.");
-      }
+      console.error("[certificate] share failed:", err?.message);
+      setNote("Couldn't share that just now — please try again.");
     }
     setBusy(false);
   };
@@ -334,6 +328,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const [openCard, setOpenCard] = useState(null); // which metric card is open
   const [openCert, setOpenCert] = useState(null); // which certificate is being viewed
   const [newCert, setNewCert] = useState(null);   // one just earned, announced above the row
+  const certRowRef = useRef(null);
   const hytTried = useMemo(() => hytCompletedCount(), []);
 
   // Live points → grow + water the hero tree (useWatering owns the pour timing + sound).
@@ -538,6 +533,10 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
     const t = setTimeout(() => {
       setNewCert(won);
       try { playLevelUp(); } catch { /* ignore */ }
+      // Bring it into view. A reward nobody scrolls to is not a reward, and the sound cannot be
+      // relied on — the phone this was reported from has its speaker muted, which is the normal
+      // posture for most people most of the time.
+      certRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 600);
     return () => clearTimeout(t);
   }, [activeDays]);
@@ -638,8 +637,14 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           A gentle mirror of your journey — never a score.
         </p>
 
-        <CertificatesRow activeDays={activeDays} newCert={newCert}
-          onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
+        {/* Wrapped so the announcement can be scrolled to. The row sits below the hero, the
+            one-liner, a label and four metric tiles — comfortably off the bottom of a phone — so
+            a banner rendered here was invisible unless somebody happened to scroll. That is half
+            of why "there was no celebration" was a fair description of a celebration that fired. */}
+        <div ref={certRowRef}>
+          <CertificatesRow activeDays={activeDays} newCert={newCert}
+            onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
+        </div>
 
         {/* ── Where this ends up ──────────────────────────────────────────────────────────────
             This sentence lived at the bottom of the stage sheet, in 10px grey, behind a
