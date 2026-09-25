@@ -25,6 +25,8 @@
 
 import React, { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
+import { Heart } from "lucide-react";
+import { watchStoryLikes, toggleStoryLike } from "./storyLikes";
 
 // ── The summary arrives as prose, usually ────────────────────────────────────
 // Haiku is asked for plain prose and mostly obliges, but one day it returned a markdown heading
@@ -56,9 +58,10 @@ function asPlainText(s) {
 // without an expiry a quiet stretch would leave a stale "today's" story sitting there for a week.
 const MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
-export default function GoodNewsCard({ db }) {
+export default function GoodNewsCard({ db, currentUser }) {
   const [story, setStory] = useState(null);
   const [open, setOpen] = useState(false);
+  const [likes, setLikes] = useState({ count: 0, mine: false });
 
   useEffect(() => {
     if (!db) return;
@@ -76,6 +79,24 @@ export default function GoodNewsCard({ db }) {
       () => setStory(null),
     );
   }, [db]);
+
+  // Everybody looking at today's story is looking at the same number. One document, one
+  // listener; see the note in storyLikes.js about why that is the point rather than an economy.
+  const uid = currentUser?.uid;
+  const link = story?.link;
+  useEffect(() => {
+    if (!db || !link) return;
+    return watchStoryLikes(db, link, uid, setLikes);
+  }, [db, link, uid]);
+
+  const like = async () => {
+    if (!db || !uid || !story?.link) return;
+    // Painted before the write lands, and corrected by the listener either way. A heart that
+    // waits for a round trip feels broken on a train.
+    setLikes((prev) => ({ count: Math.max(0, prev.count + (prev.mine ? -1 : 1)), mine: !prev.mine }));
+    try { await toggleStoryLike(db, uid, story); }
+    catch (err) { console.error("[goodnews] like failed:", err?.message); }
+  };
 
   if (!story) return null;
 
@@ -175,7 +196,23 @@ export default function GoodNewsCard({ db }) {
               {/* Named, because a reader deciding what to make of a story is entitled to know
                   where it came from — and because the sources here are not all the same kind of
                   publication. */}
-              <span className="text-[10px] text-slate-400 truncate">{story.source || "source unknown"}</span>
+              {/* The heart sits with the source and the link because this strip is the one part
+                  of the card that stays put while the prose scrolls — so it is reachable whether
+                  you read three lines or all of it. */}
+              <button
+                onClick={like}
+                disabled={!uid}
+                aria-pressed={likes.mine}
+                aria-label={likes.mine ? "Remove your heart from this story" : "Heart this story"}
+                className={`flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold transition-colors disabled:opacity-40 ${
+                  likes.mine
+                    ? "border-rose-200 bg-rose-50 text-rose-600"
+                    : "border-slate-200 bg-white text-slate-400 hover:text-rose-500"
+                }`}>
+                <Heart size={11} fill={likes.mine ? "currentColor" : "none"} />
+                {likes.count > 0 && <span className="tabular-nums">{likes.count}</span>}
+              </button>
+              <span className="min-w-0 flex-1 truncate text-[10px] text-slate-400">{story.source || "source unknown"}</span>
               {story.link && (
                 <a href={story.link} target="_blank" rel="noopener noreferrer"
                   className="flex-shrink-0 rounded-full border border-amber-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-50 transition-colors">

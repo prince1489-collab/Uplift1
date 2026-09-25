@@ -75,6 +75,9 @@ export default function MessageMedia({ db, messageId }) {
   // space beautifully and reserving it too late to matter.
   const [state, setState] = useState("loading"); // loading | ready | none
   const [media, setMedia] = useState(null);
+  // Which of the two stored sizes is on screen. Starts at the small one and is raised to the full
+  // one once that has finished downloading — see the note above the <img>.
+  const [fullReady, setFullReady] = useState(false);
 
   useEffect(() => {
     if (!db || !messageId) return;
@@ -110,6 +113,29 @@ export default function MessageMedia({ db, messageId }) {
 
     return () => { alive = false; };
   }, [db, messageId]);
+
+  // ── SHOW THE SMALL ONE, THEN THE BIG ONE ───────────────────────────────────────────────────
+  // Klipy hands back four sizes and klipy.js keeps two of them: `md` as `url`, `sm` as
+  // `previewUrl`. Both are written onto every message (Feed2.jsx), and until now only the medium
+  // one was ever rendered — so a GIF post showed a grey box until a medium-quality ANIMATION had
+  // arrived in full, while a small copy of the same thing sat unused in the same document.
+  //
+  // Nothing needs fetching or migrating to fix that. The faster image was always there.
+  //
+  // The swap restarts the animation once, which is the honest cost and a good trade: a GIF that
+  // begins slightly soft and sharpens beats a grey rectangle that sits there. `alive` guards the
+  // usual case of somebody scrolling past before it lands.
+  const fullUrl = media?.url;
+  useEffect(() => {
+    if (!fullUrl) return;
+    let alive = true;
+    const img = new Image();
+    // setState in a callback, not in the effect body — the react-hooks/set-state-in-effect rule
+    // this repo already carries errors for only fires on the synchronous case.
+    img.onload = () => { if (alive) setFullReady(true); };
+    img.src = fullUrl;
+    return () => { alive = false; };
+  }, [fullUrl]);
 
   if (state === "none") return null;
 
@@ -150,10 +176,16 @@ export default function MessageMedia({ db, messageId }) {
       // that one has to be visible.
       style={{ height: fit(natural).height }}>
       <img
-        src={media.url}
+        // The full size once it is here, the small one until then. `previewUrl` is not assumed —
+        // every message written since GIFs shipped carries one, but a missing field should cost a
+        // fraction of a second, not a broken image.
+        src={(fullReady && media.url) || media.previewUrl || media.url}
         // Klipy's own title, stored with the message so the alt text survives without
         // another call to them. A screen reader says "someone waving" rather than "image".
         alt={media.description || "GIF"}
+        // Decoding a large animation on the main thread is the other half of the pause: async
+        // lets the feed keep painting while the frames are unpacked.
+        decoding="async" 
         // NOT lazy. This sits at the top of a post in a feed somebody has just opened, so it is
         // almost always already on screen — deferring it bought nothing and cost the wait the
         // recording shows.

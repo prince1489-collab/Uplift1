@@ -29,6 +29,10 @@ await env.clearFirestore();
 const A = env.authenticatedContext("uidA").firestore(); // posted the public message
 const B = env.authenticatedContext("uidB").firestore(); // replied privately
 const C = env.authenticatedContext("uidC").firestore(); // uninvolved third party
+// Signed OUT. The story-like rules below turn on the difference between "any signed-in person"
+// and "anyone at all", and without a context that is genuinely unauthenticated the test would be
+// asserting that three signed-in users can do what signed-in users can do.
+const ANON = env.unauthenticatedContext().firestore();
 
 const results = [];
 const check = async (name, promise) => {
@@ -236,6 +240,23 @@ await check("media cannot be edited after it is published",
     media("uidA", { url: "https://cdn.klipy.com/zzz/switched.gif" }))));
 await check("the author can delete their own media",
   assertSucceeds(deleteDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"))));
+
+// ── Hearts on the daily story ────────────────────────────────────────────────────────────────
+// The count is public on purpose — a private tally could not say "other people were moved by this
+// too", which is the only reason it is on the card. What has to hold is that only a signed-in
+// person can change it, and that nobody but an admin can delete the document out from under a
+// story that is still on screen.
+const STORY = "s1a2b3c4";
+await check("anyone at all can read the count, signed in or not",
+  assertSucceeds(getDoc(doc(ANON, "storyLikes", STORY))));
+await check("a signed-in person can add their heart",
+  assertSucceeds(setDoc(doc(A, "storyLikes", STORY), { uids: ["uidA"], count: 1, link: "https://x.test/1", at: Date.now() })));
+await check("a second person can add theirs to the same story",
+  assertSucceeds(setDoc(doc(B, "storyLikes", STORY), { uids: ["uidA", "uidB"], count: 2, link: "https://x.test/1", at: Date.now() }, { merge: true })));
+await check("an anonymous visitor cannot",
+  assertFails(setDoc(doc(ANON, "storyLikes", STORY), { uids: ["nobody"], count: 1 })));
+await check("nobody ordinary can delete the count for a story still on screen",
+  assertFails(deleteDoc(doc(A, "storyLikes", STORY))));
 
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);

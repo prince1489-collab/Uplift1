@@ -422,5 +422,26 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // ── Hearts on the daily story ────────────────────────────────────────────────────────────
+    //
+    // Its own collection because meta/ is admin-write-only above, deliberately: the story is
+    // written by a cron and read by everybody, and nothing a user does should be able to touch
+    // it. A like has to be writable by an ordinary signed-in person, so it lives here instead.
+    //
+    // Same shape as the reactions on a message, and the same reasoning:
+    //
+    //   read — public. The count is the point. A private tally could never say "eleven other
+    //     people were moved by this too", which is the entire reason it is on the card.
+    //   create/update — any signed-in user. The document holds a list of uids and a count
+    //     computed from it (src/storyLikes.js), so a malicious write can corrupt one story's
+    //     count and nothing else; there is no text here to moderate and nothing to attribute.
+    //   delete — admin only. Unlike a message reaction, no individual owns this document, so
+    //     "the person who made it may remove it" has no meaning. Unliking is an update.
+    match /storyLikes/{storyId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if isAdmin();
+    }
   }
 }
