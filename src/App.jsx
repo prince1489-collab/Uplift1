@@ -2679,32 +2679,11 @@ export default function App() {
   // away from being shown to everyone. What teaches the app now is the day-one `follow`
   // invitation in src/invitations.js, which arrives through the bell.
 
-  // Re-engagement: when user leaves the app, schedule a "come back" push for 9 AM tomorrow
-  useEffect(() => {
-    if (!isRealSignedInUser || !hasCompletedOnboarding) return;
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    let retryTimer = null;
-    const MESSAGES = [
-      { title: "Seen misses you 💌", body: "Someone out there is waiting to hear something kind from you." },
-      { title: "Your streak is waiting 🔥", body: "Keep the kindness going — open Seen and spread some warmth." },
-      { title: "Today's Wonderful News is in 🌟", body: "Start your day with something uplifting." },
-    ];
-    const scheduleReEngagement = () => {
-      if (retryTimer) clearTimeout(retryTimer);
-      const now = new Date();
-      const target = new Date(now);
-      target.setDate(target.getDate() + 1);
-      target.setHours(9, 0, 0, 0);
-      const msg = MESSAGES[new Date().getDay() % MESSAGES.length];
-      retryTimer = setTimeout(() => new Notification(msg.title, { body: msg.body, icon: "/icon-192.png", badge: "/badge-96.png" }), target.getTime() - now.getTime());
-    };
-    const onVisibilityChange = () => {
-      if (document.hidden) scheduleReEngagement();
-      else { if (retryTimer) clearTimeout(retryTimer); }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => { document.removeEventListener("visibilitychange", onVisibilityChange); if (retryTimer) clearTimeout(retryTimer); };
-  }, [isRealSignedInUser, hasCompletedOnboarding]);
+  // There used to be a browser-only "come back" timer here: on leaving the page it scheduled a
+  // local `new Notification` for 9am tomorrow ("Your streak is waiting 🔥", "Seen misses you").
+  // Removed in 3.2. It ignored the hour each person chose, could arrive alongside the real push,
+  // and its copy was the guilt mechanic the roadmap rules out. The one daily cue is now
+  // api/send-reminder.js, at the person's own hour.
 
   useEffect(() => {
     const complete = async () => {
@@ -2982,6 +2961,17 @@ export default function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeStage.min]);
+  // ── The real tree ──────────────────────────────────────────────────────────────────────────
+  // Grow promises that a fully grown tree plants a real one, in your name — and it will be kept.
+  // So the moment somebody first reaches Tree of Life is recorded on their own profile, once,
+  // and scripts/trees-due.mjs lists who is waiting for theirs. Without this the promise had no
+  // way to be kept: nothing anywhere knew who had got there.
+  const isTopStage = TREE_STAGES.indexOf(treeStage) === TREE_STAGES.length - 1;
+  useEffect(() => {
+    if (!isTopStage || !currentUser?.uid || !profile || profile.treeOfLifeAt) return;
+    updateDoc(doc(db, "users", currentUser.uid), { treeOfLifeAt: Date.now() }).catch(() => {});
+  }, [isTopStage, currentUser?.uid, profile]);
+
   // ── A certificate, on whatever tab you are on ───────────────────────────────────────────────
   // This was claimed only inside MySeenStory, which mounts on the Grow tab. So crossing fifteen
   // days while reading the feed announced nothing at all, and the first visit to Grow afterwards
@@ -4556,7 +4546,11 @@ export default function App() {
                   <span className="min-w-0">
                     <span className="block text-[10px] font-bold uppercase tracking-wide text-emerald-600">Your tree grew</span>
                     <span className="block text-[13px] font-bold leading-snug text-slate-800">{stageUp.name}</span>
-                    <span className="block text-[11px] leading-snug text-slate-500">{stageUp.blurb}</span>
+                    <span className="block text-[11px] leading-snug text-slate-500">
+                      {TREE_STAGES.indexOf(stageUp) === TREE_STAGES.length - 1
+                        ? "A real tree will now be planted in your name — we'll let you know when it's in the ground."
+                        : stageUp.blurb}
+                    </span>
                   </span>
                 </button>
               </div>

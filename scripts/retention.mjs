@@ -66,6 +66,7 @@ export function summarise(users, now = Date.now()) {
     activeDays: Object.fromEntries(BUCKETS.map(([a, b]) => [b === Infinity ? `${a}+` : a === b ? `${a}` : `${a}-${b}`, 0])),
     nudgeHour: {},
     rhythm30: { measured: 0, median: null },
+    trees: { reached: 0, planted: 0 },
   };
   const rhythms = [];
 
@@ -90,6 +91,7 @@ export function summarise(users, now = Date.now()) {
       }
     }
 
+    if (u.treeOfLifeAt) { out.trees.reached++; if (u.treePlantedAt) out.trees.planted++; }
     if (Number.isInteger(u.nudgeHour)) out.nudgeHour[u.nudgeHour] = (out.nudgeHour[u.nudgeHour] || 0) + 1;
     else out.nudgeHour.default = (out.nudgeHour.default || 0) + 1;
 
@@ -125,6 +127,7 @@ export function report(s) {
   lines.push(`… in last 7 days    ${s.active.last7}`);
   lines.push(`… in last 30 days   ${s.active.last30}`);
   if (s.rhythm30.measured) lines.push(`Median days of last 30  ${s.rhythm30.median}  (of ${s.rhythm30.measured} accounts with exact dates)`);
+  lines.push(`Reached Tree of Life ${s.trees.reached}  (real tree planted: ${s.trees.planted})`);
   lines.push("");
   lines.push("Join week    joined   came back (2+ days)   still here after 7 days");
   for (const wk of Object.keys(s.cohorts).sort().slice(-12)) {
@@ -156,7 +159,7 @@ async function main() {
 
   // Only the fields above are requested, so nothing personal ever reaches this process.
   const snap = await getFirestore().collection("users")
-    .select("lastGreetingDate", "activeDays", "activeDates", "onboardingCompletedAt", "firstActiveDate", "createdAt", "nudgeHour")
+    .select("lastGreetingDate", "activeDays", "activeDates", "onboardingCompletedAt", "firstActiveDate", "createdAt", "nudgeHour", "treeOfLifeAt", "treePlantedAt")
     .get();
   console.log(report(summarise(snap.docs.map((d) => d.data()))));
 }

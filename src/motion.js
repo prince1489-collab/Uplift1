@@ -15,11 +15,15 @@
 //   • one per action, the same vocabulary everywhere
 //   • prefers-reduced-motion → no flight; the "+n" simply appears and fades at the tab
 //
+// Also records each glyph for the day (todayGrowth.js), so it stays on the Grow tree.
+//
 // Driven by the "seen-points" event points.js already announces for every award, so no call
 // site has to remember to animate — anything that waters the tree is seen to water it. Plain
 // DOM + Web Animations rather than React state: nothing re-renders for a 700ms decoration.
 
-const GLYPH = {
+import { recordGrowth } from "./todayGrowth";
+
+export const GLYPH = {
   send: "💧", post: "💧", postFirst: "💧",
   reply: "💌",
   practice: "🍃", practiceAll: "🍃",
@@ -28,7 +32,7 @@ const GLYPH = {
 };
 // Awards that should NOT fly: a heart stays on the bubble it was given to, and the daily open
 // bonus is not something the person did.
-const SILENT = new Set(["like", "dailyOpen"]);
+export const SILENT = new Set(["like", "dailyOpen"]);
 
 export function prefersReducedMotion() {
   try { return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true; } catch { return false; }
@@ -126,7 +130,10 @@ export function installFlyToGrow() {
   const onPts = (e) => {
     const { action, value } = e.detail || {};
     if (!value || SILENT.has(action)) return;
-    flyToGrow(GLYPH[action] || "💧", value);
+    const glyph = GLYPH[action] || "💧";
+    // The same glyph that flies to the tab stays on the tree for the rest of the day.
+    try { recordGrowth(glyph); } catch { /* ignore */ }
+    flyToGrow(glyph, value);
   };
   window.addEventListener("pointerdown", onDown, true);
   window.addEventListener("seen-points", onPts);

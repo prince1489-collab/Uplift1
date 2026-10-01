@@ -136,7 +136,7 @@ const SPRAY = [
   { dx: 63, dy: 100, dur: 1.38, d: 0.50, r: 1.7 },
 ];
 
-export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour, darkMode = false }) {
+export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth = null, ambient = false, hour, darkMode = false, today = null }) {
   const maxIdx = TREE_STAGES.length - 1;
   const eff = growth != null ? growth * maxIdx : stageIdx; // continuous stage position
   const t = Math.max(0, Math.min(1, eff / maxIdx));        // 0..1 growth
@@ -438,6 +438,33 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
         </g>
       )}
 
+      {/* ── Today, on the tree ─────────────────────────────────────────────────────────────────
+          One small thing for each kind act today (todayGrowth.js): the 17 stages are weeks
+          apart, so without this the tree looked identical whatever you had just done. Each kind
+          has its own place — water on the soil, leaves on the branches, warmth by the sun, a
+          note hung in the canopy — so a busy day reads as a fuller tree rather than a pile of
+          stickers. Ambient (Grow hero) only; the stage swatches show stages, not days. */}
+      {ambient && Array.isArray(today) && today.length > 0 && (() => {
+        const seen = {};
+        const place = (g) => {
+          const i = (seen[g] = (seen[g] ?? -1) + 1);
+          if (g === "💧") return [72 + (i % 4) * 19, 177 - Math.floor(i / 4) * 5];
+          if (g === "☀️") return [146 - i * 13, 32 + i * 9];
+          const r = canopyR > 0;
+          if (g === "🍃") return r ? onCanopy(i, 7, 0.88, 0.3) : [100 + (i % 2 ? 9 : -9), stemTopY + stemH * Math.min(0.85, 0.25 + i * 0.15)];
+          if (g === "💌") return r ? onCanopy(i, 5, 0.8, 0.12).map((v, k) => (k ? v + canopyR * 0.2 : v)) : [100 + (i % 2 ? 13 : -13), stemTopY + 8 + i * 9];
+          return r ? onCanopy(i, 6, 0.4, 0.5) : [100 + (i % 2 ? 6 : -6), stemTopY - 6 - i * 6];
+        };
+        return today.slice(-8).map((g, i) => {
+          const [x, y] = place(g);
+          return (
+            <g key={`today${i}`} style={{ transformOrigin: `${x}px ${y}px`, animation: "seenLeafPop 600ms ease both", animationDelay: `${200 + i * 90}ms` }}>
+              <text x={x} y={y} fontSize="12" textAnchor="middle" dominantBaseline="central">{g}</text>
+            </g>
+          );
+        });
+      })()}
+
       {/* Watering — a can leans in from the top left, its rose sprays a fan of fine
           droplets over the soil, then it rights itself and leaves. One-shot over
           WATERING_MS; re-triggers mid-pour are coalesced by useWatering. */}
@@ -568,7 +595,7 @@ export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, 
             })}
           </div>
         </div>
-        <p className="pb-6 text-center text-[10px] text-slate-400">One day, a fully grown tree may plant a real one. 🌍</p>
+        <p className="pb-6 text-center text-[10px] text-slate-400">A fully grown tree here plants a real one, in your name. 🌍</p>
       </div>
     </div>,
     document.body

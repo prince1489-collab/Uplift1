@@ -20,6 +20,7 @@ import { CERTIFICATES, earnedCount, claimCertificate } from "./certificates";
 import { drawCertificate } from "./certificateImage";
 import { useBackLayer } from "./backStack";
 import { shareImage } from "./shareImage";
+import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -324,6 +325,13 @@ function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
 export default function MySeenStory({ db, currentUser, liveStats, profile, sparkBalance = 0, darkMode = false, onOpenTree, onGoTo }) {
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
+  // Today's additions to the tree (todayGrowth.js), live as they happen.
+  const [today, setToday] = useState(() => todayGrowth());
+  useEffect(() => {
+    const on = (e) => setToday(e.detail?.items ?? todayGrowth());
+    window.addEventListener(GROWTH_EVENT, on);
+    return () => window.removeEventListener(GROWTH_EVENT, on);
+  }, []);
   // Pour on open. Points are only ever awarded on Connect / Practice / Reflect, and this
   // component isn't mounted then — so waiting for a "seen-points" event meant the watering
   // animation could never actually play here. Opening the tab is the moment to show it.
@@ -564,7 +572,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           className="relative block w-full seen-grad-hero rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-5 pb-6 text-center overflow-hidden active:scale-[0.99] transition-transform"
           style={{ animation: "seenFadeUp 600ms ease both", animationDelay: "80ms" }}>
           <div className="mx-auto" style={{ width: 210, height: 210 }}>
-            <TreeScene stageIdx={stageIdx} growth={replay} watering={watering} size={210} ambient darkMode={darkMode} />
+            <TreeScene stageIdx={stageIdx} growth={replay} watering={watering} size={210} ambient darkMode={darkMode} today={today} />
           </div>
           {milestone && <MilestoneEffects onDone={() => setMilestone(null)} />}
           {/* The name, and for a few seconds the announcement of it — in the SAME place, one at a
@@ -617,6 +625,14 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           <span className="mt-3 inline-block text-[11px] font-semibold text-teal-600">See how it grows →</span>
         </button>
 
+        {/* What today put on the tree — the daily layer under the weeks-long stages. Says what
+            is there rather than counting what is missing: an empty day is an invitation. */}
+        <p className="-mt-2 text-center text-[12px] leading-snug text-slate-500 px-2">
+          {today.length
+            ? <>Today: <span className="tracking-wide">{today.slice(-8).join(" ")}</span> — your tree is a little different because of what you did.</>
+            : "Nothing on your tree yet today — one kind thing changes it."}
+        </p>
+
         {/* Reflective one-liner */}
         <p className="text-center text-[13px] text-slate-500 leading-relaxed px-2"
           style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
@@ -658,12 +674,23 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
             promise no bigger than the one actually being made. */}
         <div className="mt-1 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center"
           style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "560ms" }}>
-          <p className="text-[13px] font-bold leading-snug text-emerald-800">
-            🌍 A fully grown tree here plants a real one.
-          </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
-            Every stage you pass is a step toward a tree in the ground, planted in your name.
-          </p>
+          {stageIdx === TREE_STAGES.length - 1 ? (
+            <>
+              <p className="text-[13px] font-bold leading-snug text-emerald-800">🌍 You reached Tree of Life.</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
+                A real tree will be planted in your name — we'll let you know when it's in the ground.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[13px] font-bold leading-snug text-emerald-800">
+                🌍 A fully grown tree here plants a real one.
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
+                Reach Tree of Life and a real tree goes into the ground, planted in your name.
+              </p>
+            </>
+          )}
         </div>
 
         {/* ── A way back to the doing ─────────────────────────────────────────────────────────
