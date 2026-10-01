@@ -422,7 +422,7 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
 
         {allDone ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-center">
-            <p className="text-sm font-bold text-amber-700">You showed up for kindness today 🌅</p>
+            <p className="text-sm font-bold text-amber-700">You made someone feel seen today 🌅</p>
             <p className="mt-0.5 text-[11px] text-slate-500">Fresh suggestions arrive tomorrow.</p>
           </div>
         ) : (

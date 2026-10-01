@@ -20,6 +20,8 @@ import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import TodayCard from "./TodayCard";
 import { rhythmOf } from "./rhythm";
+import { markSentToday } from "./hytState";
+import { todayKey as localDayKey } from "./hytPrompts";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
@@ -210,7 +212,7 @@ const COUNTRY_OPTIONS = [
 const stripQuotes = (s = "") => String(s).replace(/^\s*[“"']+/, "").replace(/[”"']+\s*$/, "");
 
 const SEND_AFFIRMATIONS = [
-  "Sent",
+  "Someone will feel seen today",
   "Kindness sent — that's the point",
   "Someone out there will feel that",
   "On its way to someone who needs it",
@@ -3023,6 +3025,17 @@ export default function App() {
   const crisisEmergency = useMemo(() => getEmergency(profile?.country), [profile?.country]);
   const crisisLines = useMemo(() => (getResources(profile?.country).crisis || []).slice(0, 3), [profile?.country]);
 
+  // The newest reaction to arrive since local midnight, for the Today card's "Someone in X felt
+  // your kindness". From the reactedCountries state the globe already keeps — no extra listener.
+  const todayEcho = useMemo(() => {
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    let best = null;
+    for (const [country, v] of Object.entries(reactedCountries || {})) {
+      if (Number(v?.at) >= midnight.getTime() && (!best || v.at > best.at)) best = { country, emoji: v.emoji, at: v.at };
+    }
+    return best;
+  }, [reactedCountries]);
+
   const liveImpact = useMemo(() => {
     const weekAgo = Date.now() - 7 * 86400000;
     const monthAgo = Date.now() - 30 * 86400000;
@@ -3289,6 +3302,10 @@ export default function App() {
       if (todayMessageCount === 0 && [3, 7, 14, 30].includes(newStreak)) {
         setTimeout(() => { anim.triggerStreakConfetti(); playStreak(); }, 300);
       }
+
+      // A kind message is one of the two ways to make someone feel seen today — the Today card
+      // flips to "How did that feel?" from this.
+      try { markSentToday(localDayKey()); } catch { /* never block the send */ }
 
       // Bookkeeping runs in the background — doesn't block the UI
       const refDoc = userProfileRef(currentUser.uid);
@@ -3557,6 +3574,7 @@ export default function App() {
               haptic([10, 30, 10]);
               try { playSend(); } catch { /* ignore */ }
               creditKindAct();
+              try { markSentToday(localDayKey()); } catch { /* ignore */ }
               // Same offer the preset path makes — your words have just gone out to the world,
               // so the globe is worth showing.
               setShowMapPrompt(true);
@@ -3922,6 +3940,8 @@ export default function App() {
             {activeTab === "feed" && (
               <TodayCard db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
+                echo={todayEcho}
+                onSend={() => { setPickerOpen(true); markCoachSeen(); }}
                 onKindAct={creditKindAct}
                 onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
                 onSayMore={() => setActiveTab("journal")} />

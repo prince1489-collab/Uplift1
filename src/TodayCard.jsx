@@ -24,10 +24,10 @@
 // State is the Practice tab's own per-day record (hytState.js), so ticking here shows ticked
 // there and the reverse. Nothing about the act is duplicated.
 
-import React, { useMemo, useState } from "react";
-import { Check, RefreshCw, Clock, ChevronDown } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Check, RefreshCw, Clock, ChevronDown, Send } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
-import { loadDayState, saveDayState, completeSlot, ageFromDob, SLOTS } from "./hytState";
+import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, SLOTS } from "./hytState";
 import { FEELINGS, feelingFor, recordFeeling, actPhrase } from "./feelings";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { POINTS } from "./points";
@@ -65,7 +65,17 @@ function NudgeChooser({ current, onPick, onSkip, title }) {
   );
 }
 
-export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates, onKindAct, onPlanChange, onSayMore }) {
+// ── What it did for the other person ─────────────────────────────────────────────────────────
+// The ritual is about someone else, so the finished card says something about them — and only
+// something true. A reaction that arrived today names its country; otherwise it says what kind
+// of thing happened, never a number that might be zero.
+function consequence(via, echo) {
+  if (echo?.country) return `Someone in ${echo.country} felt your kindness ${echo.emoji || "❤️"}`;
+  if (via === "sent") return "Your words are on their way — you'll see here when someone feels them.";
+  return "That happened off the screen. That counts.";
+}
+
+export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates, echo, onKindAct, onPlanChange, onSayMore, onSend }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
@@ -85,10 +95,17 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
 
   const update = (next) => { setState(next); saveDayState(day, next); };
 
-  const done = Boolean(state.done?.kindness);
+  // A send elsewhere on the screen (markSentToday) or a tick in Practice lands here live.
+  useEffect(() => onDayState((d) => { if (d?.day === day && d.state) setState(d.state); }), [day]);
+
+  // Either way of making someone feel seen completes the day.
+  const actDone = Boolean(state.done?.kindness);
+  const done = actDone || Boolean(state.sent);
+  const via = actDone ? "act" : "sent";
   const planned = Boolean(state.planned?.kindness);
   const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0) + (state.area ? 1 : 0);
   const canSwap = swapsUsed < 1 && !done;
+  const what = via === "sent" ? "a kind message" : item.text;
 
   const doneIt = () => {
     update(completeSlot(state, "kindness", { onKindAct, onPlanChange }));
@@ -107,12 +124,13 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
     const already = Boolean(state.feeling);
     update({ ...state, feeling: id, feelingSkipped: false });
     // The day has already been counted by Done it (completeSlot → onKindAct); this only says how.
-    recordFeeling(db, currentUser?.uid, { day, feeling: id, act: item.text, alreadyAwarded: already });
+    recordFeeling(db, currentUser?.uid, { day, feeling: id, act: what, alreadyAwarded: already });
   };
 
   const sayMore = () => {
     const f = feelingFor(state.feeling);
-    const prompt = `Today's kindness: ${actPhrase(item.text)}.${f ? ` You felt ${f.label.toLowerCase()}.` : ""} What happened?`;
+    const did = via === "sent" ? "you sent someone a kind message" : actPhrase(item.text);
+    const prompt = `Today you made someone feel seen: ${did}.${f ? ` You felt ${f.label.toLowerCase()}.` : ""} What happened?`;
     try { localStorage.setItem(PIN_KEY(day), prompt); } catch { /* ignore */ }
     onSayMore?.();
   };
@@ -141,18 +159,19 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
             <span className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-teal-500 text-white">
               <Check size={12} strokeWidth={3} />
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-teal-700">
-              You've done today{feelingChosen ? ` ${feelingChosen.emoji}` : ""}
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-teal-700">
+              You made someone feel seen{feelingChosen ? ` ${feelingChosen.emoji}` : ""}
             </span>
             {rhythm != null && (
               <span className="flex-shrink-0 text-[11px] font-semibold text-teal-600/80"
-                aria-label={`${rhythm} of the last 30 days`}>{rhythm} of 30 days</span>
+                aria-label={`${rhythm} of the last 30 days`}>{rhythm}/30</span>
             )}
             <ChevronDown size={14} className={`flex-shrink-0 text-teal-500 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </button>
           {expanded && (
             <div className="border-t border-teal-100 px-3.5 pb-2.5 pt-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
-              <p className="text-[12px] leading-snug text-slate-500 line-clamp-2">{item.text}</p>
+              <p className="text-[12px] font-semibold leading-snug text-teal-700">{consequence(via, echo)}</p>
+              {via === "act" && <p className="mt-0.5 text-[12px] leading-snug text-slate-500 line-clamp-2">{item.text}</p>}
               <div className="mt-2 flex items-center gap-2">
                 <button onClick={sayMore}
                   className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-teal-600 border border-teal-200 hover:bg-teal-50">
@@ -212,34 +231,43 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
             </div>
           </div>
         ) : (
-          // ── 1. Today's kindness ────────────────────────────────────────────────────────────
+          // ── 1. Make someone feel seen — two ways, either one is the day ───────────────────
           <>
             <div className="flex items-center gap-1.5">
-              <span className="text-sm">{item.emoji}</span>
-              <span className="flex-1 text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's kindness</span>
+              <span className="flex-1 text-[10px] font-bold uppercase tracking-wide text-teal-600">Today: make someone feel seen</span>
               <button onClick={() => setChoosingTime(true)} aria-label="Change reminder time"
                 className="-my-1 flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-600">
                 <Clock size={11} /> {Number.isInteger(nudgeHour) ? fmtHour(nudgeHour) : "9am"}
               </button>
             </div>
-            <p className="mt-1 text-[15px] font-medium leading-snug text-slate-800 line-clamp-3">{item.text}</p>
-            <div className="mt-2.5 flex items-center gap-1.5">
+            {/* Online: the send sheet that already exists. Twenty seconds, and someone somewhere
+                gets a kind word — the fastest way to finish the day. */}
+            <button onClick={onSend}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
+              <Send size={14} /> Send some kindness <span className="font-medium text-teal-100">· 20 sec</span>
+            </button>
+            {/* Or in the world: the kindness slot of Practice's daily pick, same record. */}
+            <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">or, in real life</p>
+            <div className="mt-1 flex items-start gap-2">
+              <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-slate-700 line-clamp-2">{item.text}</p>
+              {canSwap && (
+                <button onClick={swap} aria-label="Swap for another"
+                  className="-mt-0.5 grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg text-slate-300 hover:text-teal-600 transition-colors">
+                  <RefreshCw size={13} />
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
               <button onClick={doneIt}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-2 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
-                <Check size={14} strokeWidth={3} /> Done it
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 py-1.5 text-[12px] font-bold text-teal-700 hover:bg-teal-100 active:scale-[0.98] transition-all">
+                <Check size={13} strokeWidth={3} /> Done it
               </button>
               {planned ? (
                 <span className="flex-1 text-center text-[11px] font-semibold text-teal-600">Planned for today</span>
               ) : (
                 <button onClick={later}
-                  className="flex-1 rounded-xl border border-teal-100 bg-teal-50/60 py-2 text-[12px] font-semibold text-teal-600 hover:bg-teal-50 active:scale-[0.98] transition-all">
+                  className="flex-1 rounded-xl border border-slate-200 py-1.5 text-[12px] font-semibold text-slate-500 hover:bg-slate-50 active:scale-[0.98] transition-all">
                   Later today
-                </button>
-              )}
-              {canSwap && (
-                <button onClick={swap} aria-label="Swap for another"
-                  className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-400 hover:text-teal-600 hover:border-teal-200 transition-colors">
-                  <RefreshCw size={14} />
                 </button>
               )}
             </div>

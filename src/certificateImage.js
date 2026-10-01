@@ -141,7 +141,7 @@ export async function drawCertificate({ name, days, emoji, since, iconSrc = "/ic
 
   ctx.fillStyle = INK;
   ctx.font = `400 34px ${sans}`;
-  ctx.fillText("has shown up for kindness on", mid, 690);
+  ctx.fillText("has made someone feel seen on", mid, 690);
 
   ctx.fillStyle = ACCENT;
   ctx.font = `800 150px ${sans}`;

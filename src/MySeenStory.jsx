@@ -132,7 +132,10 @@ function CertificatesRow({ activeDays, newCert, onOpen }) {
   return (
     <div style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "500ms" }}>
       <div className="mb-2 flex items-center gap-2 px-1">
-        <p className="flex-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Your certificates</p>
+        <p className="flex-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          {/* activeDays is exactly this count — every way a day is counted is a kind act. */}
+          {activeDays > 0 ? `${activeDays} ${activeDays === 1 ? "day" : "days"} you made someone feel seen` : "Your certificates"}
+        </p>
         {next && (
           <span className="text-[10px] font-semibold text-slate-300">
             {next.days - activeDays} more {next.days - activeDays === 1 ? "day" : "days"}

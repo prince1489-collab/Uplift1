@@ -49,6 +49,16 @@ export function onDayState(fn) {
   return () => window.removeEventListener(EVENT, h);
 }
 
+// Sending a kind message makes someone feel seen just as much as an act in the world, so it
+// completes the day too. Called from the two places a send already succeeds (App.jsx); the
+// event lets a mounted Today card flip to "How did that feel?" without a reload. No points or
+// day-counting here — the send path already does both.
+export function markSentToday(day) {
+  const cur = loadDayState(day);
+  if (cur.sent) return;
+  saveDayState(day, { ...cur, sent: true });
+}
+
 // Everything that happens when somebody says they did it, in one place. Returns the next state;
 // the caller stores it. `onKindAct` counts the day as shown up (activeDays, certificates); a kept
 // plan clears tonight's cue so no reminder arrives about something already done.

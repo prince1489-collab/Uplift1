@@ -76,8 +76,8 @@ const HIGHLIGHTS = [
   },
   {
     emoji: "✨",
-    title: "No pressure, just kindness",
-    detail: "Choose a greeting and send it. That's all it takes.",
+    title: "Once a day is enough",
+    detail: "Send a kind word, or do something kind in real life. Then you're done.",
     mod: "kind",
   },
 ];
@@ -288,7 +288,7 @@ function WelcomeStep({ onStartJourney, db, auth }) {
 
         {/* Brand */}
         <h1 className="welcome-step__title">Seen</h1>
-        <p className="welcome-step__tagline">One kind thing, every day.</p>
+        <p className="welcome-step__tagline">Once a day, make someone feel seen.</p>
 
         {/* Animated globe — the hook before sign-up */}
         <GlobePreview />
@@ -313,9 +313,9 @@ function WelcomeStep({ onStartJourney, db, auth }) {
       {/* Bottom: ticker + trust line + CTA — always visible */}
       <div className="welcome-step__footer">
         <AffirmationRotator />
-        <p className="welcome-trust">No posts · No followers · Just kindness</p>
+        <p className="welcome-trust">20 seconds a day · No feeds to scroll · Just kindness</p>
         <button className="welcome-step__cta" onClick={onStartJourney}>
-          I want to feel seen <ArrowRight size={20} />
+          Make someone feel seen <ArrowRight size={20} />
         </button>
       </div>
     </div>

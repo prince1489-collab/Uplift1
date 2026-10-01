@@ -26,8 +26,8 @@ function initAdmin() {
 // logic or sending a different one from the one they will see. Pointing at the tab is honest and
 // the tap costs the same.
 const DAILY_MESSAGES = [
-  { body: "Send a kind word to brighten someone's day." },
-  { body: "One small kind thing is waiting for you today.", open: "practice" },
+  { body: "Who could you make feel seen today? One kind word is enough." },
+  { body: "Make someone feel seen today — a kind word, or something kind in real life." },
 ];
 
 // The daily push can now arrive at lunch or in the evening, and "Good morning" at 5pm is the
