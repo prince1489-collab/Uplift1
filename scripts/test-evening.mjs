@@ -15,7 +15,7 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage } from "../api/send-reminder.js";
 import { cueDateKey } from "../src/eveningCue.js";
 
 const results = [];
@@ -88,6 +88,45 @@ check("a Los Angeles evening is still the 16th to that user",
   serverKey("America/Los_Angeles", laEvening) === "2026-09-16", serverKey("America/Los_Angeles", laEvening));
 check("…while the server's own date has already rolled over",
   laEvening.toISOString().slice(0, 10) === "2026-09-17", laEvening.toISOString().slice(0, 10));
+
+// ── 5. Choose your moment ────────────────────────────────────────────────────────────────────
+// Everyone who never chose keeps 9am. A chosen hour is used as-is; anything that is not a real
+// hour falls back rather than silently never firing.
+check("no choice means 9am", dailyHourFor({}) === 9, dailyHourFor({}));
+check("a chosen lunchtime is used", dailyHourFor({ nudgeHour: 12 }) === 12, dailyHourFor({ nudgeHour: 12 }));
+check("midnight is a real hour", dailyHourFor({ nudgeHour: 0 }) === 0, dailyHourFor({ nudgeHour: 0 }));
+for (const bad of [24, -1, 8.5, "12", null]) {
+  check(`a nudgeHour of ${JSON.stringify(bad)} falls back to 9`, dailyHourFor({ nudgeHour: bad }) === 9, dailyHourFor({ nudgeHour: bad }));
+}
+
+// ── 6. One push, never two ───────────────────────────────────────────────────────────────────
+// The daily pass skips anyone the evening slot is already speaking to this hour. These are the
+// exact conditions the handler filters on.
+const T = "2026-10-01";
+const at8pm = { hour: 20, nudgeHour: 20, eveningOn: true, cue: { date: T, kind: "planned", text: "Have you tried… x?" } };
+const dailyNow = (e) => e.hour === dailyHourFor(e) && !eveningDue(e, T);
+check("8pm chooser with an open cue gets the evening push…", eveningDue(at8pm, T), JSON.stringify(at8pm));
+check("…and NOT the daily one as well", !dailyNow(at8pm));
+check("8pm chooser with nothing open still gets the daily one", dailyNow({ ...at8pm, cue: null }));
+check("evening reminders off means the daily one is not skipped", dailyNow({ ...at8pm, eveningOn: false }));
+check("yesterday's cue does not suppress today's push", dailyNow({ ...at8pm, cue: { ...at8pm.cue, date: "2026-09-30" } }));
+
+// ── 7. "How did it go?" only once the day has happened ───────────────────────────────────────
+const planned17 = { hour: 17, nudgeHour: 17, cue: { date: T, kind: "planned", text: "Have you tried… holding a door?" } };
+const asked = plannedForDaily(planned17, T);
+check("a 5pm push asks about the act chosen today", asked?.title?.includes("how did it go") && asked.body.includes("holding a door"), JSON.stringify(asked));
+check("a morning push does not ask how it went", plannedForDaily({ ...planned17, hour: 8, nudgeHour: 8 }, T) === null);
+check("a 9am default does not ask how it went", plannedForDaily({ ...planned17, nudgeHour: undefined }, T) === null);
+check("yesterday's plan is not asked about", plannedForDaily({ ...planned17, cue: { ...planned17.cue, date: "2026-09-30" } }, T) === null);
+check("a draft is never quoted by the daily push", plannedForDaily({ ...planned17, cue: { date: T, kind: "draft", text: "secret" } }, T) === null);
+
+// ── 8. The greeting matches the clock ────────────────────────────────────────────────────────
+check("8am says good morning", greetingFor(8).startsWith("Good morning"), greetingFor(8));
+check("noon says good afternoon", greetingFor(12).startsWith("Good afternoon"), greetingFor(12));
+check("5pm says good evening", greetingFor(17).startsWith("Good evening"), greetingFor(17));
+check("the world line says overnight only in the morning",
+  worldMessage({ count: 9, countries: 3 }, 8).body.includes("overnight") && !worldMessage({ count: 9, countries: 3 }, 17).body.includes("overnight"),
+  worldMessage({ count: 9, countries: 3 }, 17).body);
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────
 let failed = 0;

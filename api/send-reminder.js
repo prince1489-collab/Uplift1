@@ -13,7 +13,7 @@ function initAdmin() {
 // APP_URL is imported rather than redeclared. It was a second copy of the same string, and two
 // copies of a base URL drift exactly once — silently, in whichever file nobody remembered.
 
-// One morning push per day. On Sundays we replace the daily kindness nudge with a combined
+// One daily push, at the hour the person chose (9am by default). On Sundays we replace the daily kindness nudge with a combined
 // weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
 // prompt the wellbeing part on ALTERNATE Sundays — nudging it weekly would ask for a check-in
 // that isn't due yet. Off-weeks keep the community-vote + journal prompts.
@@ -26,9 +26,17 @@ function initAdmin() {
 // logic or sending a different one from the one they will see. Pointing at the tab is honest and
 // the tap costs the same.
 const DAILY_MESSAGES = [
-  { title: "Good morning ☀️", body: "Send a kind word to brighten someone's day." },
-  { title: "Good morning ☀️", body: "Two small things are waiting in Practice — one kind, one for you.", open: "practice" },
+  { body: "Send a kind word to brighten someone's day." },
+  { body: "One small kind thing is waiting for you today.", open: "practice" },
 ];
+
+// The daily push can now arrive at lunch or in the evening, and "Good morning" at 5pm is the
+// kind of small wrongness that tells somebody nobody is paying attention.
+export function greetingFor(hour) {
+  if (hour >= 5 && hour < 12) return "Good morning ☀️";
+  if (hour >= 12 && hour < 17) return "Good afternoon 🌤️";
+  return "Good evening 🌙";
+}
 // Both of these used to open with "Vote for this week's community greetings." There is no
 // voting screen: CommunityArena is imported in App.jsx and never rendered, and the picker's
 // community category was retired. So every user was sent to a feature that does not exist,
@@ -44,7 +52,7 @@ const WEEKLY_MESSAGE_LITE = {
 };
 
 // ── The evening slot ─────────────────────────────────────────────────────────────────────────
-// Seen sends ONE notification a day, at nine in the morning, and that number is deliberate: a
+// Seen sends ONE notification a day, at the hour each person chose, and that number is deliberate: a
 // second daily push that arrives whether or not it has anything to say is how a wellbeing app
 // gets muted, and a muted app has no cues at all.
 //
@@ -72,12 +80,43 @@ export function eveningMessage(cue) {
   if (cue.kind === "draft") {
     return { title: "You started writing 🌙", body: "A few words are waiting in Reflect, just as you left them.", open: "reflect" };
   }
-  if (cue.kind === "planned") {
-    // The prompt already reads "Have you tried… x?", so it is quoted whole rather than
-    // reassembled into a sentence that would ask the question twice.
-    return { title: "The one you chose today 🌱", body: text, open: "practice" };
-  }
+  if (cue.kind === "planned") return plannedMessage(text);
   return null;
+}
+
+// The act they picked earlier, asked about rather than assigned. "How did it go?" is the question
+// the Today card answers in one tap, so the push and the screen it opens are the same
+// conversation. The prompt already reads "Have you tried… x?", so it is quoted whole rather than
+// reassembled into a sentence that would ask the question twice.
+export function plannedMessage(text) {
+  return { title: "You chose something kind today — how did it go? 🌱", body: String(text).slice(0, 110), open: "practice" };
+}
+
+// ── Choose your moment ───────────────────────────────────────────────────────────────────────
+// Nine o'clock was the same hour for everybody, which made it nobody's cue. A habit attaches to
+// something that already happens in a person's day — breakfast, lunch, the walk home — so the
+// Today card asks, once, which of those is theirs and stores the local hour as `nudgeHour`.
+// Anyone who never answers keeps 9am exactly as before.
+export const DEFAULT_NUDGE_HOUR = 9;
+
+export function dailyHourFor(user) {
+  const h = user?.nudgeHour;
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : DEFAULT_NUDGE_HOUR;
+}
+
+// Whether the evening slot has something to say to this person right now. Shared by both passes
+// because the daily pass needs it too: someone who chose 8pm and left something open today gets
+// ONE push at eight, never two.
+export function eveningDue(e, todayKey) {
+  return e.hour === EVENING_HOUR && e.eveningOn === true && Boolean(e.cue?.date) && e.cue.date === todayKey;
+}
+
+// The daily pass's own question. A planned act from earlier today outranks the world line once
+// the day has had time to happen — at a morning hour "how did it go?" would be asking too soon.
+export function plannedForDaily(e, todayKey) {
+  if (dailyHourFor(e) < 12) return null;
+  if (e.cue?.kind !== "planned" || !e.cue.text || e.cue.date !== todayKey) return null;
+  return plannedMessage(e.cue.text);
 }
 
 // Today, in the RECIPIENT's calendar rather than the server's. The cue carries the date it was
@@ -178,13 +217,15 @@ async function worldOvernight(db, since) {
   }
 }
 
-export function worldMessage(world) {
+export function worldMessage(world, hour = 9) {
   if (world.count < 5) return null; // too few to be worth saying out loud
+  // "Overnight" only reads true in the morning; the window is the last 24 hours either way.
+  const when = hour < 12 ? "overnight" : "in the last day";
   return {
-    title: "Good morning ☀️",
+    title: greetingFor(hour),
     body: world.countries > 1
-      ? `${world.count} kind messages crossed the world overnight, from ${world.countries} countries.`
-      : `${world.count} kind messages were sent overnight.`,
+      ? `${world.count} kind messages crossed the world ${when}, from ${world.countries} countries.`
+      : `${world.count} kind messages were sent ${when}.`,
   };
 }
 
@@ -218,7 +259,7 @@ export default async function handler(req, res) {
     // resolves either shape.
     const snap = await db.collection("users").get();
 
-    // Only send to users whose local time is 9am, and who have a stored timezone.
+    // Only users with a device and a stored timezone; the hour is decided per person below.
     const everyone = snap.docs
       .map((d) => {
         const data = d.data();
@@ -228,22 +269,26 @@ export default async function handler(req, res) {
           timezone: data.timezone,
           eveningOn: data.eveningReminders === true,
           cue: data.eveningCue || null,
+          nudgeHour: data.nudgeHour,
         };
       })
       .filter((e) => e.rows.length && e.timezone)
-      .map((e) => ({ ...e, hour: localHour(e.timezone, now), day: localDay(e.timezone, now) }));
+      .map((e) => ({
+        ...e,
+        hour: localHour(e.timezone, now),
+        day: localDay(e.timezone, now),
+        today: localDateKey(e.timezone, now),
+      }));
 
-    const entries = everyone.filter((e) => e.hour === 9);
+    // Each person at the hour they chose (9am if they never did) — unless the evening slot is
+    // speaking to them this same hour, in which case that more specific message is the only one.
+    const entries = everyone.filter((e) => e.hour === dailyHourFor(e) && !eveningDue(e, e.today));
 
     // The evening slot. Three conditions, all of them narrowing, and the result on an ordinary
     // day is an empty list: it is eight in the evening for you, you turned this on, and you left
     // something open TODAY in your own calendar — not the server's, which is why the cue carries
     // a date rather than a timestamp.
-    const eveningEntries = everyone.filter((e) =>
-      e.hour === EVENING_HOUR
-      && e.eveningOn
-      && e.cue?.date
-      && e.cue.date === localDateKey(e.timezone, now));
+    const eveningEntries = everyone.filter((e) => eveningDue(e, e.today));
 
     if (!entries.length && !eveningEntries.length) {
       return res.status(200).json({ sent: 0, total: snap.size, matched: 0, evening: 0 });
@@ -287,7 +332,6 @@ export default async function handler(req, res) {
 
     // The generic line is the same sentence for everybody, so it is worth computing once.
     const world = await worldOvernight(db, since);
-    const worldMsg = worldMessage(world);
 
     // ── The evening pass ────────────────────────────────────────────────────────────────────
     // Before the morning one, so that if anything below throws, the people who asked to be
@@ -312,8 +356,9 @@ export default async function handler(req, res) {
       const weekly = e.day === "Sun" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : null;
       // Alternates by day so neither evergreen line becomes wallpaper. UTC day number is fine
       // here: it only has to change once a day, not align with anybody's midnight.
-      const evergreen = DAILY_MESSAGES[Math.floor(now.getTime() / 86400000) % DAILY_MESSAGES.length];
-      const msg = personal ?? weekly ?? worldMsg ?? evergreen;
+      const line = DAILY_MESSAGES[Math.floor(now.getTime() / 86400000) % DAILY_MESSAGES.length];
+      const evergreen = { ...line, title: greetingFor(e.hour) };
+      const msg = personal ?? plannedForDaily(e, e.today) ?? weekly ?? worldMessage(world, e.hour) ?? evergreen;
       await pushTo(e.uid, e.rows, msg);
     }
 
