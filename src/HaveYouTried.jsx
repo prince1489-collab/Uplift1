@@ -13,33 +13,8 @@ import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { RefreshCw, Check, Info, X } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor, areasForBand } from "./hytPrompts";
-import { playCheckIn } from "./sounds";
-import { awardPoints, POINTS } from "./points";
-import { markDone } from "./invitations";
-
-// Turn a stored dob string ("January 5, 1990") into an age; null if unknown.
-const MONTHS = ["January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"];
-function ageFromDob(dob) {
-  if (!dob) return null;
-  const [m = "", d = "", y = ""] = String(dob).replace(",", "").split(" ");
-  const mi = MONTHS.indexOf(m);
-  const year = Number(y);
-  if (mi < 0 || !year) return null;
-  const now = new Date();
-  let age = now.getFullYear() - year;
-  const bd = new Date(now.getFullYear(), mi, Number(d) || 1);
-  if (now < bd) age -= 1;
-  return age >= 0 && age < 130 ? age : null;
-}
-
-const stateKey = (day) => `seen_hyt_state_${day}`;
-const SLOTS = ["kindness", "self"];
-
-const loadJSON = (k, fallback) => {
-  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
-};
-const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
+import { POINTS } from "./points";
+import { SLOTS, stateKey, loadJSON, loadDayState, saveDayState, completeSlot, ageFromDob } from "./hytState";
 
 // ── The last seven days ──────────────────────────────────────────────────────
 // This tab is called Practice and showed no evidence that anybody had ever practised. Two cards
@@ -141,8 +116,8 @@ function HowItWorksSheet({ ageBand, onClose }) {
             body="Small, real-life things you can actually do today — not big gestures." />
           <Line emoji="🤝" title="The first is an act of kindness."
             body="Something anyone can do, wherever they are — no special place, no money, no particular person needed." />
-          <Line emoji="🌤️" title="The second is for you."
-            body="A bit of self-care, matched to your stage of life. Being kind to yourself counts too." />
+          <Line emoji="🌤️" title="The second is a bonus, for you."
+            body="A bit of self-care, matched to your stage of life. Being kind to yourself counts too — but the first one is plenty." />
           <Line emoji="🔄" title="Not feeling one? Try another."
             body="One swap a day — either a different suggestion, or a different area entirely. After that today's two stay put, and fresh ones arrive tomorrow." />
           <Line emoji="🎯" title="Want something more specific?"
@@ -181,7 +156,11 @@ function PromptCard({ item, done, planned, swapped, canSwap, celebrate, drops, o
       )}
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="text-sm">{item.emoji}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          {/* The kindness act is the day's one thing — it is also the Today card on Connect.
+              Self-care is labelled as the extra it is, so two cards never read as two chores. */}
+          {item.slot === "self" ? `Bonus · ${item.label}` : item.label}
+        </span>
         {!done && canSwap && (
           <button onClick={onSwap} title="Try another"
             className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
@@ -308,25 +287,12 @@ function AreaPicker({ current, canPick, ageBand, onPick, onClear }) {
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
-// Before this hour, self-care prompts that can only be acted on at night are held back — see
-// SELF_EVENING_ONLY in hytPrompts.js. Five in the afternoon, so "tonight" is close enough to be
-// a plan rather than a thing eight hours away.
-const EVENING_FROM = 17;
-
 export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
-  const [state, setState] = useState(() => {
-    const saved = loadJSON(stateKey(day), null);
-    if (saved) return saved;
-    // ── The evening flag is decided ONCE, on the first open of the day, and then stored ───────
-    // It would be simpler to read the clock on every render, and wrong: someone who opens
-    // Practice at eight in the morning and comes back at eight in the evening would find a
-    // different task waiting, with their morning one gone. A prompt that changes under you is
-    // worse than a prompt that is slightly early.
-    return { done: {}, swaps: {}, planned: {}, evening: new Date().getHours() >= EVENING_FROM };
-  });
+  // Shared with the Today card on Connect (see hytState.js), so an act ticked there is ticked here.
+  const [state, setState] = useState(() => loadDayState(day));
   const [showHow, setShowHow] = useState(false);
 
   const items = useMemo(
@@ -335,7 +301,7 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
   );
   const [celebrating, setCelebrating] = useState(null); // slot showing its completion moment
 
-  const update = (next) => { setState(next); saveJSON(stateKey(day), next); };
+  const update = (next) => { setState(next); saveDayState(day, next); };
 
   // Saying you will. No points, no sound, no celebration — those belong to the tick, because
   // that is where the act is. Reported upward so the evening reminder can quote back the thing
@@ -350,30 +316,16 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
   };
 
   const toggle = (slot) => {
-    const nowDone = !state.done[slot];
-    const nextDone = { ...state.done, [slot]: nowDone };
-    if (nowDone) {
-      try { playCheckIn(); } catch { /* ignore */ }
-      awardPoints("practice");
-      // Doing something kind out in the world is a kind act. It counts.
-      try { onKindAct?.(); } catch { /* ignore */ }
-      // Only on ticking, never on un-ticking: changing your mind about one prompt shouldn't
-      // reset the clock the bell's "one small act today" invitation measures.
-      try { markDone("practice"); } catch { /* ignore */ }
-      // If this was the one they planned, the promise is kept — clear it, so tonight's reminder
-      // has nothing left to remind them of. An evening nudge about something already done is the
-      // fastest way to teach somebody the app is not paying attention.
-      if (state.planned?.[slot]) { try { onPlanChange?.(null); } catch { /* ignore */ } }
+    if (!state.done[slot]) {
+      // Points, sound, the day counted as shown up, the plan cleared — all in completeSlot, which
+      // the Today card calls too, so the two places an act can be ticked cannot drift apart.
+      update(completeSlot(state, slot, { onKindAct, onPlanChange }));
       setCelebrating(slot);
       setTimeout(() => setCelebrating((c) => (c === slot ? null : c)), 2200);
-      // Bonus once when both of today's prompts are complete.
-      if (SLOTS.every((s) => nextDone[s]) && !state.bonus) {
-        awardPoints("practiceAll");
-        update({ ...state, done: nextDone, bonus: true });
-        return;
-      }
+      return;
     }
-    update({ ...state, done: nextDone });
+    // Un-ticking: changing your mind about one prompt is allowed, and earns nothing back.
+    update({ ...state, done: { ...state.done, [slot]: false } });
   };
 
   // ONE swap per day, full stop — and picking an area counts as that swap.

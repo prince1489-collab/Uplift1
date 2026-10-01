@@ -258,6 +258,17 @@ await check("an anonymous visitor cannot",
 await check("nobody ordinary can delete the count for a story still on screen",
   assertFails(deleteDoc(doc(A, "storyLikes", STORY))));
 
+// ── How the day's act felt ───────────────────────────────────────────────────────────────────
+const FEEL = { feeling: "calmer", act: "Have you tried… holding a door?", date: "2026-10-01", createdAt: Date.now() };
+await check("you can record how your own act felt",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "feelings", "2026-10-01"), FEEL)));
+await check("…and read it back",
+  assertSucceeds(getDoc(doc(A, "users", "uidA", "feelings", "2026-10-01"))));
+await check("nobody else can read how you felt",
+  assertFails(getDoc(doc(B, "users", "uidA", "feelings", "2026-10-01"))));
+await check("nobody else can write it for you",
+  assertFails(setDoc(doc(B, "users", "uidA", "feelings", "2026-10-02"), FEEL)));
+
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);
 const failed = results.filter(([ok]) => !ok).length;

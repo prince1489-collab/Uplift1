@@ -18,6 +18,7 @@ import IntroStep from "./IntroStep";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
+import TodayCard from "./TodayCard";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
@@ -3908,6 +3909,17 @@ export default function App() {
                 🌳 Grow
               </button>
             </div>
+
+            {/* The day's one kind thing comes first. Connect opened on the multiplayer feeds while
+                the community was small, and the part of Seen that works with nobody else around —
+                an act, and a tap for how it felt — was two tabs away. See TodayCard.jsx. */}
+            {activeTab === "feed" && (
+              <TodayCard db={db} currentUser={currentUser} dob={profile?.dob}
+                nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
+                onKindAct={creditKindAct}
+                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
+                onSayMore={() => setActiveTab("journal")} />
+            )}
 
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}

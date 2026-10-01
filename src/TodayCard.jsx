@@ -1,0 +1,251 @@
+// Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
+//
+// TodayCard.jsx — the day's one kind thing, at the top of Connect.
+//
+// ── WHY THIS EXISTS ──────────────────────────────────────────────────────────────────────────
+// Seen opened on the multiplayer tab while the community was small: "2 kind messages across 2
+// countries today", "1 online". The parts that work with nobody else around — a real-world act,
+// a moment to notice how it felt — sat on tabs two and three, and nothing anywhere said "you've
+// done today". So there was no finish line, and an app without one is browsed, not returned to.
+//
+// This card is the finish line. One act (the kindness slot of the same daily pick Practice
+// shows) → Done it → one tap for how it felt → "✓ You've done today". That is the whole daily
+// loop, it takes under a minute, and it counts as showing up exactly like sending a message
+// does — activeDays, certificates and the streak all move.
+//
+// Everything else on Connect stays where it was, underneath. This only decides what comes first.
+//
+// ── SIZE ─────────────────────────────────────────────────────────────────────────────────────
+// It sits above the feeds in a column that must still show them, so every state is bounded and
+// the finished state is one line. The GoodNewsCard clipping bug is the lesson: anything here
+// that grows without limit pushes the people off the first screen.
+//
+// ── ONE SOURCE OF TRUTH ──────────────────────────────────────────────────────────────────────
+// State is the Practice tab's own per-day record (hytState.js), so ticking here shows ticked
+// there and the reverse. Nothing about the act is duplicated.
+
+import React, { useMemo, useState } from "react";
+import { Check, RefreshCw, Clock, ChevronDown } from "lucide-react";
+import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
+import { loadDayState, saveDayState, completeSlot, ageFromDob, SLOTS } from "./hytState";
+import { FEELINGS, feelingFor, recordFeeling, actPhrase } from "./feelings";
+import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
+import { POINTS } from "./points";
+import { rhythmOf } from "./rhythm";
+
+const PIN_KEY = (d) => `seen_reflect_pin_${d}`; // Journal.jsx's "hold this thought" key
+
+function fmtHour(h) {
+  if (h === 0) return "midnight";
+  if (h === 12) return "noon";
+  return h < 12 ? `${h}am` : `${h - 12}pm`;
+}
+
+function NudgeChooser({ current, onPick, onSkip, title }) {
+  return (
+    <div style={{ animation: "seenFadeUp 220ms ease both" }}>
+      <p className="text-[13px] font-semibold text-slate-700">{title}</p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        {NUDGE_CHOICES.map((c) => (
+          <button key={c.hour} onClick={() => onPick(c.hour)}
+            className={`rounded-xl border px-2 py-1.5 text-left text-[12px] font-semibold transition-colors active:scale-[0.98] ${
+              current === c.hour ? "border-teal-400 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}>
+            <span className="block">{c.emoji} {c.label}</span>
+            <span className="block text-[11px] font-normal text-slate-400">{fmtHour(c.hour)}</span>
+          </button>
+        ))}
+      </div>
+      {onSkip && (
+        <button onClick={onSkip} className="mt-1.5 w-full py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
+          {current == null ? "Keep 9am" : "Close"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates, onKindAct, onPlanChange, onSayMore }) {
+  const uid = currentUser?.uid ?? "anon";
+  const day = todayKey();
+  const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
+  const [state, setState] = useState(() => loadDayState(day));
+  const [expanded, setExpanded] = useState(false);
+  const [choosingTime, setChoosingTime] = useState(false);
+  // Asked once, straight after the first act — the moment the loop has just worked — and only to
+  // someone who has never chosen. Held in state so answering removes it in the same render.
+  const [askTime, setAskTime] = useState(() => !nudgeAsked());
+  const [burst, setBurst] = useState(false);
+
+  const item = useMemo(
+    () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: state.area ?? null, evening: state.evening !== false })
+      .find((i) => i.slot === "kindness"),
+    [uid, state.swaps, state.area, state.evening, ageBand]
+  );
+
+  const update = (next) => { setState(next); saveDayState(day, next); };
+
+  const done = Boolean(state.done?.kindness);
+  const planned = Boolean(state.planned?.kindness);
+  const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0) + (state.area ? 1 : 0);
+  const canSwap = swapsUsed < 1 && !done;
+
+  const doneIt = () => {
+    update(completeSlot(state, "kindness", { onKindAct, onPlanChange }));
+    setBurst(true);
+    setTimeout(() => setBurst(false), 1800);
+    try { navigator.vibrate?.([8]); } catch { /* ignore */ }
+  };
+  const later = () => {
+    if (done || planned) return;
+    update({ ...state, planned: { ...(state.planned ?? {}), kindness: true } });
+    try { onPlanChange?.(item.text); } catch { /* ignore */ }
+  };
+  const swap = () => { if (canSwap) update({ ...state, swaps: { ...state.swaps, kindness: 1 } }); };
+
+  const feel = (id) => {
+    const already = Boolean(state.feeling);
+    update({ ...state, feeling: id, feelingSkipped: false });
+    // The day has already been counted by Done it (completeSlot → onKindAct); this only says how.
+    recordFeeling(db, currentUser?.uid, { day, feeling: id, act: item.text, alreadyAwarded: already });
+  };
+
+  const sayMore = () => {
+    const f = feelingFor(state.feeling);
+    const prompt = `Today's kindness: ${actPhrase(item.text)}.${f ? ` You felt ${f.label.toLowerCase()}.` : ""} What happened?`;
+    try { localStorage.setItem(PIN_KEY(day), prompt); } catch { /* ignore */ }
+    onSayMore?.();
+  };
+
+  const pickTime = (h) => {
+    setNudgeHour(db, currentUser?.uid, h);
+    setAskTime(false);
+    setChoosingTime(false);
+  };
+  const skipTime = () => { markNudgeAsked(); setAskTime(false); setChoosingTime(false); };
+
+  const rhythm = rhythmOf(activeDates);
+  const feelingChosen = feelingFor(state.feeling);
+  const awaitingFeeling = done && !state.feeling && !state.feelingSkipped;
+  // nudgeHour arrives with the profile, possibly after mount — so it is checked here, live,
+  // rather than only in the initial state.
+  const awaitingTime = done && !awaitingFeeling && askTime && !Number.isInteger(nudgeHour);
+
+  // ── 3. Done ─────────────────────────────────────────────────────────────────────────────────
+  if (done && !awaitingFeeling && !awaitingTime && !choosingTime) {
+    return (
+      <div className="flex-shrink-0 px-3.5 pt-2">
+        <div className="rounded-2xl border border-teal-200 bg-teal-50/70">
+          <button onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}
+            className="flex w-full items-center gap-2 px-3.5 py-2 text-left">
+            <span className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-teal-500 text-white">
+              <Check size={12} strokeWidth={3} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-teal-700">
+              You've done today{feelingChosen ? ` ${feelingChosen.emoji}` : ""}
+            </span>
+            {rhythm != null && (
+              <span className="flex-shrink-0 text-[11px] font-semibold text-teal-600/80"
+                aria-label={`${rhythm} of the last 30 days`}>{rhythm} of 30 days</span>
+            )}
+            <ChevronDown size={14} className={`flex-shrink-0 text-teal-500 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
+          {expanded && (
+            <div className="border-t border-teal-100 px-3.5 pb-2.5 pt-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
+              <p className="text-[12px] leading-snug text-slate-500 line-clamp-2">{item.text}</p>
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={sayMore}
+                  className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-teal-600 border border-teal-200 hover:bg-teal-50">
+                  Want to say more?
+                </button>
+                <button onClick={() => setChoosingTime(true)}
+                  className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
+                  <Clock size={11} /> {nudgeLabel(nudgeHour) || "9am"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-shrink-0 px-3.5 pt-2">
+      <div className="relative overflow-hidden rounded-2xl border border-teal-200 bg-white px-3.5 py-3 shadow-sm">
+        {burst && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center bg-teal-500/95 text-center"
+            style={{ animation: "seenPracticeDone 1800ms ease both" }}>
+            <p className="text-base font-extrabold text-white">✨ +{POINTS.practice} drops</p>
+            <p className="mt-0.5 px-6 text-[12px] font-medium text-teal-50">That happened off the screen. That counts.</p>
+          </div>
+        )}
+
+        {choosingTime || awaitingTime ? (
+          // ── Choose your moment ─────────────────────────────────────────────────────────────
+          <NudgeChooser
+            title={awaitingTime ? "When should we remind you tomorrow?" : "Your daily reminder"}
+            current={Number.isInteger(nudgeHour) ? nudgeHour : null}
+            onPick={pickTime}
+            onSkip={skipTime} />
+        ) : awaitingFeeling ? (
+          // ── 2. How did that feel? ──────────────────────────────────────────────────────────
+          <div style={{ animation: "seenFadeUp 220ms ease both" }}>
+            <p className="text-[13px] font-bold text-slate-700">How did that feel?</p>
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {FEELINGS.map((f) => (
+                <button key={f.id} onClick={() => feel(f.id)}
+                  className="flex flex-col items-center rounded-xl border border-slate-200 bg-white py-1.5 hover:border-teal-300 hover:bg-teal-50 active:scale-95 transition-all">
+                  <span className="text-lg leading-none">{f.emoji}</span>
+                  <span className="mt-1 text-[10px] font-semibold text-slate-500">{f.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-1.5 flex items-center justify-between">
+              <button onClick={sayMore} className="py-1 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
+                Want to say more?
+              </button>
+              <button onClick={() => update({ ...state, feelingSkipped: true })}
+                className="py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
+                Skip
+              </button>
+            </div>
+          </div>
+        ) : (
+          // ── 1. Today's kindness ────────────────────────────────────────────────────────────
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">{item.emoji}</span>
+              <span className="flex-1 text-[10px] font-bold uppercase tracking-wide text-teal-600">Today's kindness</span>
+              <button onClick={() => setChoosingTime(true)} aria-label="Change reminder time"
+                className="-my-1 flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-600">
+                <Clock size={11} /> {Number.isInteger(nudgeHour) ? fmtHour(nudgeHour) : "9am"}
+              </button>
+            </div>
+            <p className="mt-1 text-[15px] font-medium leading-snug text-slate-800 line-clamp-3">{item.text}</p>
+            <div className="mt-2.5 flex items-center gap-1.5">
+              <button onClick={doneIt}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-2 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
+                <Check size={14} strokeWidth={3} /> Done it
+              </button>
+              {planned ? (
+                <span className="flex-1 text-center text-[11px] font-semibold text-teal-600">Planned for today</span>
+              ) : (
+                <button onClick={later}
+                  className="flex-1 rounded-xl border border-teal-100 bg-teal-50/60 py-2 text-[12px] font-semibold text-teal-600 hover:bg-teal-50 active:scale-[0.98] transition-all">
+                  Later today
+                </button>
+              )}
+              {canSwap && (
+                <button onClick={swap} aria-label="Swap for another"
+                  className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-400 hover:text-teal-600 hover:border-teal-200 transition-colors">
+                  <RefreshCw size={14} />
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
