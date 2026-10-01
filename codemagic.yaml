@@ -371,6 +371,7 @@ workflows:
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
         TARGET_SDK: "36"                  # Android 16; required from 31 Aug 2026
+        MIN_SDK: "24"                     # Play automatic protection refuses bundles below 24
       node: 20
       java: 21
     scripts:
@@ -499,6 +500,11 @@ workflows:
           # per build rather than committed. rootProject.ext.targetSdkVersion is what the
           # Capacitor module reads, so setting it here reaches every plugin too, not just :app.
           V="android/variables.gradle"
+          # The MINIMUM is pinned here too. Capacitor 7 generates minSdkVersion = 23, and Play's
+          # automatic protection now refuses any bundle below 24 at upload — build 3.2 (code 20)
+          # compiled and signed cleanly and was then rejected at the very last step. Drops
+          # Android 6.0 (2015) only.
+          sed -i "s/^\( *\)minSdkVersion *=.*/\1minSdkVersion = $MIN_SDK/" "$V"
           sed -i "s/^\( *\)targetSdkVersion *=.*/\1targetSdkVersion = $TARGET_SDK/"   "$V"
           sed -i "s/^\( *\)compileSdkVersion *=.*/\1compileSdkVersion = $TARGET_SDK/" "$V"
 
@@ -516,6 +522,7 @@ workflows:
           # Silent sed misses here surface days later — one as a Play policy rejection, the other
           # as a crash report from a user who tried to sign in. Assert both.
           grep -qE "^ *targetSdkVersion *= *$TARGET_SDK\b" "$V" || { echo "!! targetSdkVersion not set to $TARGET_SDK"; exit 1; }
+          grep -qE "^ *minSdkVersion *= *$MIN_SDK\b" "$V" || { echo "!! minSdkVersion not set to $MIN_SDK — Play would reject the bundle"; exit 1; }
           grep -qE "^ *rgcfaIncludeGoogle *= *true\b" "$V" || { echo "!! rgcfaIncludeGoogle not enabled — Google sign-in would crash on device"; exit 1; }
       - name: Configure Gradle to sign with the upload keystore
         script: |
