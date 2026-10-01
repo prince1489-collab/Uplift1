@@ -30,7 +30,6 @@ import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, SLOTS } from "./hytState";
 import { FEELINGS, feelingFor, recordFeeling, actPhrase } from "./feelings";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
-import { POINTS } from "./points";
 import { rhythmOf } from "./rhythm";
 
 const PIN_KEY = (d) => `seen_reflect_pin_${d}`; // Journal.jsx's "hold this thought" key
@@ -86,7 +85,6 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
   // Asked once, straight after the first act — the moment the loop has just worked — and only to
   // someone who has never chosen. Held in state so answering removes it in the same render.
   const [askTime, setAskTime] = useState(() => !nudgeAsked());
-  const [burst, setBurst] = useState(false);
 
   const item = useMemo(
     () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: state.area ?? null, evening: state.evening !== false })
@@ -109,9 +107,9 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
   const what = via === "reply" ? `a reply to ${state.sentTo || "someone"}` : via === "sent" ? "a kind message" : item.text;
 
   const doneIt = () => {
+    // The celebration is the 🍃 flying to Grow (motion.js), driven by the award itself — so no
+    // overlay here as well. One action, one celebration.
     update(completeSlot(state, "kindness", { onKindAct, onPlanChange }));
-    setBurst(true);
-    setTimeout(() => setBurst(false), 1800);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const later = () => {
@@ -194,13 +192,6 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
   return (
     <div className="flex-shrink-0 px-3.5 pt-2">
       <div className="relative overflow-hidden rounded-2xl border border-teal-200 bg-white px-3.5 py-3 shadow-sm">
-        {burst && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center bg-teal-500/95 text-center"
-            style={{ animation: "seenPracticeDone 1800ms ease both" }}>
-            <p className="text-base font-extrabold text-white">✨ +{POINTS.practice} drops</p>
-            <p className="mt-0.5 px-6 text-[12px] font-medium text-teal-50">That happened off the screen. That counts.</p>
-          </div>
-        )}
 
         {choosingTime || awaitingTime ? (
           // ── Choose your moment ─────────────────────────────────────────────────────────────

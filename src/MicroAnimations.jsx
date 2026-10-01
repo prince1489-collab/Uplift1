@@ -24,6 +24,7 @@ import React, {
   useCallback, useEffect, useLayoutEffect,
   useRef, useState,
 } from "react";
+import { prefersReducedMotion } from "./motion";
 
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
@@ -468,6 +469,11 @@ export function useAnimations() {
 
   useEffect(() => { ensureKeyframes(); }, []);
 
+  // Reduced motion: none of these particles are information — they are all celebration — so for
+  // someone who has asked their phone for less movement, they simply do not spawn. The thing that
+  // IS information (the "+n" at the Grow tab) is handled, without movement, in motion.js.
+  const addParticles = useCallback((fn) => { if (!prefersReducedMotion()) setParticles(fn); }, []);
+
   const removeAfter = useCallback((id, ms) => {
     setTimeout(() => setParticles((p) => p.filter((x) => x.id !== id)), ms);
   }, []);
@@ -479,8 +485,8 @@ export function useAnimations() {
       removeAfter(p.id, 2900 + p.delay);
       return p;
     });
-    setParticles((prev) => [...prev, ...items]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, ...items]);
+  }, [removeAfter, addParticles]);
 
   // ── 2. Spark burst ───────────────────────────────────────────
   const triggerSparkBurst = useCallback((originX = 85, originY = 92) => {
@@ -492,8 +498,8 @@ export function useAnimations() {
       removeAfter(p.id, 750);
       return p;
     });
-    setParticles((prev) => [...prev, ...sparks]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, ...sparks]);
+  }, [removeAfter, addParticles]);
 
   // ── 3. Wave ripple ───────────────────────────────────────────
   const triggerWaveRipple = useCallback((originX = 15, originY = 70) => {
@@ -502,8 +508,8 @@ export function useAnimations() {
       removeAfter(p.id, 1000 + p.delay);
       return p;
     });
-    setParticles((prev) => [...prev, ...rings]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, ...rings]);
+  }, [removeAfter, addParticles]);
 
   // ── 4. Streak confetti ───────────────────────────────────────
   const triggerStreakConfetti = useCallback(() => {
@@ -513,8 +519,8 @@ export function useAnimations() {
       removeAfter(p.id, 3500 + p.delay);
       return p;
     });
-    setParticles((prev) => [...prev, ...pieces]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, ...pieces]);
+  }, [removeAfter, addParticles]);
 
   // ── 5. Coin float ────────────────────────────────────────────
   const triggerCoinFloat = useCallback((originX = 20, originY = 70) => {
@@ -523,8 +529,8 @@ export function useAnimations() {
       removeAfter(p.id, 1500 + p.delay);
       return p;
     });
-    setParticles((prev) => [...prev, ...coins]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, ...coins]);
+  }, [removeAfter, addParticles]);
 
   // ── 6. Globe pulse ───────────────────────────────────────────
   const triggerGlobePulse = useCallback(() => {
@@ -537,8 +543,8 @@ export function useAnimations() {
   const triggerWaveTrail = useCallback((originX = 15, originY = 70) => {
     const p = { id: uid(), type: "waveTrail", x: originX, y: originY };
     removeAfter(p.id, 900);
-    setParticles((prev) => [...prev, p]);
-  }, [removeAfter]);
+    addParticles((prev) => [...prev, p]);
+  }, [removeAfter, addParticles]);
 
   useEffect(() => () => { if (globeTimerRef.current) clearTimeout(globeTimerRef.current); }, []);
 
@@ -954,6 +960,7 @@ export function useReactionBurst() {
   const [burst, setBurst] = useState(null);
 
   const trigger = useCallback((emoji) => {
+    if (prefersReducedMotion()) return;
     const id = Math.random();
     setBurst({ emoji, id });
     setTimeout(() => setBurst((b) => (b?.id === id ? null : b)), 1400);

@@ -23,6 +23,7 @@ import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
 import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./replyNudge";
 import ReplyNudge from "./ReplyNudge";
+import { installFlyToGrow } from "./motion";
 import { todayKey as localDayKey } from "./hytPrompts";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
@@ -2945,6 +2946,8 @@ export default function App() {
   // The tree balance is sparks + the device-local points ledger, and it is the ONLY progress
   // number the app now shows. KindnessTree.jsx computes the same sum for the panel; this copy
   // exists so the menu subtitle and the level-up chime can follow the tree without opening it.
+  // Every award flies a small glyph to the Grow tab (motion.js). Installed once.
+  useEffect(() => installFlyToGrow(), []);
   const [treePoints, setTreePoints] = useState(() => getPoints());
   useEffect(() => {
     const onPts = () => setTreePoints(getPoints());
@@ -3968,6 +3971,7 @@ export default function App() {
                 📓 Reflect
               </button>
               <button
+                data-fly-target="grow"
                 onClick={() => setActiveTab("impact")}
                 className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "impact"

@@ -138,7 +138,7 @@ function HowItWorksSheet({ ageBand, onClose }) {
 }
 
 // ── a single daily prompt card ───────────────────────────────────────────────
-function PromptCard({ item, done, planned, swapped, canSwap, celebrate, drops, onToggle, onPlan, onSwap, children }) {
+function PromptCard({ item, done, planned, swapped, canSwap, celebrate, onToggle, onPlan, onSwap, children }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-3.5 transition-all ${
       done ? "border-teal-200" : planned ? "border-teal-200 ring-1 ring-teal-100" : "border-slate-200"
@@ -148,7 +148,8 @@ function PromptCard({ item, done, planned, swapped, canSwap, celebrate, drops, o
       {celebrate && (
         <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl bg-teal-500/95 text-center"
           style={{ animation: "seenPracticeDone 2200ms ease both" }}>
-          <p className="text-lg font-extrabold text-white">✨ +{drops} drops</p>
+          {/* The drops themselves are shown flying to Grow (motion.js); this says what matters. */}
+          <p className="text-lg font-extrabold text-white">✨ Done</p>
           <p className="mt-0.5 px-6 text-[12px] font-medium leading-snug text-teal-50">
             That happened off the screen. That counts.
           </p>
@@ -402,7 +403,6 @@ export default function HaveYouTried({ currentUser, dob, onKindAct, onPlanChange
             swapped={Boolean(state.swaps?.[item.slot])}
             canSwap={canSwap}
             celebrate={celebrating === item.slot}
-            drops={POINTS.practice}
             onToggle={() => toggle(item.slot)}
             onPlan={() => plan(item.slot, item.text)}
             onSwap={() => swap(item.slot)}
