@@ -37,7 +37,7 @@ export default function BootScreen({ error = "", onRetry }) {
       <div className="flex flex-col items-center text-center">
         <img src="/icon-192.png" alt="" aria-hidden className="h-16 w-16 rounded-2xl shadow-sm" />
         <p className="mt-4 text-2xl font-extrabold tracking-tight text-slate-800">Seen</p>
-        <p className="mt-1 text-[13px] font-semibold text-rose-400">Kindness is Addictive</p>
+        <p className="mt-1 text-[13px] font-semibold text-rose-400">One kind thing, every day.</p>
 
         {error ? (
           <div className="mt-7 flex flex-col items-center gap-3">

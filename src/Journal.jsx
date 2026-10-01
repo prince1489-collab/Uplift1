@@ -604,7 +604,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
           type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
         });
         try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
-        // Say thank you. Practice has burst "✨ +150 drops" on every tick since it shipped;
+        // Say thank you. Practice has burst "✨ +N drops" on every tick since it shipped;
         // Reflect awarded its points in complete silence, so the tab that asks for the most
         // effort was the only one that never acknowledged it. New entries only — an edit
         // earns nothing, and a burst over nothing would be a lie.

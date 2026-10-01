@@ -30,9 +30,10 @@ let mirror = null; // { db, uid }
 // Point values per action (varied by effort).
 export const POINTS = {
   send: 100,          // send a kindness message
-  practice: 150,      // complete a "Have you tried?" prompt
+  practice: 400,      // do the day's kind thing — the main event (see THE ACT below)
+  feeling: 100,       // one tap to say how it felt, on the Today card
   practiceAll: 250,   // bonus for all 3 daily practices
-  reflect: 500,       // write a journal reflection (see THE 500s below)
+  reflect: 300,       // write a journal reflection — the bonus on top of the act
   like: 30,           // like a message
   reply: 200,         // private reply / kind moment
   story: 150,         // share a journal story
@@ -41,11 +42,18 @@ export const POINTS = {
   dailyOpen: 50,      // first open of the day
 };
 
-// ── THE 500s, and why only one of them needed a guard ────────────────────────────────────────
-// Writing a reflection and writing your own message are the two things in this app that take a
-// minute of someone's actual attention, so they are the two worth 500. Everything else is a tap.
+// ── THE ACT, and why it now outranks the writing ─────────────────────────────────────────────
+// This used to pay 150 for doing a kind thing in real life and 500 for writing about it, which
+// told people the screen mattered more than the world. The habit Seen is building is "one kind
+// thing, every day", so the act is now the biggest single award, the one-tap feeling check-in is
+// worth a little, and writing is a generous bonus rather than the point. Only future awards
+// change — nobody's existing balance moves.
 //
-// Reflect needs no protection: Journal.jsx keeps one entry per date, and a second save that day
+// ── THE 500, and why it needs a guard ────────────────────────────────────────────────────────
+// Writing your own message takes a minute of someone's actual attention, so the first one of the
+// day is worth 500.
+//
+// Reflect needs no protection either way: Journal.jsx keeps one entry per date, and a second save that day
 // EDITS the first rather than creating another, so the award can only land once however many
 // times you press save.
 //
