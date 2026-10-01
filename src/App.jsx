@@ -21,6 +21,8 @@ import HaveYouTried from "./HaveYouTried";
 import TodayCard from "./TodayCard";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
+import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./replyNudge";
+import ReplyNudge from "./ReplyNudge";
 import { todayKey as localDayKey } from "./hytPrompts";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
@@ -1144,7 +1146,9 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
     // and unlike the others it opens something rather than just reporting.
     replies.forEach((r) => out.push({
       id: `reply_${r.id}`, ts: Number(r.ts) || 0, icon: "💬", tint: "bg-sky-50/60", fresh: !r.read,
-      text: r.inReplyTo
+      text: r.final
+        ? <><span className="font-semibold">{r.fromName || "Someone"}</span> wrote back one last time</>
+        : r.inReplyTo
         ? <><span className="font-semibold">{r.fromName || "Someone"}</span> replied back</>
         : <><span className="font-semibold">{r.fromName || "Someone"}</span>{r.fromCountry ? <> from <span className="font-semibold">{r.fromCountry}</span></> : null} replied privately to your message</>,
       onClick: () => onOpenReply?.(r),
@@ -2211,9 +2215,9 @@ export default function App() {
     // Opening it is reading it. Best-effort: the rules let the recipient change nothing but
     // `read`, so a failure here costs an extra badge, not correctness.
     if (r && !r.read) updateDoc(doc(db, "privateReplies", r.id), { read: true }).catch(() => {});
-    // Answering an answer is not offered — and is also refused by the rules, so the UI and
-    // the server agree rather than the button being the only thing stopping it.
-    setAnsweringReply(r?.inReplyTo ? { ...r, readOnly: true } : r);
+    // The sheet works out which part of the exchange this is (answer / last word / complete)
+    // from the document itself; the rules refuse anything past the third message regardless.
+    setAnsweringReply(r);
   }, [db]);
 
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
@@ -3147,6 +3151,44 @@ export default function App() {
     try { recordGreetingDay()?.catch?.(() => {}); } catch { /* never block the act itself */ }
   }, [recordGreetingDay]);
 
+  // ── Hearts that become words ─────────────────────────────────────────────────────────────
+  // After a ❤️ on someone else's message, one line offers to tell them what it meant
+  // (replyNudge.js decides when; ReplyNudge.jsx is the line). And a private reply, once sent,
+  // counts as the day — telling someone how their words landed is the clearest way there is to
+  // make them feel seen.
+  const [replyNudge, setReplyNudge] = useState(null); // { id, name }
+  const replyNudgeTimer = useRef(null);
+  const offerReplyNudge = useCallback((m, name) => {
+    if (!m?.id || !m.uid || m.uid === currentUser?.uid || !canNudge(m.id)) return;
+    markNudged(m.id);
+    setReplyNudge({ id: m.id, name: (name || m.sender || "").split(" ")[0] });
+    clearTimeout(replyNudgeTimer.current);
+    replyNudgeTimer.current = setTimeout(() => setReplyNudge(null), NUDGE_MS);
+  }, [currentUser?.uid]);
+  const [repliedTick, setRepliedTick] = useState(0);
+  const handleReplySent = useCallback(({ mode, name, messageId }) => {
+    creditKindAct();
+    try { markSentToday(localDayKey(), { via: "reply", name }); } catch { /* ignore */ }
+    if (mode === "first") markReplied(messageId);
+    setReplyNudge(null);
+    setRepliedTick((t) => t + 1);
+  }, [creditKindAct]);
+
+  // Today's best chance to make someone feel seen: a message from someone you follow, from the
+  // last two days, that you hearted and have not yet answered. Offered first on the Today card.
+  const replyCandidate = useMemo(() => {
+    const since = Date.now() - 2 * 86400000;
+    const following = new Set(focusedUids);
+    const m = messages
+      .filter((x) => x?.id && x.uid && x.uid !== currentUser?.uid && following.has(x.uid) && x.text
+        && Number(x.timestamp) > since && reactionIdFor(x.id) && !hasReplied(x.id))
+      .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0];
+    return m ? { message: m, name: String(m.sender || "").split(" ")[0] || "them" } : null;
+    // repliedTick: hasReplied() reads storage, so a sent reply has to invalidate this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, focusedUids, currentUser?.uid, reactionIdFor, repliedTick]);
+
+
   // Ripple attribution: convert my recent reactions into "ripple" credits for the
   // people whose greetings I reacted to. Only reactions within the window count, and
   // each original sender is credited at most once (doc id = my uid). Best-effort.
@@ -3593,6 +3635,7 @@ export default function App() {
             currentUser={currentUser}
             db={db}
             blockedUids={blockedUids}
+            onSent={handleReplySent}
             onClose={() => setReplyTarget(null)} />
         )}
         {/* The other half of the exchange: answering a private reply someone sent you. Same
@@ -3606,6 +3649,7 @@ export default function App() {
             db={db}
             blockedUids={blockedUids}
             answering={answeringReply}
+            onSent={handleReplySent}
             onClose={() => setAnsweringReply(null)} />
         )}
         {/* The founder's story, read without leaving. An iframe of the same public/story.html
@@ -3941,6 +3985,8 @@ export default function App() {
               <TodayCard db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 echo={todayEcho}
+                replyCandidate={replyCandidate}
+                onReplyTo={(m) => setReplyTarget(m)}
                 onSend={() => { setPickerOpen(true); markCoachSeen(); }}
                 onKindAct={creditKindAct}
                 onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
@@ -4305,6 +4351,7 @@ export default function App() {
                                               triggerReactionBurst(emoji);
                                               haptic([5]);
                                               playHeart();
+                                              offerReplyNudge(m, group.sender);
                                             }}
                                             // What I have on this message right now, merged from
                                             // the server and whatever I just did. The picker uses
@@ -4445,10 +4492,16 @@ export default function App() {
                                           )}
                                           </div>
                                         </div>
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} myReactionId={reactionIdFor(m.id)} onServerReaction={noteServerReaction} onMyReactionChange={(rid) => setLocalReaction((prev) => ({ ...prev, [m.id]: rid }))} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); offerReplyNudge(m, group.sender); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} myReactionId={reactionIdFor(m.id)} onServerReaction={noteServerReaction} onMyReactionChange={(rid) => setLocalReaction((prev) => ({ ...prev, [m.id]: rid }))} messageTs={m.timestamp} />
                                       </div>
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
+
+                                    {replyNudge?.id === m.id && !mine && (
+                                      <ReplyNudge name={replyNudge.name}
+                                        onReply={() => { setReplyTarget(m); setReplyNudge(null); }}
+                                        onDismiss={() => setReplyNudge(null)} />
+                                    )}
 
                                     {/* Timestamp + read receipt — hidden until tap */}
                                     {isLast && (

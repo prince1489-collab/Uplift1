@@ -106,6 +106,28 @@ await check("client shape: A's answer at `${id}__reply` with inReplyTo is accept
   assertSucceeds(setDoc(doc(A, "privateReplies", `${first.id}__reply`),
     clientPayload("uidA", "uidB", { inReplyTo: first.id }))));
 
+// ── 9. One final word (3.1). Reply → answer → last word from the first replier, then done.
+const f1 = doc(collection(B, "privateReplies"));
+await setDoc(f1, clientPayload("uidB", "uidA"));
+await check("the first replier CANNOT send a final word before there is an answer",
+  assertFails(setDoc(doc(B, "privateReplies", `${f1.id}__final`), clientPayload("uidB", "uidA", { inReplyTo: f1.id, final: true }))));
+await setDoc(doc(A, "privateReplies", `${f1.id}__reply`), clientPayload("uidA", "uidB", { inReplyTo: f1.id }));
+await check("the person who received the first reply CANNOT send the final word",
+  assertFails(setDoc(doc(A, "privateReplies", `${f1.id}__final`), clientPayload("uidA", "uidB", { inReplyTo: f1.id, final: true }))));
+await check("a third party CANNOT send the final word",
+  assertFails(setDoc(doc(C, "privateReplies", `${f1.id}__final`), clientPayload("uidC", "uidA", { inReplyTo: f1.id, final: true }))));
+await check("the first replier CANNOT send the final word to someone else",
+  assertFails(setDoc(doc(B, "privateReplies", `${f1.id}__final`), clientPayload("uidB", "uidC", { inReplyTo: f1.id, final: true }))));
+await check("after an answer, the first replier CAN send one final word",
+  assertSucceeds(setDoc(doc(B, "privateReplies", `${f1.id}__final`), clientPayload("uidB", "uidA", { inReplyTo: f1.id, final: true }))));
+await check("…and only one: a second final is refused",
+  assertFails(setDoc(doc(B, "privateReplies", `${f1.id}__final`), clientPayload("uidB", "uidA", { inReplyTo: f1.id, final: true, text: "one more" }))));
+await check("nobody can answer the final word",
+  assertFails(setDoc(doc(A, "privateReplies", `${f1.id}__final__reply`), clientPayload("uidA", "uidB", { inReplyTo: `${f1.id}__final` }))));
+await check("the final word is private to the two of them",
+  assertFails(getDoc(doc(C, "privateReplies", `${f1.id}__final`))));
+await check("the recipient can read the final word",
+  assertSucceeds(getDoc(doc(A, "privateReplies", `${f1.id}__final`))));
 
 // ── publicMessages: the world-readable collection, which had no length bound at all until the
 //    composer limit went to 200. The bound is the ABUSE ceiling (500), deliberately looser than

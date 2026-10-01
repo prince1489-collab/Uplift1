@@ -27,6 +27,7 @@ import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
+import { hasReplied } from "./replyNudge";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -592,9 +593,14 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
                 className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${likes[m.id] ? "bg-rose-50 text-rose-600" : "bg-white border border-slate-200 text-slate-500"}`}>
                 <Heart size={12} fill={likes[m.id] ? "currentColor" : "none"} /> {likes[m.id] ? "Liked" : "Like"}
               </button>
+              {/* Once it is liked, Reply becomes the invitation it should have been all along:
+                  a heart says it landed, a word says how — and the second is what makes the
+                  writer feel seen. Not shown again once you have replied (replyNudge.js). */}
               <button onClick={() => onReplyPrivately?.(m)}
-                className="flex items-center gap-1 rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                <MessageCircle size={12} /> Reply
+                className={`flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  likes[m.id] && !hasReplied(m.id) ? "bg-teal-600 text-white" : "bg-white border border-slate-200 text-slate-500"}`}>
+                <MessageCircle size={12} className="flex-shrink-0" />
+                <span className="truncate">{likes[m.id] && !hasReplied(m.id) ? `Tell ${firstName(m.sender)} what it meant` : "Reply"}</span>
               </button>
               <button onClick={() => onToggleFocus?.(m)}
                 className={`ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${following ? "bg-teal-100 text-teal-700" : "bg-white border border-slate-200 text-slate-500"}`}>
@@ -655,61 +661,72 @@ export function KindMomentCard({ moment, compact = false }) {
 // same sheet rather than a second one because everything below the header is identical work —
 // the moderation call, the writeFailure mapping, the busy/sent/error states — and two copies
 // of that is how the safe path and the second path drift apart.
-export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, onClose }) {
+// One bubble in a private thread. Yours are coral, theirs are pink. Outside the sheet so React
+// does not see a new component type on every render.
+function ThreadBubble({ mine, label, body }) {
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${mine ? "bg-teal-50 border-teal-200" : "bg-sky-50 border-sky-200"}`}>
+      <p className={`text-[10px] font-bold uppercase tracking-wide ${mine ? "text-teal-600" : "text-sky-600"}`}>{label}</p>
+      <p className="mt-0.5 text-[14px] text-slate-700">{body}</p>
+    </div>
+  );
+}
+
+// Sentence openings for a first reply. Liking says "this landed"; these make it easy to say HOW,
+// which is the message that makes somebody feel seen. They only start the sentence — the rest is
+// the person's own words, and it is screened like everything else.
+const REPLY_STARTERS = [
+  "This made me smile because ",
+  "I needed this today — ",
+  "Thank you for ",
+  "This reminded me of ",
+];
+const REPLY_MAX = 200;
+
+// Four shapes, decided from the document being opened:
+//   first   — replying to someone's public message (no `answering`)
+//   answer  — they replied to you; you may answer once           (`${id}__reply`)
+//   final   — they answered your reply; you may write back once  (`${inReplyTo}__final`)
+//   closed  — the last word has been said (you are reading a final)
+// The rules enforce every limit here (firestore.rules privateReplies); the sheet only avoids
+// offering a box the server would refuse.
+export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, onClose, onSent }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const blocked = blockedUids instanceof Set ? blockedUids.has(target?.uid) : false;
 
-  // Has this exchange already been answered? Your own answer is addressed to THEM, so it never
-  // appears in your inbox and this cannot be worked out locally — hence one read when the sheet
-  // opens. Purely for honesty in the UI: the cap itself is enforced by the rules, and a stale
-  // answer here would be refused by the server rather than silently accepted.
-  // `undefined` = still checking, `null` = not answered yet, object = the answer already sent.
-  // Whether a check is needed is derived, not stored — setting state synchronously in the
-  // effect body for the "nothing to check" case would cascade an extra render on every open.
-  const needsAnswerCheck = Boolean(answering) && !answering.readOnly && Boolean(db);
-  const [existingAnswer, setExistingAnswer] = useState(undefined);
-  useEffect(() => {
-    if (!needsAnswerCheck) return;
-    let alive = true;
-    getDoc(doc(db, "privateReplies", `${answering.id}__reply`))
-      .then((s) => { if (alive) setExistingAnswer(s.exists() ? s.data() : null); })
-      .catch(() => { if (alive) setExistingAnswer(null); }); // read failed → let the rules decide
-    return () => { alive = false; };
-  }, [db, answering, needsAnswerCheck]);
+  const mode = !answering ? "first"
+    : answering.final ? "closed"
+    : answering.inReplyTo ? "final"
+    : "answer";
+  // The first reply in this exchange, whichever side of it you are on.
+  const rootId = mode === "answer" ? answering.id : answering?.inReplyTo ?? null;
+  const other = firstName(answering ? answering.fromName : target?.sender);
 
-  // THE THIRD PART OF THE EXCHANGE.
-  //
-  // A private exchange has three messages — the feed post it began with, the private reply, and
-  // the answer — and this sheet showed two of them. Which two depends on direction, and the
-  // labels did not:
-  //
-  //   Someone replies to MY post → `messageText` is my post, "You wrote" is right.
-  //   Someone ANSWERS my reply   → `messageText` is THEIR post, and "You wrote" sat above a
-  //                                message I had never written, while the reply I actually
-  //                                sent appeared nowhere at all.
-  //
-  // `inReplyTo` tells the two apart, because a private reply always goes TO the author of the
-  // message it answers: without it, the post is mine; with it, the post is theirs and my own
-  // reply is the document it points at. One read, and only in the second case.
-  const needsOriginalReply = Boolean(answering?.inReplyTo) && Boolean(db);
-  const [myOriginalReply, setMyOriginalReply] = useState(undefined);
+  // The rest of the thread, read once when the sheet opens. Your own messages are addressed to
+  // THEM, so they never appear in your inbox — which is why these are reads, not props.
+  //   root    — the first reply (needed in final + closed, where it is not the doc you opened)
+  //   answer  — `${root}__reply` (needed in answer, to know if you already did; and in closed)
+  //   last    — `${root}__final` (needed in final, to know if you already did)
+  const [thread, setThread] = useState(() => (answering && db ? undefined : {}));
   useEffect(() => {
-    if (!needsOriginalReply) return;
+    if (!answering || !db || !rootId) return;
     let alive = true;
-    getDoc(doc(db, "privateReplies", answering.inReplyTo))
-      .then((s) => { if (alive) setMyOriginalReply(s.exists() ? s.data() : null); })
-      .catch(() => { if (alive) setMyOriginalReply(null); }); // unreadable → just show two parts
+    const read = (id) => getDoc(doc(db, "privateReplies", id)).then((x) => (x.exists() ? x.data() : null)).catch(() => null);
+    Promise.all([
+      mode === "answer" ? Promise.resolve(null) : read(rootId),
+      mode === "final" ? Promise.resolve(null) : mode === "answer" || mode === "closed" ? read(`${rootId}__reply`) : Promise.resolve(null),
+      mode === "final" ? read(`${rootId}__final`) : Promise.resolve(null),
+    ]).then(([root, answer, last]) => { if (alive) setThread({ root, answer, last }); });
     return () => { alive = false; };
-  }, [db, answering, needsOriginalReply]);
+  }, [db, answering, rootId, mode]);
 
-  const answerChecked = !needsAnswerCheck || existingAnswer !== undefined;
-  // The exchange is over when you are looking at someone's answer to you, or you have already
-  // sent yours. Either way there is nothing to write, so the composer is not shown at all
-  // rather than shown and rejected.
-  const exchangeComplete = Boolean(answering) && (answering.readOnly || Boolean(existingAnswer));
+  const checked = thread !== undefined;
+  const exchangeComplete = mode === "closed"
+    || (mode === "answer" && Boolean(thread?.answer))
+    || (mode === "final" && Boolean(thread?.last));
 
   const send = async () => {
     const clean = text.trim();
@@ -750,14 +767,15 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
 
     let replyId;
     try {
-      if (answering) {
-        // The one permitted answer goes to a DERIVED id, not a random one. That is what caps
-        // the exchange at two messages: a second answer would be a write to a path that
-        // already exists, which Firestore treats as an update, and the update rule allows
-        // only `read` to change. So the limit is enforced by the rules rather than by this
-        // component choosing not to offer the button again. See firestore.rules.
+      if (mode === "answer") {
+        // DERIVED ids, not random ones. That is what caps the exchange: a second answer (or a
+        // second last word) would be a write to a path that already exists, which Firestore
+        // treats as an update, and the update rule allows only `read` to change.
         replyId = `${answering.id}__reply`;
         await setDoc(doc(db, "privateReplies", replyId), { ...payload, inReplyTo: answering.id });
+      } else if (mode === "final") {
+        replyId = `${rootId}__final`;
+        await setDoc(doc(db, "privateReplies", replyId), { ...payload, inReplyTo: rootId, final: true });
       } else {
         const ref = await addDoc(collection(db, "privateReplies"), payload);
         replyId = ref.id;
@@ -771,6 +789,9 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setSent(true);
     setBusy(false);
     try { awardPoints("reply"); } catch { /* ignore */ }
+    // Telling someone how their words landed is a way of making them feel seen — it counts as
+    // the day, exactly like sending a message does.
+    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null }); } catch { /* ignore */ }
 
     // Everything below here is best-effort and deliberately NOT awaited. The reply has
     // already landed; a failure to push a notification or write a celebratory card must
@@ -781,9 +802,8 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     authedPost(currentUser, "/api/notify-reply", { replyId }).catch(() => {});
 
     // Announce that kindness happened, without saying who or what — but only for a first
-    // reply. An answer is the same two people in the same exchange, and recording a second
-    // moment would show one interaction on the globe twice.
-    if (!answering) {
+    // reply. The rest is the same two people in the same exchange.
+    if (mode === "first") {
       recordKindMoment(db, {
         fromUid: myUid ?? currentUser.uid,
         toUid: target.uid,
@@ -794,88 +814,95 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setTimeout(() => onClose?.(), 1200);
   };
 
+  const title = mode === "first" ? `Tell ${firstName(target?.sender)} how it landed`
+    : mode === "answer" ? "Reply back"
+    : mode === "final" ? "Write back one last time"
+    : "Your exchange";
+  const lastWordNote = mode === "answer"
+    ? ` ${other} can write back once more, and then the exchange is complete.`
+    : mode === "final" ? " This is the last word: once you send it, the exchange is complete." : "";
+
   return createPortal(
     <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col max-h-[90dvh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
         <div className="px-5 pb-2 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-800">
-            {answering ? "Reply back" : `Reply privately to ${firstName(target?.sender)}`} {flagFor(target?.country)}
+            {title} {flagFor(answering ? answering.fromCountry : target?.country)}
           </h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
         </div>
-        <div className="px-5 pb-8 space-y-3">
+        <div className="px-5 pb-8 space-y-3 overflow-y-auto overscroll-contain">
           {answering ? (
-            // The exchange so far, oldest first, so it reads in order: what you wrote publicly,
-            // then what they sent you privately. Without your own message above theirs, a reply
-            // arriving days later has no context.
+            // The whole exchange, oldest first: the public message it began with, then each
+            // private message in turn.
             <div className="space-y-2">
               {answering.messageText && (
                 <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    {answering.inReplyTo ? `${firstName(answering.fromName)} wrote` : "You wrote"}
+                    {mode === "final" ? `${other} wrote` : "You wrote"}
                   </p>
                   <p className="mt-0.5 text-[13px] text-slate-500 italic">“{stripQuotes(answering.messageText)}”</p>
                 </div>
               )}
-              {myOriginalReply?.text && (
-                <div className="rounded-xl bg-teal-50 border border-teal-200 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">You replied</p>
-                  <p className="mt-0.5 text-[14px] text-slate-700">{myOriginalReply.text}</p>
-                </div>
-              )}
-              <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-600">
-                  {firstName(answering.fromName)} replied {flagFor(answering.fromCountry)}
-                </p>
-                <p className="mt-0.5 text-[14px] text-slate-700">{answering.text}</p>
-              </div>
+              {mode === "answer" && <ThreadBubble label={`${other} replied`} body={answering.text} />}
+              {mode === "answer" && thread?.answer && <ThreadBubble mine label="You replied" body={thread.answer.text} />}
+              {mode === "final" && thread?.root && <ThreadBubble mine label="You replied" body={thread.root.text} />}
+              {mode === "final" && <ThreadBubble label={`${other} replied`} body={answering.text} />}
+              {mode === "final" && thread?.last && <ThreadBubble mine label="You wrote back" body={thread.last.text} />}
+              {mode === "closed" && thread?.root && <ThreadBubble label={`${other} replied`} body={thread.root.text} />}
+              {mode === "closed" && thread?.answer && <ThreadBubble mine label="You replied" body={thread.answer.text} />}
+              {mode === "closed" && <ThreadBubble label={`${other} wrote back`} body={answering.text} />}
             </div>
           ) : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{stripQuotes(target?.text)}”</div>
           )}
-          {/* Real now — say who can see it, since "private" should mean something specific.
-              For an answer it also has to say this is the last one, BEFORE they write it —
-              finding out afterwards that you had one shot would feel like a trick. */}
-          <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
-            <p className="text-[11px] text-sky-700 leading-relaxed">
-              Only {firstName(answering ? answering.fromName : target?.sender)} can read this — your words are never shown
-              in any feed. It's screened first, and either of you can delete it.
-              {answering && " This is a one-off reply, not a chat: once you send it, the exchange is complete."}
-            </p>
-          </div>
-          {exchangeComplete ? (
-            <>
-              {existingAnswer && (
-                <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">You replied</p>
-                  <p className="mt-0.5 text-[14px] text-slate-700">{existingAnswer.text}</p>
-                </div>
-              )}
-              <p className="text-center text-[12px] text-slate-500 leading-relaxed">
-                This exchange is complete — one reply each, and that's it. Kindness here isn't a
-                conversation to keep up with.
+          {/* Say who can see it, and — before they write — how many messages are left, so
+              finding out afterwards that it was the last one never feels like a trick. */}
+          {mode !== "closed" && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+              <p className="text-[11px] text-sky-700 leading-relaxed">
+                Only {mode === "first" ? firstName(target?.sender) : other} can read this — your words are never shown
+                in any feed. It's screened first, and either of you can delete it.{lastWordNote}
               </p>
-            </>
-          ) : !answerChecked ? (
+            </div>
+          )}
+          {exchangeComplete ? (
+            <p className="text-center text-[12px] text-slate-500 leading-relaxed">
+              This exchange is complete — three messages, and that's it. Kindness here isn't a
+              conversation to keep up with.
+            </p>
+          ) : !checked ? (
             <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-slate-300" /></div>
           ) : (
             <>
-              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 120))} rows={2} autoFocus
-                placeholder="A private word of kindness, just between you two…"
+              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2} autoFocus
+                placeholder={mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+              {/* Starters only for a first reply, and only while the box is empty — they are a
+                  way in, not a template to fill. */}
+              {mode === "first" && !text && !sent && (
+                <div className="flex flex-wrap gap-1.5">
+                  {REPLY_STARTERS.map((st) => (
+                    <button key={st} type="button" onClick={() => setText(st)}
+                      className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+                      {st.trim().replace(/[—\s]+$/, "")}…
+                    </button>
+                  ))}
+                </div>
+              )}
               {error && (
                 <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{error}</p>
               )}
               {sent && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] font-semibold text-amber-700">
-                  Sent ✓ — only {firstName(answering ? answering.fromName : target?.sender)} will see it.
+                  Sent ✓ — only {mode === "first" ? firstName(target?.sender) : other} will see it.
                 </div>
               )}
               <button onClick={send} disabled={!text.trim() || sent || busy}
                 className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : answering ? "Send reply" : "Send privately"}
+                {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : mode === "first" ? "Send privately" : mode === "final" ? "Send last word" : "Send reply"}
               </button>
               <p className="text-center text-[10px] text-slate-400 leading-relaxed">
                 Screened before delivery. Your words stay between you two — the feed only ever shows

@@ -53,10 +53,14 @@ export function onDayState(fn) {
 // completes the day too. Called from the two places a send already succeeds (App.jsx); the
 // event lets a mounted Today card flip to "How did that feel?" without a reload. No points or
 // day-counting here — the send path already does both.
-export function markSentToday(day) {
+// `info` says which way: { via: "message" } or { via: "reply", name } — so the finished card can
+// say "Your words reached Lisa." A reply after a message (or the reverse) updates the wording;
+// either one has already completed the day.
+export function markSentToday(day, info = {}) {
   const cur = loadDayState(day);
-  if (cur.sent) return;
-  saveDayState(day, { ...cur, sent: true });
+  const via = info.via || "message";
+  if (cur.sent && cur.sentVia === via && cur.sentTo === (info.name ?? null)) return;
+  saveDayState(day, { ...cur, sent: true, sentVia: via, sentTo: info.name ?? null });
 }
 
 // Everything that happens when somebody says they did it, in one place. Returns the next state;

@@ -268,6 +268,12 @@ service cloud.firestore {
     //  2. An answer cannot itself be answered. `inReplyTo` must not already end in
     //     `__reply`, which stops `x__reply__reply` and every longer chain.
     //
+    //  3. ONE FINAL WORD (since 3.1). After the answer exists, the person who wrote the first
+    //     reply may send exactly one more message, at `{originalReplyId}__final`, to the same
+    //     person. Same derived-id trick, so a second final is an update and is refused. The
+    //     exchange is therefore three messages at most — reply, answer, last word — and then
+    //     it is complete. Nobody can answer a final, and a final cannot be chained.
+    //
     // `matches()` is a full-string match in rules, so '.*__reply' means "ends with __reply".
     match /privateReplies/{replyId} {
       allow read: if request.auth != null
@@ -285,7 +291,13 @@ service cloud.firestore {
           && (!('inReplyTo' in request.resource.data.keys())
               || (request.resource.data.inReplyTo is string
                   && replyId == request.resource.data.inReplyTo + '__reply'
-                  && !request.resource.data.inReplyTo.matches('.*__reply')));
+                  && !request.resource.data.inReplyTo.matches('.*__(reply|final)'))
+              || (request.resource.data.inReplyTo is string
+                  && replyId == request.resource.data.inReplyTo + '__final'
+                  && !request.resource.data.inReplyTo.matches('.*__(reply|final)')
+                  && exists(/databases/$(database)/documents/privateReplies/$(request.resource.data.inReplyTo + '__reply'))
+                  && get(/databases/$(database)/documents/privateReplies/$(request.resource.data.inReplyTo)).data.fromUid == request.auth.uid
+                  && get(/databases/$(database)/documents/privateReplies/$(request.resource.data.inReplyTo)).data.toUid == request.resource.data.toUid));
       allow update: if request.auth != null
           && resource.data.toUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);

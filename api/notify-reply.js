@@ -42,9 +42,13 @@ export default async function handler(req, res) {
     // reaching out, the other is someone answering you. `inReplyTo` is what distinguishes
     // them, and it is set only on the single permitted reply back.
     const name = String(reply.fromName || "Someone").trim() || "Someone";
-    const body = reply.inReplyTo
+    // A first reply is someone telling you how your words landed — the strongest "you were seen"
+    // this app can send, so it says so. A final is the last of the three messages.
+    const body = reply.final
+      ? `${name} wrote back one last time 💬`
+      : reply.inReplyTo
       ? `${name} replied back 💬`
-      : `${name} sent you a private reply 💬`;
+      : `${name} told you how your words made them feel 💬`;
 
     const results = await Promise.allSettled(
       rows.map((r) => getMessaging().send(pushEnvelope(r.token, body, r.platform, {

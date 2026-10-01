@@ -25,7 +25,7 @@
 // there and the reverse. Nothing about the act is duplicated.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, RefreshCw, Clock, ChevronDown, Send } from "lucide-react";
+import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, SLOTS } from "./hytState";
 import { FEELINGS, feelingFor, recordFeeling, actPhrase } from "./feelings";
@@ -69,13 +69,14 @@ function NudgeChooser({ current, onPick, onSkip, title }) {
 // The ritual is about someone else, so the finished card says something about them — and only
 // something true. A reaction that arrived today names its country; otherwise it says what kind
 // of thing happened, never a number that might be zero.
-function consequence(via, echo) {
+function consequence(via, echo, sentTo) {
+  if (via === "reply") return `Your words reached ${sentTo || "them"}. Telling someone how they landed is how people feel seen.`;
   if (echo?.country) return `Someone in ${echo.country} felt your kindness ${echo.emoji || "❤️"}`;
   if (via === "sent") return "Your words are on their way — you'll see here when someone feels them.";
   return "That happened off the screen. That counts.";
 }
 
-export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates, echo, onKindAct, onPlanChange, onSayMore, onSend }) {
+export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates, echo, replyCandidate, onReplyTo, onKindAct, onPlanChange, onSayMore, onSend }) {
   const uid = currentUser?.uid ?? "anon";
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
@@ -101,11 +102,11 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
   // Either way of making someone feel seen completes the day.
   const actDone = Boolean(state.done?.kindness);
   const done = actDone || Boolean(state.sent);
-  const via = actDone ? "act" : "sent";
+  const via = actDone ? "act" : state.sentVia === "reply" ? "reply" : "sent";
   const planned = Boolean(state.planned?.kindness);
   const swapsUsed = SLOTS.reduce((n, s) => n + (state.swaps?.[s] ? 1 : 0), 0) + (state.area ? 1 : 0);
   const canSwap = swapsUsed < 1 && !done;
-  const what = via === "sent" ? "a kind message" : item.text;
+  const what = via === "reply" ? `a reply to ${state.sentTo || "someone"}` : via === "sent" ? "a kind message" : item.text;
 
   const doneIt = () => {
     update(completeSlot(state, "kindness", { onKindAct, onPlanChange }));
@@ -129,7 +130,8 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
 
   const sayMore = () => {
     const f = feelingFor(state.feeling);
-    const did = via === "sent" ? "you sent someone a kind message" : actPhrase(item.text);
+    const did = via === "reply" ? `you told ${state.sentTo || "someone"} how their words landed`
+      : via === "sent" ? "you sent someone a kind message" : actPhrase(item.text);
     const prompt = `Today you made someone feel seen: ${did}.${f ? ` You felt ${f.label.toLowerCase()}.` : ""} What happened?`;
     try { localStorage.setItem(PIN_KEY(day), prompt); } catch { /* ignore */ }
     onSayMore?.();
@@ -170,7 +172,7 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
           </button>
           {expanded && (
             <div className="border-t border-teal-100 px-3.5 pb-2.5 pt-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
-              <p className="text-[12px] font-semibold leading-snug text-teal-700">{consequence(via, echo)}</p>
+              <p className="text-[12px] font-semibold leading-snug text-teal-700">{consequence(via, echo, state.sentTo)}</p>
               {via === "act" && <p className="mt-0.5 text-[12px] leading-snug text-slate-500 line-clamp-2">{item.text}</p>}
               <div className="mt-2 flex items-center gap-2">
                 <button onClick={sayMore}
@@ -240,12 +242,30 @@ export default function TodayCard({ db, currentUser, dob, nudgeHour, activeDates
                 <Clock size={11} /> {Number.isInteger(nudgeHour) ? fmtHour(nudgeHour) : "9am"}
               </button>
             </div>
-            {/* Online: the send sheet that already exists. Twenty seconds, and someone somewhere
-                gets a kind word — the fastest way to finish the day. */}
-            <button onClick={onSend}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
-              <Send size={14} /> Send some kindness <span className="font-medium text-teal-100">· 20 sec</span>
-            </button>
+            {replyCandidate ? (
+              // Someone you follow wrote something you hearted and have not answered. Telling
+              // them how it landed is the most direct way to make a real person feel seen, so it
+              // goes first; sending to the world stays one tap away underneath.
+              <>
+                <p className="mt-1.5 text-[12px] leading-snug text-slate-500 line-clamp-1">
+                  <span className="font-semibold text-slate-600">{replyCandidate.name}</span> wrote: “{String(replyCandidate.message.text).replace(/^[“"]|[”"]$/g, "")}”
+                </p>
+                <button onClick={() => onReplyTo?.(replyCandidate.message)}
+                  className="mt-1.5 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
+                  <MessageCircle size={14} /> Tell {replyCandidate.name} how it landed
+                </button>
+                <button onClick={onSend} className="mt-1 w-full py-1 text-[11px] font-semibold text-teal-600 hover:text-teal-700">
+                  or send some kindness to the world
+                </button>
+              </>
+            ) : (
+              // Online: the send sheet that already exists. Twenty seconds, and someone somewhere
+              // gets a kind word — the fastest way to finish the day.
+              <button onClick={onSend}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-[13px] font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all">
+                <Send size={14} /> Send some kindness <span className="font-medium text-teal-100">· 20 sec</span>
+              </button>
+            )}
             {/* Or in the world: the kindness slot of Practice's daily pick, same record. */}
             <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">or, in real life</p>
             <div className="mt-1 flex items-start gap-2">
