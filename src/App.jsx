@@ -19,6 +19,7 @@ import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, pl
 import { useBackLayer } from "./backStack";
 import HaveYouTried from "./HaveYouTried";
 import TodayCard from "./TodayCard";
+import { rhythmOf } from "./rhythm";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
@@ -346,6 +347,11 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, follow
                   <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
                     <span className="text-xl leading-none">{streak >= 7 ? "🔥" : "✨"}</span>
                     <span className="text-[10px] font-bold text-slate-500">{streak}d</span>
+                    {/* The forgiving number under the strict one: a missed weekend costs the
+                        rhythm two days, never everything. See rhythm.js. */}
+                    {rhythmOf(profile?.activeDates) != null && (
+                      <span className="text-[9px] font-semibold text-slate-400">{rhythmOf(profile?.activeDates)}/30 days</span>
+                    )}
                   </div>
                 )}
               </div>

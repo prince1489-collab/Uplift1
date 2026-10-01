@@ -357,6 +357,8 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
 const ROTATE_MS = 5000;
+// Fewer than this in 24 hours and the pulse counts the week instead (see `pulse` below).
+const PULSE_THIN = 5;
 export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   // Blocking has to hold here too. It used to be applied only to the Focused Feed, so a
@@ -378,12 +380,22 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   // the same `messages` already in hand — no extra query — and deliberately counting EVERYONE,
   // including you and the people you follow, because this is a measure of the world rather than
   // a feed of it.
+  //
+  // On a thin day the 24-hour figure is "2 kind messages across 2 countries", which reads as an
+  // empty room. So below PULSE_THIN it widens to the last seven days and SAYS so — "this week".
+  // Still counted, never invented: the same rows, a longer window, an honest label. (App.jsx
+  // loads the newest 50, so on a busy week the weekly figure is a floor — and on a busy week the
+  // daily one is the one shown anyway.)
   const pulse = useMemo(() => {
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const recent = messages.filter(
-      (m) => m?.uid && m.uid !== "system" && m.text && !isBlocked(m.uid) && Number(m.timestamp) > dayAgo
-    );
-    return { count: recent.length, countries: new Set(recent.map((m) => m.country).filter(Boolean)).size };
+    const now = Date.now();
+    const real = messages.filter((m) => m?.uid && m.uid !== "system" && m.text && !isBlocked(m.uid));
+    const within = (ms) => real.filter((m) => Number(m.timestamp) > now - ms);
+    const summarise = (rows, window) =>
+      ({ count: rows.length, countries: new Set(rows.map((m) => m.country).filter(Boolean)).size, window });
+    const day = within(24 * 60 * 60 * 1000);
+    if (day.length >= PULSE_THIN) return summarise(day, "today");
+    const week = within(7 * 24 * 60 * 60 * 1000);
+    return week.length > day.length ? summarise(week, "this week") : summarise(day, "today");
   }, [messages, isBlocked]);
 
   // Strangers' messages and stranger-to-stranger kind moments share one rotation, so a
@@ -524,7 +536,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
               </button>
             </>
           ) : (
-            items.length === 0 && pulse.count > 0 ? "today so far" : "from strangers"
+            items.length === 0 && pulse.count > 0 ? (pulse.window === "today" ? "today so far" : "this week") : "from strangers"
           )}
         </span>
       </div>
@@ -534,7 +546,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
           // Never a live number that reads as zero: this branch only renders when count > 0.
           <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] leading-snug text-slate-600">
             🌍 <span className="font-bold">{pulse.count}</span> kind {pulse.count === 1 ? "message" : "messages"} sent
-            {pulse.countries > 1 ? <> across <span className="font-bold">{pulse.countries}</span> countries</> : null} today.
+            {pulse.countries > 1 ? <> across <span className="font-bold">{pulse.countries}</span> countries</> : null} {pulse.window}.
           </div>
         ) : (
           <div className="rounded-2xl bg-white/70 px-3 py-3 text-center text-[12px] text-slate-500">

@@ -23,6 +23,8 @@ import { prepareImage, PREPARED_TYPE } from "./imagePrep";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 import { syncPublicProfile, readPublicProfile } from "./publicProfile";
+import { nextShowingUp } from "./rhythm";
+import { todayKey as localDayKey } from "./hytPrompts";
 
 import {
   Bell,
@@ -229,17 +231,10 @@ export function useStreak(db, uid, profile) {
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(userRef);
       const data = snap.exists() ? snap.data() : {};
-      const lastDate = data.lastGreetingDate ?? "";
-      const currentStreak = Number(data.streakDays ?? 0);
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yKey = yesterday.toISOString().slice(0, 10);
-      let newStreak = 1;
-      if (lastDate === today) newStreak = currentStreak;
-      else if (lastDate === yKey) newStreak = currentStreak + 1;
-
+      // Streak (with its one free grace day), activeDays and the last 30 local dates, decided
+      // together from the one read — see nextShowingUp in rhythm.js.
       // ── DAYS YOU SHOWED UP, WHICH IS NOT THE STREAK ─────────────────────────────────────
-      // streakDays answers "how many days in a row", and any gap resets it to 1. That is the
+      // streakDays answers "how many days in a row", and a real gap resets it to 1. That is the
       // right number for the flame and the wrong one for a certificate: a wellbeing app whose
       // reward for a year of kindness is destroyed by one missed Tuesday is running the guilt
       // mechanic the roadmap rules out. So this counts days you turned up AT ALL, and a gap
@@ -253,13 +248,7 @@ export function useStreak(db, uid, profile) {
       // eleven-day streak has demonstrably shown up eleven times, and starting them at 0 would
       // take something they had already earned. It is a floor, not a guess: max() means the
       // real count overtakes it and never goes backwards.
-      const countedToday = lastDate === today;
-      const activeDays = Math.max(Number(data.activeDays ?? 0), currentStreak) + (countedToday ? 0 : 1);
-
-      const fields = { streakDays: newStreak, lastGreetingDate: today, activeDays };
-      // Stamped once and never rewritten — the certificate says when you began, and that date
-      // must not move every time somebody is kind.
-      if (!data.firstActiveDate) fields.firstActiveDate = today;
+      const fields = nextShowingUp(data, today, localDayKey());
       tx.set(userRef, fields, { merge: true });
     });
   }, [db, uid]);
