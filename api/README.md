@@ -19,15 +19,9 @@ This happened: `api/post-suggest.js` took the count to 13, the build failed, and
 subsequent commits went out believing they were live when they weren't.
 `api/lifehacks.js` was deleted to make room — it had no callers on either branch.
 
-`api/goodnews.js` used to carry a "do not delete" warning: it had no caller on the V2 preview
-branch, but production's frozen `src/GoodNews.jsx` still called it, so removing it would have
-broken Good News at merge time. That merge has happened. `src/GoodNews.jsx` no longer exists
-on any branch and the endpoint has no caller left in `src/`.
-
-It is kept anyway, because at 10 of 12 slots there is no pressure to reclaim one, and an
-endpoint with no caller in this repo is not proof of an endpoint with no caller — anything
-already pointed at the deployed URL would break silently. Retiring it is a deliberate
-decision to make on its own, not a slot-freeing convenience.
+`api/goodnews.js` (the daily "Inspiring" story: GNews + an AI summary, on a 05:20 cron) was
+retired in 3.3 along with the card that showed it, its cron entry and the `storyLikes`
+collection. Its `meta/goodNews*` documents are now unused data.
 
 ## Environment variables
 
@@ -39,7 +33,7 @@ means nothing can be published at all.
 | Variable | Used by |
 |---|---|
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | moderate-message, post-suggest, feeling-suggest, submit-greeting, notify-feeling, notify-like, send-reminder, rotate-champions, webhook |
-| `ANTHROPIC_API_KEY` | moderate-message, post-suggest, feeling-suggest, submit-greeting, goodnews |
+| `ANTHROPIC_API_KEY` | moderate-message, post-suggest, feeling-suggest, submit-greeting |
 
 `ANTHROPIC_API_KEY` has one consumer that treats its absence as a hard stop rather than a
 degraded mode: the **image** branch of `moderate-message`, which screens profile photos. Text
@@ -47,7 +41,6 @@ falls back to a word list when the key is missing; pixels have no equivalent, so
 answers `checked: false` and the client refuses the upload. If avatars stop saving with "we
 couldn't check that photo just now", this key is the first thing to look at.
 | `CRON_SECRET` | send-reminder, rotate-champions |
-| `GNEWS_API_KEY` | goodnews |
 | `STRIPE_SECRET_KEY` · `STRIPE_WEBHOOK_SECRET` · `STRIPE_PRICE_ID` | create-checkout-session, create-portal-session, webhook |
 | `APP_URL` | create-checkout-session, create-portal-session (both defaulted) |
 

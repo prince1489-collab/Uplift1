@@ -263,23 +263,6 @@ await check("media cannot be edited after it is published",
 await check("the author can delete their own media",
   assertSucceeds(deleteDoc(doc(A, "publicMessages", msgWithMedia.id, "media", "item"))));
 
-// ── Hearts on the daily story ────────────────────────────────────────────────────────────────
-// The count is public on purpose — a private tally could not say "other people were moved by this
-// too", which is the only reason it is on the card. What has to hold is that only a signed-in
-// person can change it, and that nobody but an admin can delete the document out from under a
-// story that is still on screen.
-const STORY = "s1a2b3c4";
-await check("anyone at all can read the count, signed in or not",
-  assertSucceeds(getDoc(doc(ANON, "storyLikes", STORY))));
-await check("a signed-in person can add their heart",
-  assertSucceeds(setDoc(doc(A, "storyLikes", STORY), { uids: ["uidA"], count: 1, link: "https://x.test/1", at: Date.now() })));
-await check("a second person can add theirs to the same story",
-  assertSucceeds(setDoc(doc(B, "storyLikes", STORY), { uids: ["uidA", "uidB"], count: 2, link: "https://x.test/1", at: Date.now() }, { merge: true })));
-await check("an anonymous visitor cannot",
-  assertFails(setDoc(doc(ANON, "storyLikes", STORY), { uids: ["nobody"], count: 1 })));
-await check("nobody ordinary can delete the count for a story still on screen",
-  assertFails(deleteDoc(doc(A, "storyLikes", STORY))));
-
 // ── How the day's act felt ───────────────────────────────────────────────────────────────────
 const FEEL = { feeling: "calmer", act: "Have you tried… holding a door?", date: "2026-10-01", createdAt: Date.now() };
 await check("you can record how your own act felt",
@@ -288,6 +271,8 @@ await check("…and read it back",
   assertSucceeds(getDoc(doc(A, "users", "uidA", "feelings", "2026-10-01"))));
 await check("nobody else can read how you felt",
   assertFails(getDoc(doc(B, "users", "uidA", "feelings", "2026-10-01"))));
+await check("a signed-out visitor cannot read it either",
+  assertFails(getDoc(doc(ANON, "users", "uidA", "feelings", "2026-10-01"))));
 await check("nobody else can write it for you",
   assertFails(setDoc(doc(B, "users", "uidA", "feelings", "2026-10-02"), FEEL)));
 

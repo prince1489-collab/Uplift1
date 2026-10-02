@@ -17,7 +17,7 @@
 //
 // ── SIZE ─────────────────────────────────────────────────────────────────────────────────────
 // It sits above the feeds in a column that must still show them, so every state is bounded and
-// the finished state is one line. The GoodNewsCard clipping bug is the lesson: anything here
+// the finished state is one line. The old daily-story card taught the lesson: anything here
 // that grows without limit pushes the people off the first screen.
 //
 // ── ONE SOURCE OF TRUTH ──────────────────────────────────────────────────────────────────────
