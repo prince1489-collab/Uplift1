@@ -227,6 +227,33 @@ workflows:
             --create
           keychain add-certificates
           xcode-project use-profiles
+
+          # ── Does the profile actually carry the app's capabilities? ─────────────────────────
+          # The app needs Push Notifications and Sign in with Apple. If the App Store profile
+          # Apple handed back lacks either, the archive fails a minute later with a cryptic
+          # "requires a provisioning profile with…" error. Say it here, plainly, instead.
+          PROFILE=""
+          for f in "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision; do
+            [ -f "$f" ] || continue
+            if security cms -D -i "$f" 2>/dev/null | grep -q "<string>[A-Z0-9]*\.$BUNDLE_ID</string>"; then
+              if [ -z "$PROFILE" ] || [ "$f" -nt "$PROFILE" ]; then PROFILE="$f"; fi
+            fi
+          done
+          if [ -z "$PROFILE" ]; then
+            echo "!! No provisioning profile for $BUNDLE_ID was installed."; exit 1
+          fi
+          security cms -D -i "$PROFILE" > /tmp/profile.plist
+          echo "── Profile: $(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/profile.plist)  (expires $(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' /tmp/profile.plist))"
+          MISSING=""
+          grep -q "<key>aps-environment</key>" /tmp/profile.plist && echo "   ✓ Push Notifications" || MISSING="$MISSING Push-Notifications"
+          grep -q "<key>com.apple.developer.applesignin</key>" /tmp/profile.plist && echo "   ✓ Sign in with Apple" || MISSING="$MISSING Sign-in-with-Apple"
+          if [ -n "$MISSING" ]; then
+            echo "!! The App Store profile for $BUNDLE_ID is missing:$MISSING"
+            echo "!! Fix at developer.apple.com → Identifiers → $BUNDLE_ID: tick Push Notifications and"
+            echo "!! Sign In with Apple, save; then Profiles → delete the old App Store profile(s) for"
+            echo "!! $BUNDLE_ID, and re-run this build (a fresh profile is created automatically)."
+            exit 1
+          fi
       - name: Stamp the marketing version and build number
         script: |
           set -e
