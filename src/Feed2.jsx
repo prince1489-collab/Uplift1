@@ -28,6 +28,7 @@ import { apiUrl, authedPost } from "./apiBase";
 import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
+import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -661,29 +662,6 @@ export function KindMomentCard({ moment, compact = false }) {
 // same sheet rather than a second one because everything below the header is identical work —
 // the moderation call, the writeFailure mapping, the busy/sent/error states — and two copies
 // of that is how the safe path and the second path drift apart.
-// ── Keep a bottom sheet inside the part of the screen you can actually see ───────────────────
-// On Android the keyboard does not shrink `100dvh`; the WebView pans the whole page up instead,
-// which pushed the reply sheet's title and the message being replied to behind the status bar
-// (seen in a recording of 3.5). visualViewport is the area left above the keyboard, so the sheet's
-// container is pinned to exactly that, and the sheet is capped to fit inside it.
-function useVisibleViewport() {
-  const read = () => {
-    const vv = typeof window !== "undefined" ? window.visualViewport : null;
-    return vv ? { top: vv.offsetTop, height: vv.height } : null;
-  };
-  const [box, setBox] = useState(read);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const on = () => setBox({ top: vv.offsetTop, height: vv.height });
-    vv.addEventListener("resize", on);
-    vv.addEventListener("scroll", on);
-    return () => { vv.removeEventListener("resize", on); vv.removeEventListener("scroll", on); };
-  }, []);
-  return box;
-}
-const sheetBox = (box) => (box ? { top: box.top, height: box.height, bottom: "auto" } : undefined);
-const sheetCap = (box) => ({ maxHeight: box ? box.height - 12 : "90dvh" });
 
 // One bubble in a private thread. Yours are coral, theirs are pink. Outside the sheet so React
 // does not see a new component type on every render.

@@ -26,6 +26,8 @@
 // nothing about a day already in progress is lost in the move.
 
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob } from "./hytState";
@@ -104,6 +106,7 @@ export default function SeenBar({
   onKindAct, onPlanChange, onSayMore,
 }) {
   const uid = currentUser?.uid ?? "anon";
+  const view = useVisibleViewport();
   const day = todayKey();
   const ageBand = useMemo(() => ageBandFor(ageFromDob(dob)), [dob]);
   const [state, setState] = useState(() => loadDayState(day));
@@ -223,9 +226,10 @@ export default function SeenBar({
   const answered = state.reflected?.answer;
 
   return (
-    // z-[45]: above the sticky feed headers (z 32), which used to cut the open panel in half,
-    // and below every sheet and portal (z 240+).
-    <div className="relative z-[45] flex-shrink-0 px-3.5 pt-2">
+    // Pinned at the bottom of Connect (3.7), where the thumb already is and where Seen's users
+    // learned the orange button lives. The panel opens as a bottom sheet like every other sheet
+    // in the app, so it can never be covered by the feed's sticky headers again.
+    <div className="relative">
       {/* ── The bar ───────────────────────────────────────────────────────────────────────────
           The one thing to press on Connect, so it looks like it: the glossy orange the Send
           button used to have, which is the action it now replaces. It always says the same
@@ -252,25 +256,36 @@ export default function SeenBar({
             ✓ {count} today
           </span>
         )}
-        <ChevronDown size={17} className={`flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={17} className={`flex-shrink-0 transition-transform ${open ? "" : "rotate-180"}`} />
       </button>
 
       {/* First visit: point at the one thing to press. */}
       {coach && !open && (
-        <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-1.5 -translate-x-1/2" style={{ animation: "seenFadeUp 300ms ease both" }}>
-          <div className="mx-auto h-0 w-0" style={{ borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "7px solid rgba(15,23,42,0.9)" }} />
-          <div className="send-coach-hop whitespace-nowrap rounded-full bg-slate-900/90 px-3.5 py-2 text-[12px] font-semibold text-white shadow-lg">
-            👆 Start here — make someone feel seen
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1.5 -translate-x-1/2">
+          <div className="send-coach-hop flex flex-col items-center">
+            <div className="whitespace-nowrap rounded-full bg-slate-900/90 px-3.5 py-2 text-[12px] font-semibold text-white shadow-lg">
+              👇 Start here — make someone feel seen
+            </div>
+            <div className="h-0 w-0" style={{ borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "7px solid rgba(15,23,42,0.9)" }} />
           </div>
         </div>
       )}
 
-      {/* ── The panel, over the feed ───────────────────────────────────────────────────────── */}
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute left-3.5 right-3.5 top-full z-40 mt-1.5 max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
-            style={{ animation: "seenDropIn 180ms ease-out both" }}>
+      {/* ── The panel, as a bottom sheet ───────────────────────────────────────────────────── */}
+      {open && createPortal(
+        <div data-portal className="fixed inset-0 z-[230] flex flex-col justify-end" style={sheetBox(view)}>
+          <div className="absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-hidden />
+          <div className="relative sheet-slide-up flex flex-col rounded-t-3xl bg-white shadow-2xl" style={sheetCap(view)}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-shrink-0 items-center justify-between px-4 pt-3 pb-1">
+              <span className="w-8" />
+              <div className="h-1 w-10 rounded-full bg-slate-200" />
+              <button onClick={() => setOpen(false)} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:text-slate-600">
+                <ChevronDown size={18} />
+              </button>
+            </div>
+            <p className="flex-shrink-0 px-5 pb-1 text-[16px] font-extrabold text-slate-800">✨ Make Someone Feel Seen</p>
+            <div className="overflow-y-auto overscroll-contain px-4 pb-6 pt-1" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
 
             {section === "time" || awaitingTime ? (
               <NudgeChooser
@@ -425,8 +440,10 @@ export default function SeenBar({
                 </button>
               </div>
             )}
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
     </div>
   );

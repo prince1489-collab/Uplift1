@@ -4011,35 +4011,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* The day's one kind thing comes first. Connect opened on the multiplayer feeds while
-                the community was small, and the part of Seen that works with nobody else around —
-                an act, and a tap for how it felt — was two tabs away. See SeenBar.jsx. */}
-            {activeTab === "feed" && (
-              <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
-                nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
-                streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}
-                echo={todayEcho}
-                inboxReply={unreadReply}
-                followMessage={followMessage}
-                follows={followsByActivity}
-                openRequest={seenBarRequest}
-                coach={!hasSent && !coachSeen && !tourActive && !pickerOpen}
-                onOpened={markCoachSeen}
-                sendLimitReached={todayMessageCount >= DAILY_GREETING_LIMIT}
-                onSend={() => { setPickerOpen(true); markCoachSeen(); }}
-                onReplyTo={(m) => setReplyTarget(m)}
-                onOpenReply={openReply}
-                onNote={(f) => setReplyTarget({ uid: f.uid, sender: f.name || "Someone", country: f.country ?? null, id: null, text: "", note: true })}
-                onSeeAllFollows={() => setShowFollowing(true)}
-                onFindPeople={() => setShowFollowing(true)}
-                onKindAct={creditRealAct}
-                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
-                onSayMore={() => setShowJournal(true)} />
-            )}
-            {/* A failed send must be visible. It used to live in the bottom Send footer. */}
-            {activeTab === "feed" && sendError && (
-              <p className="flex-shrink-0 px-4 pt-1.5 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
-            )}
 
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
                 (composing your own feeling lives by the header name + in your profile) */}
@@ -4101,7 +4072,7 @@ export default function App() {
                     <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Seen · official</span>
                   </div>
                   <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Tap “Make Someone Feel Seen” at the top, and someone, somewhere, will feel it.
+                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Tap “Make Someone Feel Seen” below, and someone, somewhere, will feel it.
                   </p>
                 </div>
               )}
@@ -4615,8 +4586,40 @@ export default function App() {
               </div>
             )}
 
-            {/* The bottom "Send Message" button is gone (3.5): the bar at the top of Connect is the
-                one place every kind act starts, including a message to the world. */}
+            {/* The "Make Someone Feel Seen" bar — the one place every kind act starts — pinned at
+                the bottom of Connect (3.7): where the thumb is, and where Seen's orange button has
+                always lived. Hidden while the send picker (which it opens) is up. */}
+            {/* A failed send must be visible. It used to live in the bottom Send footer. */}
+            {activeTab === "feed" && sendError && (
+              <p className="flex-shrink-0 px-4 pt-1.5 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
+            )}
+            {activeTab === "feed" && (
+              // Hidden, not unmounted, while the picker is up: the bar has to be listening when
+              // the send lands, so it can open on the day's question.
+              <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
+              <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
+                nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
+                streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}
+                echo={todayEcho}
+                inboxReply={unreadReply}
+                followMessage={followMessage}
+                follows={followsByActivity}
+                openRequest={seenBarRequest}
+                coach={!hasSent && !coachSeen && !tourActive && !pickerOpen}
+                onOpened={markCoachSeen}
+                sendLimitReached={todayMessageCount >= DAILY_GREETING_LIMIT}
+                onSend={() => { setPickerOpen(true); markCoachSeen(); }}
+                onReplyTo={(m) => setReplyTarget(m)}
+                onOpenReply={openReply}
+                onNote={(f) => setReplyTarget({ uid: f.uid, sender: f.name || "Someone", country: f.country ?? null, id: null, text: "", note: true })}
+                onSeeAllFollows={() => setShowFollowing(true)}
+                onFindPeople={() => setShowFollowing(true)}
+                onKindAct={creditRealAct}
+                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
+                onSayMore={() => setShowJournal(true)} />
+              </footer>
+            )}
+
 
             {/* ── Bottom sheet greeting picker ── */}
             {pickerOpen && (
