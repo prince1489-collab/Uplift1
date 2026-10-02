@@ -17,8 +17,7 @@ import WelcomeStep from "./WelcomeStep";
 import IntroStep from "./IntroStep";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
-import HaveYouTried from "./HaveYouTried";
-import TodayCard from "./TodayCard";
+import SeenBar from "./SeenBar";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
 import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./replyNudge";
@@ -263,15 +262,13 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", darkMode = false, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
-  const [showJournal, setShowJournal] = useState(false);
   const [showWellbeingHub, setShowWellbeingHub] = useState(false); // hub listing Check-in + Support
   const [showWellbeing, setShowWellbeing] = useState(false);       // the WHO-5 check-in panel
   // Android back closes these menu sub-panels instead of exiting the app (QA #2)
-  useBackLayer(showJournal, () => setShowJournal(false));
   useBackLayer(showWellbeingHub, () => setShowWellbeingHub(false));
   useBackLayer(showWellbeing, () => setShowWellbeing(false));
 
@@ -393,6 +390,14 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, follow
                   label="Invite a friend"
                   sub="Share Seen — you both get 50 drops"
                 />
+                {/* Reflect is no longer a tab — the daily question lives in the bar on Connect — but
+                    the journal itself, with everything written in it, is still one tap away. */}
+                <Row
+                  onClick={() => { onJournal?.(); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>📓</span></IconBox>}
+                  label="Your journal"
+                  sub="Everything you've written about kind moments"
+                />
                 <Row
                   tourId="m-wellbeing"
                   onClick={() => { setShowWellbeingHub(true); close(); }}
@@ -480,9 +485,6 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onFollowing, follow
           </div>
         </div>,
         document.body
-      )}
-      {showJournal && (
-        <JournalPanel db={db} currentUser={currentUser} darkMode={darkMode} onClose={() => setShowJournal(false)} />
       )}
       {showWellbeingHub && (
         <WellbeingHubSheet
@@ -1150,6 +1152,8 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
         ? <><span className="font-semibold">{r.fromName || "Someone"}</span> wrote back one last time</>
         : r.inReplyTo
         ? <><span className="font-semibold">{r.fromName || "Someone"}</span> replied back</>
+        : !r.messageId
+        ? <><span className="font-semibold">{r.fromName || "Someone"}</span> sent you a kind note 💌</>
         : <><span className="font-semibold">{r.fromName || "Someone"}</span>{r.fromCountry ? <> from <span className="font-semibold">{r.fromCountry}</span></> : null} replied privately to your message</>,
       onClick: () => onOpenReply?.(r),
     }));
@@ -2146,6 +2150,13 @@ export default function App() {
   const follows = useFollows(db, currentUser);
   const focusedUids = useMemo(() => follows.map((f) => f.uid), [follows]);
   const [showFollowing, setShowFollowing] = useState(false);
+  // The journal is a sheet now, not a tab: opened from "Want to say more?" in the bar, from Grow
+  // and from the menu. One instance, owned here.
+  const [showJournal, setShowJournal] = useState(false);
+  useBackLayer(showJournal, () => setShowJournal(false));
+  // Bumped to ask the bar on Connect to open (a notification, a bell item, Grow's button).
+  const [seenBarRequest, setSeenBarRequest] = useState(0);
+  const openSeenBar = useCallback(() => { setActiveTab("feed"); setSeenBarRequest((n) => n + 1); }, []);
   useBackLayer(showFollowing, () => setShowFollowing(false));
   const [reactorsFor, setReactorsFor] = useState(null); // my message whose "who felt this" is open
   useBackLayer(Boolean(reactorsFor), () => setReactorsFor(null));
@@ -2317,13 +2328,13 @@ export default function App() {
     },
     reflect: {
       icon: "📖",
-      text: <><span className="font-semibold">A quiet minute to reflect?</span> — a line or two in your private journal, whenever it suits you</>,
-      open: () => setActiveTab("journal"),
+      text: <><span className="font-semibold">A kind moment worth keeping?</span> — a few words in your private journal, whenever it suits you</>,
+      open: () => setShowJournal(true),
     },
     practice: {
       icon: "🌱",
-      text: <><span className="font-semibold">One small act of kindness today</span> — Practice suggests something real to try, out in the world</>,
-      open: () => setActiveTab("hyt"),
+      text: <><span className="font-semibold">Make someone feel seen today</span> — a kind word, a note, or something small in real life</>,
+      open: () => openSeenBar(),
     },
     globe: {
       icon: "🌍",
@@ -2597,10 +2608,11 @@ export default function App() {
   // that opens a panel about events they do not have.
   useEffect(() => {
     if (!openTarget) return;
-    // reflect and practice name a tab rather than the bell. Done here, next to the strip, so
-    // there is one place that says what each target means.
-    if (openTarget === "reflect") setActiveTab("journal");
-    if (openTarget === "practice") setActiveTab("hyt");
+    // reflect opens the journal; practice opens the "make someone feel seen" bar. Both used to
+    // name tabs that no longer exist — the targets stay, so links in notifications already on
+    // people's phones still land somewhere sensible.
+    if (openTarget === "reflect") setShowJournal(true);
+    if (openTarget === "practice") openSeenBar();
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("open");
@@ -3158,13 +3170,41 @@ export default function App() {
     replyNudgeTimer.current = setTimeout(() => setReplyNudge(null), NUDGE_MS);
   }, [currentUser?.uid]);
   const [repliedTick, setRepliedTick] = useState(0);
-  const handleReplySent = useCallback(({ mode, name, messageId }) => {
+  const handleReplySent = useCallback(({ mode, name, messageId, note }) => {
     creditKindAct();
-    try { markSentToday(localDayKey(), { via: "reply", name }); } catch { /* ignore */ }
+    try { markSentToday(localDayKey(), { via: note ? "note" : "reply", name }); } catch { /* ignore */ }
+    // Grow counts people who felt seen; replies and notes are kept as their own tally.
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { seenRepliesSent: increment(1) }).catch(() => {});
     if (mode === "first") markReplied(messageId);
     setReplyNudge(null);
     setRepliedTick((t) => t + 1);
-  }, [creditKindAct]);
+  }, [creditKindAct, currentUser?.uid]);
+
+  // A real-life act: the day is counted exactly like any other kind act, and Grow's tally of
+  // acts goes up by one.
+  const creditRealAct = useCallback(() => {
+    creditKindAct();
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { seenActsDone: increment(1) }).catch(() => {});
+  }, [creditKindAct, currentUser?.uid]);
+
+  // ── What the "Make someone feel seen" bar offers ─────────────────────────────────────────
+  // Someone who wrote to you and is waiting: the most direct way to make a person feel seen.
+  const unreadReply = useMemo(() => {
+    const r = (inboxReplies || []).find((x) => x && x.read === false && !x.final);
+    return r ? { reply: r, name: String(r.fromName || "Someone").split(" ")[0] } : null;
+  }, [inboxReplies]);
+  // People you follow, most recently active first, for the kind-note chips.
+  const followsByActivity = useMemo(() => {
+    const last = new Map();
+    for (const m of messages) if (m?.uid && Number(m.timestamp) > (last.get(m.uid) || 0)) last.set(m.uid, Number(m.timestamp));
+    return [...follows]
+      .filter((f) => f?.uid && !(blockedUids instanceof Set && blockedUids.has(f.uid)))
+      .map((f) => {
+        const m = messages.find((x) => x.uid === f.uid && x.sender);
+        return { uid: f.uid, name: f.name || m?.sender || "Someone", country: f.country ?? m?.country ?? null, ts: last.get(f.uid) || 0 };
+      })
+      .sort((a, b) => b.ts - a.ts);
+  }, [follows, messages, blockedUids]);
 
   // Today's best chance to make someone feel seen: a message from someone you follow, from the
   // last two days, that you hearted and have not yet answered. Offered first on the Today card.
@@ -3179,6 +3219,19 @@ export default function App() {
     // repliedTick: hasReplied() reads storage, so a sent reply has to invalidate this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, focusedUids, currentUser?.uid, reactionIdFor, repliedTick]);
+  // The bar's "someone you follow" row: the hearted-but-unanswered message if there is one, else
+  // the newest thing anyone you follow has said this week that you haven't answered.
+  const followMessage = useMemo(() => {
+    if (replyCandidate) return replyCandidate;
+    const since = Date.now() - 7 * 86400000;
+    const following = new Set(focusedUids);
+    const m = messages
+      .filter((x) => x?.id && x.uid && x.uid !== currentUser?.uid && following.has(x.uid) && x.text
+        && Number(x.timestamp) > since && !hasReplied(x.id))
+      .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0];
+    return m ? { message: m, name: String(m.sender || "").split(" ")[0] || "them" } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replyCandidate, messages, focusedUids, currentUser?.uid, repliedTick]);
 
 
   // Ripple attribution: convert my recent reactions into "ripple" credits for the
@@ -3644,6 +3697,10 @@ export default function App() {
             onSent={handleReplySent}
             onClose={() => setAnsweringReply(null)} />
         )}
+        {showJournal && currentUser && (
+          <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode}
+            onKindAct={creditKindAct} onClose={() => setShowJournal(false)} />
+        )}
         {/* The founder's story, read without leaving. An iframe of the same public/story.html
             the web route serves, rather than the text copied into a component: one version of
             it, typeset once, and whichever gets edited is the one everybody reads. It is in
@@ -3832,6 +3889,7 @@ export default function App() {
                       onShare={() => setShowProfileCard(true)}
                       onInvite={handleInvite}
                       onStory={() => setShowStory(true)}
+                      onJournal={() => setShowJournal(true)}
                       onFollowing={() => setShowFollowing(true)}
                       followCount={follows.length}
                       onUpgrade={() => { if (!isNativeApp()) setShowUpgrade(true); }}
@@ -3942,24 +4000,6 @@ export default function App() {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab("hyt")}
-                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "hyt"
-                    ? "border-teal-500 text-teal-600"
-                    : "border-transparent text-slate-400 hover:text-slate-600"
-                }`}>
-                🌱 Practice
-              </button>
-              <button
-                onClick={() => setActiveTab("journal")}
-                className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeTab === "journal"
-                    ? "border-teal-500 text-teal-600"
-                    : "border-transparent text-slate-400 hover:text-slate-600"
-                }`}>
-                📓 Reflect
-              </button>
-              <button
                 data-fly-target="grow"
                 onClick={() => setActiveTab("impact")}
                 className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
@@ -3973,17 +4013,24 @@ export default function App() {
 
             {/* The day's one kind thing comes first. Connect opened on the multiplayer feeds while
                 the community was small, and the part of Seen that works with nobody else around —
-                an act, and a tap for how it felt — was two tabs away. See TodayCard.jsx. */}
+                an act, and a tap for how it felt — was two tabs away. See SeenBar.jsx. */}
             {activeTab === "feed" && (
-              <TodayCard db={db} currentUser={currentUser} dob={profile?.dob}
+              <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 echo={todayEcho}
-                replyCandidate={replyCandidate}
-                onReplyTo={(m) => setReplyTarget(m)}
+                inboxReply={unreadReply}
+                followMessage={followMessage}
+                follows={followsByActivity}
+                openRequest={seenBarRequest}
                 onSend={() => { setPickerOpen(true); markCoachSeen(); }}
-                onKindAct={creditKindAct}
+                onReplyTo={(m) => setReplyTarget(m)}
+                onOpenReply={openReply}
+                onNote={(f) => setReplyTarget({ uid: f.uid, sender: f.name || "Someone", country: f.country ?? null, id: null, text: "", note: true })}
+                onSeeAllFollows={() => setShowFollowing(true)}
+                onFindPeople={() => setShowFollowing(true)}
+                onKindAct={creditRealAct}
                 onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
-                onSayMore={() => setActiveTab("journal")} />
+                onSayMore={() => setShowJournal(true)} />
             )}
 
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
@@ -4007,21 +4054,12 @@ export default function App() {
               <TwoFeedsIntro onFindPeople={() => setShowFollowing(true)} />
             )}
 
-            {activeTab === "hyt" ? (
-              <HaveYouTried currentUser={currentUser} dob={profile?.dob} onKindAct={creditKindAct}
-                // Saying "I'll do this today" is the only thing in Practice that leaves the
-                // device. It is what lets tonight's reminder name the act this person chose
-                // instead of asking again from scratch — and passing null when they tick it is
-                // what stops the reminder arriving about something already done.
-                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)} />
-            ) : activeTab === "journal" ? (
-              <JournalPanel db={db} currentUser={currentUser} profile={profile} darkMode={darkMode} inline onKindAct={creditKindAct} />
-            ) : activeTab === "support" ? (
+            {activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
               </Suspense>
             ) : activeTab === "impact" ? (
-              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} />
+              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} onMakeSeen={openSeenBar} onOpenJournal={() => setShowJournal(true)} />
             ) : (
             /* No onScroll here on purpose. React's onScroll is a non-passive listener on a
                scroll container that renders hundreds of messages; FeedDatePill subscribes to

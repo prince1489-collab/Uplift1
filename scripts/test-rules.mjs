@@ -129,6 +129,12 @@ await check("the final word is private to the two of them",
 await check("the recipient can read the final word",
   assertSucceeds(getDoc(doc(A, "privateReplies", `${f1.id}__final`))));
 
+// ── 10. Kind notes (3.4): a first private message to someone you follow, answering no post.
+await check("a kind note with no message is accepted",
+  assertSucceeds(addDoc(collection(B, "privateReplies"), clientPayload("uidB", "uidA", { messageId: null, messageText: "" }))));
+await check("a kind note to yourself is refused",
+  assertFails(addDoc(collection(B, "privateReplies"), clientPayload("uidB", "uidB", { messageId: null, messageText: "" }))));
+
 // ── publicMessages: the world-readable collection, which had no length bound at all until the
 //    composer limit went to 200. The bound is the ABUSE ceiling (500), deliberately looser than
 //    the composer's 200 so a preset or a proverb that grows by a word is not a permission error —

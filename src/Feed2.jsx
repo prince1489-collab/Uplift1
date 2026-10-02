@@ -681,6 +681,14 @@ const REPLY_STARTERS = [
   "Thank you for ",
   "This reminded me of ",
 ];
+// A kind note isn't a reply to anything — it's to a person you follow, about them. Its openings
+// are about the person rather than about something they wrote.
+const NOTE_STARTERS = [
+  "I've been thinking about you because ",
+  "Something I appreciate about you is ",
+  "Just wanted to say ",
+  "Thank you for ",
+];
 const REPLY_MAX = 200;
 
 // Four shapes, decided from the document being opened:
@@ -704,6 +712,9 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   // The first reply in this exchange, whichever side of it you are on.
   const rootId = mode === "answer" ? answering.id : answering?.inReplyTo ?? null;
   const other = firstName(answering ? answering.fromName : target?.sender);
+  // A kind note: a first message to someone you follow that answers no post at all.
+  const isNote = mode === "first" && (Boolean(target?.note) || !target?.id);
+  const starters = isNote ? NOTE_STARTERS : REPLY_STARTERS;
 
   // The rest of the thread, read once when the sheet opens. Your own messages are addressed to
   // THEM, so they never appear in your inbox — which is why these are reads, not props.
@@ -791,7 +802,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     try { awardPoints("reply"); } catch { /* ignore */ }
     // Telling someone how their words landed is a way of making them feel seen — it counts as
     // the day, exactly like sending a message does.
-    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null }); } catch { /* ignore */ }
+    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null, note: isNote }); } catch { /* ignore */ }
 
     // Everything below here is best-effort and deliberately NOT awaited. The reply has
     // already landed; a failure to push a notification or write a celebratory card must
@@ -814,7 +825,8 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     setTimeout(() => onClose?.(), 1200);
   };
 
-  const title = mode === "first" ? `Tell ${firstName(target?.sender)} how it landed`
+  const title = isNote ? `Make ${firstName(target?.sender)} feel seen`
+    : mode === "first" ? `Tell ${firstName(target?.sender)} how it landed`
     : mode === "answer" ? "Reply back"
     : mode === "final" ? "Write back one last time"
     : "Your exchange";
@@ -855,7 +867,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
               {mode === "closed" && thread?.answer && <ThreadBubble mine label="You replied" body={thread.answer.text} />}
               {mode === "closed" && <ThreadBubble label={`${other} wrote back`} body={answering.text} />}
             </div>
-          ) : (
+          ) : isNote ? null : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{stripQuotes(target?.text)}”</div>
           )}
           {/* Say who can see it, and — before they write — how many messages are left, so
@@ -878,13 +890,13 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
           ) : (
             <>
               <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2} autoFocus
-                placeholder={mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
+                placeholder={isNote ? "Something you appreciate about them…" : mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
               {/* Starters only for a first reply, and only while the box is empty — they are a
                   way in, not a template to fill. */}
               {mode === "first" && !text && !sent && (
                 <div className="flex flex-wrap gap-1.5">
-                  {REPLY_STARTERS.map((st) => (
+                  {starters.map((st) => (
                     <button key={st} type="button" onClick={() => setText(st)}
                       className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
                       {st.trim().replace(/[—\s]+$/, "")}…

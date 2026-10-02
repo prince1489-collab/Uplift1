@@ -78,7 +78,7 @@ export function eveningMessage(cue) {
     return { title: "You held onto this 🌙", body: `"${text}" — still here when you are.`, open: "reflect" };
   }
   if (cue.kind === "draft") {
-    return { title: "You started writing 🌙", body: "A few words are waiting in Reflect, just as you left them.", open: "reflect" };
+    return { title: "You started writing 🌙", body: "A few words are waiting in your journal, just as you left them.", open: "reflect" };
   }
   if (cue.kind === "planned") return plannedMessage(text);
   return null;

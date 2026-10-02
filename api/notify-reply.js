@@ -48,6 +48,8 @@ export default async function handler(req, res) {
       ? `${name} wrote back one last time 💬`
       : reply.inReplyTo
       ? `${name} replied back 💬`
+      : !reply.messageId
+      ? `${name} sent you a kind note 💌`
       : `${name} told you how your words made them feel 💬`;
 
     const results = await Promise.allSettled(

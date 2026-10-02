@@ -8,7 +8,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { X } from "lucide-react";
 import { treeStageFor, TREE_STAGES, TreeScene, useWatering, WATERING_MS } from "./KindnessTree";
 import { getPoints } from "./points";
@@ -21,6 +21,7 @@ import { drawCertificate } from "./certificateImage";
 import { useBackLayer } from "./backStack";
 import { shareImage } from "./shareImage";
 import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
+import { rhythmOf } from "./rhythm";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -309,11 +310,11 @@ function MilestoneEffects({ onDone }) {
   );
 }
 
-function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
+function MetricTile({ emoji, value, label, delay = 0, onOpen, wide = false }) {
   const shown = useCountUp(value);
   return (
     <button onClick={onOpen}
-      className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center transition-transform active:scale-[0.97]"
+      className={`rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center transition-transform active:scale-[0.97] ${wide ? "col-span-2" : ""}`}
       style={{ animation: "seenFadeUp 500ms ease both", animationDelay: `${delay}ms` }}>
       <div className="text-2xl mb-1">{emoji}</div>
       <div className="text-2xl font-extrabold text-slate-800 tabular-nums leading-none">{shown.toLocaleString()}</div>
@@ -322,9 +323,20 @@ function MetricTile({ emoji, value, label, delay = 0, onOpen }) {
   );
 }
 
-export default function MySeenStory({ db, currentUser, liveStats, profile, sparkBalance = 0, darkMode = false, onOpenTree, onGoTo }) {
+export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0, darkMode = false, onOpenTree, onMakeSeen, onOpenJournal }) {
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
+  // The last few answers to the daily question — your own words about other people, which is
+  // what makes looking back worth doing. Private (users/{uid}/feelings), read once on open.
+  const [answers, setAnswers] = useState([]);
+  useEffect(() => {
+    if (!db || !currentUser?.uid) return;
+    let alive = true;
+    getDocs(query(collection(db, "users", currentUser.uid, "feelings"), orderBy("createdAt", "desc"), limit(5)))
+      .then((snap) => { if (alive) setAnswers(snap.docs.map((d) => d.data()).filter((x) => x?.answer && x?.question)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [db, currentUser?.uid]);
   // Today's additions to the tree (todayGrowth.js), live as they happen.
   const [today, setToday] = useState(() => todayGrowth());
   useEffect(() => {
@@ -349,25 +361,12 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
     return () => window.removeEventListener("seen-points", onPts);
   }, [startPour]);
 
-  // Keep enough of the journal docs to back the number up — when you started, and roughly
-  // how much you've written — rather than just the count.
-  const [journalFacts, setJournalFacts] = useState({ words: 0, firstDate: null });
+  // How many journal entries there are, for the "Your journal" link.
   useEffect(() => {
     if (!db || !currentUser?.uid) return;
     let alive = true;
     getDocs(collection(db, "users", currentUser.uid, "journal"))
-      .then((snap) => {
-        if (!alive) return;
-        setJournalCount(snap.size);
-        let words = 0, first = null;
-        snap.forEach((d) => {
-          const e = d.data() || {};
-          words += String(e.text || "").trim().split(/\s+/).filter(Boolean).length;
-          const when = e.date || null;
-          if (when && (!first || when < first)) first = when;
-        });
-        setJournalFacts({ words, firstDate: first });
-      })
+      .then((snap) => { if (alive) setJournalCount(snap.size); })
       .catch(() => { if (alive) setJournalCount(0); });
     return () => { alive = false; };
   }, [db, currentUser?.uid]);
@@ -393,12 +392,24 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const countries = countryRows.length;
   const ripple = rippleCount + onwardReach;
 
+  // ── Everything measured in people who felt seen ──────────────────────────────────────────
+  // Messages to the world, person-to-person replies and notes, and real-life acts. The act count
+  // syncs on the profile from 3.4; before that it lived only on this device, so the larger of the
+  // two is shown and nobody's history goes backwards.
+  const messagesSent = Number(profile?.greetingsSentCount ?? 0);
+  const repliesSent = Number(profile?.seenRepliesSent ?? 0);
+  const actsDone = Math.max(Number(profile?.seenActsDone ?? 0), hytTried.total);
+  const wordsSent = messagesSent + repliesSent;
+  const seenTotal = wordsSent + actsDone;
+  const felt = Math.max(Number(profile?.reactionsReceivedCount ?? 0), Number(reactData?.totalReactions ?? 0));
+  const rhythm = rhythmOf(profile?.activeDates);
+
   // Each metric opened up. Bases genuinely differ, so each card says which it is.
   const periodWord = "Last 30 days";
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const METRIC_CARDS = {
     countries: {
-      emoji: "🌍", label: "Countries reached", value: countries, basis: periodWord,
+      emoji: "🌍", label: "Countries that felt it", value: countries, basis: periodWord,
       line: countries === 0
         ? "No hearts from abroad yet — they often arrive a little after you've forgotten you sent anything."
         : `${plural(countries, "place", "places")} where someone opened their phone and found a stranger had thought of them.`,
@@ -408,7 +419,7 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       how: "Counted from the reactions on messages you sent, one entry per country, over the last 30 days.",
     },
     ripple: {
-      emoji: "💫", label: "Ripple effect", value: ripple, basis: "All time",
+      emoji: "🌱", label: "People who passed it on", value: ripple, basis: "All time",
       line: ripple === 0
         ? "Nothing has rippled onward yet. It tends to start the moment someone reacts to you."
         : "Kindness that carried on without you.",
@@ -420,32 +431,36 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
       empty: ripple === 0 ? "This fills in when someone you reached goes on to be kind to somebody else." : null,
       how: "The two figures added together, counted over your whole time in Seen.",
     },
-    tried: {
-      emoji: "🤝", label: "Tried in real life", value: hytTried.total, basis: "All time · this device",
-      line: hytTried.total === 0
+    words: {
+      emoji: "💌", label: "Kind words sent", value: wordsSent, basis: "All time",
+      line: wordsSent === 0
+        ? "Nothing sent yet. One kind word to anyone is a start."
+        : "Every message, reply and note you sent to make someone feel seen.",
+      rowsTitle: "How it breaks down",
+      rows: wordsSent === 0 ? [] : [
+        { icon: "🌍", label: "Messages to the world", value: messagesSent },
+        { icon: "💬", label: "Replies and kind notes, person to person", value: repliesSent },
+      ],
+      empty: wordsSent === 0 ? "Open the bar on Connect and pick anyone — it takes twenty seconds." : null,
+      how: "Messages you posted, plus private replies and kind notes you sent.",
+    },
+    acts: {
+      emoji: "🤝", label: "Kind acts in real life", value: actsDone, basis: "All time",
+      line: actsDone === 0
         ? "Nothing ticked off yet. One small thing counts."
         : "Things that happened off this screen, because you decided to.",
       rowsTitle: "The shape of it",
-      rows: hytTried.total === 0 ? [] : [
-        { icon: "✅", label: "Practice suggestions marked done", value: hytTried.total },
-        { icon: "📆", label: "Separate days you did one", value: hytTried.days },
-      ],
-      empty: hytTried.total === 0 ? "Tick something off in Practice and it lands here." : null,
-      how: "Every prompt you've marked done in Practice. Stored on this device, so it starts fresh on a new phone.",
+      rows: actsDone === 0 ? [] : [{ icon: "✅", label: "Real-life acts marked done", value: actsDone }],
+      empty: actsDone === 0 ? "Pick \"Someone in real life\" in the bar on Connect, then tick it when it happens." : null,
+      how: "Every real-life idea you marked done.",
     },
-    reflections: {
-      emoji: "🪞", label: "Reflections", value: journalCount ?? 0, basis: "All time · private",
-      line: (journalCount ?? 0) === 0
-        ? "Nothing written yet. A line or two is plenty."
-        : "Your own thinking, kept where only you can read it.",
-      rowsTitle: "What's in there",
-      rows: (journalCount ?? 0) === 0 ? [] : [
-        { icon: "✍️", label: "Reflections written", value: journalCount },
-        ...(journalFacts.words ? [{ icon: "📖", label: "Words, roughly", value: journalFacts.words.toLocaleString() }] : []),
-        ...(journalFacts.firstDate ? [{ icon: "🌱", label: "You started on", value: journalFacts.firstDate }] : []),
-      ],
-      empty: (journalCount ?? 0) === 0 ? "Write one in Reflect and it appears here." : null,
-      how: "Entries in your private journal. Nobody else can ever read them, including us.",
+    felt: {
+      emoji: "❤️", label: "Times your words were felt", value: felt, basis: "All time",
+      line: felt === 0
+        ? "No hearts yet — they often arrive a little after you've forgotten you sent anything."
+        : "Each one is a person who read what you wrote and felt it.",
+      rowsTitle: null, rows: [], empty: null,
+      how: "Hearts and reactions on the messages you sent.",
     },
   };
 
@@ -480,19 +495,11 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
   const onward = useMemo(() => {
     const d = new Date();
     const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const readLocal = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
-    // A prompt held for tonight is a promise this person made a few hours ago, so it outranks a
-    // prompt they have not looked at.
-    let pinned = null;
-    try { pinned = localStorage.getItem(`seen_reflect_pin_${dayKey}`); } catch { /* ignore */ }
-    if (pinned) return { emoji: "📖", text: "You're holding a question for later — Reflect is where it's waiting", go: () => onGoTo?.("journal") };
-    const hyt = readLocal(`seen_hyt_state_${dayKey}`);
-    const planned = hyt?.planned && Object.values(hyt.planned).some(Boolean);
-    const doneAny = hyt?.done && Object.values(hyt.done).some(Boolean);
-    if (planned && !doneAny) return { emoji: "🌱", text: "You said you'd do one today — tick it off in Practice when it happens", go: () => onGoTo?.("hyt") };
-    if (!hyt) return { emoji: "🌱", text: "Two small things are waiting in Practice", go: () => onGoTo?.("hyt") };
-    return null;
-  }, [onGoTo]);
+    let rec = null;
+    try { rec = JSON.parse(localStorage.getItem(`seen_hyt_state_${dayKey}`) || "null"); } catch { /* ignore */ }
+    const doneToday = Boolean(rec?.sent || rec?.done?.kindness || rec?.done?.who);
+    return doneToday ? null : { emoji: "✨", text: "Make someone feel seen today", go: () => onMakeSeen?.() };
+  }, [onMakeSeen]);
 
   // ── Grow-from-seed replay ──────────────────────────────────────────────────
   // On open, walk the tree from bare soil up to where it actually is, so the whole
@@ -639,17 +646,51 @@ export default function MySeenStory({ db, currentUser, liveStats, profile, spark
           Every kind act you make waters this tree, {first}. Here's the reach of your kindness.
         </p>
 
-        {/* The four metrics */}
+        {/* ── Measured in people ────────────────────────────────────────────────────────────
+            Seen is about making someone feel seen, so that is the number at the top, and every
+            tile underneath is a part of it or a consequence of it. */}
+        <div className="rounded-2xl border border-teal-100 bg-white px-4 py-3.5 text-center"
+          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
+          <p className="text-3xl font-extrabold tabular-nums text-teal-700 leading-none">{seenTotal.toLocaleString()}</p>
+          <p className="mt-1 text-[13px] font-semibold text-slate-700">
+            {seenTotal === 1 ? "time you made someone feel seen" : "times you made someone feel seen"}
+          </p>
+          {rhythm != null && <p className="mt-0.5 text-[11px] text-slate-400">{rhythm} of the last 30 days</p>}
+        </div>
         <div className="flex items-center gap-2 px-1" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "180ms" }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex-1">The reach of your kindness</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex-1">People who felt seen because of you</p>
           <span className="text-[10px] font-semibold text-slate-300">tap any number</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
-          <MetricTile emoji="🌍" value={countries} label="Countries reached" delay={200} onOpen={() => setOpenCard("countries")} />
-          <MetricTile emoji="💫" value={ripple} label="Ripple effect" delay={280} onOpen={() => setOpenCard("ripple")} />
-          <MetricTile emoji="🤝" value={hytTried.total} label="Tried in real life" delay={360} onOpen={() => setOpenCard("tried")} />
-          <MetricTile emoji="🪞" value={journalCount ?? 0} label="Reflections" delay={440} onOpen={() => setOpenCard("reflections")} />
+          <MetricTile emoji="💌" value={wordsSent} label="Kind words sent" delay={200} onOpen={() => setOpenCard("words")} />
+          <MetricTile emoji="🤝" value={actsDone} label="Kind acts in real life" delay={260} onOpen={() => setOpenCard("acts")} />
+          <MetricTile emoji="❤️" value={felt} label="Times your words were felt" delay={320} onOpen={() => setOpenCard("felt")} />
+          <MetricTile emoji="🌍" value={countries} label="Countries that felt it" delay={380} onOpen={() => setOpenCard("countries")} />
+          <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={440} onOpen={() => setOpenCard("ripple")} wide />
         </div>
+
+        {/* Your own words about other people — the daily question's answers, newest first. */}
+        {answers.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "480ms" }}>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Your answers</p>
+            <ul className="mt-1.5 space-y-1.5">
+              {answers.map((x, i) => (
+                <li key={i} className="text-[12px] leading-snug">
+                  <span className="text-slate-500">{x.question}</span>{" "}
+                  <span className="font-semibold text-slate-800">{x.answer}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <button onClick={onOpenJournal}
+          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
+          <span className="text-base leading-none" aria-hidden>📓</span>
+          <span className="min-w-0 flex-1 text-[12px] font-semibold text-slate-700">
+            Your journal{journalCount ? ` · ${journalCount} ${journalCount === 1 ? "entry" : "entries"}` : ""}
+          </span>
+          <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
+        </button>
 
         <p className="text-center text-[10px] text-slate-400 leading-relaxed"
           style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "520ms" }}>

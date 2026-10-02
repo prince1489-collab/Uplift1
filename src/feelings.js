@@ -41,3 +41,17 @@ export function actPhrase(text) {
     .replace(/\?\s*$/, "")
     .trim();
 }
+
+// ── The daily reflection (3.4) ───────────────────────────────────────────────────────────────
+// The one-tap feeling grew into a different short question each day (reflectPrompts.js). Same
+// private document per day, same award, richer content: which question, and the answer in the
+// person's own words — which is what makes the archive worth reading back.
+export function recordReflection(db, uid, { day, route, act, questionId, question, answer, alreadyAwarded }) {
+  if (!alreadyAwarded) { try { awardPoints("feeling"); } catch { /* ignore */ } }
+  if (!db || !uid || !questionId) return Promise.resolve();
+  return setDoc(doc(db, "users", uid, "feelings", day), {
+    route: route || null, act: String(act || "").slice(0, 200), questionId,
+    question: String(question || "").slice(0, 140), answer: String(answer || "").slice(0, 140),
+    date: day, createdAt: Date.now(),
+  }).catch(() => {});
+}

@@ -41,7 +41,7 @@ export const HYT_EVERYDAY = [
   "Have you tried… paying someone a compliment you would normally only think?",
   "Have you tried… putting your phone face down while someone is talking to you?",
   "Have you tried… thanking someone for a thing nobody ever thanks them for?",
-  "Have you tried… letting a small annoyance go without mentioning it?",
+  "Have you tried… noticing something new about someone, and saying so?",
   "Have you tried… asking someone about the thing they love talking about?",
   "Have you tried… telling someone you were wrong, before they have to raise it?",
   "Have you tried… answering a question you find tedious patiently, one more time?",
@@ -58,7 +58,7 @@ export const HYT_EVERYDAY = [
   "Have you tried… greeting someone by name that you would usually just nod at?",
   "Have you tried… apologising without adding “but” on the end of it?",
   "Have you tried… asking someone what they need, instead of guessing?",
-  "Have you tried… waiting a beat before replying to something that annoyed you?",
+  "Have you tried… asking about one detail someone told you last week?",
   "Have you tried… telling someone their work made your day easier?",
   "Have you tried… sharing something useful with the one person it would help most?",
   "Have you tried… checking on someone who is fine, precisely because they always say fine?",
@@ -67,12 +67,12 @@ export const HYT_EVERYDAY = [
   "Have you tried… being the one who breaks the silence after a disagreement?",
   "Have you tried… asking someone older than you to tell you about something they know?",
   "Have you tried… noticing one thing someone got right today, and saying so?",
-  "Have you tried… leaving something a little tidier than you found it?",
-  "Have you tried… forgiving someone quietly, without them ever knowing you had to?",
+  "Have you tried… learning the name of someone you see every day?",
+  "Have you tried… telling someone it was good to see them, and meaning it?",
   "Have you tried… telling someone you are proud of them, and saying why?",
   "Have you tried… asking permission before giving advice?",
   "Have you tried… making space in a conversation for the person who has not spoken?",
-  "Have you tried… saying “I don't know” instead of filling the gap?",
+  "Have you tried… asking someone's opinion on something you would usually decide alone?",
   "Have you tried… thanking someone for their patience with you?",
   "Have you tried… reaching out to the person you assume has plenty of people already?",
   "Have you tried… letting someone tell you a story you have already heard?",
@@ -916,7 +916,7 @@ export function todayKey(d = new Date()) {
 // everyday prompt, a different prompt inside the chosen area, or a different self-care line.
 // Picking an area steers, it doesn't reroll: the prompt inside a chosen area is still fixed
 // by the day hash, so re-picking the same area always gives the same prompt and there is
-// nothing to shop for. The one-a-day cap on swapping lives in HaveYouTried.jsx.
+// nothing to shop for. The one-a-day cap on swapping lives in SeenBar.jsx (one swap, kindness only).
 // ── Self-care prompts you cannot act on before the evening ───────────────────────────────────
 // A recording of the app at 07:30 shows the self-care card offering something about sleep. There
 // is nothing wrong with the prompt; it is simply eight hours early, and a prompt you cannot do
@@ -942,7 +942,7 @@ export const SELF_EVENING_ONLY = new Set([
 ]);
 
 // `evening` is a stored fact about the day rather than a live reading of the clock, and that is
-// deliberate — see the note where HaveYouTried freezes it. Passing the current hour straight
+// deliberate — see the note where hytState.loadDayState freezes it. Passing the current hour straight
 // through would swap the task under somebody at six in the evening.
 export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand = "adult", chosenArea = null, evening = true }) {
   const day = todayKey(date);
