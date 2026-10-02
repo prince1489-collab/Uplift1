@@ -4022,6 +4022,9 @@ export default function App() {
                 followMessage={followMessage}
                 follows={followsByActivity}
                 openRequest={seenBarRequest}
+                coach={!hasSent && !coachSeen && !tourActive && !pickerOpen}
+                onOpened={markCoachSeen}
+                sendLimitReached={todayMessageCount >= DAILY_GREETING_LIMIT}
                 onSend={() => { setPickerOpen(true); markCoachSeen(); }}
                 onReplyTo={(m) => setReplyTarget(m)}
                 onOpenReply={openReply}
@@ -4031,6 +4034,10 @@ export default function App() {
                 onKindAct={creditRealAct}
                 onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
                 onSayMore={() => setShowJournal(true)} />
+            )}
+            {/* A failed send must be visible. It used to live in the bottom Send footer. */}
+            {activeTab === "feed" && sendError && (
+              <p className="flex-shrink-0 px-4 pt-1.5 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
             )}
 
             {/* Kindness loop — a rotating card of someone who could use encouragement right now
@@ -4093,7 +4100,7 @@ export default function App() {
                     <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Seen · official</span>
                   </div>
                   <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Send your first greeting below, and someone, somewhere, will feel it.
+                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Tap “Make Someone Feel Seen” at the top, and someone, somewhere, will feel it.
                   </p>
                 </div>
               )}
@@ -4607,66 +4614,8 @@ export default function App() {
               </div>
             )}
 
-            {/* First-time "tap to send" coach-mark — floats above the Send bar for brand-new
-                users, never while the guided tour runs; vanishes on first send/tap. */}
-            {activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen && (
-              <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[240] flex justify-center px-4">
-                <div className="send-coach-hop flex flex-col items-center">
-                  <div className="flex items-center gap-1.5 rounded-full bg-slate-900/90 px-3.5 py-2 text-[12px] font-semibold text-white shadow-lg">
-                    👆 Tap to send your first kindness
-                  </div>
-                  <div style={{ width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "7px solid rgba(15,23,42,0.9)" }} />
-                </div>
-              </div>
-            )}
-
-            {/* FAB-style footer — only on feed tab */}
-            {activeTab === "feed" && (
-            <footer className="border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
-              {/* A failed send must be visible. This used to sit inside the !pickerOpen
-                  branch below, but the picker is open at the moment you send — so a
-                  rejected write showed nothing at all and then cleared itself. */}
-              {sendError && (
-                <p className="mb-2 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
-              )}
-              {todayMessageCount >= DAILY_GREETING_LIMIT ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-teal-100 bg-teal-50 px-4 py-2.5">
-                  <span className="text-lg">🌙</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-teal-800">You've spread {DAILY_GREETING_LIMIT} greetings today!</p>
-                    <p className="text-[11px] text-teal-600">Come back tomorrow to keep the kindness going ✨</p>
-                  </div>
-                </div>
-              ) : !pickerOpen ? (
-                <>
-                  <button
-                    data-tour="send"
-                    onClick={() => { setPickerOpen(true); markCoachSeen(); }}
-                    disabled={isSending}
-                    className={`w-full relative overflow-hidden rounded-xl py-2.5 text-[15px] font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-70${isSending ? "" : " send-kindness-pulse"}`}
-                    style={{
-                      background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #E07C33 100%)",
-                      border: "1px solid rgba(224,124,51,0.55)",
-                      boxShadow:
-                        "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(184,95,29,0.45), 0 4px 16px rgba(255,158,87,0.45)",
-                      textShadow: "0 1px 1px rgba(184,95,29,0.4)",
-                    }}>
-                    {!isSending && <span aria-hidden="true" className="send-kindness-shine" />}
-                    {/* Just the words, centred. The ✨ glyph, the 🔥 streak-bonus chip and the
-                        "N left" counter all used to ride along here. Between them they pushed
-                        the label off-centre and turned the one button everything depends on
-                        into a status readout. The streak bonus is still shown in the bell,
-                        and the daily limit still announces itself when you actually reach it
-                        (the branch above this one). */}
-                    {isSending
-                      ? <Loader2 size={16} className="text-white animate-spin" />
-                      : <span>Send Message</span>}
-                  </button>
-                </>
-              ) : null}
-            </footer>
-            )} {/* end activeTab === "feed" footer */}
+            {/* The bottom "Send Message" button is gone (3.5): the bar at the top of Connect is the
+                one place every kind act starts, including a message to the world. */}
 
             {/* ── Bottom sheet greeting picker ── */}
             {pickerOpen && (

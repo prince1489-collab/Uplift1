@@ -99,7 +99,7 @@ const clip = (t, n = 60) => {
 export default function SeenBar({
   db, currentUser, dob, nudgeHour, activeDates, echo,
   inboxReply, followMessage, follows = [],
-  openRequest = 0,
+  openRequest = 0, coach = false, sendLimitReached = false, onOpened,
   onSend, onReplyTo, onOpenReply, onNote, onSeeAllFollows, onFindPeople,
   onKindAct, onPlanChange, onSayMore,
 }) {
@@ -125,6 +125,15 @@ export default function SeenBar({
       return d.state;
     });
   }), [day]);
+
+  // One more person made to feel seen today → the "✓ N today" pill pops and the bar glows once.
+  const count = Math.max(Number(state.seenCount || 0), state.sent || state.done?.kindness || state.done?.who ? 1 : 0);
+  const [shownCount, setShownCount] = useState(count);
+  const [flash, setFlash] = useState(false);
+  if (count !== shownCount) {
+    setShownCount(count);
+    if (count > shownCount) { setFlash(true); setTimeout(() => setFlash(false), 1200); }
+  }
 
   // Somebody else asked for the bar to open (a notification, the Grow button).
   const [seenRequest, setSeenRequest] = useState(openRequest);
@@ -208,43 +217,59 @@ export default function SeenBar({
   const skipTime = () => { markNudgeAsked(); setAskTime(false); setSection(null); };
 
   const go = (fn) => () => { setOpen(false); fn?.(); };
-  const rhythm = rhythmOf(activeDates);
+  // Today counts as soon as it is done, so the rhythm never reads blank on someone's first day
+  // while their profile is still catching up.
+  const rhythm = rhythmOf(done ? [...(activeDates || []), day] : activeDates);
   const answered = state.reflected?.answer;
 
   return (
-    <div className="relative z-30 flex-shrink-0 px-3.5 pt-2">
-      {/* ── The bar ───────────────────────────────────────────────────────────────────────── */}
-      <div className={`flex items-center rounded-2xl border shadow-sm ${done ? "border-teal-200 bg-teal-50/80" : "border-teal-200 bg-white"}`}>
-        <button onClick={() => { setOpen((v) => !v); setSection(null); }} aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2.5 pl-3.5 text-left">
-          {done ? (
-            <span className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-teal-500 text-white"><Check size={12} strokeWidth={3} /></span>
-          ) : (
-            <span className="text-base leading-none" aria-hidden>✨</span>
-          )}
-          <span className={`min-w-0 flex-1 truncate text-[13px] font-bold ${done ? "text-teal-700" : "text-slate-800"}`}>
-            {done ? "You made someone feel seen" : "Make someone feel seen today"}
+    // z-[45]: above the sticky feed headers (z 32), which used to cut the open panel in half,
+    // and below every sheet and portal (z 240+).
+    <div className="relative z-[45] flex-shrink-0 px-3.5 pt-2">
+      {/* ── The bar ───────────────────────────────────────────────────────────────────────────
+          The one thing to press on Connect, so it looks like it: the glossy orange the Send
+          button used to have, which is the action it now replaces. It always says the same
+          thing. Before today's first kind act it pulses; after, it goes calm and a pill counts
+          the people you made feel seen today — an invitation to one more, never a nag. */}
+      <button data-tour="send" onClick={() => { setOpen((v) => !v); setSection(null); onOpened?.(); }} aria-expanded={open}
+        className={`relative flex w-full items-center gap-1.5 overflow-hidden rounded-2xl py-3 pl-3.5 pr-2.5 text-left text-white active:scale-[0.99] transition-transform${done ? "" : " send-kindness-pulse"}`}
+        style={{
+          background: "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #E07C33 100%)",
+          border: "1px solid rgba(224,124,51,0.55)",
+          boxShadow: flash
+            ? "inset 0 1px 0 rgba(255,255,255,0.55), 0 0 0 4px rgba(255,173,110,0.35), 0 6px 22px rgba(255,158,87,0.7)"
+            : "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 6px rgba(184,95,29,0.45), 0 4px 16px rgba(255,158,87,0.45)",
+          textShadow: "0 1px 1px rgba(184,95,29,0.4)",
+          transition: "box-shadow 400ms ease",
+        }}>
+        <span aria-hidden="true" className="send-kindness-shine" />
+        <span className="text-base leading-none" aria-hidden>✨</span>
+        <span className={`min-w-0 flex-1 truncate font-extrabold ${done ? "text-[14px]" : "text-[15px]"}`}>Make Someone Feel Seen</span>
+        {done && (
+          <span key={count} className="flex-shrink-0 whitespace-nowrap rounded-full bg-white px-1.5 py-0.5 text-[10.5px] font-bold text-orange-600 shadow-sm"
+            style={{ animation: "seenLeafPop 500ms ease both", textShadow: "none" }}
+            aria-label={`${count} ${count === 1 ? "person" : "people"} today`}>
+            ✓ {count} today
           </span>
-          {done && rhythm != null && (
-            <span className="flex-shrink-0 text-[11px] font-semibold text-teal-600/80" aria-label={`${rhythm} of the last 30 days`}>{rhythm}/30</span>
-          )}
-          <ChevronDown size={15} className={`flex-shrink-0 text-teal-500 transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
-        {/* The clock steps aside once the day is done, so the line that says so fits; the
-            reminder time is still in the panel's footer. */}
-        {!done ? (
-          <button onClick={() => { setOpen(true); setSection("time"); }} aria-label="Change reminder time"
-            className="flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-2.5 text-[10px] font-semibold text-slate-400 hover:text-slate-600">
-            <Clock size={11} /> {Number.isInteger(nudgeHour) ? fmtHour(nudgeHour) : "9am"}
-          </button>
-        ) : <span className="w-3" />}
-      </div>
+        )}
+        <ChevronDown size={17} className={`flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* First visit: point at the one thing to press. */}
+      {coach && !open && (
+        <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-1.5 -translate-x-1/2" style={{ animation: "seenFadeUp 300ms ease both" }}>
+          <div className="mx-auto h-0 w-0" style={{ borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "7px solid rgba(15,23,42,0.9)" }} />
+          <div className="send-coach-hop whitespace-nowrap rounded-full bg-slate-900/90 px-3.5 py-2 text-[12px] font-semibold text-white shadow-lg">
+            👆 Start here — make someone feel seen
+          </div>
+        </div>
+      )}
 
       {/* ── The panel, over the feed ───────────────────────────────────────────────────────── */}
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute left-3.5 right-3.5 top-full z-40 mt-1.5 max-h-[70vh] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
+          <div className="absolute left-3.5 right-3.5 top-full z-40 mt-1.5 max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
             style={{ animation: "seenFadeUp 200ms ease both" }}>
 
             {section === "time" || awaitingTime ? (
@@ -288,10 +313,19 @@ export default function SeenBar({
             ) : (
               <div className="space-y-1.5">
                 {done && (
-                  <div className="mb-2 rounded-xl bg-teal-50/70 px-3 py-2">
-                    <p className="text-[12px] font-semibold leading-snug text-teal-700">{consequence(route, echo, toName)}</p>
-                    {answered && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{state.reflected.q || qText} — <span className="font-semibold text-slate-600">{answered}</span></p>}
-                    <button onClick={sayMore} className="mt-1 text-[11px] font-semibold text-teal-600 hover:text-teal-700">Want to say more?</button>
+                  // Three clear lines: what it did, the question, your answer — never run together.
+                  <div className="mb-2 rounded-xl bg-orange-50/80 px-3 py-2.5">
+                    <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName)}</p>
+                    {answered && (
+                      <>
+                        <p className="mt-1.5 truncate text-[11px] text-slate-500">{String(state.reflected.q || qText).replace(/^Finish it:\s*/, "")}</p>
+                        <p className="mt-0.5 text-[13px] font-semibold leading-snug text-slate-700 line-clamp-2">“{answered}”</p>
+                      </>
+                    )}
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <button onClick={sayMore} className="text-[11px] font-semibold text-teal-600 hover:text-teal-700">Want to say more?</button>
+                      {rhythm != null && <span className="text-[11px] font-semibold text-slate-400">{rhythm} of the last 30 days</span>}
+                    </div>
                   </div>
                 )}
                 <p className="px-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -342,8 +376,13 @@ export default function SeenBar({
                   )}
                 </Option>
 
-                <Option icon={<Globe size={15} />} title="A stranger, anywhere in the world"
-                  hint="Send a kind message · 20 seconds" onClick={go(onSend)} />
+                {sendLimitReached ? (
+                  <Option icon={<Globe size={15} />} title="A stranger, anywhere in the world"
+                    hint="You've sent your messages for today — back tomorrow 🌙" onClick={() => {}} />
+                ) : (
+                  <Option icon={<Globe size={15} />} title="A stranger, anywhere in the world"
+                    hint="Send a kind message · 20 seconds" onClick={go(onSend)} />
+                )}
 
                 {/* Someone in real life — today's idea, with one swap and no more. */}
                 <div className={`rounded-xl border px-3 py-2.5 ${actDone ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-white"}`}>

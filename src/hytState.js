@@ -56,11 +56,12 @@ export function onDayState(fn) {
 // `info` says which way: { via: "message" } or { via: "reply", name } — so the finished card can
 // say "Your words reached Lisa." A reply after a message (or the reverse) updates the wording;
 // either one has already completed the day.
+//
+// Every call also adds one to `seenCount` — the "✓ N today" on the bar counts people, not days.
 export function markSentToday(day, info = {}) {
   const cur = loadDayState(day);
   const via = info.via || "message";
-  if (cur.sent && cur.sentVia === via && cur.sentTo === (info.name ?? null)) return;
-  saveDayState(day, { ...cur, sent: true, sentVia: via, sentTo: info.name ?? null });
+  saveDayState(day, { ...cur, sent: true, sentVia: via, sentTo: info.name ?? null, seenCount: (cur.seenCount || 0) + 1 });
 }
 
 // Everything that happens when somebody says they did it, in one place. Returns the next state;
@@ -74,11 +75,12 @@ export function completeSlot(state, slot, { onKindAct, onPlanChange } = {}) {
   try { markDone("practice"); } catch { /* ignore */ }
   if (state.planned?.[slot]) { try { onPlanChange?.(null); } catch { /* ignore */ } }
   const done = { ...state.done, [slot]: true };
+  const seenCount = (state.seenCount || 0) + 1; // one more person made to feel seen today
   if (SLOTS.every((s) => done[s]) && !state.bonus) {
     awardPoints("practiceAll");
-    return { ...state, done, bonus: true };
+    return { ...state, done, seenCount, bonus: true };
   }
-  return { ...state, done };
+  return { ...state, done, seenCount };
 }
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.
