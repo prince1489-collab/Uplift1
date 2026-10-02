@@ -21,7 +21,7 @@ import SeenBar from "./SeenBar";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
 import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./replyNudge";
-import ReplyNudge from "./ReplyNudge";
+import ReplyNudge from "./ReplyNudgeLine";
 import { installFlyToGrow } from "./motion";
 import { todayKey as localDayKey } from "./hytPrompts";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";

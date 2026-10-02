@@ -1,6 +1,6 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// ReplyNudge.jsx — the line that slides out under a message you just hearted. See replyNudge.js
+// ReplyNudgeLine.jsx — the line that slides out under a message you just hearted. See replyNudge.js
 // for when it appears; this is only how it looks. Small, under the bubble, gone by itself.
 
 import React from "react";
