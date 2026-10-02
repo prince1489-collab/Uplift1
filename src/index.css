@@ -1015,3 +1015,10 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
      there, which still reads as a progress affordance. */
   [style*="seenBootSlide"] { animation: none !important; transform: none !important; width: 100% !important; opacity: 0.5; }
 }
+
+/* The "Make Someone Feel Seen" panel: slides in solid. It used to fade from transparent, so for a
+   few frames the feed showed through the options (seen in a 3.5 recording). */
+@keyframes seenDropIn {
+  from { transform: translateY(-6px); }
+  to   { transform: translateY(0); }
+}

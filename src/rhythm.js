@@ -17,12 +17,21 @@ export const ACTIVE_DATES_KEEP = 30;
 const key = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export function rhythmOf(activeDates, now = new Date()) {
-  if (!Array.isArray(activeDates) || !activeDates.length) return null;
+// `streak` ({ days, last }) fills in what activeDates cannot know: the record only began in 2.9,
+// so somebody with a 22-day streak had "1 of the last 30 days" beside it — two numbers from the
+// same app disagreeing. The days of the current streak are, by definition, days they showed up,
+// so they are counted too; the Set keeps anything counted twice from counting double.
+export function rhythmOf(activeDates, now = new Date(), streak = null) {
+  const dates = Array.isArray(activeDates) ? activeDates.filter((d) => typeof d === "string") : [];
+  const days = Math.min(RHYTHM_WINDOW, Number(streak?.days) || 0);
+  if (days > 0 && typeof streak?.last === "string" && /^\d{4}-\d{2}-\d{2}$/.test(streak.last)) {
+    for (let i = 0; i < days; i++) dates.push(shiftKey(streak.last, -i));
+  }
+  if (!dates.length) return null;
   const from = new Date(now);
   from.setDate(from.getDate() - (RHYTHM_WINDOW - 1));
   const lo = key(from), hi = key(now);
-  return new Set(activeDates.filter((d) => typeof d === "string" && d >= lo && d <= hi)).size;
+  return Math.min(RHYTHM_WINDOW, new Set(dates.filter((d) => d >= lo && d <= hi)).size);
 }
 
 // The list after showing up on `today`: deduplicated, sorted, newest ACTIVE_DATES_KEEP only.
@@ -76,7 +85,12 @@ export function nextShowingUp(data, today, localToday) {
     streakDays,
     lastGreetingDate: today,
     activeDays,
-    activeDates: withActiveDate(data.activeDates, localToday),
+    // Backfilled from the streak the first time round, so the stored record agrees with the
+    // flame instead of starting from one day for everybody who predates it.
+    activeDates: withActiveDate(
+      [...(Array.isArray(data.activeDates) ? data.activeDates : []),
+        ...Array.from({ length: Math.min(ACTIVE_DATES_KEEP, Math.max(0, streakDays - 1)) }, (_, i) => shiftKey(localToday, -(i + 1)))],
+      localToday),
   };
   if (graceUsedAt) fields.graceUsedAt = graceUsedAt;
   if (!data.firstActiveDate) fields.firstActiveDate = today;

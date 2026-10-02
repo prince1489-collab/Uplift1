@@ -661,6 +661,30 @@ export function KindMomentCard({ moment, compact = false }) {
 // same sheet rather than a second one because everything below the header is identical work —
 // the moderation call, the writeFailure mapping, the busy/sent/error states — and two copies
 // of that is how the safe path and the second path drift apart.
+// ── Keep a bottom sheet inside the part of the screen you can actually see ───────────────────
+// On Android the keyboard does not shrink `100dvh`; the WebView pans the whole page up instead,
+// which pushed the reply sheet's title and the message being replied to behind the status bar
+// (seen in a recording of 3.5). visualViewport is the area left above the keyboard, so the sheet's
+// container is pinned to exactly that, and the sheet is capped to fit inside it.
+function useVisibleViewport() {
+  const read = () => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    return vv ? { top: vv.offsetTop, height: vv.height } : null;
+  };
+  const [box, setBox] = useState(read);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const on = () => setBox({ top: vv.offsetTop, height: vv.height });
+    vv.addEventListener("resize", on);
+    vv.addEventListener("scroll", on);
+    return () => { vv.removeEventListener("resize", on); vv.removeEventListener("scroll", on); };
+  }, []);
+  return box;
+}
+const sheetBox = (box) => (box ? { top: box.top, height: box.height, bottom: "auto" } : undefined);
+const sheetCap = (box) => ({ maxHeight: box ? box.height - 12 : "90dvh" });
+
 // One bubble in a private thread. Yours are coral, theirs are pink. Outside the sheet so React
 // does not see a new component type on every render.
 function ThreadBubble({ mine, label, body }) {
@@ -699,6 +723,7 @@ const REPLY_MAX = 200;
 // The rules enforce every limit here (firestore.rules privateReplies); the sheet only avoids
 // offering a box the server would refuse.
 export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, onClose, onSent }) {
+  const view = useVisibleViewport();
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -835,9 +860,9 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     : mode === "final" ? " This is the last word: once you send it, the exchange is complete." : "";
 
   return createPortal(
-    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
+    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end" style={sheetBox(view)}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col max-h-[90dvh]" onClick={(e) => e.stopPropagation()}>
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" style={sheetCap(view)} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
         <div className="px-5 pb-2 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-800">
@@ -889,7 +914,10 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-slate-300" /></div>
           ) : (
             <>
-              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2} autoFocus
+              {/* No autoFocus: the sheet opens showing who it's to and what they wrote; the keyboard
+                  comes up when you tap the box. */}
+              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2}
+                onFocus={(e) => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ block: "nearest", behavior: "smooth" }), 250); }}
                 placeholder={isNote ? "Something you appreciate about them…" : mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
               {/* Starters only for a first reply, and only while the box is empty — they are a
@@ -1308,6 +1336,7 @@ function apiFailure(err, what) {
 // six months later. An edit that skipped screening would also make screening optional for
 // everyone: post something warm, rewrite it to anything. Reusing this keeps that impossible.
 export function PostComposer({ profile, myUid, currentUser, db, streak = 0, sparkBalance = 0, editing = null, onPosted, onClose }) {
+  const view = useVisibleViewport();
   const isEditing = Boolean(editing?.id);
   const [text, setText] = useState(editing?.text ?? "");
   const [anon, setAnon] = useState(false);
@@ -1471,9 +1500,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
   };
 
   return createPortal(
-    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
+    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end" style={sheetBox(view)}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col overflow-y-auto overscroll-contain" style={sheetCap(view)} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
         <div className="px-5 pb-2 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-800">{isEditing ? "Edit your message" : "Share some kindness"}</h2>

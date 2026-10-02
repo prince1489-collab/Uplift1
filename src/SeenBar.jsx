@@ -97,7 +97,7 @@ const clip = (t, n = 60) => {
 };
 
 export default function SeenBar({
-  db, currentUser, dob, nudgeHour, activeDates, echo,
+  db, currentUser, dob, nudgeHour, activeDates, streak = null, echo,
   inboxReply, followMessage, follows = [],
   openRequest = 0, coach = false, sendLimitReached = false, onOpened,
   onSend, onReplyTo, onOpenReply, onNote, onSeeAllFollows, onFindPeople,
@@ -219,7 +219,7 @@ export default function SeenBar({
   const go = (fn) => () => { setOpen(false); fn?.(); };
   // Today counts as soon as it is done, so the rhythm never reads blank on someone's first day
   // while their profile is still catching up.
-  const rhythm = rhythmOf(done ? [...(activeDates || []), day] : activeDates);
+  const rhythm = rhythmOf(done ? [...(activeDates || []), day] : activeDates, new Date(), streak);
   const answered = state.reflected?.answer;
 
   return (
@@ -270,7 +270,7 @@ export default function SeenBar({
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute left-3.5 right-3.5 top-full z-40 mt-1.5 max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
-            style={{ animation: "seenFadeUp 200ms ease both" }}>
+            style={{ animation: "seenDropIn 180ms ease-out both" }}>
 
             {section === "time" || awaitingTime ? (
               <NudgeChooser

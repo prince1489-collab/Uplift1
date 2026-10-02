@@ -55,6 +55,20 @@ check("no record means no number", rhythmOf(undefined, now) === null && rhythmOf
 check("dates inside 30 days count", rhythmOf(["2026-10-10", "2026-10-01", "2026-09-11"], now) === 3, rhythmOf(["2026-10-10", "2026-10-01", "2026-09-11"], now));
 check("a date 30 days back does not", rhythmOf(["2026-09-10", "2026-10-10"], now) === 1, rhythmOf(["2026-09-10", "2026-10-10"], now));
 
+// ── The rhythm agrees with the streak (3.6) ────────────────────────────────────────────────
+check("a 22-day streak reads at least 22 of 30, even with only today recorded",
+  rhythmOf(["2026-10-10"], now, { days: 22, last: "2026-10-10" }) === 22,
+  rhythmOf(["2026-10-10"], now, { days: 22, last: "2026-10-10" }));
+check("streak days already recorded are not counted twice",
+  rhythmOf(["2026-10-10", "2026-10-09"], now, { days: 2, last: "2026-10-10" }) === 2);
+check("a 90-day streak never reads more than 30",
+  rhythmOf([], now, { days: 90, last: "2026-10-10" }) === 30);
+check("no streak and no record still means no number", rhythmOf([], now, { days: 0, last: null }) === null);
+r = run({ lastGreetingDate: "2026-10-09", streakDays: 21, activeDays: 40 });
+check("the first act after 3.6 backfills the stored dates from the streak",
+  r.activeDates.length === 22 && r.activeDates.at(-1) === T && r.activeDates[0] === "2026-09-19",
+  `${r.activeDates.length} ${r.activeDates[0]}`);
+
 let failed = 0;
 for (const [ok, name] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${name}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} rhythm tests passed.`);

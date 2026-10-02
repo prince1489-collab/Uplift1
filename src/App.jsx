@@ -350,8 +350,8 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                     <span className="text-[10px] font-bold text-slate-500">{streak}d</span>
                     {/* The forgiving number under the strict one: a missed weekend costs the
                         rhythm two days, never everything. See rhythm.js. */}
-                    {rhythmOf(profile?.activeDates) != null && (
-                      <span className="text-[9px] font-semibold text-slate-400">{rhythmOf(profile?.activeDates)}/30 days</span>
+                    {rhythmOf(profile?.activeDates, new Date(), { days: profile?.streakDays, last: profile?.lastGreetingDate }) != null && (
+                      <span className="text-[9px] font-semibold text-slate-400">{rhythmOf(profile?.activeDates, new Date(), { days: profile?.streakDays, last: profile?.lastGreetingDate })}/30 days</span>
                     )}
                   </div>
                 )}
@@ -4017,6 +4017,7 @@ export default function App() {
             {activeTab === "feed" && (
               <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
+                streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}
                 echo={todayEcho}
                 inboxReply={unreadReply}
                 followMessage={followMessage}

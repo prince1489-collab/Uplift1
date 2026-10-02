@@ -402,7 +402,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
   const wordsSent = messagesSent + repliesSent;
   const seenTotal = wordsSent + actsDone;
   const felt = Math.max(Number(profile?.reactionsReceivedCount ?? 0), Number(reactData?.totalReactions ?? 0));
-  const rhythm = rhythmOf(profile?.activeDates);
+  const rhythm = rhythmOf(profile?.activeDates, new Date(), { days: profile?.streakDays, last: profile?.lastGreetingDate });
 
   // Each metric opened up. Bases genuinely differ, so each card says which it is.
   const periodWord = "Last 30 days";
@@ -455,7 +455,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
       how: "Every real-life idea you marked done.",
     },
     felt: {
-      emoji: "❤️", label: "Times your words were felt", value: felt, basis: "All time",
+      emoji: "❤️", label: "Hearts on your words", value: felt, basis: "All time",
       line: felt === 0
         ? "No hearts yet — they often arrive a little after you've forgotten you sent anything."
         : "Each one is a person who read what you wrote and felt it.",
@@ -664,7 +664,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
         <div className="grid grid-cols-2 gap-2.5">
           <MetricTile emoji="💌" value={wordsSent} label="Kind words sent" delay={200} onOpen={() => setOpenCard("words")} />
           <MetricTile emoji="🤝" value={actsDone} label="Kind acts in real life" delay={260} onOpen={() => setOpenCard("acts")} />
-          <MetricTile emoji="❤️" value={felt} label="Times your words were felt" delay={320} onOpen={() => setOpenCard("felt")} />
+          <MetricTile emoji="❤️" value={felt} label="Hearts on your words" delay={320} onOpen={() => setOpenCard("felt")} />
           <MetricTile emoji="🌍" value={countries} label="Countries that felt it" delay={380} onOpen={() => setOpenCard("countries")} />
           <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={440} onOpen={() => setOpenCard("ripple")} wide />
         </div>
@@ -676,7 +676,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
             <ul className="mt-1.5 space-y-1.5">
               {answers.map((x, i) => (
                 <li key={i} className="text-[12px] leading-snug">
-                  <span className="text-slate-500">{x.question}</span>{" "}
+                  <span className="text-slate-500">{String(x.question).replace(/^Finish it:\s*/, "")}</span>{" "}
                   <span className="font-semibold text-slate-800">{x.answer}</span>
                 </li>
               ))}
