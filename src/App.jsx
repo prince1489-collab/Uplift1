@@ -18,6 +18,8 @@ import IntroStep from "./IntroStep";
 import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, playFirstSend, startMapAmbient, stopMapAmbient } from "./sounds";
 import { useBackLayer } from "./backStack";
 import SeenBar from "./SeenBar";
+import MessagesTab from "./MessagesTab";
+import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
 import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./replyNudge";
@@ -1002,16 +1004,20 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
   // country, so we can show "Name from Country liked you" without extra reads.
   useEffect(() => {
     if (!db || !currentUser) return;
+    // NEWEST first. This used to be limit(20) with no orderBy, which returns 20 arbitrary
+    // documents — so today's hearts were often simply not among them and the bell showed weeks-
+    // old news. reactedAt is a single field, so this needs no new index.
     const q = query(
       collection(db, "users", currentUser.uid, "reactionsReceived"),
-      limit(20)
+      orderBy("reactedAt", "desc"),
+      limit(40)
     );
     return onSnapshot(q, async (snap) => {
+      // Hearts AND stickers — both are somebody reacting to you.
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((r) => (r.emoji || "❤️") === "❤️" && r.reactorUid && r.reactorUid !== currentUser.uid)
-        .sort((a, b) => (b.reactedAt || 0) - (a.reactedAt || 0))
-        .slice(0, 15);
+        .filter((r) => r.reactorUid && r.reactorUid !== currentUser.uid)
+        .slice(0, 40);
       const resolved = await Promise.all(rows.map(async (r) => {
         let name = (r.reactorName || "").trim();
         let country = r.country || "";
@@ -1088,11 +1094,16 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
   const dismissAllWaves = () => waves.forEach((w) => dismissWave(w.id));
   const dismissLike = (id) => setDismissedLikes((s) => new Set(s).add(id));
 
-  // Everything shown is scoped to this visit — anything older is history, not a notification.
-  const sinceVisit = (ts) => (Number(ts) || 0) > visitStart;
+  // A history of the last 30 days, newest first. It used to be scoped to "this visit", which
+  // dropped every heart from before you opened the app while old replies (never filtered) filled
+  // the list — so the bell showed August while today's hearts were missing. What's NEW is still
+  // marked and counted (the *SeenAt values); older items stay visible underneath.
+  const [historyFrom] = useState(() => Math.min(visitStart, Date.now() - 30 * 24 * 60 * 60 * 1000));
+  const sinceVisit = (ts) => (Number(ts) || 0) > historyFrom;
   const visibleWaves = waves.filter((w) => sinceVisit(w.createdAt));
   const visibleLikes = likes.filter((l) => !dismissedLikes.has(l.id) && sinceVisit(l.at));
   const visibleRipples = rippleRows.filter((r) => sinceVisit(r.createdAt));
+  const visibleReplies = replies.filter((r) => sinceVisit(r.ts));
 
   // The badge counts what's in the list and not yet looked at — so it can never exceed
   // the number of rows the user will actually see.
@@ -1146,7 +1157,7 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
     }));
     // Private replies. Shown whether read or not — a reply is worth being able to find again,
     // and unlike the others it opens something rather than just reporting.
-    replies.forEach((r) => out.push({
+    visibleReplies.forEach((r) => out.push({
       id: `reply_${r.id}`, ts: Number(r.ts) || 0, icon: "💬", tint: "bg-sky-50/60", fresh: !r.read,
       text: r.final
         ? <><span className="font-semibold">{r.fromName || "Someone"}</span> wrote back one last time</>
@@ -1161,8 +1172,8 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
       id: n.id, ts: n.ts, icon: n.icon, tint: "bg-amber-50/60", fresh: true,
       text: n.text, onClick: n.onClick, onDismiss: n.onDismiss,
     }));
-    return out.sort((a, b) => b.ts - a.ts).slice(0, 8);
-  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges, replies, onOpenReply]);
+    return out.sort((a, b) => b.ts - a.ts).slice(0, 40);
+  }, [visibleWaves, visibleLikes, visibleRipples, likesSeenAt, ripplesSeenAt, nudges, visibleReplies, onOpenReply]);
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)}
@@ -1209,11 +1220,11 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
             {rows.length === 0 ? (
-              <p className="px-4 py-6 text-center text-[11px] text-slate-400">Nothing new since you were last here</p>
+              <p className="px-4 py-6 text-center text-[11px] text-slate-400">Nothing in the last 30 days yet</p>
             ) : (
               <div className="py-1">
                 {rows.map((r) => (
-                  <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${r.fresh ? r.tint : ""} hover:bg-slate-50`}>
+                  <div key={r.id} className={`flex items-center gap-2.5 px-4 py-2.5 ${r.fresh ? r.tint : "opacity-70"} hover:bg-slate-50`}>
                     <span className="text-base flex-shrink-0">{r.icon}</span>
                     {/* A row that can act is a button; one that only reports stays a paragraph,
                         so nothing looks tappable that isn't. */}
@@ -2231,6 +2242,26 @@ export default function App() {
     setAnsweringReply(r);
   }, [db]);
 
+  // ── Messages: both sides of every private conversation ───────────────────────────────────
+  const sentReplies = useMySentReplies(db, currentUser);
+  const conversations = useMemo(() => {
+    const list = buildConversations(inboxReplies, sentReplies, currentUser?.uid, blockedUids instanceof Set ? blockedUids : new Set());
+    // Older sent replies carry no recipient name — fall back to who you follow, then the feed.
+    return list.map((c) => {
+      if (c.name) return c;
+      const f = follows.find((x) => x.uid === c.uid);
+      const m = messages.find((x) => x.uid === c.uid && x.sender);
+      return { ...c, name: f?.name || m?.sender || null, country: c.country || m?.country || null };
+    });
+  }, [inboxReplies, sentReplies, currentUser?.uid, blockedUids, follows, messages]);
+  const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0), [conversations]);
+  const [messagesOpenUid, setMessagesOpenUid] = useState(null);
+  const openConversation = useCallback((uid) => { setActiveTab("messages"); setMessagesOpenUid(uid || null); }, []);
+  useBackLayer(Boolean(messagesOpenUid) && activeTab === "messages", () => setMessagesOpenUid(null));
+  const markRepliesRead = useCallback((ids) => {
+    ids.forEach((id) => updateDoc(doc(db, "privateReplies", id), { read: true }).catch(() => {}));
+  }, []);
+
   useBackLayer(postComposerOpen, () => setPostComposerOpen(false));
   useBackLayer(Boolean(replyTarget), () => setReplyTarget(null));
   // Follow/unfollow from the Worldwide Feed. These write one Firestore document each and
@@ -2612,6 +2643,8 @@ export default function App() {
     // name tabs that no longer exist — the targets stay, so links in notifications already on
     // people's phones still land somewhere sensible.
     if (openTarget === "reflect") setShowJournal(true);
+    // A reply notification opens the conversation list, where the whole exchange is.
+    if (openTarget === "replies") setActiveTab("messages");
     if (openTarget === "practice") openSeenBar();
     try {
       const url = new URL(window.location.href);
@@ -3680,6 +3713,8 @@ export default function App() {
             currentUser={currentUser}
             db={db}
             blockedUids={blockedUids}
+            previous={replyTarget?.id ? sentReplies.filter((x) => x.messageId === replyTarget.id && !x.inReplyTo) : []}
+            onOpenConversation={() => { const uid = replyTarget?.uid; setReplyTarget(null); openConversation(uid); }}
             onSent={handleReplySent}
             onClose={() => setReplyTarget(null)} />
         )}
@@ -3878,8 +3913,8 @@ export default function App() {
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell db={db} currentUser={currentUser}
-                      nudges={bellNudges} replies={inboxReplies} onOpenReply={openReply}
-                      openOnMount={openTarget === "replies" || openTarget === "hearts"} />
+                      nudges={bellNudges} replies={inboxReplies} onOpenReply={(r) => openConversation(r?.fromUid)}
+                      openOnMount={openTarget === "hearts"} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
@@ -4000,6 +4035,20 @@ export default function App() {
                 )}
               </button>
               <button
+                onClick={() => { setActiveTab("messages"); setMessagesOpenUid(null); }}
+                className={`relative py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "messages"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                💬 Messages
+                {messagesUnread > 0 && (
+                  <span className="absolute top-0.5 -right-3 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-500 px-1 text-[8px] font-bold text-white">
+                    {messagesUnread > 99 ? "99+" : messagesUnread}
+                  </span>
+                )}
+              </button>
+              <button
                 data-fly-target="grow"
                 onClick={() => setActiveTab("impact")}
                 className={`py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
@@ -4033,7 +4082,17 @@ export default function App() {
               <TwoFeedsIntro onFindPeople={() => setShowFollowing(true)} />
             )}
 
-            {activeTab === "support" ? (
+            {activeTab === "messages" ? (
+              <MessagesTab conversations={conversations} myUid={currentUser?.uid}
+                followUids={new Set(focusedUids)}
+                openUid={messagesOpenUid}
+                onOpen={(uid) => setMessagesOpenUid(uid)}
+                onClose={() => setMessagesOpenUid(null)}
+                onAction={(d) => openReply(d)}
+                onNote={(p) => setReplyTarget({ uid: p.uid, sender: p.name || "Someone", country: p.country ?? null, id: null, text: "", note: true })}
+                onMarkRead={markRepliesRead}
+                onStart={() => openSeenBar()} />
+            ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
               </Suspense>

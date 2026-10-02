@@ -17,6 +17,21 @@
       ]
     },
     {
+      "//": "useMySentReplies \u2014 the sender's own replies and notes, for the Messages tab.",
+      "collectionGroup": "privateReplies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fromUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "//": "A member's own messages, newest first \u2014 used by My Journey and the impact tallies.",
       "collectionGroup": "publicMessages",
       "queryScope": "COLLECTION",

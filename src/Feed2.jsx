@@ -257,7 +257,7 @@ export function useRepliesReceived(db, currentUser, messageId, blockedUids) {
       collection(db, "privateReplies"),
       where("toUid", "==", currentUser.uid),
       orderBy("ts", "desc"),
-      limit(50)
+      limit(200)
     );
     const unsub = onSnapshot(q, (snap) => {
       const blocked = blockedUids instanceof Set ? blockedUids : new Set(blockedUids || []);
@@ -700,7 +700,7 @@ const REPLY_MAX = 200;
 //   closed  — the last word has been said (you are reading a final)
 // The rules enforce every limit here (firestore.rules privateReplies); the sheet only avoids
 // offering a box the server would refuse.
-export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, onClose, onSent }) {
+export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, previous = [], onOpenConversation, onClose, onSent }) {
   const view = useVisibleViewport();
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
@@ -772,6 +772,8 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
       fromName: firstName(me?.fullName) || "Someone",
       fromCountry: me?.country ?? null,
       toUid: target.uid,
+      // Who it was to, so your own Messages list can name them even before they write back.
+      toName: firstName(answering ? answering.fromName : target?.sender) || null,
       messageId: target.id ?? null,
       messageText: (target.text ?? "").slice(0, 120), // context for the recipient
       text: clean,
@@ -872,6 +874,25 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             </div>
           ) : isNote ? null : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[13px] text-slate-500 italic">“{stripQuotes(target?.text)}”</div>
+          )}
+          {/* What you already said about this message. Your own replies used to be invisible once
+              sent, so a reply from this morning looked as if it had never happened. */}
+          {mode === "first" && previous.length > 0 && (
+            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
+              {previous.slice(0, 2).map((p) => (
+                <div key={p.id} className="mb-1 last:mb-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
+                    You replied {new Date(Number(p.ts) || 0).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                  <p className="mt-0.5 text-[14px] text-slate-700">{p.text}</p>
+                </div>
+              ))}
+              {onOpenConversation && (
+                <button onClick={onOpenConversation} className="mt-1 text-[12px] font-semibold text-teal-700">
+                  See your conversation with {firstName(target?.sender)} →
+                </button>
+              )}
+            </div>
           )}
           {/* Say who can see it, and — before they write — how many messages are left, so
               finding out afterwards that it was the last one never feels like a trick. */}
