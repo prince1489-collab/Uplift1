@@ -19,6 +19,8 @@ import { isSoundOn, setSoundOn, playSend, playHeart, playLevelUp, playStreak, pl
 import { useBackLayer } from "./backStack";
 import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
+import UpdateNote from "./UpdateNote";
+import { useUpdateAvailable } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
@@ -2244,6 +2246,8 @@ export default function App() {
 
   // ── Messages: both sides of every private conversation ───────────────────────────────────
   const sentReplies = useMySentReplies(db, currentUser);
+  // "A new version of Seen is ready" — native apps only, from meta/appVersion (appVersion.js).
+  const { update: appUpdate, dismiss: dismissAppUpdate } = useUpdateAvailable(db);
   const conversations = useMemo(() => {
     const list = buildConversations(inboxReplies, sentReplies, currentUser?.uid, blockedUids instanceof Set ? blockedUids : new Set());
     // Older sent replies carry no recipient name — fall back to who you follow, then the feed.
@@ -4656,6 +4660,7 @@ export default function App() {
               // Hidden, not unmounted, while the picker is up: the bar has to be listening when
               // the send lands, so it can open on the day's question.
               <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
+              <UpdateNote update={appUpdate} onDismiss={dismissAppUpdate} />
               <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}
