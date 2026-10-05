@@ -207,9 +207,9 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
-      // "How did that feel?" — one tap after the day's kind act, from the Today card. One
-      // document per local date (the id), so a second tap that day changes the answer rather
-      // than adding another. Kept out of /journal on purpose: the journal counts, words and
+      // "Feel it" — how each kind act felt (3.9). One document per act, id `{date}_{n}` where n
+      // is the act's number that day (older ones are just `{date}`); saving again for the same
+      // act changes it rather than adding another. Kept out of /journal on purpose: the journal counts, words and
       // calendar all read that collection as written reflections, and a tap is not one.
       // Owner only, like the journal — how someone felt is nobody else's business.
       match /feelings/{day} {

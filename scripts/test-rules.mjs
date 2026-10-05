@@ -281,6 +281,12 @@ await check("a signed-out visitor cannot read it either",
   assertFails(getDoc(doc(ANON, "users", "uidA", "feelings", "2026-10-01"))));
 await check("nobody else can write it for you",
   assertFails(setDoc(doc(B, "users", "uidA", "feelings", "2026-10-02"), FEEL)));
+// 3.9: one entry per act — the day's second act has its own id.
+const FELT = { route: "act", feelings: ["proud", "nervous"], because: "I nearly didn't do it", sentence: "I feel proud and nervous because I nearly didn't do it.", date: "2026-10-05", createdAt: Date.now() };
+await check("you can record how your second act of the day felt",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "feelings", "2026-10-05_2"), FELT)));
+await check("nobody else can read a per-act entry",
+  assertFails(getDoc(doc(B, "users", "uidA", "feelings", "2026-10-05_2"))));
 
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);

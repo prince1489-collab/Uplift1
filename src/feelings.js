@@ -46,12 +46,34 @@ export function actPhrase(text) {
 // The one-tap feeling grew into a different short question each day (reflectPrompts.js). Same
 // private document per day, same award, richer content: which question, and the answer in the
 // person's own words — which is what makes the archive worth reading back.
-export function recordReflection(db, uid, { day, route, act, questionId, question, answer, alreadyAwarded }) {
-  if (!alreadyAwarded) { try { awardPoints("feeling"); } catch { /* ignore */ } }
+//
+// 3.9: the question is now the optional second card after the FIRST act's "Feel it", and it is
+// stored on that act's entry (`{day}_{n}`) rather than a document of its own. No points of its
+// own — the feeling already paid, and a bonus question should feel like a bonus.
+export function recordReflection(db, uid, { day, n = 1, route, act, questionId, question, answer }) {
   if (!db || !uid || !questionId) return Promise.resolve();
-  return setDoc(doc(db, "users", uid, "feelings", day), {
+  return setDoc(doc(db, "users", uid, "feelings", entryId(day, n)), {
     route: route || null, act: String(act || "").slice(0, 200), questionId,
     question: String(question || "").slice(0, 140), answer: String(answer || "").slice(0, 140),
     date: day, createdAt: Date.now(),
-  }).catch(() => {});
+  }, { merge: true }).catch(() => {});
+}
+
+// ── "Feel it" (3.9) ──────────────────────────────────────────────────────────────────────────
+// One private entry per kind act: the words you picked, the "because", and the sentence they
+// make. `n` is the act's number that day (seenCount), so a second act never overwrites the first.
+// The rule (users/{uid}/feelings/{id}) is owner-only and indifferent to the id's shape.
+export const entryId = (day, n) => `${day}_${Math.max(1, Number(n) || 1)}`;
+
+export function recordFeelingEntry(db, uid, { day, n, route, act, toName, feelings, because, sentence }) {
+  // Every act can be felt, but the drops stop after three a day — enough to reward saying it,
+  // not enough to make "Done it" worth tapping for the points.
+  try { awardPoints("feeling", { maxPerDay: 3 }); } catch { /* ignore */ }
+  if (!db || !uid || !feelings?.length) return Promise.resolve();
+  return setDoc(doc(db, "users", uid, "feelings", entryId(day, n)), {
+    route: route || null, act: String(act || "").slice(0, 200), toName: toName ? String(toName).slice(0, 40) : null,
+    feelings: feelings.slice(0, 2).map((w) => String(w).slice(0, 24)),
+    because: String(because || "").slice(0, 140), sentence: String(sentence || "").slice(0, 200),
+    date: day, createdAt: Date.now(),
+  }, { merge: true }).catch(() => {});
 }

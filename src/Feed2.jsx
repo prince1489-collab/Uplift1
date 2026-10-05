@@ -29,6 +29,7 @@ import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
+import { REPLY_FEEL, NOTE_FEEL, replyOpening, noteOpening, quoteChip } from "./feelingWords";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -718,6 +719,18 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   // A kind note: a first message to someone you follow that answers no post at all.
   const isNote = mode === "first" && (Boolean(target?.note) || !target?.id);
   const starters = isNote ? NOTE_STARTERS : REPLY_STARTERS;
+  // 3.9 — easier words. A row of feelings writes the opening for you ("Your words made me feel
+  // hopeful — "), and a quote chip offers a few of THEIR words back, which is the most specific
+  // way in there is. The generic starters stay underneath for anyone who wants them.
+  const feelRow = isNote ? NOTE_FEEL : REPLY_FEEL;
+  const opening = isNote ? noteOpening : replyOpening;
+  const quoted = isNote ? null : quoteChip(mode === "first" ? target?.text : answering?.text);
+  const boxRef = useRef(null);
+  const begin = (t) => {
+    setText(t);
+    // Focus with the cursor at the end, so the rest is all that's left to write.
+    setTimeout(() => { const el = boxRef.current; if (el) { el.focus(); el.setSelectionRange(t.length, t.length); } }, 0);
+  };
 
   // The rest of the thread, read once when the sheet opens. Your own messages are addressed to
   // THEM, so they never appear in your inbox — which is why these are reads, not props.
@@ -915,20 +928,44 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             <>
               {/* No autoFocus: the sheet opens showing who it's to and what they wrote; the keyboard
                   comes up when you tap the box. */}
-              <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2}
+              <textarea ref={boxRef} value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2}
                 onFocus={(e) => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ block: "nearest", behavior: "smooth" }), 250); }}
                 placeholder={isNote ? "Something you appreciate about them…" : mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
               {/* Starters only for a first reply, and only while the box is empty — they are a
                   way in, not a template to fill. */}
-              {mode === "first" && !text && !sent && (
-                <div className="flex flex-wrap gap-1.5">
-                  {starters.map((st) => (
-                    <button key={st} type="button" onClick={() => setText(st)}
-                      className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
-                      {st.trim().replace(/[—\s]+$/, "")}…
+              {(mode === "first" || mode === "answer") && !text && !sent && (
+                <div className="space-y-2">
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold text-slate-500">{isNote ? "You make me feel…" : "Their words made you feel…"}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {feelRow.map((w) => (
+                        <button key={w} type="button" onClick={() => begin(opening(w))}
+                          className="rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
+                          {w}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {quoted && (
+                    <button type="button" onClick={() => begin(quoted)}
+                      className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-left text-[12.5px] italic text-slate-600 active:scale-[0.99]">
+                      {quoted.trim()}…
                     </button>
-                  ))}
+                  )}
+                  {mode === "first" && (
+                    <div>
+                      <p className="mb-1 text-[11px] font-semibold text-slate-400">Or start with…</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {starters.map((st) => (
+                          <button key={st} type="button" onClick={() => begin(st)}
+                            className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+                            {st.trim().replace(/[—\s]+$/, "")}…
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {error && (

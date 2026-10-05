@@ -137,14 +137,17 @@ export function fillName(q, name) {
 // panel asks the same thing rather than a new one each time.
 // Sundays, once the week has had a few kind days in it, the question looks back over the week
 // instead — the one moment in seven that asks you to compare, which is what makes a week stick.
-export function weeklyLookBack(count) {
+// 3.9: when the week's "Feel it" words say what it felt like most, the question says so too.
+export function weeklyLookBack(count, topWord = null) {
   return { id: "week", format: "surprise", routes: ALL, kind: "text",
-    q: `This week you made someone feel seen on ${count} days. Which moment stuck with you?`,
+    q: topWord
+      ? `This week you made someone feel seen on ${count} days, and felt ${topWord} most. Which moment stuck with you?`
+      : `This week you made someone feel seen on ${count} days. Which moment stuck with you?`,
     placeholder: "A few words" };
 }
 
-export function pickReflect({ uid = "anon", day, route = "sent", history = read(HIST_KEY, []), weekCount = 0, isSunday = false }) {
-  if (isSunday && weekCount >= 2) return weeklyLookBack(weekCount);
+export function pickReflect({ uid = "anon", day, route = "sent", history = read(HIST_KEY, []), weekCount = 0, isSunday = false, topWord = null }) {
+  if (isSunday && weekCount >= 2) return weeklyLookBack(weekCount, topWord);
   const already = history.find((h) => h.day === day);
   if (already) {
     const q = REFLECT_BANK.find((x) => x.id === already.id);

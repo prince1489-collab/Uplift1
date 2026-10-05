@@ -22,6 +22,7 @@ import { useBackLayer } from "./backStack";
 import { shareImage } from "./shareImage";
 import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
 import { rhythmOf } from "./rhythm";
+import { feelingSummary } from "./feelingWords";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -328,12 +329,16 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
   const [localPts, setLocalPts] = useState(() => getPoints());
   // The last few answers to the daily question — your own words about other people, which is
   // what makes looking back worth doing. Private (users/{uid}/feelings), read once on open.
-  const [answers, setAnswers] = useState([]);
+  // 3.9: the same documents now also hold how each act FELT — read more of them, so the week's
+  // feeling words can be counted ("warm ×4 · proud ×2").
+  const [entries, setEntries] = useState([]);
+  const answers = useMemo(() => entries.filter((x) => x?.answer && x?.question).slice(0, 5), [entries]);
+  const feltWeek = useMemo(() => feelingSummary(entries), [entries]);
   useEffect(() => {
     if (!db || !currentUser?.uid) return;
     let alive = true;
-    getDocs(query(collection(db, "users", currentUser.uid, "feelings"), orderBy("createdAt", "desc"), limit(5)))
-      .then((snap) => { if (alive) setAnswers(snap.docs.map((d) => d.data()).filter((x) => x?.answer && x?.question)); })
+    getDocs(query(collection(db, "users", currentUser.uid, "feelings"), orderBy("createdAt", "desc"), limit(40)))
+      .then((snap) => { if (alive) setEntries(snap.docs.map((d) => d.data())); })
       .catch(() => {});
     return () => { alive = false; };
   }, [db, currentUser?.uid]);
@@ -669,6 +674,23 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
           <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={440} onOpen={() => setOpenCard("ripple")} wide />
         </div>
 
+        {/* How kindness felt this week — the words from "Feel it", counted, and your last few
+            sentences played back. Naming it is the point; seeing it add up is the payoff. */}
+        {feltWeek.total > 0 && (
+          <div className="rounded-2xl border border-orange-200 bg-orange-50/60 px-4 py-3" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "460ms" }}>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-orange-500">How kindness felt this week</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {feltWeek.top.map(([w, n]) => (
+                <span key={w} className="rounded-full border border-orange-200 bg-white px-2.5 py-0.5 text-[12px] font-semibold text-orange-700">
+                  {w}{n > 1 ? <span className="ml-1 text-orange-400">×{n}</span> : null}
+                </span>
+              ))}
+            </div>
+            <ul className="mt-2 space-y-1">
+              {feltWeek.lines.map((l, i) => <li key={i} className="text-[12px] leading-snug text-slate-700">{l}</li>)}
+            </ul>
+          </div>
+        )}
         {/* Your own words about other people — the daily question's answers, newest first. */}
         {answers.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "480ms" }}>

@@ -61,8 +61,24 @@ export function onDayState(fn) {
 export function markSentToday(day, info = {}) {
   const cur = loadDayState(day);
   const via = info.via || "message";
-  saveDayState(day, { ...cur, sent: true, sentVia: via, sentTo: info.name ?? null, seenCount: (cur.seenCount || 0) + 1 });
+  const route = via === "message" ? "sent" : via;
+  saveDayState(day, {
+    ...cur, sent: true, sentVia: via, sentTo: info.name ?? null, seenCount: (cur.seenCount || 0) + 1,
+    lastAct: { route, name: info.name ?? null },
+  });
 }
+
+// ── "Feel it" after EVERY act (3.9) ──────────────────────────────────────────────────────────
+// The reflection used to be once a day, so a second act — a reply after a message, a real-life
+// act after either — got nothing: the card just kept showing the morning's answer. Each act is
+// now numbered by seenCount, and each number gets its own "how did it feel" entry.
+// A day saved before 3.9 kept one `reflected`; it stands in for act #1 so nobody is asked twice.
+export function feltFor(state, n) {
+  if (state?.felt?.[n]) return state.felt[n];
+  if (n === 1 && state?.reflected && !state.felt) return { legacy: true };
+  return null;
+}
+export const feltSkippedFor = (state, n) => Boolean(state?.feltSkipped?.[n]);
 
 // Everything that happens when somebody says they did it, in one place. Returns the next state;
 // the caller stores it. `onKindAct` counts the day as shown up (activeDays, certificates); a kept
@@ -76,11 +92,12 @@ export function completeSlot(state, slot, { onKindAct, onPlanChange } = {}) {
   if (state.planned?.[slot]) { try { onPlanChange?.(null); } catch { /* ignore */ } }
   const done = { ...state.done, [slot]: true };
   const seenCount = (state.seenCount || 0) + 1; // one more person made to feel seen today
+  const lastAct = { route: "act", name: null };
   if (SLOTS.every((s) => done[s]) && !state.bonus) {
     awardPoints("practiceAll");
-    return { ...state, done, seenCount, bonus: true };
+    return { ...state, done, seenCount, lastAct, bonus: true };
   }
-  return { ...state, done, seenCount };
+  return { ...state, done, seenCount, lastAct };
 }
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.

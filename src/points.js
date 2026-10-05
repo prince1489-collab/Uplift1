@@ -31,7 +31,7 @@ let mirror = null; // { db, uid }
 export const POINTS = {
   send: 100,          // send a kindness message
   practice: 400,      // do the day's kind thing — the main event (see THE ACT below)
-  feeling: 100,       // one tap to say how it felt, on the Today card
+  feeling: 100,       // "Feel it" after a kind act — up to 3 times a day (3.9)
   practiceAll: 250,   // bonus for all 3 daily practices
   reflect: 300,       // write a journal reflection — the bonus on top of the act
   like: 30,           // like a message
@@ -153,10 +153,22 @@ export function claimFirstToday(key) {
 }
 
 // Award points for an action. Returns the new total. Fires a window event so the tree / header
-// chip can animate a "watering" pulse. `opts.oncePerDay` (e.g. "dailyOpen") de-dupes per day.
+// chip can animate a "watering" pulse. `opts.oncePerDay` (e.g. "dailyOpen") de-dupes per day;
+// `opts.maxPerDay` (e.g. 3 for "feeling", which now follows every act) caps it instead.
 export function awardPoints(action, opts = {}) {
   const value = POINTS[action] ?? 0;
   if (!value) return getPoints();
+  if (opts.maxPerDay) {
+    try {
+      const meta = JSON.parse(localStorage.getItem(META) || "{}");
+      const today = new Date().toDateString();
+      const k = `cap:${action}`;
+      const cur = meta[k]?.d === today ? meta[k].n : 0;
+      if (cur >= opts.maxPerDay) return getPoints();
+      meta[k] = { d: today, n: cur + 1 };
+      localStorage.setItem(META, JSON.stringify(meta));
+    } catch { /* ignore */ }
+  }
   if (opts.oncePerDay) {
     try {
       const meta = JSON.parse(localStorage.getItem(META) || "{}");

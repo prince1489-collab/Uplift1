@@ -15,9 +15,11 @@
 //   🤝 someone in real life                (today's idea, with one swap)
 //   🌱 yesterday's "who's next"            (a name you gave yourself)
 //
-// Any one of them completes the day. Then comes a ten-second reflection — a different question
-// each day (reflectPrompts.js), always about the other person — and the bar folds back to one
-// line that says what happened.
+// Any one of them completes the day. After EVERY act comes "Feel it" (3.9): tap a word or two for
+// how it felt, tap an ending for why, and the app writes the sentence — "I feel proud because I
+// nearly didn't do it." (feelingWords.js says why words come first.) After the day's first act
+// it is followed by one optional question about the other person, a different one each day
+// (reflectPrompts.js). Then the bar folds back to one line that says what happened.
 //
 // The panel OVERLAYS the feed rather than pushing it, so opening it never moves anything, and
 // closing it puts everything back exactly where it was.
@@ -30,8 +32,9 @@ import { createPortal } from "react-dom";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
-import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob } from "./hytState";
-import { recordReflection, actPhrase } from "./feelings";
+import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, feltFor, feltSkippedFor } from "./hytState";
+import { recordReflection, recordFeelingEntry, actPhrase } from "./feelings";
+import { wordsFor, endingsFor, feelPhrase, buildSentence, playBack, MAX_WORDS } from "./feelingWords";
 import { pickReflect, rememberPick, fillName, setWhosNext, whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
@@ -93,6 +96,78 @@ function consequence(route, echo, name) {
   return "That happened off the screen. That counts.";
 }
 
+// ── Feel it ──────────────────────────────────────────────────────────────────────────────────
+// Two taps at least (a word, Save), three with an ending; typing is always optional. Keyed by the
+// act's number, so each act starts clean.
+function FeelCard({ route, lead, onSave, onSkip }) {
+  const [words, setWords] = useState([]);
+  const [other, setOther] = useState(null); // null = closed; string = typing your own word
+  const [because, setBecause] = useState("");
+  const options = wordsFor(route);
+  const toggle = (w) => setWords((cur) => cur.includes(w) ? cur.filter((x) => x !== w)
+    : [...cur, w].slice(-MAX_WORDS)); // a third tap replaces the oldest — never a dead end
+  const addOther = () => {
+    const w = String(other || "").trim().toLowerCase().slice(0, 20);
+    if (w) toggle(w);
+    setOther(null);
+  };
+  const endings = endingsFor(route, words);
+  const custom = words.filter((w) => !options.includes(w));
+  return (
+    <div style={{ animation: "seenFadeUp 220ms ease both" }}>
+      <p className="text-[11px] font-semibold text-teal-600">{lead}</p>
+      <p className="mt-1.5 text-[15px] font-extrabold leading-snug text-slate-800">Right now I feel…</p>
+      <p className="text-[11px] text-slate-400">Pick one or two. There's no right answer.</p>
+      <div className="mt-2 grid grid-cols-4 gap-1.5">
+        {[...options, ...custom].map((w) => (
+          <button key={w} onClick={() => toggle(w)} aria-pressed={words.includes(w)}
+            className={`truncate rounded-xl border px-0.5 py-2 text-[12px] font-semibold tracking-tight transition-all active:scale-95 ${
+              words.includes(w) ? "border-teal-400 bg-teal-50 text-teal-700 shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+            {w}
+          </button>
+        ))}
+      </div>
+      {other === null ? (
+        <button onClick={() => setOther("")} className="mt-1.5 py-0.5 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Something else…</button>
+      ) : (
+        <form className="mt-1.5 flex gap-1.5" onSubmit={(e) => { e.preventDefault(); addOther(); }}>
+          <input value={other} onChange={(e) => setOther(e.target.value.slice(0, 20))} placeholder="Your own word" autoFocus
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[13px] focus:border-teal-400 focus:outline-none" />
+          <button type="submit" className="rounded-lg border border-teal-200 px-3 text-[12px] font-semibold text-teal-700">Add</button>
+        </form>
+      )}
+
+      {words.length > 0 && (
+        <div className="mt-3 rounded-xl bg-orange-50/80 px-3 py-2.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
+          <p className="text-[14px] font-bold leading-snug text-slate-800">
+            {feelPhrase(words)} because<span className="font-semibold text-slate-500">{because ? ` ${because}` : "…"}</span>
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {endings.map((b) => (
+              <button key={b} onClick={() => setBecause(because === b ? "" : b)}
+                className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-all active:scale-95 ${
+                  because === b ? "border-teal-400 bg-teal-50 text-teal-700" : "border-orange-200 bg-white text-slate-600"}`}>
+                …{b}
+              </button>
+            ))}
+          </div>
+          <input value={endings.includes(because) ? "" : because} onChange={(e) => setBecause(e.target.value.slice(0, 140))}
+            placeholder="…or in your own words"
+            className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+        </div>
+      )}
+
+      <div className="mt-2.5 flex items-center gap-2">
+        <button onClick={() => onSave(words, because)} disabled={!words.length}
+          className="flex-1 rounded-xl bg-teal-600 py-2 text-[13px] font-bold text-white transition-opacity disabled:opacity-40 active:scale-[0.99]">
+          Save
+        </button>
+        <button onClick={onSkip} className="px-2 py-2 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Skip</button>
+      </div>
+    </div>
+  );
+}
+
 const clip = (t, n = 60) => {
   const s = String(t || "").replace(/^[“"]|[”"]$/g, "").trim();
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
@@ -122,9 +197,9 @@ export default function SeenBar({
   useEffect(() => onDayState((d) => {
     if (d?.day !== day || !d.state) return;
     setState((prev) => {
-      const wasDone = Boolean(prev.sent || prev.done?.kindness || prev.done?.who);
-      const nowDone = Boolean(d.state.sent || d.state.done?.kindness || d.state.done?.who);
-      if (!wasDone && nowDone) { setOpen(true); setSection(null); }
+      // Every new act, not just the first — each one gets its own "Feel it".
+      const countOf = (x) => Math.max(Number(x.seenCount || 0), x.sent || x.done?.kindness || x.done?.who ? 1 : 0);
+      if (countOf(d.state) > countOf(prev)) { setOpen(true); setSection(null); }
       return d.state;
     });
   }), [day]);
@@ -151,8 +226,11 @@ export default function SeenBar({
   const actDone = Boolean(state.done?.kindness);
   const whoDone = Boolean(state.done?.who);
   const done = actDone || whoDone || Boolean(state.sent);
-  const route = actDone || whoDone ? "act" : state.sentVia === "reply" ? "reply" : state.sentVia === "note" ? "note" : "sent";
-  const toName = whoDone ? state.whoName : state.sentTo;
+  // The LATEST act decides the words and the question — a reply after a real-life act is a reply.
+  // Days saved before 3.9 have no lastAct and fall back to the old reading.
+  const route = state.lastAct?.route
+    ?? (actDone || whoDone ? "act" : state.sentVia === "reply" ? "reply" : state.sentVia === "note" ? "note" : "sent");
+  const toName = state.lastAct ? state.lastAct.name : whoDone ? state.whoName : state.sentTo;
   const planned = Boolean(state.planned?.kindness);
   // ONE replacement a day, no more. The area picker that used to count as a second route to a
   // different idea is gone with the Practice tab.
@@ -165,36 +243,61 @@ export default function SeenBar({
     const lo = todayKey(from);
     return new Set((activeDates || []).filter((d) => typeof d === "string" && d >= lo && d <= day)).size;
   }, [activeDates, day]);
+  // The week's most-felt word, from this device's day records — for the Sunday look-back.
+  const topWord = useMemo(() => {
+    const counts = new Map();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      for (const e of Object.values(loadDayState(todayKey(d)).felt || {})) {
+        for (const w of e?.feelings || []) counts.set(w, (counts.get(w) || 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  }, [state.felt]); // eslint-disable-line react-hooks/exhaustive-deps -- recount when today's words change
   const question = useMemo(
-    () => pickReflect({ uid, day, route, weekCount, isSunday: new Date().getDay() === 0 }),
-    [uid, day, route, weekCount]
+    () => pickReflect({ uid, day, route, weekCount, isSunday: new Date().getDay() === 0, topWord }),
+    [uid, day, route, weekCount, topWord]
   );
   const qText = fillName(question.q, toName);
-  const awaitingReflection = done && !state.reflected && !state.reflectSkipped;
-  const awaitingTime = done && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
+  const awaitingFeel = done && !feltFor(state, count) && !feltSkippedFor(state, count);
+  // The question about the other person: once a day, after the first "Feel it" is dealt with.
+  const awaitingReflection = done && !awaitingFeel && !state.reflected && !state.reflectSkipped;
+  const awaitingTime = done && !awaitingFeel && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
 
   const what = route === "reply" ? `told ${toName || "someone"} how their words landed`
     : route === "note" ? `sent ${toName || "someone"} a kind note`
     : route === "sent" ? "sent a kind message to someone in the world"
-    : whoDone ? `made ${toName || "someone"} feel seen` : actPhrase(item.text);
+    : toName ? `made ${toName} feel seen` : actPhrase(item.text);
 
   const reflect = (value) => {
     const a = String(value || "").trim();
     if (!a) return;
-    const already = Boolean(state.reflected);
     update({ ...state, reflected: { id: question.id, q: qText, answer: a.slice(0, 140) } });
     rememberPick(day, question.id);
     recordReflection(db, currentUser?.uid, {
-      day, route, act: what, questionId: question.id, question: qText, answer: a, alreadyAwarded: already,
+      day, n: count, route, act: what, questionId: question.id, question: qText, answer: a,
     });
     if (question.kind === "next") setWhosNext(day, a);
     setAnswer("");
   };
   const skipReflection = () => { rememberPick(day, question.id); update({ ...state, reflectSkipped: true }); };
 
+  // ── Feel it ──
+  const saveFeel = (words, because) => {
+    const sentence = buildSentence(words, because);
+    const entry = { route, feelings: words, because: String(because || "").trim(), sentence };
+    update({ ...state, felt: { ...(state.felt || {}), [count]: entry } });
+    recordFeelingEntry(db, currentUser?.uid, { day, n: count, route, act: what, toName, feelings: words, because: entry.because, sentence });
+    try { navigator.vibrate?.([6]); } catch { /* ignore */ }
+  };
+  const skipFeel = () => update({ ...state, feltSkipped: { ...(state.feltSkipped || {}), [count]: true } });
+  // The most recent act that has words — what the done card plays back.
+  const lastFelt = Object.entries(state.felt || {}).sort((a, b) => Number(b[0]) - Number(a[0])).map(([, v]) => v).find((v) => v?.feelings?.length);
+
   const sayMore = () => {
     const r = state.reflected;
-    const prompt = `Today you ${what}.${r ? ` ${r.q || qText} — ${r.answer}.` : ""} What happened, and what did you notice?`;
+    const felt = lastFelt?.sentence ? ` ${lastFelt.sentence}` : "";
+    const prompt = `Today you ${what}.${felt}${r ? ` ${r.q || qText} — ${r.answer}.` : ""} What happened, and what did you notice?`;
     try { localStorage.setItem(PIN_KEY(day), prompt); } catch { /* ignore */ }
     setOpen(false);
     onSayMore?.();
@@ -206,7 +309,7 @@ export default function SeenBar({
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const doneWho = () => {
-    update({ ...completeSlot(state, "who", { onKindAct }), whoName: next });
+    update({ ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } });
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const later = () => {
@@ -292,10 +395,13 @@ export default function SeenBar({
                 title={awaitingTime ? "When should we remind you tomorrow?" : "Your daily reminder"}
                 current={Number.isInteger(nudgeHour) ? nudgeHour : null}
                 onPick={pickTime} onSkip={skipTime} />
+            ) : awaitingFeel ? (
+              <FeelCard key={count} route={route} onSave={saveFeel} onSkip={skipFeel}
+                lead={`${consequence(route, echo, toName)}${count > 1 ? ` · ${count} today` : ""}`} />
             ) : awaitingReflection ? (
               // ── A different small question each day, about the other person ───────────────
               <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-                <p className="text-[11px] font-semibold text-teal-600">{consequence(route, echo, toName)}</p>
+                <p className="text-[11px] font-semibold text-teal-600">One more, if you like</p>
                 <p className="mt-1.5 text-[14px] font-bold leading-snug text-slate-800">{qText}</p>
                 {question.kind === "chips" ? (
                   <div className={`mt-2 grid gap-1.5 ${question.options.length === 4 ? "grid-cols-2" : `grid-cols-${question.options.length}`}`}>
@@ -331,6 +437,9 @@ export default function SeenBar({
                   // Three clear lines: what it did, the question, your answer — never run together.
                   <div className="mb-2 rounded-xl bg-orange-50/80 px-3 py-2.5">
                     <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName)}</p>
+                    {lastFelt && (
+                      <p className="mt-1 text-[13px] font-semibold leading-snug text-teal-700">{playBack(lastFelt)}</p>
+                    )}
                     {answered && (
                       <>
                         <p className="mt-1.5 truncate text-[11px] text-slate-500">{String(state.reflected.q || qText).replace(/^Finish it:\s*/, "")}</p>
