@@ -38,7 +38,7 @@ function Reflection({ m, uid, db }) {
   const [why, setWhy] = useState(false);
   const fb = m.feedback;
   return (
-    <div className="max-w-[90%] self-start rounded-[18px] rounded-bl-md border-[1.5px] border-amber-300 bg-white px-3.5 py-2.5 shadow-[0_3px_12px_rgba(245,180,40,0.15)]">
+    <div className="seen-reflection max-w-[90%] self-start rounded-[18px] rounded-bl-md border-[1.5px] border-amber-300 bg-white px-3.5 py-2.5 shadow-[0_3px_12px_rgba(245,180,40,0.15)]">
       <p className="text-[10px] font-extrabold uppercase tracking-wider text-orange-700">✨ Seen noticed</p>
       <p className="mt-1 text-[14px] leading-snug text-slate-800">{m.text}</p>
       <button onClick={() => setWhy((v) => !v)} className="mt-1.5 text-[11.5px] font-semibold text-orange-700">
@@ -216,7 +216,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
         <Consent busy={starting} onBack={onBack} onStart={async () => { setStarting(true); try { await enableSeen(db, uid); } finally { setStarting(false); } }} />
       ) : (
         <>
-          <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain bg-[#fffdfa] px-3.5 py-3">
+          <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain seen-chat-bg px-3.5 py-3">
             {!chat && <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-slate-300" /></div>}
             {(chat || []).map((m) => {
               const d = dayLabel(m.createdAt);
@@ -227,31 +227,31 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                 body = (
                   <div className="max-w-[80%] self-end rounded-[18px] rounded-br-md bg-teal-600 px-3 py-2 text-[14px] leading-snug text-white">
                     <p className="whitespace-pre-wrap">{m.text}</p>
-                    <p className="mt-0.5 text-[9.5px] text-teal-100">{timeOf(m.createdAt)}</p>
+                    <p className="mt-0.5 text-[9.5px] text-white">{timeOf(m.createdAt)}</p>
                   </div>
                 );
               } else if (m.kind === "reflection") {
                 body = <Reflection m={m} uid={uid} db={db} />;
               } else if (m.kind === "nudge") {
                 body = (
-                  <div className="max-w-[88%] self-start rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[13.5px] leading-snug text-slate-700">
+                  <div className="seen-bubble max-w-[88%] self-start rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[13.5px] leading-snug text-slate-700">
                     {m.text}
                     <button onClick={() => onWriteTo?.(m.name)} className="mt-2 block rounded-full px-3 py-1 text-[12px] font-extrabold text-white"
-                      style={{ background: "#D9692A" }}>Write to {m.name} ✨</button>
+                      style={{ background: "#C2410C" }}>Write to {m.name} ✨</button>
                   </div>
                 );
               } else if (m.kind === "support") {
                 body = (
-                  <div className="max-w-[90%] self-start rounded-[18px] rounded-bl-md border border-sky-200 bg-sky-50 px-3 py-2 text-[13.5px] leading-snug text-slate-700">
+                  <div className="seen-support max-w-[90%] self-start rounded-[18px] rounded-bl-md border border-sky-200 bg-sky-50 px-3 py-2 text-[13.5px] leading-snug text-slate-700">
                     {m.text}
-                    <button onClick={onOpenSupport} className="mt-2 block rounded-full bg-sky-600 px-3 py-1 text-[12px] font-bold text-white">Open Support</button>
+                    <button onClick={onOpenSupport} className="mt-2 block rounded-full bg-sky-700 px-3 py-1 text-[12px] font-bold text-white">Open Support</button>
                   </div>
                 );
               } else {
                 const isOpenQ = m.kind === "question" && m.id === lastQ?.id && lastQOpen;
                 body = (
                   <div className="max-w-[84%] self-start">
-                    <div className="rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[14px] leading-snug text-slate-700">
+                    <div className="seen-bubble rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[14px] leading-snug text-slate-700">
                       <p className={m.kind === "question" ? "font-bold text-slate-800" : ""}>{m.text}</p>
                     </div>
                     {isOpenQ && !swapped.has(m.id) && m.qid !== "followup" && (
@@ -264,7 +264,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
               return <React.Fragment key={m.id}>{sep}{body}</React.Fragment>;
             })}
             {waiting && chat?.length > 0 && (
-              <div className="self-start rounded-[18px] rounded-bl-md border border-orange-100 bg-orange-50 px-3 py-2 text-[13px] text-slate-400">
+              <div className="seen-bubble self-start rounded-[18px] rounded-bl-md border border-orange-100 bg-orange-50 px-3 py-2 text-[13px] text-slate-400">
                 <span className="inline-flex gap-1"><span className="animate-pulse">●</span><span className="animate-pulse [animation-delay:150ms]">●</span><span className="animate-pulse [animation-delay:300ms]">●</span></span>
               </div>
             )}

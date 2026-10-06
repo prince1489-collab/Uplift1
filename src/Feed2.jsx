@@ -760,7 +760,7 @@ export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
         {onBeNext && day.isToday && (
           <button onClick={onBeNext}
             className="ml-auto rounded-full px-3 py-1 text-[12px] font-extrabold text-white active:scale-95"
-            style={{ background: "#D9692A", textShadow: "0 1px 1px rgba(120,50,10,.35)", boxShadow: "0 3px 10px rgba(224,124,51,.35)" }}>
+            style={{ background: "#C2410C", boxShadow: "0 3px 10px rgba(224,124,51,.35)" }}>
             Be next ✨
           </button>
         )}
@@ -1124,7 +1124,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                           </button>
                         ))}
                       </div>
-                      <p className="mt-1.5 text-[11px] text-orange-700/80">Tap a line, then say why it landed.</p>
+                      <p className="mt-1.5 text-[11px] text-orange-700">Tap a line, then say why it landed.</p>
                     </div>
                   )}
                   {theirLine && (
@@ -1134,7 +1134,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                         className="mt-2 flex w-full items-start gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-left shadow-sm active:scale-[0.99]">
                         <span className="text-[13.5px] leading-snug text-slate-700">{theirLine}</span>
                       </button>
-                      <p className="mt-1.5 text-[11px] text-orange-700/80">Tap to cheer them on with it.</p>
+                      <p className="mt-1.5 text-[11px] text-orange-700">Tap to cheer them on with it.</p>
                     </div>
                   )}
                   <div>
@@ -1162,7 +1162,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                         </div>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => setMoreIdeas(true)} className="text-[12px] font-semibold text-slate-400">More ideas ›</button>
+                      <button type="button" onClick={() => setMoreIdeas(true)} className="text-[12px] font-semibold text-slate-500">More ideas ›</button>
                     )
                   )}
                 </div>
@@ -1179,7 +1179,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                 className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                 {busy ? (<><Loader2 size={16} className="animate-spin" /> Checking…</>) : mode === "first" ? "Send privately" : mode === "final" ? "Send last word" : "Send reply"}
               </button>
-              <p className="text-center text-[10px] text-slate-400 leading-relaxed">
+              <p className="text-center text-[10px] text-slate-500 leading-relaxed">
                 Screened before delivery. Your words stay between you two — the feed only ever shows
                 that a kind message happened, never who sent it or what it said.
               </p>
@@ -1844,7 +1844,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
             className="w-full rounded-2xl bg-teal-600 py-3.5 text-sm font-bold text-white hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
             {state === "checking" ? (<><Loader2 size={16} className="animate-spin" /> Checking kindness…</>) : (isEditing ? "Save changes" : "Share")}
           </button>
-          <p className="text-center text-[10px] text-slate-400 leading-relaxed">
+          <p className="text-center text-[10px] text-slate-500 leading-relaxed">
             {isEditing
               ? "Edits are screened like new posts. Anyone who already reacted keeps their reaction, so your message will show that it was edited."
               : anon

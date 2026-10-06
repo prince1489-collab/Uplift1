@@ -572,7 +572,7 @@ export default function SeenBar({
                   <p className="mt-1 text-[10px] text-slate-400">We'll suggest them tomorrow.</p>
                 )}
                 <div className="mt-2 flex items-center justify-between">
-                  <button onClick={sayMore} className="py-1 text-[11px] font-semibold text-teal-600 hover:text-teal-700">Want to say more?</button>
+                  <button onClick={sayMore} className="py-1 text-[11px] font-semibold text-teal-700 hover:text-teal-800">Want to say more?</button>
                   <button onClick={skipReflection} className="py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Skip</button>
                 </div>
               </div>
@@ -592,12 +592,12 @@ export default function SeenBar({
                       </>
                     )}
                     <div className="mt-1.5 flex items-center justify-between">
-                      <button onClick={sayMore} className="text-[11px] font-semibold text-teal-600 hover:text-teal-700">Want to say more?</button>
-                      {rhythm != null && <span className="text-[11px] font-semibold text-slate-400">{rhythm} of the last 30 days</span>}
+                      <button onClick={sayMore} className="text-[11px] font-semibold text-teal-700 hover:text-teal-800">Want to say more?</button>
+                      {rhythm != null && <span className="text-[11px] font-semibold text-slate-500">{rhythm} of the last 30 days</span>}
                     </div>
                   </div>
                 )}
-                <p className="px-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <p className="px-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                   {done ? "Make someone else feel seen" : "Who will it be?"}
                 </p>
 
@@ -696,7 +696,7 @@ export default function SeenBar({
                 {!canSwap && !actDone && state.swaps?.kindness && (
                   <p className="px-1 text-[10px] text-slate-400">Today's swap is used — a fresh idea arrives tomorrow.</p>
                 )}
-                <button onClick={() => setSection("time")} className="flex items-center gap-1 px-1 pt-1 text-[10px] text-slate-400 hover:text-slate-600">
+                <button onClick={() => setSection("time")} className="flex items-center gap-1 px-1 pt-1 text-[10px] text-slate-500 hover:text-slate-600">
                   <Clock size={10} /> {nudgeLabel(nudgeHour) ? `Reminder: ${nudgeLabel(nudgeHour)}` : "Reminder: 9am"} · One is enough — anything more is a bonus.
                 </button>
               </div>

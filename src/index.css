@@ -114,7 +114,7 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
   border-color: rgba(16,185,129,0.35) !important;
 }
 [data-dark-shell] .text-slate-600 { color: #94a3b8 !important; }
-[data-dark-shell] .text-slate-500 { color: #64748b !important; }
+[data-dark-shell] .text-slate-500 { color: #94a3b8 !important; } /* 3.19: was #64748b, 3.6:1 on cards — and darker than slate-400 */
 [data-dark-shell] .text-slate-400 { color: #8792a6 !important; } /* was #4a5568 — too dim for author/meta lines */
 
 /* Backgrounds */
@@ -346,6 +346,38 @@ input::placeholder, textarea::placeholder { -webkit-text-fill-color: currentColo
 [data-dark-shell] .text-violet-800  { color: #ddd6fe !important; }
 [data-dark-shell] .text-rose-700    { color: #fda4af !important; }
 [data-dark-shell] .text-blue-700    { color: #93c5fd !important; }
+
+/* 3.19 — the screens added from 3.9 on (Feel it, Seen, the reply sheet's quote panel, the
+   kindness card, Right now lines) leaned on a few utilities with no dark remap, and the Seen
+   conversation painted its own cream ground — so in night mode it stayed near-white while its
+   text turned light grey. Values measured against the dark tints they sit on (12% of the hue
+   over #0d1117 ≈ #2a1d14 for orange, #261719 for coral), all ≥ 4.5:1. */
+[data-dark-shell] .text-teal-600    { color: #FF8580 !important; }   /* coral link text — was 2.8:1 */
+[data-dark-shell] .text-teal-500    { color: #FF9A95 !important; }
+[data-dark-shell] .text-orange-600  { color: #fb923c !important; }
+[data-dark-shell] .text-orange-800  { color: #fdba74 !important; }
+[data-dark-shell] [class*="text-orange-700/"] { color: #fbbf24 !important; }
+[data-dark-shell] .text-sky-700     { color: #F9A8CE !important; }
+[data-dark-shell] .text-red-600     { color: #fca5a5 !important; }
+[data-dark-shell] .text-red-700     { color: #fca5a5 !important; }
+/* Gradient panels (the reply sheet's quote panel and Right now panel): drop the light gradient
+   and use the same warm tint as every other orange card. */
+[data-dark-shell] .bg-gradient-to-br.from-orange-50 { background-image: none !important; background-color: rgba(249,115,22,0.12) !important; }
+
+/* Seen, the AI conversation. Its own ground and bubbles, so it reads the same in both themes:
+   cream and peach by day; a warm dark surface by night. */
+.seen-chat-bg { background-color: #fffdfa; }
+[data-dark-shell] .seen-chat-bg { background-color: #0d1117 !important; }
+[data-dark-shell] .seen-bubble { background-color: #2a1d14 !important; border-color: rgba(251,146,60,0.35) !important; }
+[data-dark-shell] .seen-bubble,
+[data-dark-shell] .seen-bubble .text-slate-700,
+[data-dark-shell] .seen-bubble .text-slate-800 { color: #f1e7dc !important; }
+[data-dark-shell] .seen-bubble .font-bold { color: #fff4e8 !important; }
+[data-dark-shell] .seen-reflection { background-color: #1b1712 !important; border-color: rgba(251,191,36,0.55) !important; }
+[data-dark-shell] .seen-reflection .text-slate-800 { color: #f5efe6 !important; }
+[data-dark-shell] .seen-support { background-color: #1f1622 !important; border-color: rgba(244,114,182,0.35) !important; }
+[data-dark-shell] .seen-support,
+[data-dark-shell] .seen-support .text-slate-700 { color: #f5e8f0 !important; }
 
 /* Practice: the completion moment. Rises in, holds, then clears out of the way. */
 @keyframes seenPracticeDone {
