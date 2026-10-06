@@ -185,7 +185,7 @@ async function personalNews(db, uid, since) {
 // true — never "your streak is at risk", never a countdown. The roadmap is explicit that guilt is
 // not a mechanic in a wellbeing app, and a notification is the easiest place in a product to
 // break that rule by accident.
-export function newsMessage(news) {
+export function newsMessage(news, away = 0) {
   if (news.replies > 0) {
     return news.replies === 1
       ? { title: "Someone wrote to you 💬", body: `${news.replyName || "Someone"} sent you a private word of kindness.`, open: "replies" }
@@ -196,10 +196,73 @@ export function newsMessage(news) {
       ? `${news.heartName} in ${news.heartCountry}`
       : (news.heartName || "Someone");
     return news.hearts === 1
-      ? { title: "Your words landed ❤️", body: `${who} felt something you wrote.`, open: "hearts" }
-      : { title: "Your words landed ❤️", body: `${news.hearts} people felt something you wrote.`, open: "hearts" };
+      ? { title: away >= 3 ? "While you were away ❤️" : "Your words landed ❤️", body: `${who} felt something you wrote.`, open: "hearts" }
+      : { title: away >= 3 ? "While you were away ❤️" : "Your words landed ❤️", body: `${news.hearts} people felt something you wrote.`, open: "hearts" };
   }
   return null;
+}
+
+// ── The edges of the habit (3.11) ────────────────────────────────────────────────────────────
+// For someone using Seen every day the loop above works. These are the three people it served
+// badly, and each is where a habit is quietly won or lost:
+//
+//   • someone who ALREADY made someone feel seen today, then got asked to at noon — which teaches
+//     them the push isn't paying attention, and so to ignore it;
+//   • someone who named who's next yesterday ("Sam"), then got a generic line — when a named
+//     person is the single strongest predictor of actually doing it;
+//   • someone drifting away, who got the same push every day until they turned notifications
+//     off, after which nothing can ever reach them again.
+//
+// All pure, all tested in scripts/test-evening.mjs. Dates are the recipient's own YYYY-MM-DD.
+export function daysBetweenKeys(a, b) {
+  const x = Date.parse(`${a}T00:00:00Z`), y = Date.parse(`${b}T00:00:00Z`);
+  return Number.isFinite(x) && Number.isFinite(y) ? Math.round((y - x) / 86400000) : null;
+}
+
+export function alreadyActed(user, todayKey) {
+  return Array.isArray(user?.activeDates) && user.activeDates.includes(todayKey);
+}
+
+// Days since they last opened Seen or made someone feel seen. Unknown → 0: someone we know
+// nothing about is treated as present, never as lapsed.
+export function daysAway(user, todayKey) {
+  const keys = [...(Array.isArray(user?.activeDates) ? user.activeDates : []), user?.lastOpenDay]
+    .filter((k) => typeof k === "string" && /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= todayKey);
+  if (!keys.length) return 0;
+  const last = keys.sort().pop();
+  return Math.max(0, daysBetweenKeys(last, todayKey) ?? 0);
+}
+
+// The general daily push, thinning as someone drifts: every day for the first two days away,
+// every other day to a week, weekly to a month, then not at all. News about THEM (a reply, a
+// heart) is never held back by this — being told someone felt your words is always welcome.
+export function dueToday(away) {
+  if (away <= 2) return true;
+  if (away <= 6) return away % 2 === 1;
+  if (away <= 29) return away % 7 === 0;
+  return false;
+}
+
+// "You thought of Sam yesterday." The name they gave after an act, good for the next two days —
+// the same window the app gives it (reflectPrompts.js whosNext).
+export function whosNextMessage(user, todayKey) {
+  const w = user?.whosNext;
+  const name = typeof w?.name === "string" ? w.name.trim().slice(0, 24) : "";
+  if (!name || typeof w.day !== "string") return null;
+  const d = daysBetweenKeys(w.day, todayKey);
+  if (d !== 1 && d !== 2) return null;
+  return {
+    title: d === 1 ? `You thought of ${name} yesterday 🌱` : `You thought of ${name} the other day 🌱`,
+    body: "Today could be the day you make them feel seen.",
+    open: "practice",
+  };
+}
+
+// After three days or more away, and nothing to report: no count of what was missed, no streak,
+// just the door left open.
+export function awayMessage(away) {
+  if (away < 3) return null;
+  return { title: "No pressure 🌱", body: "One kind word is still enough — whenever you're ready.", open: "practice" };
 }
 
 // One query, shared by everyone with no personal news — so the fallback still says something
@@ -270,6 +333,9 @@ export default async function handler(req, res) {
           eveningOn: data.eveningReminders === true,
           cue: data.eveningCue || null,
           nudgeHour: data.nudgeHour,
+          activeDates: Array.isArray(data.activeDates) ? data.activeDates : [],
+          lastOpenDay: data.lastOpenDay || null,
+          whosNext: data.whosNext || null,
         };
       })
       .filter((e) => e.rows.length && e.timezone)
@@ -349,16 +415,25 @@ export default async function handler(req, res) {
     // which beats what the world did, which beats the evergreen line. Telling someone about the
     // journal while an unread private message sits waiting would be the wrong thing to say.
     let personalised = 0;
+    let quiet = 0; // held back: already acted today, or drifting and not due (3.11)
     for (const e of entries) {
       const news = await personalNews(db, e.uid, since);
-      const personal = newsMessage(news);
+      const away = daysAway(e, e.today);
+      const personal = newsMessage(news, away);
       if (personal) personalised += 1;
+      // Already made someone feel seen today, or away long enough that today isn't their day:
+      // only news about them gets through.
+      if (alreadyActed(e, e.today) || !dueToday(away)) {
+        if (personal) await pushTo(e.uid, e.rows, personal); else quiet += 1;
+        continue;
+      }
       const weekly = e.day === "Sun" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : null;
       // Alternates by day so neither evergreen line becomes wallpaper. UTC day number is fine
       // here: it only has to change once a day, not align with anybody's midnight.
       const line = DAILY_MESSAGES[Math.floor(now.getTime() / 86400000) % DAILY_MESSAGES.length];
       const evergreen = { ...line, title: greetingFor(e.hour) };
-      const msg = personal ?? plannedForDaily(e, e.today) ?? weekly ?? worldMessage(world, e.hour) ?? evergreen;
+      const msg = personal ?? whosNextMessage(e, e.today) ?? plannedForDaily(e, e.today) ?? awayMessage(away)
+        ?? weekly ?? worldMessage(world, e.hour) ?? evergreen;
       await pushTo(e.uid, e.rows, msg);
     }
 
@@ -367,7 +442,7 @@ export default async function handler(req, res) {
     await Promise.all(dead.map(({ uid, row }) => dropDeadToken(db, uid, row).catch(() => {})));
 
     return res.status(200).json({
-      sent, matched: entries.length, personalised, total: snap.size, world, errors,
+      sent, matched: entries.length, personalised, quiet, total: snap.size, world, errors,
       // Reported separately, because "how many evening reminders went out" is the number to watch
       // on this feature. It should be small, and on most days zero.
       eveningMatched: eveningEntries.length, eveningSent,

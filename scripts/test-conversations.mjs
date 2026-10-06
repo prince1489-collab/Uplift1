@@ -18,7 +18,7 @@ const c = buildConversations(received, sent, ME, new Set(["blocked"]));
 check("one conversation per person, blocked people hidden", c.length === 1 && c[0].uid === M, JSON.stringify(c.map((x) => x.uid)));
 const p = c[0];
 check("three threads with Mateo", p.threads.length === 3, p.threads.length);
-check("threads oldest first", p.threads.map((t) => t.id).join() === "X,Y,Z", p.threads.map((t) => t.id).join());
+check("threads ordered by latest activity", p.threads.map((t) => t.id).join() === "X,Y,Z", p.threads.map((t) => t.id).join());
 check("X holds reply, answer and last word in order", p.threads[0].messages.map((m) => m.id).join() === "X,X__reply,X__final");
 check("X is complete", p.threads[0].complete === true);
 check("X quotes Mateo's post", p.threads[0].postText.startsWith("October") && p.threads[0].postByMe === false);
@@ -31,6 +31,9 @@ check("on my unanswered reply, I wait", nextStep(p.threads[1], ME) === null);
 check("on Mateo's note, I may answer", nextStep(p.threads[2], ME)?.mode === "answer");
 const t2 = { id: "Q", messages: [msg("Q", ME, M, 1, { messageId: "p" }), msg("Q__reply", M, ME, 2, { inReplyTo: "Q" })] };
 check("after his answer to my reply, I may write back once", nextStep(t2, ME)?.mode === "final");
+// An old exchange that gets a new message moves to the bottom, next to the newest (3.11).
+const late = buildConversations([...received, msg("Y__reply", M, ME, 900, { inReplyTo: "Y", read: false })], sent, ME, new Set(["blocked"]));
+check("an old thread with a new reply sorts last", late[0].threads.map((t) => t.id).join() === "X,Z,Y", late[0].threads.map((t) => t.id).join());
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} conversation tests passed.`);

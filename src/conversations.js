@@ -65,7 +65,9 @@ export function buildConversations(received = [], sent = [], myUid, blocked = ne
       t.lastTs = Number(t.messages[t.messages.length - 1]?.ts) || 0;
       t.complete = t.messages.some((x) => x.final) || t.messages.length >= 3;
       return t;
-    }).sort((a, b) => (Number(a.messages[0]?.ts) || 0) - (Number(b.messages[0]?.ts) || 0));
+    // By LATEST activity, oldest first — like any chat, the newest is at the bottom, and an old
+    // exchange that just got a reply moves down to join it (3.11; it used to stay where it began).
+    }).sort((a, b) => a.lastTs - b.lastTs);
     const last = threads.flatMap((t) => t.messages).sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
     out.push({ uid: p.uid, name: p.name || p.sentName || null, country: p.country, unread: p.unread, lastTs: p.lastTs, last, threads });
   }

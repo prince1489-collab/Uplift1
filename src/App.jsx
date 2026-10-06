@@ -20,6 +20,7 @@ import { useBackLayer } from "./backStack";
 import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
+import AwayNote from "./AwayNote";
 import { useUpdateAvailable } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
@@ -2464,6 +2465,31 @@ export default function App() {
   // Community greetings: live approved pool (for the picker) + pending count (admin badge)
   const candidates = useLeaderboardCandidates(db, currentUser);        // approved pool → voting arena
   const userProfileRef = (uid) => doc(db, "users", uid);
+
+  // ── Back after a while (3.11) ──────────────────────────────────────────────────────────────
+  // Once per session, when the profile first arrives: record today as a day they opened Seen
+  // (the reminder thins out for people drifting away, and needs to know who isn't), and if the
+  // last sign of them was two days ago or more, offer "While you were away…" above the bar.
+  const [awayNote, setAwayNote] = useState(null);
+  const awayCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!db || !isRealSignedInUser || !profile || awayCheckedRef.current) return;
+    awayCheckedRef.current = true;
+    const today = localDayKey();
+    if (profile.lastOpenDay === today) return;
+    const seen = [...(Array.isArray(profile.activeDates) ? profile.activeDates : []), profile.lastOpenDay]
+      .filter((k) => typeof k === "string" && k < today).sort();
+    const last = seen[seen.length - 1];
+    const days = last ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / 86400000) : 0;
+    updateDoc(doc(db, "users", currentUser.uid), { lastOpenDay: today }).catch(() => {});
+    if (days < 2) return;
+    // The hearts their words got while they were gone — one small, bounded read.
+    const since = Date.parse(`${last}T00:00:00`);
+    getDocs(query(collection(db, "users", currentUser.uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(50)))
+      .then((snap) => snap.docs.filter((d) => Number(d.data()?.reactedAt) >= since).length)
+      .catch(() => 0)
+      .then((hearts) => setAwayNote({ days, since, hearts }));
+  }, [isRealSignedInUser, profile, currentUser?.uid]);
   const publicMessagesRef = collection(db, "publicMessages");
 
   const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze, sellFreeze } =
@@ -4661,6 +4687,17 @@ export default function App() {
               // the send lands, so it can open on the day's question.
               <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
               <UpdateNote update={appUpdate} onDismiss={dismissAppUpdate} />
+              {!appUpdate && awayNote && (() => {
+                const first = conversations.find((c) => c.unread > 0);
+                return (
+                  <AwayNote note={awayNote}
+                    hearts={awayNote.hearts}
+                    unread={messagesUnread > 0 ? { count: messagesUnread, name: first?.name?.split(" ")[0] || null } : null}
+                    onRead={() => { setAwayNote(null); openConversation(first?.uid); }}
+                    onStart={() => { setAwayNote(null); openSeenBar(); }}
+                    onDismiss={() => setAwayNote(null)} />
+                );
+              })()}
               <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}

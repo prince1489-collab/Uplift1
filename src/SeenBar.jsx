@@ -29,6 +29,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { doc, updateDoc } from "firebase/firestore";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
@@ -381,7 +382,12 @@ export default function SeenBar({
     recordReflection(db, currentUser?.uid, {
       day, n: count, route, act: what, questionId: question.id, question: qText, answer: a,
     });
-    if (question.kind === "next") setWhosNext(day, a);
+    if (question.kind === "next") {
+      // Also on their own (owner-only) user record, so tomorrow's reminder can say "You thought
+      // of Sam yesterday" — a named person is the strongest cue there is (3.11).
+      const name = setWhosNext(day, a);
+      if (name && db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: { name, day } }).catch(() => {});
+    }
     setAnswer("");
   };
   const skipReflection = () => { rememberPick(day, question.id); update({ ...state, reflectSkipped: true }); };
@@ -427,6 +433,8 @@ export default function SeenBar({
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const doneWho = () => {
+    // Done — so tomorrow's push shouldn't still be about them.
+    if (db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: null }).catch(() => {});
     update({ ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } });
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };

@@ -15,7 +15,7 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage } from "../api/send-reminder.js";
 import { cueDateKey } from "../src/eveningCue.js";
 
 const results = [];
@@ -127,6 +127,31 @@ check("5pm says good evening", greetingFor(17).startsWith("Good evening"), greet
 check("the world line says overnight only in the morning",
   worldMessage({ count: 9, countries: 3 }, 8).body.includes("overnight") && !worldMessage({ count: 9, countries: 3 }, 17).body.includes("overnight"),
   worldMessage({ count: 9, countries: 3 }, 17).body);
+
+// ── 3.11: the edges of the habit ─────────────────────────────────────────────────────────────
+const D = "2026-10-06";
+check("already acted today is recognised", alreadyActed({ activeDates: ["2026-10-05", D] }, D) === true);
+check("acting yesterday is not acting today", alreadyActed({ activeDates: ["2026-10-05"] }, D) === false);
+check("no record means not acted", alreadyActed({}, D) === false);
+check("days away counts from the latest of acting or opening",
+  daysAway({ activeDates: ["2026-10-01"], lastOpenDay: "2026-10-04" }, D) === 2);
+check("someone we know nothing about is present, not lapsed", daysAway({}, D) === 0);
+check("a future date (clock skew) is ignored", daysAway({ activeDates: ["2026-10-09"] }, D) === 0);
+const schedule = Array.from({ length: 40 }, (_, d) => (dueToday(d) ? 1 : 0));
+check("daily for the first two days away", schedule.slice(0, 3).every(Boolean));
+check("every other day from three to six", schedule.slice(3, 7).join("") === "1010", schedule.slice(3, 7).join(""));
+check("weekly from a week to a month", schedule.slice(7, 30).reduce((a, b) => a + b, 0) === 4);
+check("silent after a month", schedule.slice(30).every((x) => !x));
+check("who's next names them the next day", whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-05" } }, D)?.title === "You thought of Sam yesterday 🌱");
+check("who's next still good two days on", /the other day/.test(whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-04" } }, D)?.title || ""));
+check("who's next lapses after two days", whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-03" } }, D) === null);
+check("who's next isn't sent the same day it was given", whosNextMessage({ whosNext: { name: "Sam", day: D } }, D) === null);
+check("no away line for someone barely away", awayMessage(2) === null);
+check("hearts while away say so", newsMessage({ replies: 0, hearts: 3 }, 4)?.title === "While you were away ❤️");
+const GUILT = /streak|don't lose|running out|last chance|still haven't|should have|failed|miss(ed)? out|lose|losing/i;
+for (const m of [awayMessage(5), whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-05" } }, D), newsMessage({ replies: 0, hearts: 2 }, 5)]) {
+  check(`no guilt in "${m.title}"`, !GUILT.test(`${m.title} ${m.body}`));
+}
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────
 let failed = 0;

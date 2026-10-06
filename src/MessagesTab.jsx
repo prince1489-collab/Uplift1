@@ -10,7 +10,7 @@
 // last time). Writing still goes through PrivateReplySheet, so screening, limits and push are the
 // same as everywhere else.
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { ChevronLeft, MessageCircle, Send } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { nextStep } from "./conversations";
@@ -34,7 +34,7 @@ function when(ts) {
 
 function Bubble({ m, name }) {
   return (
-    <div className={`flex ${m.mine ? "justify-end" : "justify-start"}`}>
+    <div className={`flex ${m.mine ? "justify-end" : "justify-start"}`} data-unread={!m.mine && m.read === false ? "1" : undefined}>
       <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 ${m.mine ? "rounded-br-md bg-teal-600 text-white" : "rounded-bl-md bg-sky-50 border border-sky-100 text-slate-800"}`}>
         <p className="text-[14px] leading-snug whitespace-pre-wrap">{m.text}</p>
         <p className={`mt-0.5 text-[10px] ${m.mine ? "text-teal-100" : "text-slate-400"}`}>
@@ -53,6 +53,18 @@ function Conversation({ person, myUid, canNote, onBack, onAction, onNote, onMark
   );
   useEffect(() => { if (unreadIds.length) onMarkRead?.(unreadIds); }, [unreadIds, onMarkRead]);
 
+  // Open where the news is (3.11): the first message you haven't read, or else the newest — not
+  // the top of a history that can go back months. Once per person, before paint, so the list
+  // never visibly jumps; marking things read afterwards doesn't move you again.
+  const scrollRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const unread = el.querySelector("[data-unread]");
+    if (unread) unread.scrollIntoView({ block: "center" });
+    else el.scrollTop = el.scrollHeight;
+  }, [person.uid]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white">
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-100 px-2 py-2">
@@ -61,7 +73,7 @@ function Conversation({ person, myUid, canNote, onBack, onAction, onNote, onMark
         </button>
         <p className="text-[16px] font-bold text-slate-800">{person.name || "Someone"} {flagFor(person.country)}</p>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4">
         {person.threads.map((t) => {
           const step = nextStep(t, myUid);
           return (

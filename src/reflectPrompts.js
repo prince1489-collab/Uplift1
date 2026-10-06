@@ -171,6 +171,7 @@ export function rememberPick(day, id) {
 export function setWhosNext(day, name) {
   const clean = String(name || "").trim().split(/\s+/).slice(0, 2).join(" ").slice(0, 24);
   if (clean) write(NEXT_KEY, { day, name: clean });
+  return clean || null;
 }
 
 export function whosNext(today) {
