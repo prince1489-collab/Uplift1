@@ -289,3 +289,44 @@ export function feelingSummary(entries = [], now = Date.now(), days = 7) {
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 4);
   return { top, lines: recent.slice(0, 3).map(playBack).filter(Boolean), total: recent.length };
 }
+
+// ── Finish the thought (3.16) ────────────────────────────────────────────────────────────────
+// Tapping a quote or a feeling used to leave you at "…stayed with me because |" — a blank page
+// with a head start. Now three endings follow, picked for what you just started: tap one and it
+// goes in, cursor at the end, ready to make your own. Something to write about, not a template.
+export const CONTINUATIONS = {
+  quote:      ["it's exactly what I needed this week", "it reminded me to slow down", "I'm going to carry it into tomorrow", "it put words to something I'd been feeling", "it made me think of someone I love"],
+  feel:       ["I'd been having a tough week", "it's something I needed to hear", "it made me think of someone I love", "I'd forgotten how much that matters", "it felt like it was written for me"],
+  noteFeel:   ["you always notice the little things", "you make time for people", "you never make me feel small", "you've been there when it counted"],
+  rightNow:   ["I know how much it means to you", "I can't wait to hear how it goes", "you've got this, honestly", "I'm cheering you on from here"],
+  smile:      ["it was exactly what I needed", "it felt so true", "it made my morning lighter"],
+  needed:     ["it's been a long week", "thank you for putting it so simply", "it came at just the right time"],
+  thank:      ["putting this out into the world", "the reminder to be kind to myself", "making my day a bit brighter"],
+  reminded:   ["someone I haven't spoken to in a while", "why I started all this", "a moment I'd almost forgotten"],
+  thinking:   ["you've had a lot on lately", "something reminded me of you", "I miss our chats"],
+  appreciate: ["how you always check in", "your patience", "how you make people laugh"],
+  justSay:    ["I'm proud of you", "you matter to me", "thank you for being you"],
+  thankNote:  ["always being there", "the way you listen", "making things feel lighter"],
+};
+
+// Which set follows which starter (Feed2.jsx REPLY_STARTERS / NOTE_STARTERS).
+export const STARTER_KIND = {
+  "This made me smile because ": "smile",
+  "I needed this today — ": "needed",
+  "Thank you for ": "thank",
+  "This reminded me of ": "reminded",
+  "I've been thinking about you because ": "thinking",
+  "Something I appreciate about you is ": "appreciate",
+  "Just wanted to say ": "justSay",
+};
+
+// Three endings for a kind of start, seeded so they hold still while you look but differ
+// between messages.
+export function continuationsFor(kind, seed = "", n = 3) {
+  const list = CONTINUATIONS[kind];
+  if (!list) return [];
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const start = (h >>> 0) % list.length;
+  return Array.from({ length: Math.min(n, list.length) }, (_, i) => list[(start + i) % list.length]);
+}

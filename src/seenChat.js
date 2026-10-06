@@ -12,8 +12,8 @@ import { useEffect, useState } from "react";
 import {
   collection, doc, onSnapshot, orderBy, query, limit, addDoc, updateDoc, getDocs, deleteDoc, setDoc, writeBatch,
 } from "firebase/firestore";
-import { authedPost } from "./apiBase";
-import { pickQuestion, questionDue, FIRST_MESSAGE } from "./seenAsks";
+import { authedPost } from "./apiBase.js";
+import { pickQuestion, questionDue, FIRST_MESSAGE, ANSWER_GAP_HOURS } from "./seenAsks.js";
 
 export const SEEN_ID = "seen"; // the pinned conversation's id in MessagesTab
 
@@ -43,14 +43,46 @@ const answeredFrom = (chat) => (chat || []).filter((m) => m.role === "me" && m.k
 
 // About twice a week, a new question — the app asks it from the bank (or the follow-up the
 // server left), so nothing has to run on a schedule anywhere.
-let asking = false;
+//
+// ── ONE QUESTION, EVEN WHEN TWO PARTS OF THE APP ASK AT ONCE (3.16) ──
+// 3.15 gave each question a random id, and turning Seen on asked the first question while the
+// Messages tab was ALSO checking "is one due?" against a chat that hadn't caught up yet — so the
+// first question appeared twice. Now each question belongs to a time slot (one per
+// ANSWER_GAP_HOURS) and its id is that slot: two callers in the same slot write the same
+// document, and the rules refuse a second version of it. A duplicate can't exist.
+export const slotOf = (now) => Math.floor(now / (ANSWER_GAP_HOURS * 3600000));
+export const questionIdFor = (now) => `q-${slotOf(now)}`;
+
+// What to ask now, if anything — pure, so the race can be tested (scripts/test-seen-chat.mjs).
+export function planQuestion({ uid, chat, state, now = Date.now(), lastSlot = null }) {
+  if (!chat) return null;
+  const id = questionIdFor(now);
+  if (lastSlot === slotOf(now) || chat.some((m) => m.id === id) || !questionDue(chat, now)) return null;
+  const q = pickQuestion({ uid, now, answered: answeredFrom(chat), asked: askedFrom(chat), followUp: state?.followUp || null });
+  return { id, data: { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now, read: false } };
+}
+
+// Two identical questions in a row with nothing said between them — the 3.15 double. The later
+// one goes; the person keeps the first.
+export function duplicateQuestionIds(chat = []) {
+  const out = [];
+  let prevQ = null;
+  for (const m of chat) {
+    if (m.role === "me") { prevQ = null; continue; }
+    if (m.kind !== "question") continue;
+    if (prevQ && prevQ.text === m.text) out.push(m.id); else prevQ = m;
+  }
+  return out;
+}
+
+let lastSlot = null;
 export async function ensureQuestion(db, uid, chat, state, now = Date.now()) {
-  if (asking || !db || !uid || !chat || !questionDue(chat, now)) return;
-  asking = true;
-  try {
-    const q = pickQuestion({ uid, now, answered: answeredFrom(chat), asked: askedFrom(chat), followUp: state?.followUp || null });
-    await addDoc(collection(db, "users", uid, "seenChat"), { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now, read: false });
-  } catch { /* the next open will try again */ } finally { asking = false; }
+  if (!db || !uid || !chat) return;
+  duplicateQuestionIds(chat).forEach((id) => deleteDoc(doc(db, "users", uid, "seenChat", id)).catch(() => {}));
+  const plan = planQuestion({ uid, chat, state, now, lastSlot });
+  if (!plan) return;
+  lastSlot = slotOf(now);
+  try { await setDoc(doc(db, "users", uid, "seenChat", plan.id), plan.data); } catch { /* already asked in this slot */ }
 }
 
 // "Ask me something else" — one swap per question, replacing it in place.
@@ -66,7 +98,9 @@ export async function enableSeen(db, uid, now = Date.now()) {
   await setDoc(doc(db, "users", uid), { seenAI: { consent: true, at: now } }, { merge: true });
   await addDoc(collection(db, "users", uid, "seenChat"), { role: "seen", kind: "intro", text: FIRST_MESSAGE, createdAt: now, read: true });
   const q = pickQuestion({ uid, now, answered: 0, asked: [] });
-  await addDoc(collection(db, "users", uid, "seenChat"), { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now + 1, read: false });
+  lastSlot = slotOf(now); // this slot's question is this one — nobody else asks it
+  await setDoc(doc(db, "users", uid, "seenChat", questionIdFor(now)), { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now + 1, read: false })
+    .catch(() => { /* already asked in this slot */ });
 }
 
 // The person writes. If it follows an unanswered question it's an answer; otherwise it's a

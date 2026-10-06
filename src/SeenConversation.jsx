@@ -11,7 +11,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, MoreHorizontal, Send, X, Loader2 } from "lucide-react";
-import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, shareRightNow, forgetEverything, ensureQuestion } from "./seenChat";
+import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, shareRightNow, forgetEverything } from "./seenChat";
 import { readPublicProfile } from "./publicProfile";
 
 export function SeenAvatar({ size = 44 }) {
@@ -164,7 +164,6 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   const boxRef = useRef(null);
 
   useEffect(() => { if (consent && chat) markSeenRead(db, uid, chat); }, [consent, chat, db, uid]);
-  useEffect(() => { if (consent && chat) ensureQuestion(db, uid, chat, state); }, [consent, chat, state, db, uid]);
   useLayoutEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chat?.length, sending]);
 
   const last = chat?.[chat.length - 1];

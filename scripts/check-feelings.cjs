@@ -40,6 +40,20 @@ const GUILT = /should|must|failed|streak|lazy|selfish/i;
     if ((m.CONSEQUENCES[r] || []).length < 4) problems.push(`${r}: need ≥4 consequence lines`);
     for (const l of [...(m.STEMS[r] || []), ...(m.CONSEQUENCES[r] || [])]) if (l.length > 80) problems.push(`${r}: "${l}" too long`);
   }
+  for (const [kind, list] of Object.entries(m.CONTINUATIONS)) {
+    if (list.length < 3) problems.push(`continuations/${kind}: need ≥3`);
+    for (const c of list) {
+      if (c.length > MAX_ENDING) problems.push(`continuations/${kind}: "${c}" ${c.length} chars (max ${MAX_ENDING})`);
+      if (GUILT.test(c)) problems.push(`continuations/${kind}: guilt-shaped "${c}"`);
+      if (/[.!?]$/.test(c)) problems.push(`continuations/${kind}: "${c}" ends in punctuation`);
+    }
+  }
+  for (const k of Object.values(m.STARTER_KIND)) if (!m.CONTINUATIONS[k]) problems.push(`starter kind ${k} has no continuations`);
+  try {
+    const a = m.continuationsFor("quote", "msg1"), b = m.continuationsFor("quote", "msg1");
+    assert.deepEqual(a, b); assert.equal(a.length, 3); assert.equal(new Set(a).size, 3);
+    assert.deepEqual(m.continuationsFor("nope", "x"), []);
+  } catch (e) { problems.push(`continuations test failed: ${e.message}`); }
   for (const list of [m.REPLY_FEEL, m.NOTE_FEEL]) if (new Set(list).size !== list.length || list.length < 4) problems.push("reply/note feeling row: need ≥4 unique words");
 
   // ── The helpers ──

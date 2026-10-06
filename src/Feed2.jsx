@@ -17,7 +17,7 @@ import {
   doc, onSnapshot, collection, addDoc, query, where, orderBy, limit, updateDoc,
   setDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
-import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Heart, MessageCircle, UserPlus, UserCheck, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile, searchProfiles } from "./publicProfile";
 import { writeFailure } from "./writeFailure";
@@ -30,7 +30,7 @@ import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { rowLine, ago, headline, dayLine } from "./kindMoments";
-import { REPLY_FEEL, NOTE_FEEL, replyOpening, noteOpening, quoteChip } from "./feelingWords";
+import { REPLY_FEEL, NOTE_FEEL, replyOpening, noteOpening, phrasesFrom, continuationsFor, STARTER_KIND } from "./feelingWords";
 
 const POSTS_KEY = "seen_v2_local_posts";
 const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
@@ -686,9 +686,32 @@ function MomentRow({ row, now, index = 0 }) {
 }
 
 // A day of private kindness. Today: the full card. Earlier days: one line that opens on a tap.
+// Today's card can be minimised to one line and opened again (3.16) — and the choice sticks on
+// this device, so someone who'd rather keep the feed for messages only has to say so once.
+const KM_COLLAPSED = "seen_km_collapsed";
+const readCollapsed = () => { try { return localStorage.getItem(KM_COLLAPSED) === "1"; } catch { return false; } };
+const writeCollapsed = (v) => { try { localStorage.setItem(KM_COLLAPSED, v ? "1" : "0"); } catch { /* ignore */ } };
+
 export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
-  const [open, setOpen] = useState(day.isToday);
+  const [open, setOpen] = useState(() => day.isToday && !readCollapsed());
   const [now] = useState(() => Date.now());
+  const toggleToday = (next) => { setOpen(next); writeCollapsed(!next); };
+  if (!open && day.isToday) {
+    const flags = [...new Set([...day.rows.flatMap((r) => [r.aCountry, r.bCountry]), ...(day.more?.countries || [])].filter(Boolean))].slice(0, 5);
+    return (
+      <button onClick={() => toggleToday(true)} aria-expanded="false"
+        className="mb-2 flex w-full items-center gap-2 rounded-2xl border border-amber-100 bg-white px-3.5 py-2.5 text-left shadow-sm active:scale-[0.99]"
+        style={{ animation: "seenFadeUp 250ms ease both" }}>
+        <span aria-hidden>✨</span>
+        <span className="min-w-0 truncate text-[12.5px] font-extrabold text-slate-800">{day.total} {day.total === 1 ? "kindness" : "kindnesses"} today</span>
+        <span className="flex-shrink-0 text-[13px] tracking-wide">{flags.map(flagFor).join("")}</span>
+        <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-[10.5px] font-bold text-green-600">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> live
+        </span>
+        <ChevronDown size={16} className="flex-shrink-0 text-slate-400" aria-hidden />
+      </button>
+    );
+  }
   if (!open) {
     return (
       <button onClick={() => setOpen(true)}
@@ -708,9 +731,15 @@ export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
           {day.countries > 1 && <span className="block text-[11px] font-semibold text-slate-400">across {day.countries} countries</span>}
         </p>
         {day.isToday ? (
-          <span className="flex items-center gap-1 text-[10.5px] font-bold text-green-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]" /> live
-          </span>
+          <>
+            <span className="flex items-center gap-1 text-[10.5px] font-bold text-green-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]" /> live
+            </span>
+            <button onClick={() => toggleToday(false)} aria-expanded="true" aria-label="Minimise"
+              className="-mr-1 grid h-7 w-7 place-items-center rounded-full text-slate-400 hover:bg-slate-50">
+              <ChevronDown size={16} className="rotate-180" />
+            </button>
+          </>
         ) : (
           <button onClick={() => setOpen(false)} className="text-[11px] font-semibold text-slate-400">{day.label}</button>
         )}
@@ -833,7 +862,6 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   // way in there is. The generic starters stay underneath for anyone who wants them.
   const feelRow = isNote ? NOTE_FEEL : REPLY_FEEL;
   const opening = isNote ? noteOpening : replyOpening;
-  const quoted = isNote ? null : quoteChip(mode === "first" ? target?.text : answering?.text);
   // A kind note to someone who has shared a "Right now…" line (3.15): offer it, so the note can
   // be about what's actually going on for them.
   const [theirLine, setTheirLine] = useState(null);
@@ -844,11 +872,20 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     return () => { alive = false; };
   }, [isNote, db, target?.uid]);
   const boxRef = useRef(null);
-  const begin = (t) => {
+  // What was just started, and what kind of start it was — so "Finish the thought" can offer
+  // endings that fit, for as long as the box still holds only that start (3.16).
+  const [started, setStarted] = useState(null);
+  const focusEnd = (t) => setTimeout(() => { const el = boxRef.current; if (el) { el.focus(); el.setSelectionRange(t.length, t.length); } }, 0);
+  const begin = (t, kind = null) => {
     setText(t);
+    setStarted(kind ? { text: t, kind } : null);
     // Focus with the cursor at the end, so the rest is all that's left to write.
-    setTimeout(() => { const el = boxRef.current; if (el) { el.focus(); el.setSelectionRange(t.length, t.length); } }, 0);
+    focusEnd(t);
   };
+  const finish = (ending) => { const t = `${text}${ending}`.slice(0, REPLY_MAX); setText(t); setStarted(null); focusEnd(t); };
+  // Their words, as up to three phrases to choose from — the most specific way in there is.
+  const phrases = isNote ? [] : phrasesFrom(mode === "first" ? target?.text : answering?.text);
+  const [moreIdeas, setMoreIdeas] = useState(false);
 
   // The rest of the thread, read once when the sheet opens. Your own messages are addressed to
   // THEM, so they never appear in your inbox — which is why these are reads, not props.
@@ -1048,59 +1085,81 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             <>
               {/* No autoFocus: the sheet opens showing who it's to and what they wrote; the keyboard
                   comes up when you tap the box. */}
-              <textarea ref={boxRef} value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={2}
+              <textarea ref={boxRef} value={text} onChange={(e) => setText(e.target.value.slice(0, REPLY_MAX))} rows={text.length > 60 ? 4 : 2}
                 onFocus={(e) => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ block: "nearest", behavior: "smooth" }), 250); }}
                 placeholder={isNote ? "Something you appreciate about them…" : mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
-              {/* Starters only for a first reply, and only while the box is empty — they are a
-                  way in, not a template to fill. */}
+              {/* Finish the thought (3.16): while the box holds only the start you tapped, three
+                  endings that fit it. Tap one, then make it your own. */}
+              {started && text === started.text && !sent && (
+                <div style={{ animation: "seenFadeUp 200ms ease both" }}>
+                  <p className="mb-1 text-[11px] font-semibold text-slate-500">Finish the thought…</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {continuationsFor(started.kind, `${target?.id || target?.uid || ""}|${started.text}`).map((c) => (
+                      <button key={c} type="button" onClick={() => finish(c)}
+                        className="rounded-full border border-teal-200 bg-white px-2.5 py-1 text-[12.5px] font-semibold text-teal-700 shadow-sm active:scale-95 transition-all">
+                        …{c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Ways in, only while the box is empty — a way in, not a template to fill. Their own
+                  words come first (3.16): they were the small pill nobody noticed. */}
               {(mode === "first" || mode === "answer") && !text && !sent && (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {phrases.length > 0 && (
+                    <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50/60 px-3 py-2.5">
+                      <p className="text-[12.5px] font-extrabold text-orange-800">✨ Which of {firstName(mode === "first" ? target?.sender : other)}'s words stayed with you?</p>
+                      <div className="mt-2 space-y-1.5">
+                        {phrases.map((ph) => (
+                          <button key={ph} type="button" onClick={() => begin(`“${ph}” stayed with me because `, "quote")}
+                            className="flex w-full items-start gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-left shadow-sm active:scale-[0.99] transition-all">
+                            <span className="-mt-1 font-serif text-[26px] leading-none text-orange-300" aria-hidden>“</span>
+                            <span className="text-[13.5px] italic leading-snug text-slate-700">{ph}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-orange-700/80">Tap a line, then say why it landed.</p>
+                    </div>
+                  )}
+                  {theirLine && (
+                    <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50/60 px-3 py-2.5">
+                      <p className="text-[12.5px] font-extrabold text-orange-800">🌱 {firstName(target?.sender)} is working on…</p>
+                      <button type="button" onClick={() => begin(`Rooting for you with “${theirLine}” — `, "rightNow")}
+                        className="mt-2 flex w-full items-start gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-left shadow-sm active:scale-[0.99]">
+                        <span className="text-[13.5px] leading-snug text-slate-700">{theirLine}</span>
+                      </button>
+                      <p className="mt-1.5 text-[11px] text-orange-700/80">Tap to cheer them on with it.</p>
+                    </div>
+                  )}
                   <div>
                     <p className="mb-1 text-[11px] font-semibold text-slate-500">{isNote ? "You make me feel…" : "Their words made you feel…"}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {feelRow.map((w) => (
-                        <button key={w} type="button" onClick={() => begin(opening(w))}
+                        <button key={w} type="button" onClick={() => begin(opening(w), isNote ? "noteFeel" : "feel")}
                           className="rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
                           {w}
                         </button>
                       ))}
                     </div>
                   </div>
-                  {/* A chip like the rest — not a box. It used to be a full-width white panel that
-                      read as a second place to type; the textarea above is the only one (3.14). */}
-                  {theirLine && (
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold text-slate-500">{firstName(target?.sender)}'s right now:</p>
-                      <button type="button" onClick={() => begin(`Rooting for you with “${theirLine}” — `)}
-                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
-                        <span aria-hidden>🌱</span>
-                        <span className="truncate">{theirLine}</span>
-                      </button>
-                    </div>
-                  )}
-                  {quoted && (
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold text-slate-500">Quote them:</p>
-                      <button type="button" onClick={() => begin(quoted)}
-                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
-                        <span aria-hidden>💬</span>
-                        <span className="truncate italic">{quoted.replace(/\s*stayed with me because\s*$/, "")}</span>
-                      </button>
-                    </div>
-                  )}
                   {mode === "first" && (
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold text-slate-400">Or start with…</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {starters.map((st) => (
-                          <button key={st} type="button" onClick={() => begin(st)}
-                            className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
-                            {st.trim().replace(/[—\s]+$/, "")}…
-                          </button>
-                        ))}
+                    moreIdeas ? (
+                      <div>
+                        <p className="mb-1 text-[11px] font-semibold text-slate-400">Or start with…</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {starters.map((st) => (
+                            <button key={st} type="button" onClick={() => begin(st, STARTER_KIND[st] === "thank" && isNote ? "thankNote" : STARTER_KIND[st] || null)}
+                              className="rounded-full border border-teal-100 bg-teal-50/60 px-2.5 py-1 text-[12px] font-medium text-teal-700 hover:bg-teal-50 active:scale-95 transition-all">
+                              {st.trim().replace(/[—\s]+$/, "")}…
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <button type="button" onClick={() => setMoreIdeas(true)} className="text-[12px] font-semibold text-slate-400">More ideas ›</button>
+                    )
                   )}
                 </div>
               )}
