@@ -884,7 +884,11 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   };
   const finish = (ending) => { const t = `${text}${ending}`.slice(0, REPLY_MAX); setText(t); setStarted(null); focusEnd(t); };
   // Their words, as up to three phrases to choose from — the most specific way in there is.
-  const phrases = isNote ? [] : phrasesFrom(mode === "first" ? target?.text : answering?.text);
+  // Only when they ARE their words: a post written from scratch (isPersonal — PostComposer), or a
+  // private reply. A preset greeting or proverb was picked from the app's list, and "which of
+  // Vidhi's words stayed with you?" about words Vidhi didn't write would ring false.
+  const ownWords = mode === "first" ? target?.isPersonal === true : true;
+  const phrases = isNote || !ownWords ? [] : phrasesFrom(mode === "first" ? target?.text : answering?.text);
   const [moreIdeas, setMoreIdeas] = useState(false);
 
   // The rest of the thread, read once when the sheet opens. Your own messages are addressed to
