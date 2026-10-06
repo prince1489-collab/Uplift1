@@ -31,6 +31,7 @@ import ReplyNudge from "./ReplyNudgeLine";
 import { installFlyToGrow } from "./motion";
 import { todayKey as localDayKey } from "./hytPrompts";
 import { summarizeMoments } from "./kindMoments";
+import { useMyRightNow, useRightNowLines } from "./rightNow";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
@@ -269,7 +270,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const installedVersion = useInstalledVersion();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -350,6 +351,7 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-slate-800 truncate">{profile?.fullName ?? firstName}</p>
                   </div>
+                  {rightNow && <p className="truncate text-xs font-medium text-orange-600">🌱 {rightNow}</p>}
                   <p className="text-xs text-slate-400 truncate">{treeStageName}</p>
                 </div>
                 {streak > 0 && (
@@ -2189,6 +2191,10 @@ export default function App() {
   );
   // One card per day of private kindness, however many there were (kindMoments.js, 3.13).
   const momentDays = useMemo(() => summarizeMoments(focusedMoments, { myUid: currentUser?.uid }), [focusedMoments, currentUser?.uid]);
+  // "Right now…" lines (3.18): yours, live, and those of the people you follow — shown next to
+  // names in the feed, so a line you share visibly goes somewhere.
+  const myRightNow = useMyRightNow(db, currentUser?.uid);
+  const rightNowLines = useRightNowLines(db, focusedUids);
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // shared journal being read
   // Shared journals route the same way as kind moments: yours or a followed author's go to
@@ -3713,7 +3719,7 @@ export default function App() {
         )}
 
         {glimpse && (
-          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} onClose={() => setGlimpse(null)} />
+          <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} self={Boolean(glimpse.self)} onClose={() => setGlimpse(null)} />
         )}
 
 
@@ -4004,6 +4010,7 @@ export default function App() {
                       streak={streak}
                       sparkBalance={sparkBalance}
                       treeStageName={treeStage.name}
+                      rightNow={myRightNow}
                       isAdmin={isAdmin}
                       onAdminReports={() => setShowReports(true)}
                       onAdminClearFeed={() => setAdminConfirm(true)}
@@ -4429,7 +4436,12 @@ export default function App() {
                           {/* Uncluttered header: name only — mood + country live in the glimpse card (tap the name). */}
                           <div className="flex items-center gap-1.5 px-1 mb-1 text-[10px] font-semibold text-slate-400">
                             {mine ? (
-                              "You"
+                              <>
+                                {/* Tap "You" to see your glimpse as others do (3.18). */}
+                                <button onClick={(e) => { e.stopPropagation(); setGlimpse({ uid: currentUser.uid, country: profile?.country ?? null, name: profile?.fullName, self: true }); }}
+                                  className="font-semibold text-slate-500 hover:text-teal-600">You</button>
+                                {myRightNow && <span className="min-w-0 truncate font-medium text-orange-600">· 🌱 {myRightNow}</span>}
+                              </>
                             ) : (
                               <>
                                 <button
@@ -4441,6 +4453,9 @@ export default function App() {
                                     Replying lives in the bubble's action bar (press a message). */}
                                 {groupLabel && (
                                   <span className="rounded-full bg-teal-50 px-1.5 py-px text-[9px] font-bold text-teal-600">{groupLabel}</span>
+                                )}
+                                {rightNowLines[group.uid] && (
+                                  <span className="min-w-0 truncate font-medium text-orange-600">🌱 {rightNowLines[group.uid]}</span>
                                 )}
                               </>
                             )}

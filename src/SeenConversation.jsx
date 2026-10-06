@@ -79,7 +79,7 @@ function KnowsPanel({ db, currentUser, state, onClose }) {
   const themes = state?.themes || [];
   const save = async (text) => {
     setBusy(true); setMsg("");
-    try { await shareRightNow(db, currentUser, text); setLine(text.trim()); setMsg(text.trim() ? "Shared on your profile." : "Removed from your profile."); }
+    try { await shareRightNow(db, currentUser, text); setLine(text.trim()); setMsg(text.trim() ? "Shared ✓" : "Removed from your profile."); }
     catch (e) { setMsg(e.message || "Couldn't save that just now."); }
     setBusy(false);
   };
@@ -108,8 +108,21 @@ function KnowsPanel({ db, currentUser, state, onClose }) {
             <button disabled={busy || draft.trim() === (line || "")} onClick={() => save(draft)}
               className="rounded-xl bg-teal-600 px-3 text-[12.5px] font-bold text-white disabled:opacity-40">{busy ? <Loader2 size={14} className="animate-spin" /> : "Share"}</button>
           </div>
-          {line ? <button onClick={() => { setDraft(""); save(""); }} className="mt-1.5 text-[12px] font-semibold text-slate-400">Remove it from my profile</button> : null}
-          {msg && <p className="mt-1 text-[12px] text-slate-500">{msg}</p>}
+          {msg && <p className="mt-1 text-[12px] font-semibold text-teal-700">{msg}</p>}
+          {line ? (
+            <div className="mt-2 rounded-2xl border border-orange-200 bg-orange-50/60 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-orange-600">🌱 Right now…</p>
+              <p className="text-[13.5px] text-slate-700">{line}</p>
+              <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Where people see it</p>
+              <ul className="mt-1 space-y-0.5 text-[12px] leading-snug text-slate-600">
+                <li>• Next to your name in the feed, for people who follow you</li>
+                <li>• On your glimpse, when someone taps your name</li>
+                <li>• When someone writes you a kind note — so it can be about this</li>
+              </ul>
+              <p className="mt-1.5 text-[11px] text-slate-400">Tap "You" above your messages to see it as others do. It fades after 30 days.</p>
+              <button onClick={() => { setDraft(""); save(""); }} className="mt-2 text-[12px] font-semibold text-slate-400">Remove it from my profile</button>
+            </div>
+          ) : null}
         </section>
         <section className="rounded-2xl bg-slate-50 px-3.5 py-3 text-[12px] leading-relaxed text-slate-500">
           Seen is an AI. Your conversation is private to you. To reply and notice patterns, what you write here and how you use Seen are processed by Anthropic's AI on our behalf; it isn't used to train their models. Nothing here is ever shown to anyone else unless you share a line above.
@@ -165,6 +178,14 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
 
   useEffect(() => { if (consent && chat) markSeenRead(db, uid, chat); }, [consent, chat, db, uid]);
   useLayoutEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chat?.length, sending]);
+  // The box grows with what you write — up to about five lines, then it scrolls — so a real
+  // answer is never squeezed into one line where you can't see it (3.18).
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  }, [text]);
 
   const last = chat?.[chat.length - 1];
   const waiting = sending || last?.role === "me"; // Seen hasn't answered yet
@@ -253,7 +274,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
               <textarea ref={boxRef} value={text} rows={1} onChange={(e) => setText(e.target.value.slice(0, 600))}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder={lastQOpen ? "Your answer…" : "Reply to Seen, or ask it something…"}
-                className="max-h-28 min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[14px] text-slate-800 placeholder:text-slate-400 focus:outline-none" />
+                className="min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[14px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
               <button onClick={send} disabled={!text.trim() || sending} aria-label="Send"
                 className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-teal-600 text-white disabled:opacity-40"><Send size={14} /></button>
             </div>

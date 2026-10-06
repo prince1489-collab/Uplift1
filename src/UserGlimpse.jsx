@@ -11,7 +11,7 @@ import { X, Loader2 } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { readPublicProfile } from "./publicProfile";
 
-export default function UserGlimpse({ db, uid, country, name, onClose }) {
+export default function UserGlimpse({ db, uid, country, name, onClose, self = false }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
 
@@ -32,7 +32,8 @@ export default function UserGlimpse({ db, uid, country, name, onClose }) {
   const rightNow = (data?.rightNow || "").trim();
   const hasGlimpse = mostDays || anotherLife || rightNow;
   const firstName = String(name ?? data?.fullName ?? "").trim().split(/\s+/)[0] || "";
-  const heading = firstName ? `✨ A glimpse into ${firstName}'s life` : "✨ A glimpse";
+  // Your own glimpse (tap "You" in the feed, 3.18): the same card, so you can see what others see.
+  const heading = self ? "✨ How others see you" : firstName ? `✨ A glimpse into ${firstName}'s life` : "✨ A glimpse";
 
   return createPortal(
     <div data-portal className="fixed inset-0 z-[260] flex items-center justify-center p-4"
@@ -82,10 +83,17 @@ export default function UserGlimpse({ db, uid, country, name, onClose }) {
               </div>
             ) : (
               <p className="text-center text-xs text-slate-400 py-6 leading-relaxed">
-                This person hasn't shared their glimpse yet. 🌱
+                {self ? "You haven't shared a glimpse yet. 🌱" : "This person hasn't shared their glimpse yet. 🌱"}
               </p>
             )}
-            <p className="text-center text-[10px] text-slate-300 mt-4">A glimpse — not the whole story.</p>
+            {self ? (
+              <p className="mt-4 text-center text-[11px] leading-relaxed text-slate-400">
+                This is what people see when they tap your name.
+                {!rightNow && <><br />Share a 🌱 Right now line from Messages → Seen → ⋯</>}
+              </p>
+            ) : (
+              <p className="text-center text-[10px] text-slate-300 mt-4">A glimpse — not the whole story.</p>
+            )}
           </>
         )}
       </div>
