@@ -28,7 +28,9 @@ export default function UserGlimpse({ db, uid, country, name, onClose }) {
   const flag = land ? FLAG_MAP[land] : null;
   const mostDays = (data?.mostDays || "").trim();
   const anotherLife = (data?.anotherLife || "").trim();
-  const hasGlimpse = mostDays || anotherLife;
+  // "Right now…" — the one line they chose to share from their conversation with Seen (3.15).
+  const rightNow = (data?.rightNow || "").trim();
+  const hasGlimpse = mostDays || anotherLife || rightNow;
   const firstName = String(name ?? data?.fullName ?? "").trim().split(/\s+/)[0] || "";
   const heading = firstName ? `✨ A glimpse into ${firstName}'s life` : "✨ A glimpse";
 
@@ -59,6 +61,12 @@ export default function UserGlimpse({ db, uid, country, name, onClose }) {
             )}
             {hasGlimpse ? (
               <div className="space-y-3">
+                {rightNow && (
+                  <div className="rounded-2xl border border-orange-200 bg-orange-50 px-3.5 py-3">
+                    <p className="mb-0.5 text-[11px] font-semibold text-orange-600">🌱 Right now…</p>
+                    <p className="text-sm leading-relaxed text-slate-700">{rightNow}</p>
+                  </div>
+                )}
                 {mostDays && (
                   <div className="rounded-2xl bg-amber-50 border border-amber-100 px-3.5 py-3">
                     <p className="text-[11px] font-semibold text-amber-600 mb-0.5">💛 Most days, I'm…</p>

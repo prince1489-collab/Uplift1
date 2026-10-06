@@ -216,6 +216,33 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
+      // "Seen" — the AI conversation pinned in Messages (3.15). Private to the owner. They write
+      // their own side (answers, questions to Seen) and the questions Seen asks from the app's
+      // bank; Seen's replies, reflections and nudges come only from /api/understand (Admin SDK),
+      // so nobody — the owner included — can put words in Seen's mouth. The owner may mark
+      // things read, give feedback on a reflection, and delete anything.
+      match /seenChat/{msgId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+            && request.resource.data.keys().hasOnly(['role','kind','text','qid','createdAt','read'])
+            && request.resource.data.text is string
+            && request.resource.data.createdAt is number
+            && ((request.resource.data.role == 'me'
+                  && request.resource.data.kind in ['answer','ask']
+                  && request.resource.data.text.size() <= 600)
+              || (request.resource.data.role == 'seen'
+                  && request.resource.data.kind in ['question','intro']
+                  && request.resource.data.text.size() <= 400));
+        allow update: if request.auth != null && request.auth.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read','feedback'])
+            && (!('feedback' in request.resource.data) || request.resource.data.feedback in [null,'yes','no','forget']);
+      }
+      // What Seen understands (themes, timing, the next follow-up). Written only by the server;
+      // the owner can read it and erase it ("Forget everything").
+      match /understanding/{docId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+      }
+
       // Wellbeing check-ins — private to the owner only, for the user's own reflection.
       // Create validates the check-in shape (raw score 0–25). Not used for clinical
       // screening, monitoring or efficacy claims.
@@ -433,9 +460,13 @@ service cloud.firestore {
     // writable only by its owner, and only with their own uid on the document.
     match /publicProfiles/{uid} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      // "Right now…" (3.15): one line the owner chose to share, at most 80 characters.
+      allow create, update: if request.auth != null
           && request.auth.uid == uid
-          && request.resource.data.uid == uid;
+          && request.resource.data.uid == uid
+          && (!('rightNow' in request.resource.data) || request.resource.data.rightNow == null
+              || (request.resource.data.rightNow is string && request.resource.data.rightNow.size() <= 80));
     }
 
     // ── App-wide state (reset signal etc.) ──

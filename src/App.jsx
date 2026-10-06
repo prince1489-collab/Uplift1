@@ -21,6 +21,7 @@ import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
 import AwayNote from "./AwayNote";
+import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion } from "./seenChat";
 import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
@@ -2263,7 +2264,18 @@ export default function App() {
       return { ...c, name: f?.name || m?.sender || null, country: c.country || m?.country || null };
     });
   }, [inboxReplies, sentReplies, currentUser?.uid, blockedUids, follows, messages]);
-  const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0), [conversations]);
+  // "Seen" — the AI conversation pinned first in Messages (3.15). Loaded only once switched on;
+  // its unread messages count towards the Messages badge, and its next question is asked here
+  // too (about twice a week), so the badge appears without having to open the tab first.
+  const seenConsent = profile?.seenAI?.consent === true;
+  const seenOn = seenConsent && Boolean(currentUser && !currentUser.isAnonymous);
+  const seenChat = useSeenChat(db, currentUser?.uid, seenOn);
+  const seenState = useUnderstanding(db, currentUser?.uid, seenOn);
+  useEffect(() => {
+    if (seenConsent && seenChat && seenState) ensureQuestion(db, currentUser?.uid, seenChat, seenState);
+  }, [seenConsent, seenChat, seenState, currentUser?.uid]);
+  const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent }), [seenChat, seenState, seenConsent]);
+  const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0) + seenUnread(seenChat), [conversations, seenChat]);
   const [messagesOpenUid, setMessagesOpenUid] = useState(null);
   const openConversation = useCallback((uid) => { setActiveTab("messages"); setMessagesOpenUid(uid || null); }, []);
   useBackLayer(Boolean(messagesOpenUid) && activeTab === "messages", () => setMessagesOpenUid(null));
@@ -4125,7 +4137,17 @@ export default function App() {
                 onAction={(d) => openReply(d)}
                 onNote={(p) => setReplyTarget({ uid: p.uid, sender: p.name || "Someone", country: p.country ?? null, id: null, text: "", note: true })}
                 onMarkRead={markRepliesRead}
-                onStart={() => openSeenBar()} />
+                onStart={() => openSeenBar()}
+                db={db} currentUser={currentUser} seen={isRealSignedInUser ? seenForTab : null}
+                onOpenSupport={() => setActiveTab("support")}
+                onWriteTo={(name) => {
+                  // "Write to Sam ✨" — a kind note to them if you follow someone by that name,
+                  // otherwise the bar, where every way to reach them is.
+                  const first = String(name || "").split(" ")[0].toLowerCase();
+                  const f = follows.find((x) => String(x.name || "").split(" ")[0].toLowerCase() === first);
+                  if (f) setReplyTarget({ uid: f.uid, sender: f.name || name, country: f.country ?? null, id: null, text: "", note: true });
+                  else openSeenBar();
+                }} />
             ) : activeTab === "support" ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />

@@ -14,6 +14,8 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { ChevronLeft, MessageCircle, Send } from "lucide-react";
 import { FLAG_MAP } from "./MicroAnimations";
 import { nextStep } from "./conversations";
+import SeenConversation, { SeenAvatar, AiTag } from "./SeenConversation";
+import { SEEN_ID, seenUnread } from "./seenChat";
 
 const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const first = (n) => String(n || "Someone").split(" ")[0];
@@ -111,7 +113,40 @@ function Conversation({ person, myUid, canNote, onBack, onAction, onNote, onMark
   );
 }
 
-export default function MessagesTab({ conversations = [], myUid, followUids = new Set(), openUid, onOpen, onClose, onAction, onNote, onMarkRead, onStart }) {
+// "Seen" — the AI conversation (3.15) — always pinned first. Its preview is the last thing Seen
+// said, or an invitation before it's been switched on.
+function SeenRow({ seen, onOpen }) {
+  const lastSeen = [...(seen.chat || [])].reverse().find((m) => m.role === "seen");
+  const unread = seenUnread(seen.chat);
+  const preview = !seen.consent ? "A few questions about your life — just for you"
+    : lastSeen?.kind === "reflection" ? "✨ Seen noticed something"
+    : lastSeen?.text || "Every few days, a question about your life";
+  return (
+    <button onClick={onOpen} className={`flex w-full items-center gap-3 px-4 py-3 text-left active:bg-orange-50 ${unread || !seen.consent ? "bg-orange-50/70" : "bg-white"}`}>
+      <SeenAvatar />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className={`text-[14px] ${unread ? "font-extrabold text-slate-900" : "font-semibold text-slate-800"}`}>Seen</span>
+          <AiTag />
+          {lastSeen && <span className="ml-auto flex-shrink-0 text-[11px] text-slate-400">{when(lastSeen.createdAt)}</span>}
+        </span>
+        <span className={`block truncate text-[12px] ${unread ? "font-semibold text-slate-700" : "text-slate-500"}`}>{preview}</span>
+      </span>
+      {unread > 0 && (
+        <span className="flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">{unread}</span>
+      )}
+    </button>
+  );
+}
+
+export default function MessagesTab({ conversations = [], myUid, followUids = new Set(), openUid, onOpen, onClose, onAction, onNote, onMarkRead, onStart,
+  db, currentUser, seen = null, onWriteTo, onOpenSupport }) {
+  if (openUid === SEEN_ID && seen && currentUser) {
+    return (
+      <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent}
+        onBack={onClose} onWriteTo={onWriteTo} onOpenSupport={onOpenSupport} />
+    );
+  }
   const person = openUid ? conversations.find((c) => c.uid === openUid) : null;
   if (person) {
     return (
@@ -121,6 +156,7 @@ export default function MessagesTab({ conversations = [], myUid, followUids = ne
   }
   return (
     <main className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60">
+      {seen && <div className="border-b border-slate-100"><SeenRow seen={seen} onOpen={() => onOpen?.(SEEN_ID)} /></div>}
       {conversations.length === 0 ? (
         <div className="mx-4 mt-8 rounded-2xl border border-slate-200 bg-white px-5 py-8 text-center">
           <MessageCircle size={28} className="mx-auto text-teal-500" />

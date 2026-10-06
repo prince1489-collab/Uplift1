@@ -834,6 +834,15 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   const feelRow = isNote ? NOTE_FEEL : REPLY_FEEL;
   const opening = isNote ? noteOpening : replyOpening;
   const quoted = isNote ? null : quoteChip(mode === "first" ? target?.text : answering?.text);
+  // A kind note to someone who has shared a "Right now…" line (3.15): offer it, so the note can
+  // be about what's actually going on for them.
+  const [theirLine, setTheirLine] = useState(null);
+  useEffect(() => {
+    if (!isNote || !db || !target?.uid) return undefined;
+    let alive = true;
+    readPublicProfile(db, target.uid).then((p) => { if (alive) setTheirLine(String(p?.rightNow || "").trim() || null); }).catch(() => {});
+    return () => { alive = false; };
+  }, [isNote, db, target?.uid]);
   const boxRef = useRef(null);
   const begin = (t) => {
     setText(t);
@@ -1060,6 +1069,16 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                   </div>
                   {/* A chip like the rest — not a box. It used to be a full-width white panel that
                       read as a second place to type; the textarea above is the only one (3.14). */}
+                  {theirLine && (
+                    <div>
+                      <p className="mb-1 text-[11px] font-semibold text-slate-500">{firstName(target?.sender)}'s right now:</p>
+                      <button type="button" onClick={() => begin(`Rooting for you with “${theirLine}” — `)}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
+                        <span aria-hidden>🌱</span>
+                        <span className="truncate">{theirLine}</span>
+                      </button>
+                    </div>
+                  )}
                   {quoted && (
                     <div>
                       <p className="mb-1 text-[11px] font-semibold text-slate-500">Quote them:</p>

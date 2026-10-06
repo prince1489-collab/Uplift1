@@ -30,6 +30,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
+import { readPublicProfile } from "./publicProfile";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
@@ -294,6 +295,24 @@ export default function SeenBar({
   const [section, setSection] = useState(null); // "notes" | "time" — a sub-part of the panel
   const [answer, setAnswer] = useState("");
   const [askTime, setAskTime] = useState(() => !nudgeAsked());
+  // "Right now…" lines people you follow chose to share (3.15), read when the notes list opens.
+  // Fresh ones (two weeks) go first, with the line as the hint — understanding turned into an act.
+  const [lines, setLines] = useState({});
+  useEffect(() => {
+    if (section !== "notes" || !db) return undefined;
+    let alive = true;
+    Promise.all(follows.slice(0, 12).map((f) => readPublicProfile(db, f.uid).then((p) => [f.uid, p]).catch(() => [f.uid, null])))
+      .then((rows) => {
+        if (!alive) return;
+        const fresh = {};
+        for (const [id, p] of rows) {
+          if (p?.rightNow && Date.now() - Number(p.rightNowAt || 0) < 14 * 86400000) fresh[id] = String(p.rightNow);
+        }
+        setLines(fresh);
+      });
+    return () => { alive = false; };
+  }, [section, db, follows]);
+  const noteList = useMemo(() => [...follows.slice(0, 12)].sort((a, b) => Boolean(lines[b.uid]) - Boolean(lines[a.uid])), [follows, lines]);
 
   const update = (next) => { setState(next); saveDayState(day, next); };
 
@@ -613,7 +632,14 @@ export default function SeenBar({
                   open={section === "notes"}>
                   {section === "notes" && (
                     <div className="flex flex-wrap gap-1.5 px-3 pb-2.5">
-                      {follows.slice(0, 6).map((f) => (
+                      {noteList.filter((f) => lines[f.uid]).map((f) => (
+                        <button key={f.uid} onClick={go(() => onNote?.(f))}
+                          className="flex w-full items-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50/60 px-3 py-1.5 text-left active:scale-[0.99]">
+                          <span className="text-[12.5px] font-bold text-slate-800">{(f.name || "Someone").split(" ")[0]}</span>
+                          <span className="min-w-0 flex-1 truncate text-[11.5px] text-orange-700">🌱 {lines[f.uid]}</span>
+                        </button>
+                      ))}
+                      {noteList.filter((f) => !lines[f.uid]).slice(0, 6).map((f) => (
                         <button key={f.uid} onClick={go(() => onNote?.(f))}
                           className="rounded-full border border-teal-200 bg-white px-3 py-1 text-[12px] font-semibold text-teal-700 active:scale-95">
                           {(f.name || "Someone").split(" ")[0]}

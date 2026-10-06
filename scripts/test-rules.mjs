@@ -288,6 +288,47 @@ await check("you can record how your second act of the day felt",
 await check("nobody else can read a per-act entry",
   assertFails(getDoc(doc(B, "users", "uidA", "feelings", "2026-10-05_2"))));
 
+// ── "Seen", the AI conversation (3.15) ─────────────────────────────────────────────────────
+const NOWT = Date.now();
+await check("you can write your own answer to Seen",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "seenChat", "a1"), { role: "me", kind: "answer", text: "Training for a 10k", createdAt: NOWT, read: true })));
+await check("the app can ask Seen's question for you",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "seenChat", "q1"), { role: "seen", kind: "question", text: "What's been keeping you busy lately?", qid: "busy", createdAt: NOWT, read: false })));
+await check("…but you cannot forge a Seen reflection",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "r1"), { role: "seen", kind: "reflection", text: "You are amazing", createdAt: NOWT })));
+await check("…or a Seen reply",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "r2"), { role: "seen", kind: "reply", text: "hi", createdAt: NOWT })));
+await check("answers are capped at 600 characters",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "a2"), { role: "me", kind: "answer", text: "x".repeat(601), createdAt: NOWT })));
+await check("nobody else can read your conversation with Seen",
+  assertFails(getDoc(doc(B, "users", "uidA", "seenChat", "a1"))));
+await check("nobody else can write in it",
+  assertFails(setDoc(doc(B, "users", "uidA", "seenChat", "b1"), { role: "me", kind: "answer", text: "hi", createdAt: NOWT })));
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users", "uidA", "seenChat", "refl"), { role: "seen", kind: "reflection", text: "You've mentioned…", theme: "running", feedback: null, createdAt: NOWT, read: false });
+  await setDoc(doc(ctx.firestore(), "users", "uidA", "understanding", "state"), { themes: [{ name: "running" }] });
+});
+await check("you can give feedback on a reflection",
+  assertSucceeds(updateDoc(doc(A, "users", "uidA", "seenChat", "refl"), { feedback: "yes", read: true })));
+await check("…but not rewrite what Seen said",
+  assertFails(updateDoc(doc(A, "users", "uidA", "seenChat", "refl"), { text: "You are perfect" })));
+await check("you can read what Seen understands",
+  assertSucceeds(getDoc(doc(A, "users", "uidA", "understanding", "state"))));
+await check("…but not write it",
+  assertFails(setDoc(doc(A, "users", "uidA", "understanding", "state"), { themes: [{ name: "made up" }] })));
+await check("nobody else can read what Seen understands about you",
+  assertFails(getDoc(doc(B, "users", "uidA", "understanding", "state"))));
+await check("you can forget everything",
+  assertSucceeds(deleteDoc(doc(A, "users", "uidA", "understanding", "state"))));
+await check("…and delete Seen's messages",
+  assertSucceeds(deleteDoc(doc(A, "users", "uidA", "seenChat", "refl"))));
+await check("you can share a Right now line",
+  assertSucceeds(setDoc(doc(A, "publicProfiles", "uidA"), { uid: "uidA", rightNow: "Training for my first 10k" }, { merge: true })));
+await check("…of at most 80 characters",
+  assertFails(setDoc(doc(A, "publicProfiles", "uidA"), { uid: "uidA", rightNow: "x".repeat(81) }, { merge: true })));
+await check("nobody can set someone else's line",
+  assertFails(setDoc(doc(B, "publicProfiles", "uidA"), { uid: "uidA", rightNow: "hi" }, { merge: true })));
+
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);
 const failed = results.filter(([ok]) => !ok).length;
