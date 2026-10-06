@@ -29,6 +29,7 @@ import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
 import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
+import { rowLine, ago, headline, dayLine } from "./kindMoments";
 import { REPLY_FEEL, NOTE_FEEL, replyOpening, noteOpening, quoteChip } from "./feelingWords";
 
 const POSTS_KEY = "seen_v2_local_posts";
@@ -616,33 +617,127 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   );
 }
 
-// ── Kind-moment card ─────────────────────────────────────────────────────────
-// Anonymous by design. No names are rendered here, and none are stored — see the note above
-// recordKindMoment. Legacy device-local moments DID carry names; they are ignored rather
-// than displayed, so an old row can't leak what a new one never would.
-export function KindMomentCard({ moment, compact = false }) {
-  const a = flagFor(moment.aCountry);
-  const b = flagFor(moment.bCountry);
-  // Both flags whenever both countries are known — including when they are the SAME country.
-  // Two people in India get "🇮🇳 India and 🇮🇳 India", exactly like a cross-border pair: every
-  // card is then the same shape, and two flags is what says "two people connected" at a glance.
-  //
-  // This used to require the countries to DIFFER, which folded "both in India" in with "we have
-  // no idea where either person is" and showed the same bare sentence for both. Same-country is
-  // the common case for any app whose users cluster, so the most frequent kind moment rendered
-  // as the least informative one while the app knew exactly where both people were.
-  //
-  // Unknown is still the one case that stays generic, because there is genuinely nothing to say.
-  const places = moment.aCountry && moment.bCountry
-    ? <> between <strong className="text-slate-800">{a} {moment.aCountry}</strong> and <strong className="text-slate-800">{b} {moment.bCountry}</strong></>
-    : null;
+// ── Kind moments (3.13) ──────────────────────────────────────────────────────────
+// Anonymous by design: two countries and a time, never a name, the words or a distance.
+// One card per day however busy it was (kindMoments.js decides the rows), each row a little
+// journey — flag, an arc a heart travels along once, flag — so it reads as kindness MOVING.
+
+// Bold the place names inside a row's line.
+function PlacesText({ line }) {
+  if (!line.places.length) return <>{line.text}</>;
+  const re = new RegExp(`(${line.places.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+  return <>{line.text.split(re).map((part, i) =>
+    line.places.some((p) => p.toLowerCase() === part.toLowerCase()) ? <strong key={i} className="font-semibold text-slate-900">{part}</strong> : part)}</>;
+}
+
+function MomentArc({ home = false, animate = true }) {
+  const path = home ? "M14 20 C14 2, 60 2, 60 20" : "M4 20 Q37 -6 70 20";
+  const line = home ? "#F472B6" : "#FFAD6E";
+  const dot = home ? "#DB4E97" : "#E07C33";
+  const still = !animate || (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   return (
-    <div className={`seen-grad-warm rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white flex items-center gap-2 ${compact ? "px-3 py-2" : "mb-2 px-4 py-2.5"}`}
+    <svg viewBox="0 0 74 26" className="h-[22px] w-[58px] flex-shrink-0" aria-hidden>
+      <path d={path} fill="none" stroke={line} strokeWidth="2" strokeDasharray="3 4" strokeLinecap="round" />
+      <circle cx={home ? 14 : 4} cy="20" r="2.5" fill={dot} />
+      <circle cx={home ? 60 : 70} cy="20" r="2.5" fill={dot} />
+      {home ? (
+        <text x="37" y="11" fontSize="11" textAnchor="middle">🏡</text>
+      ) : still ? (
+        <text x="37" y="11" fontSize="11" textAnchor="middle">❤️</text>
+      ) : (
+        // The heart makes the trip once, then rests at the far end.
+        <text fontSize="11" textAnchor="middle" dy="3">❤️
+          <animateMotion dur="1.6s" begin="0.2s" fill="freeze" path="M4 17 Q37 -9 70 17" />
+        </text>
+      )}
+    </svg>
+  );
+}
+
+function MomentRow({ row, now }) {
+  const line = rowLine(row);
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[17px] leading-none">{flagFor(row.aCountry)}</span>
+      <MomentArc home={row.same} />
+      <span className="text-[17px] leading-none">{flagFor(row.bCountry)}</span>
+      <div className="ml-1 min-w-0 flex-1">
+        <p className="text-[12.5px] leading-snug text-slate-600">
+          <PlacesText line={line} />
+          {row.count > 1 && <span className="ml-1 rounded-full bg-orange-50 px-1.5 text-[10.5px] font-extrabold text-orange-700">×{row.count}</span>}
+        </p>
+        <p className="text-[10.5px] font-semibold text-slate-400">{row.count > 1 ? `latest ${ago(row.latest, now)}` : ago(row.latest, now)}</p>
+      </div>
+    </div>
+  );
+}
+
+// A day of private kindness. Today: the full card. Earlier days: one line that opens on a tap.
+export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
+  const [open, setOpen] = useState(day.isToday);
+  const [now] = useState(() => Date.now());
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="mb-2 flex w-full items-center gap-2 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5 text-left text-[12px] text-slate-500 active:scale-[0.99]">
+        <span aria-hidden>✨</span>
+        <span className="min-w-0 flex-1"><span className="font-bold text-slate-700">{day.label}</span> · {dayLine(day)}</span>
+        <span className="text-slate-300" aria-hidden>›</span>
+      </button>
+    );
+  }
+  return (
+    <div className="mb-2.5 rounded-2xl border border-amber-100 bg-white px-3.5 pb-3 pt-3 shadow-sm" style={{ animation: "seenFadeUp 400ms ease both" }}>
+      <div className="flex items-center gap-1.5">
+        <span aria-hidden>✨</span>
+        <p className="min-w-0 flex-1 text-[13px] font-extrabold leading-tight text-slate-800">
+          {headline(day)}
+          {day.countries > 1 && <span className="block text-[11px] font-semibold text-slate-400">across {day.countries} countries</span>}
+        </p>
+        {day.isToday ? (
+          <span className="flex items-center gap-1 text-[10.5px] font-bold text-green-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]" /> live
+          </span>
+        ) : (
+          <button onClick={() => setOpen(false)} className="text-[11px] font-semibold text-slate-400">{day.label}</button>
+        )}
+      </div>
+      <div className="mt-2 space-y-2">
+        {day.rows.map((r) => <MomentRow key={r.key} row={r} now={now} />)}
+      </div>
+      {day.more && (
+        <button onClick={onOpenGlobe}
+          className="mt-2.5 flex w-full items-center gap-2 rounded-xl bg-orange-50/70 px-2.5 py-2 text-left text-[12px] text-slate-600">
+          <span className="whitespace-nowrap text-[14px] tracking-wide">{day.more.countries.slice(0, 4).map(flagFor).join("")}</span>
+          <span className="whitespace-nowrap font-bold text-slate-800">+{day.more.count} more</span>
+          {onOpenGlobe && <span className="ml-auto whitespace-nowrap text-[11.5px] font-bold text-teal-600">See them on the globe →</span>}
+        </button>
+      )}
+      <div className="mt-2.5 flex items-center border-t border-dashed border-amber-100 pt-2">
+        <span className="text-[11px] text-slate-400">Names and words stay private.</span>
+        {onBeNext && day.isToday && (
+          <button onClick={onBeNext}
+            className="ml-auto rounded-full px-3 py-1 text-[12px] font-extrabold text-white active:scale-95"
+            style={{ background: "#D9692A", textShadow: "0 1px 1px rgba(120,50,10,.35)", boxShadow: "0 3px 10px rgba(224,124,51,.35)" }}>
+            Be next ✨
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A single moment, for the Worldwide board's rotating slot.
+export function KindMomentCard({ moment, compact = false }) {
+  const [now] = useState(() => Date.now());
+  const row = {
+    key: moment.id || "m", same: Boolean(moment.aCountry && moment.aCountry === moment.bCountry),
+    count: 1, latest: Number(moment.ts) || 0, aCountry: moment.aCountry || null, bCountry: moment.bCountry || null,
+  };
+  return (
+    <div className={`rounded-2xl border border-amber-100 bg-white ${compact ? "px-3 py-2" : "mb-2 px-3.5 py-2.5"}`}
       style={{ animation: "seenFadeUp 400ms ease both" }}>
-      <span className={`flex-shrink-0 ${compact ? "text-base" : "text-lg"}`}>⭐</span>
-      <p className="text-[12px] text-slate-600 leading-snug flex-1">
-        Someone sent a private message of kindness{places}.
-      </p>
+      <MomentRow row={row} now={now} />
     </div>
   );
 }

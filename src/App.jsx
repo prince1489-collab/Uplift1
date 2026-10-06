@@ -29,6 +29,7 @@ import { canNudge, markNudged, markReplied, hasReplied, NUDGE_MS } from "./reply
 import ReplyNudge from "./ReplyNudgeLine";
 import { installFlyToGrow } from "./motion";
 import { todayKey as localDayKey } from "./hytPrompts";
+import { summarizeMoments } from "./kindMoments";
 import KindnessTreePanel, { treeStageFor, TREE_STAGES } from "./KindnessTree";
 import { STICKERS } from "./StickerReactions";
 import MessageMedia from "./MessageMedia";
@@ -40,7 +41,7 @@ import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setEveningCue } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
 import { claimCertificate } from "./certificates";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentCard, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 
@@ -2185,6 +2186,8 @@ export default function App() {
     () => splitKindMoments(kindMoments, focusedUids, currentUser?.uid),
     [kindMoments, focusedUids, currentUser?.uid]
   );
+  // One card per day of private kindness, however many there were (kindMoments.js, 3.13).
+  const momentDays = useMemo(() => summarizeMoments(focusedMoments, { myUid: currentUser?.uid }), [focusedMoments, currentUser?.uid]);
   const [featuredStories, setFeaturedStories] = useState(() => loadLocalStories());
   const [openStory, setOpenStory] = useState(null); // shared journal being read
   // Shared journals route the same way as kind moments: yours or a followed author's go to
@@ -4370,7 +4373,7 @@ export default function App() {
                 const groupTs = (g) => Number(g.items[0]?.timestamp) || 0;
                 const entries = [
                   ...grouped.map((g) => ({ kind: "group", ts: groupTs(g), key: g.items[0].id, group: g })),
-                  ...focusedMoments.map((km) => ({ kind: "moment", ts: Number(km.ts) || 0, key: km.id, moment: km })),
+                  ...momentDays.map((d) => ({ kind: "moments", ts: d.ts, key: `km-${d.key}`, day: d })),
                   ...focusedStories.map((s) => ({ kind: "story", ts: Number(s.ts) || 0, key: s.id, story: s })),
                   ...localPosts.map((p) => ({ kind: "post", ts: Number(p.timestamp) || 0, key: p.id, post: p })),
                 ].sort((a, b) => b.ts - a.ts);
@@ -4378,7 +4381,9 @@ export default function App() {
                   <>
                   <FocusedFeedHeader count={follows.length} onManage={() => setShowFollowing(true)} />
                   {entries.map((entry) => {
-                  if (entry.kind === "moment") return <KindMomentCard key={entry.key} moment={entry.moment} />;
+                  if (entry.kind === "moments") {
+                    return <KindMomentsDay key={entry.key} day={entry.day} onBeNext={openSeenBar} onOpenGlobe={() => setShowMap(true)} />;
+                  }
                   if (entry.kind === "story") return <SharedJournalCard key={entry.key} story={entry.story} onOpen={(s) => setOpenStory(s)} />;
                   if (entry.kind === "post") return <LocalPostCard key={entry.key} post={entry.post} onDelete={removeLocalPost} />;
                   const group = entry.group;
