@@ -630,36 +630,49 @@ function PlacesText({ line }) {
     line.places.some((p) => p.toLowerCase() === part.toLowerCase()) ? <strong key={i} className="font-semibold text-slate-900">{part}</strong> : part)}</>;
 }
 
-function MomentArc({ home = false, animate = true }) {
+// The heart keeps travelling (3.14): sender → recipient, left flag to right, on a loop — fading
+// in as it leaves and out as it lands — so the direction is always there to see. Where kindness
+// went both ways (and always between two people in the same country) it goes back and forth.
+// Rows start at different moments so three hearts never move in step. Still for reduced motion.
+function MomentArc({ home = false, bothWays = false, delay = 0 }) {
   const path = home ? "M14 20 C14 2, 60 2, 60 20" : "M4 20 Q37 -6 70 20";
+  const route = home ? "M14 17 C14 -1, 60 -1, 60 17" : "M4 17 Q37 -9 70 17"; // a touch above the line
   const line = home ? "#F472B6" : "#FFAD6E";
   const dot = home ? "#DB4E97" : "#E07C33";
-  const still = !animate || (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  const still = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const begin = `${delay}s`;
   return (
-    <svg viewBox="0 0 74 26" className="h-[22px] w-[58px] flex-shrink-0" aria-hidden>
+    <svg viewBox="0 0 74 26" className="h-[22px] w-[58px] flex-shrink-0 overflow-visible" aria-hidden>
       <path d={path} fill="none" stroke={line} strokeWidth="2" strokeDasharray="3 4" strokeLinecap="round" />
       <circle cx={home ? 14 : 4} cy="20" r="2.5" fill={dot} />
       <circle cx={home ? 60 : 70} cy="20" r="2.5" fill={dot} />
-      {home ? (
-        <text x="37" y="11" fontSize="11" textAnchor="middle">🏡</text>
-      ) : still ? (
-        <text x="37" y="11" fontSize="11" textAnchor="middle">❤️</text>
+      {still ? (
+        <text x="37" y={home ? 7 : 11} fontSize="11" textAnchor="middle">❤️</text>
+      ) : bothWays ? (
+        // Hidden until its turn starts, or it would sit in the corner while it waits.
+        <text fontSize="11" textAnchor="middle" dy="3" opacity="0">❤️
+          <animateMotion dur="3.2s" begin={begin} repeatCount="indefinite" path={route}
+            keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear" />
+          <set attributeName="opacity" to="1" begin={begin} />
+        </text>
       ) : (
-        // The heart makes the trip once, then rests at the far end.
-        <text fontSize="11" textAnchor="middle" dy="3">❤️
-          <animateMotion dur="1.6s" begin="0.2s" fill="freeze" path="M4 17 Q37 -9 70 17" />
+        <text fontSize="11" textAnchor="middle" dy="3" opacity="0">❤️
+          <animateMotion dur="3s" begin={begin} repeatCount="indefinite" path={route}
+            keyPoints="0;1;1" keyTimes="0;0.73;1" calcMode="linear" />
+          <animate attributeName="opacity" dur="3s" begin={begin} repeatCount="indefinite"
+            values="0;1;1;0;0" keyTimes="0;0.1;0.62;0.73;1" />
         </text>
       )}
     </svg>
   );
 }
 
-function MomentRow({ row, now }) {
+function MomentRow({ row, now, index = 0 }) {
   const line = rowLine(row);
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[17px] leading-none">{flagFor(row.aCountry)}</span>
-      <MomentArc home={row.same} />
+      <MomentArc home={row.same} bothWays={row.bothWays} delay={index * 0.7} />
       <span className="text-[17px] leading-none">{flagFor(row.bCountry)}</span>
       <div className="ml-1 min-w-0 flex-1">
         <p className="text-[12.5px] leading-snug text-slate-600">
@@ -703,7 +716,7 @@ export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
         )}
       </div>
       <div className="mt-2 space-y-2">
-        {day.rows.map((r) => <MomentRow key={r.key} row={r} now={now} />)}
+        {day.rows.map((r, i) => <MomentRow key={r.key} row={r} now={now} index={i} />)}
       </div>
       {day.more && (
         <button onClick={onOpenGlobe}
@@ -730,8 +743,9 @@ export function KindMomentsDay({ day, onBeNext, onOpenGlobe }) {
 // A single moment, for the Worldwide board's rotating slot.
 export function KindMomentCard({ moment, compact = false }) {
   const [now] = useState(() => Date.now());
+  const same = Boolean(moment.aCountry && moment.aCountry === moment.bCountry);
   const row = {
-    key: moment.id || "m", same: Boolean(moment.aCountry && moment.aCountry === moment.bCountry),
+    key: moment.id || "m", same, bothWays: same,
     count: 1, latest: Number(moment.ts) || 0, aCountry: moment.aCountry || null, bCountry: moment.bCountry || null,
   };
   return (
@@ -1044,11 +1058,17 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                       ))}
                     </div>
                   </div>
+                  {/* A chip like the rest — not a box. It used to be a full-width white panel that
+                      read as a second place to type; the textarea above is the only one (3.14). */}
                   {quoted && (
-                    <button type="button" onClick={() => begin(quoted)}
-                      className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-left text-[12.5px] italic text-slate-600 active:scale-[0.99]">
-                      {quoted.trim()}…
-                    </button>
+                    <div>
+                      <p className="mb-1 text-[11px] font-semibold text-slate-500">Quote them:</p>
+                      <button type="button" onClick={() => begin(quoted)}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[12.5px] font-semibold text-orange-700 active:scale-95 transition-all">
+                        <span aria-hidden>💬</span>
+                        <span className="truncate italic">{quoted.replace(/\s*stayed with me because\s*$/, "")}</span>
+                      </button>
+                    </div>
                   )}
                   {mode === "first" && (
                     <div>

@@ -51,6 +51,11 @@ for (let k = 0; k < 60; k++) {
   if (new Set(t).size === 3) distinct++;
 }
 check("rows on the same day never share a sentence", distinct === 60, `${distinct}/60`);
+const ways = summarizeMoments([m("United Kingdom", "Mexico", 1), m("Mexico", "United Kingdom", 2), m("Japan", "Kenya", 3), m("India", "India", 4)], { now: NOW })[0].rows;
+check("a pair with kindness both ways is marked bothWays", ways.find((r) => /Mexico/.test(r.key))?.bothWays === true);
+check("a one-way pair is not", ways.find((r) => /Japan/.test(r.key))?.bothWays === false);
+check("same-country rows go back and forth", ways.find((r) => r.same)?.bothWays === true);
+check("a one-way row runs sender → recipient (left → right)", ways.find((r) => /Japan/.test(r.key))?.aCountry === "Japan");
 check("unknown countries still read well", rowLine({ key: "u", aCountry: null, bCountry: "India", count: 1 }).text.length > 10);
 check("no distances anywhere", ![...lines].join(" ").match(/\bkm\b|miles/));
 check("ago reads naturally", ago(NOW - 5 * 60000, NOW) === "5 min ago" && ago(NOW - 2 * H, NOW) === "2h ago");

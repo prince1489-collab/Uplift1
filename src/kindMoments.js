@@ -99,13 +99,17 @@ function rowsOf(moments, myUid) {
     const same = Boolean(a && b && a === b);
     const key = !a || !b ? "unknown" : same ? `home:${a}` : [a, b].sort().join("|");
     let r = byKey.get(key);
-    if (!r) { r = { key, same, count: 0, latest: 0, aCountry: a, bCountry: b, mine: false, id: m.id }; byKey.set(key, r); }
+    if (!r) { r = { key, same, count: 0, latest: 0, aCountry: a, bCountry: b, mine: false, id: m.id, dirs: new Set() }; byKey.set(key, r); }
     r.count += 1;
+    r.dirs.add(`${a}>${b}`);
     if (Number(m.ts) >= r.latest) { r.latest = Number(m.ts) || 0; r.aCountry = a; r.bCountry = b; r.id = m.id; }
     if (myUid && (m.aUid === myUid || m.bUid === myUid)) r.mine = true;
   }
+  // `bothWays`: kindness went in both directions between these two places today, so the heart
+  // on the card goes back and forth rather than one way (3.14). Same-country rows always do.
+  const rows = [...byKey.values()].map(({ dirs, ...r }) => ({ ...r, bothWays: r.same || dirs.size > 1 }));
   // Yours first (quietly — no badge), then the busiest pair, then the newest.
-  return [...byKey.values()].sort((x, y) => (y.mine - x.mine) || (y.count - x.count) || (y.latest - x.latest));
+  return rows.sort((x, y) => (y.mine - x.mine) || (y.count - x.count) || (y.latest - x.latest));
 }
 
 // The feed's view of the moments: one entry per day, newest day first.
