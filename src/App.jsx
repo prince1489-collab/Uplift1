@@ -3207,9 +3207,9 @@ export default function App() {
     replyNudgeTimer.current = setTimeout(() => setReplyNudge(null), NUDGE_MS);
   }, [currentUser?.uid]);
   const [repliedTick, setRepliedTick] = useState(0);
-  const handleReplySent = useCallback(({ mode, name, messageId, note }) => {
+  const handleReplySent = useCallback(({ mode, name, messageId, note, theirText }) => {
     creditKindAct();
-    try { markSentToday(localDayKey(), { via: note ? "note" : "reply", name }); } catch { /* ignore */ }
+    try { markSentToday(localDayKey(), { via: note ? "note" : "reply", name, theirText }); } catch { /* ignore */ }
     // Grow counts people who felt seen; replies and notes are kept as their own tally.
     if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { seenRepliesSent: increment(1) }).catch(() => {});
     if (mode === "first") markReplied(messageId);

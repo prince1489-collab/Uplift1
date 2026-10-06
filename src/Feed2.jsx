@@ -820,7 +820,9 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     try { awardPoints("reply"); } catch { /* ignore */ }
     // Telling someone how their words landed is a way of making them feel seen — it counts as
     // the day, exactly like sending a message does.
-    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null, note: isNote }); } catch { /* ignore */ }
+    // theirText: the words being answered, so "Feel it" can offer a phrase of them back (3.10).
+    const theirText = mode === "first" ? target?.text : answering?.text;
+    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null, note: isNote, theirText: isNote ? null : theirText }); } catch { /* ignore */ }
 
     // Everything below here is best-effort and deliberately NOT awaited. The reply has
     // already landed; a failure to push a notification or write a celebratory card must

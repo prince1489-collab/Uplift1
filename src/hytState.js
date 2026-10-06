@@ -64,7 +64,8 @@ export function markSentToday(day, info = {}) {
   const route = via === "message" ? "sent" : via;
   saveDayState(day, {
     ...cur, sent: true, sentVia: via, sentTo: info.name ?? null, seenCount: (cur.seenCount || 0) + 1,
-    lastAct: { route, name: info.name ?? null },
+    lastAct: { route, name: info.name ?? null, theirText: info.theirText ? String(info.theirText).slice(0, 300) : null },
+    routeCounts: bumpRoute(cur, route),
   });
 }
 
@@ -73,6 +74,10 @@ export function markSentToday(day, info = {}) {
 // act after either — got nothing: the card just kept showing the morning's answer. Each act is
 // now numbered by seenCount, and each number gets its own "how did it feel" entry.
 // A day saved before 3.9 kept one `reflected`; it stands in for act #1 so nobody is asked twice.
+// How many acts of each kind today (3.10) — the "Feel it" card gets lighter the more of the same
+// kind you do, so five messages never mean five identical forms.
+export const bumpRoute = (state, route) => ({ ...(state?.routeCounts || {}), [route]: (state?.routeCounts?.[route] || 0) + 1 });
+
 export function feltFor(state, n) {
   if (state?.felt?.[n]) return state.felt[n];
   if (n === 1 && state?.reflected && !state.felt) return { legacy: true };
@@ -93,11 +98,12 @@ export function completeSlot(state, slot, { onKindAct, onPlanChange } = {}) {
   const done = { ...state.done, [slot]: true };
   const seenCount = (state.seenCount || 0) + 1; // one more person made to feel seen today
   const lastAct = { route: "act", name: null };
+  const routeCounts = bumpRoute(state, "act");
   if (SLOTS.every((s) => done[s]) && !state.bonus) {
     awardPoints("practiceAll");
-    return { ...state, done, seenCount, lastAct, bonus: true };
+    return { ...state, done, seenCount, lastAct, routeCounts, bonus: true };
   }
-  return { ...state, done, seenCount, lastAct };
+  return { ...state, done, seenCount, lastAct, routeCounts };
 }
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.

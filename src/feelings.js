@@ -65,7 +65,7 @@ export function recordReflection(db, uid, { day, n = 1, route, act, questionId, 
 // The rule (users/{uid}/feelings/{id}) is owner-only and indifferent to the id's shape.
 export const entryId = (day, n) => `${day}_${Math.max(1, Number(n) || 1)}`;
 
-export function recordFeelingEntry(db, uid, { day, n, route, act, toName, feelings, because, sentence }) {
+export function recordFeelingEntry(db, uid, { day, n, route, act, toName, feelings, because, sentence, shape, body, quote, pulse }) {
   // Every act can be felt, but the drops stop after three a day — enough to reward saying it,
   // not enough to make "Done it" worth tapping for the points.
   try { awardPoints("feeling", { maxPerDay: 3 }); } catch { /* ignore */ }
@@ -74,6 +74,9 @@ export function recordFeelingEntry(db, uid, { day, n, route, act, toName, feelin
     route: route || null, act: String(act || "").slice(0, 200), toName: toName ? String(toName).slice(0, 40) : null,
     feelings: feelings.slice(0, 2).map((w) => String(w).slice(0, 24)),
     because: String(because || "").slice(0, 140), sentence: String(sentence || "").slice(0, 200),
+    // 3.10: which shape of card it was, and what that shape asked for.
+    shape: shape || "words", body: body ? String(body).slice(0, 24) : null,
+    quote: quote ? String(quote).slice(0, 80) : null, pulse: pulse ? String(pulse).slice(0, 8) : null,
     date: day, createdAt: Date.now(),
   }, { merge: true }).catch(() => {});
 }
