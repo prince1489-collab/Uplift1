@@ -21,7 +21,7 @@ import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
 import AwayNote from "./AwayNote";
-import { useUpdateAvailable } from "./appVersion";
+import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
@@ -268,6 +268,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // "how you're feeling" feature, retired in the V2 review pass.
 
 function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+  const installedVersion = useInstalledVersion();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
@@ -482,7 +483,7 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                 </div>
                 <p className="mt-2 text-[10px] text-slate-300">
                   © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
-                  <span className="block mt-1 text-slate-200">build {__BUILD_ID__}</span>
+                  <span className="block mt-1 text-slate-200">{installedVersion ? `Seen ${installedVersion} · ` : ""}build {__BUILD_ID__}</span>
                 </p>
               </div>
 

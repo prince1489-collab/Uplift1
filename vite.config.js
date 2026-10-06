@@ -5,9 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Short commit SHA baked in at build time (Vercel sets VERCEL_GIT_COMMIT_SHA)
-    // so testers can verify which build a device is actually running.
-    __BUILD_ID__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7)),
+    // Short commit SHA baked in at build time, so testers can verify which build a device is
+    // actually running. Vercel sets VERCEL_GIT_COMMIT_SHA; Codemagic (the iOS and Android store
+    // builds) sets CM_COMMIT — without it every store build said "build dev".
+    __BUILD_ID__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || process.env.CM_COMMIT || process.env.GITHUB_SHA || "dev").slice(0, 7)),
   },
   build: {
     rollupOptions: {

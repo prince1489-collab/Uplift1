@@ -69,3 +69,21 @@ export function useUpdateAvailable(db) {
   };
   return { update: info, dismiss };
 }
+
+// The version installed on this phone ("3.11"), for the menu footer. null on the web, where
+// the build hash alone says which deploy is running.
+export function useInstalledVersion() {
+  const [version, setVersion] = useState(null);
+  useEffect(() => {
+    let platform = "web";
+    try { platform = Capacitor.getPlatform(); } catch { /* ignore */ }
+    if (platform === "web") return undefined;
+    let alive = true;
+    import("@capacitor/app")
+      .then(({ App }) => App.getInfo())
+      .then((info) => { if (alive && info?.version) setVersion(info.version); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return version;
+}
