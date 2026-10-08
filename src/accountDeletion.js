@@ -3,14 +3,10 @@
 // accountDeletion.js — the device's half of "Delete account" (3.20). The sheet is DeleteAccount.jsx;
 // the deletion itself is /api/delete-account (api/_deleteAccount.js says what goes and what stays).
 //
-//   1. Sign in with Apple accounts on iOS: Apple requires the app to REVOKE the user's Apple
-//      token when the account is deleted. That needs a fresh authorisation code, which only the
-//      Apple sheet on the device can give — so the person confirms once with Apple, and the code
-//      goes to Firebase's revoke endpoint with tokenType CODE (what Firebase's own iOS SDK sends;
-//      the web SDK's revokeAccessToken only takes access tokens, which the native sheet doesn't
-//      return). Best effort: if revocation fails the deletion still goes ahead — keeping someone's
-//      data because Apple's endpoint hiccupped would be the worse failure. Cancelling the Apple
-//      sheet, though, means "stop", and nothing is deleted.
+//   1. Sign in with Apple accounts on iOS: Apple requires the app to REVOKE the person's Apple
+//      token when the account is deleted. The person confirms once with Apple and Firebase's iOS
+//      SDK revokes the token — see appleRevoke.js. Best effort: if revocation fails, deletion
+//      still goes ahead. Closing the Apple sheet, though, means "stop", and nothing is deleted.
 //   2. The server deletes the account. While it does, accountDeletionInProgress() is true: the
 //      presence heartbeat stops writing (it would otherwise put back the presence record the
 //      server just removed) and App ignores the profile disappearing (which would otherwise flash
@@ -25,49 +21,17 @@ import { signOut } from "firebase/auth";
 import { terminate, clearIndexedDbPersistence } from "firebase/firestore";
 import { authedPost } from "./apiBase";
 import { isNativeIOS, isNativeApp } from "./nativePush";
+import { revokeAppleSignIn, Cancelled } from "./appleRevoke.js";
 
+export { Cancelled };
 export const isAppleUser = (user) => Boolean(user?.providerData?.some((p) => p?.providerId === "apple.com"));
 export const needsAppleConfirm = (user) => isNativeIOS() && isAppleUser(user);
-
-// Apple's "sub" claim — which Apple ID a token belongs to — read without verifying (the token
-// goes straight to Firebase, which does verify it). Used only to make sure the person confirmed
-// with the SAME Apple ID they signed in with, so we never revoke someone else's.
-function appleSub(idToken) {
-  try { return JSON.parse(atob(String(idToken).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub || null; }
-  catch { return null; }
-}
-
-export class Cancelled extends Error {}
 
 export async function confirmAndRevokeApple(auth) {
   const user = auth.currentUser;
   if (!needsAppleConfirm(user)) return { skipped: true };
   const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
-  let result;
-  try {
-    result = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
-  } catch (err) {
-    // Closing the Apple sheet is a decision: the account stays.
-    throw new Cancelled(err?.message || "cancelled");
-  }
-  const code = result?.credential?.authorizationCode;
-  const signedInAs = user.providerData.find((p) => p?.providerId === "apple.com")?.uid;
-  if (!code) return { revoked: false, reason: "no_code" };
-  if (signedInAs && appleSub(result?.credential?.idToken) && appleSub(result.credential.idToken) !== signedInAs) {
-    return { revoked: false, reason: "different_apple_id" };
-  }
-  try {
-    const idToken = await user.getIdToken(true);
-    const key = auth.app?.options?.apiKey;
-    const res = await fetch(`https://identitytoolkit.googleapis.com/v2/accounts:revokeToken?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId: "apple.com", tokenType: "CODE", token: code, idToken }),
-    });
-    return { revoked: res.ok, reason: res.ok ? null : `http_${res.status}` };
-  } catch {
-    return { revoked: false, reason: "network" };
-  }
+  return revokeAppleSignIn({ plugin: FirebaseAuthentication, user });
 }
 
 let inProgress = false;

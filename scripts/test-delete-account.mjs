@@ -3,6 +3,7 @@
 // Runs api/_deleteAccount.js against an in-memory Firestore and fake Auth / Storage / Stripe.
 import { deleteAccountData, CONFIRM_WORD } from "../api/_deleteAccount.js";
 import handler from "../api/delete-account.js";
+import { revokeAppleSignIn, Cancelled, appleSub } from "../src/appleRevoke.js";
 const results = [];
 const check = (n, ok, d = "") => results.push([ok, ok ? n : `${n} — ${d}`]);
 
@@ -145,6 +146,66 @@ const res = { code: 0, body: null, headers: {}, setHeader(k, v) { this.headers[k
 await handler({ method: "POST", headers: {}, body: {} }, res);
 check("no token → refused", res.code === 401 || res.code === 503, String(res.code));
 check("the confirm word is DELETE", CONFIRM_WORD === "DELETE");
+
+// 8. Sign in with Apple is revoked through Firebase's native SDK, never left hanging, and only a
+//    closed Apple sheet stops the deletion (src/appleRevoke.js).
+const jwt = (sub) => `x.${Buffer.from(JSON.stringify({ sub })).toString("base64url")}.y`;
+const appleUser = { providerData: [{ providerId: "apple.com", uid: "001234.me" }] };
+const fakePlugin = ({ signIn, revoke } = {}) => {
+  const calls = [];
+  return {
+    calls,
+    names: () => calls.map((c) => c[0]),
+    signInWithApple: async (opts) => {
+      calls.push(["signIn", opts]);
+      return signIn ? signIn() : { credential: { authorizationCode: "code-1", idToken: jwt("001234.me") }, additionalUserInfo: { isNewUser: false } };
+    },
+    revokeAccessToken: async (opts) => { calls.push(["revoke", opts.token]); if (revoke) return revoke(); },
+    deleteUser: async () => { calls.push(["deleteUser"]); },
+    signOut: async () => { calls.push(["signOut"]); },
+  };
+};
+check("appleSub reads the Apple ID from a token", appleSub(jwt("001234.me")) === "001234.me" && appleSub("junk") === null);
+
+let pl = fakePlugin();
+let r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("same Apple ID: the code is revoked natively, then signed out", r.revoked === true
+  && pl.calls[0][1]?.skipNativeAuth === false && pl.names().join() === "signIn,revoke,signOut" && pl.calls[1][1] === "code-1", pl.names().join());
+
+pl = fakePlugin({ signIn: () => { throw new Error("The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1001.)"); } });
+let threw = null;
+try { await revokeAppleSignIn({ plugin: pl, user: appleUser }); } catch (e) { threw = e; }
+check("closing the Apple sheet stops the deletion", threw instanceof Cancelled && !pl.names().includes("revoke"));
+
+pl = fakePlugin({ signIn: () => { const e = new Error("Network error"); e.code = "auth/network-request-failed"; throw e; } });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("a Firebase error after the sheet isn't a cancel: deletion carries on", r.revoked === false && r.reason === "auth/network-request-failed" && pl.names().includes("signOut"));
+
+pl = fakePlugin({ signIn: () => { throw new Error("The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1000.)"); } });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("an Apple failure that isn't a cancel doesn't stop deletion", r.revoked === false && !pl.names().includes("revoke"));
+
+pl = fakePlugin({ signIn: () => ({ credential: { authorizationCode: "code-2", idToken: jwt("009999.other") }, additionalUserInfo: { isNewUser: true } }) });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("a different Apple ID is never revoked; the empty account it just made is removed",
+  r.reason === "different_apple_id" && !pl.names().includes("revoke") && pl.names().join() === "signIn,deleteUser,signOut", pl.names().join());
+
+pl = fakePlugin({ signIn: () => ({ credential: { authorizationCode: "code-3", idToken: jwt("009999.other") }, additionalUserInfo: { isNewUser: false } }) });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("…and an Apple ID's existing account is never deleted", r.reason === "different_apple_id" && !pl.names().includes("deleteUser"));
+
+pl = fakePlugin({ revoke: () => { const e = new Error("OAuth code flow not configured"); e.code = "auth/invalid-credential"; throw e; } });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("a failed revocation is reported, signed out, and doesn't throw", r.revoked === false && r.reason === "auth/invalid-credential" && pl.names().at(-1) === "signOut");
+
+pl = fakePlugin({ revoke: () => new Promise(() => {}) });
+const t0 = Date.now();
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser, timeoutMs: 50 });
+check("a revocation that never answers times out instead of hanging the sheet", r.revoked === false && r.reason === "timeout" && Date.now() - t0 < 1000 && pl.names().at(-1) === "signOut");
+
+pl = fakePlugin({ signIn: () => ({ credential: { idToken: jwt("001234.me") }, additionalUserInfo: { isNewUser: false } }) });
+r = await revokeAppleSignIn({ plugin: pl, user: appleUser });
+check("no authorisation code: nothing to revoke, still signed out", r.reason === "no_code" && pl.names().join() === "signIn,signOut");
 
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
