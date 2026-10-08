@@ -15,7 +15,9 @@
 //   their public messages, with the reactions, gifts and media under them · private replies and
 //   kind notes they sent OR received · waves either way · kind moments either side ·
 //   shared reflections and greeting submissions they wrote · their reactions on other people's
-//   messages · their profile photos · an active supporter subscription (cancelled) ·
+//   messages · what those reactions left in other people's spaces (the "hearts received" rows
+//   with their first name, ripple records) · other people's follow-list entries for them (which
+//   carry their name) · their profile photos · an active supporter subscription (cancelled) ·
 //   and, last, the sign-in itself.
 //
 // WHAT STAYS, and why:
@@ -39,9 +41,27 @@ export async function deleteAccountData({ db, uid, deleteAuthUser, deleteStorage
     for (const ref of refs) await db.recursiveDelete(ref);
   };
   const where = async (coll, field) => (await db.collection(coll).where(field, "==", uid).get()).docs.map((d) => d.ref);
+  const group = async (name, field) => (await db.collectionGroup(name).where(field, "==", uid).get()).docs.map((d) => d.ref);
   const soft = async (label, fn) => {
     try { await fn(); } catch (err) { counts[label] = `failed: ${err?.code || err?.message || err}`; log(label, err); }
   };
+  // Take this person out of a shared reaction document, in a transaction so a reaction someone
+  // else adds at the same moment isn't lost. True if they were in it.
+  const takeOutOf = (ref) => db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const data = snap.data() || {};
+    const before = Array.isArray(data.uids) ? data.uids : [];
+    const uids = before.filter((u) => u !== uid);
+    if (uids.length === before.length) return false;
+    const countries = { ...(data.countries || {}) };
+    const reactedAt = { ...(data.reactedAt || {}) };
+    delete countries[uid];
+    delete reactedAt[uid];
+    if (uids.length === 0) tx.delete(ref);
+    else tx.update(ref, { count: uids.length, uids, countries, reactedAt });
+    return true;
+  });
 
   // 0. What we need from the profile before it goes.
   const userRef = db.collection("users").doc(uid);
@@ -64,13 +84,26 @@ export async function deleteAccountData({ db, uid, deleteAuthUser, deleteStorage
   await gone("kindMomentsB", await where("kindMoments", "bUid"));
   await gone("sharedReflections", await where("sharedReflections", "authorUid"));
   await gone("greetingSubmissions", await where("greetingSubmissions", "authorUid"));
-  // Their reactions on other people's messages. A collection-group query: needs the reactions.uid
-  // override in firestore.indexes.json, so it is soft — an index still building must not stop
-  // the rest of the deletion.
+  // Their reactions on other people's messages. A reaction document is one per KIND of reaction
+  // ("❤️", "sticker_hug", …) and holds everyone who gave it — { count, uids, countries,
+  // reactedAt }, see src/reactions.js — so this person is taken OUT of it; the document is
+  // everyone else's too, and goes only when they were the last one in it. (Reactions on their
+  // own messages went with the messages, above.)
+  //
+  // Collection-group queries from here on need the field overrides in firestore.indexes.json,
+  // so each is soft: an index still building must not stop the rest of the deletion.
   await soft("reactionsGiven", async () => {
-    const snap = await db.collectionGroup("reactions").where("uid", "==", uid).get();
-    await gone("reactionsGiven", snap.docs.map((d) => d.ref));
+    const snap = await db.collectionGroup("reactions").where("uids", "array-contains", uid).get();
+    let n = 0;
+    for (const d of snap.docs) if (await takeOutOf(d.ref)) n++;
+    counts.reactionsGiven = n;
   });
+  // What their reactions and replies left in other people's spaces: the "hearts received" row on
+  // the owner's bell (with the reactor's first name) and the ripple record on the person they
+  // answered. And other people's follow-list entries for them, which carry their name.
+  await soft("reactionsReceivedByOthers", async () => gone("reactionsReceivedByOthers", await group("reactionsReceived", "reactorUid")));
+  await soft("ripplesOnOthers", async () => gone("ripplesOnOthers", await group("ripples", "responderUid")));
+  await soft("followedByOthers", async () => gone("followedByOthers", await group("follows", "uid")));
 
   // 3. Documents named by their id.
   for (const coll of ["publicProfiles", "presence", "feelings", "referrals"]) {

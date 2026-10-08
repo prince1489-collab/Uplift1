@@ -16,18 +16,26 @@ function fakeDb() {
     get: async () => ({ exists: store.has(path), data: () => store.get(path) }),
   });
   const snapOf = (paths) => ({ docs: paths.map((p) => ({ id: p.split("/").pop(), ref: docRef(p), data: () => store.get(p) })) });
+  const matches = (data, field, op, value) => op === "array-contains"
+    ? Array.isArray(data?.[field]) && data[field].includes(value)
+    : data?.[field] === value;
   const coll = (path) => ({
     doc: (id) => docRef(`${path}/${id}`),
-    where: (field, op, value) => ({ get: async () => snapOf([...store.keys()].filter((k) => isDirectChild(k, path) && store.get(k)?.[field] === value)) }),
+    where: (field, op, value) => ({ get: async () => snapOf([...store.keys()].filter((k) => isDirectChild(k, path) && matches(store.get(k), field, op, value))) }),
   });
   return {
     store,
     collection: (n) => coll(n),
     collectionGroup: (name) => ({ where: (field, op, value) => ({ get: async () => snapOf([...store.keys()].filter((k) => {
       const parts = k.split("/");
-      return parts.length >= 2 && parts[parts.length - 2] === name && store.get(k)?.[field] === value;
+      return parts.length >= 2 && parts[parts.length - 2] === name && matches(store.get(k), field, op, value);
     })) }) }),
     recursiveDelete: async (ref) => { for (const k of [...store.keys()]) if (k === ref.path || k.startsWith(`${ref.path}/`)) store.delete(k); },
+    runTransaction: async (fn) => fn({
+      get: (ref) => ref.get(),
+      update: (ref, data) => store.set(ref.path, { ...store.get(ref.path), ...data }),
+      delete: (ref) => store.delete(ref.path),
+    }),
   };
 }
 const put = (db, path, data) => db.store.set(path, data);
@@ -59,7 +67,17 @@ function seed() {
   put(db, "kindMoments/k1", { aUid: "me", bUid: "other" });
   put(db, "kindMoments/k2", { aUid: "other", bUid: "me" });
   put(db, "kindMoments/k3", { aUid: "other", bUid: "third" });
-  put(db, "publicMessages/m_other/reactions/mine", { uid: "me", emoji: "❤️" });
+  // Reactions are one document per KIND, shared by everyone who gave it (src/reactions.js).
+  put(db, "publicMessages/m_other/reactions/❤️", { count: 2, uids: ["me", "third"], countries: { me: "UK", third: "India" }, reactedAt: { me: 1, third: 2 } });
+  put(db, "publicMessages/m_other/reactions/sticker_hug", { count: 1, uids: ["me"], countries: { me: "UK" }, reactedAt: { me: 3 } });
+  put(db, "publicMessages/m_other/reactions/🌟", { count: 1, uids: ["third"], countries: { third: "India" }, reactedAt: { third: 4 } });
+  // What their reactions, replies and follows left in other people's spaces.
+  put(db, "users/other/reactionsReceived/m_other_me", { reactorUid: "me", reactorName: "Me", ownerUid: "other" });
+  put(db, "users/other/reactionsReceived/m_other_third", { reactorUid: "third", reactorName: "Third", ownerUid: "other" });
+  put(db, "users/other/ripples/me", { responderUid: "me", originatorUid: "other" });
+  put(db, "users/other/ripples/third", { responderUid: "third", originatorUid: "other" });
+  put(db, "users/other/follows/me", { uid: "me", name: "Me" });
+  put(db, "users/other/follows/third", { uid: "third", name: "Third" });
   put(db, "reports/rep1", { reporterUid: "me", reportedUid: "other" });
   return db;
 }
@@ -82,7 +100,16 @@ check("their whole space goes, subcollections too", !left.some((k) => k.startsWi
 check("private replies they sent AND received go", !db.store.has("privateReplies/p1") && !db.store.has("privateReplies/p2"));
 check("waves and kind moments either way go", !db.store.has("waves/w1") && !db.store.has("waves/w2") && !db.store.has("kindMoments/k1") && !db.store.has("kindMoments/k2"));
 check("their messages go with the reactions and media under them", !left.some((k) => k.startsWith("publicMessages/m_me")));
-check("their reaction on someone else's message goes", !db.store.has("publicMessages/m_other/reactions/mine"));
+const heart = db.store.get("publicMessages/m_other/reactions/❤️");
+check("their reaction is taken out of a shared reaction, everyone else's stays",
+  heart && heart.count === 1 && heart.uids.join() === "third" && !("me" in heart.countries) && !("me" in heart.reactedAt) && heart.countries.third === "India",
+  JSON.stringify(heart));
+check("a reaction only they gave goes entirely", !db.store.has("publicMessages/m_other/reactions/sticker_hug"));
+check("a reaction they weren't in is untouched", db.store.get("publicMessages/m_other/reactions/🌟")?.count === 1);
+check("their row on someone else's hearts-received list goes, others' stay",
+  !db.store.has("users/other/reactionsReceived/m_other_me") && db.store.has("users/other/reactionsReceived/m_other_third"));
+check("their ripple on someone else goes, others' stay", !db.store.has("users/other/ripples/me") && db.store.has("users/other/ripples/third"));
+check("other people's follow-list entries for them go, the rest stay", !db.store.has("users/other/follows/me") && db.store.has("users/other/follows/third"));
 
 // 2. Nobody else's does.
 const otherOk = ["users/other", "users/other/journal/j1", "users/other/seenChat/c1", "publicProfiles/other", "publicMessages/m_other",
@@ -94,7 +121,8 @@ check("safety reports are kept", db.store.has("reports/rep1"));
 check("their photos are deleted", calls.includes("storage:profilePhotos/me/"));
 check("an active subscription is cancelled", calls.includes("stripe:sub_1"));
 check("the sign-in is deleted, and last", calls[calls.length - 1] === "auth:me", calls.join(" → "));
-check("counts are reported", counts.publicMessages === 1 && counts.privateRepliesReceived === 1 && counts.auth === "deleted", JSON.stringify(counts));
+check("counts are reported", counts.publicMessages === 1 && counts.privateRepliesReceived === 1 && counts.reactionsGiven === 2
+  && counts.reactionsReceivedByOthers === 1 && counts.ripplesOnOthers === 1 && counts.followedByOthers === 1 && counts.auth === "deleted", JSON.stringify(counts));
 
 // 4. A retry finishes the job without errors.
 const again = await deleteAccountData({ ...deps(db), deleteAuthUser: async () => { const e = new Error("gone"); e.code = "auth/user-not-found"; throw e; } });
@@ -110,7 +138,7 @@ check("a Storage outage doesn't stop deletion", /failed/.test(c2.profilePhotos) 
 const db3 = seed();
 db3.collectionGroup = () => ({ where: () => ({ get: async () => { const e = new Error("index"); e.code = 9; throw e; } }) });
 const c3 = await deleteAccountData(deps(db3));
-check("an index still building doesn't stop deletion", !db3.store.has("users/me") && /failed/.test(String(c3.reactionsGiven)));
+check("an index still building doesn't stop deletion", !db3.store.has("users/me") && /failed/.test(String(c3.reactionsGiven)) && /failed/.test(String(c3.followedByOthers)) && c3.auth === "deleted");
 
 // 7. The endpoint refuses without the typed confirmation (before touching anything).
 const res = { code: 0, body: null, headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
