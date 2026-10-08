@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, ChevronRight, CreditCard, Globe, Heart,
-  Loader2, Mail, LogOut, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
+  Loader2, Mail, LogOut, Trash2, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter,
@@ -21,6 +21,8 @@ import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
 import AwayNote from "./AwayNote";
+import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
+import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
 import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion } from "./seenChat";
 import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
@@ -270,7 +272,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, onDeleteAccount, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
   const installedVersion = useInstalledVersion();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -461,6 +463,22 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
 
               <div className="mx-4 border-t border-slate-100" />
 
+              {/* Delete account — in the app, not an email (App Store 5.1.1(v), 3.20). */}
+              {onDeleteAccount && (
+                <div className="px-3 pt-2">
+                  <button onClick={() => { close(); onDeleteAccount(); }}
+                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-red-50">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50">
+                      <Trash2 size={16} className="text-red-400" />
+                    </div>
+                    <span className="text-left">
+                      <p className="text-sm font-medium text-red-600">Delete account</p>
+                      <p className="text-[11px] text-slate-500">Permanently delete your account and data</p>
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {/* Sign out */}
               <div className="px-3 py-2">
                 <button
@@ -483,7 +501,9 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                   <span className="text-slate-200">·</span>
                   <a href="/child-safety.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Child Safety</a>
                   <span className="text-slate-200">·</span>
-                  <a href="/delete-account.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Delete Account</a>
+                  {onDeleteAccount
+                    ? <button onClick={() => { close(); onDeleteAccount(); }} className="underline hover:text-slate-600">Delete Account</button>
+                    : <a href="/delete-account.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Delete Account</a>}
                 </div>
                 <p className="mt-2 text-[10px] text-slate-300">
                   © {new Date().getFullYear()} Mahiman Singh Rathore · All rights reserved
@@ -1276,7 +1296,7 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
   );
 }
 
-function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "" }) {
+function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "", appleSignIn = false }) {
   const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "", mostDays: "", anotherLife: "" });
 
   useEffect(() => {
@@ -1316,7 +1336,11 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
   // header greets you by, and what search will look you up by. "Someone" everywhere is worse
   // for the person who skipped it than the one extra field.
   const nameGiven = form.fullName.trim().length > 0;
-  const valid = Boolean(form.country) && nameGiven && Boolean(form.email) && dobComplete && !tooYoung;
+  // EXCEPT after Sign in with Apple (App Store Guideline 4): Apple has already provided — or
+  // deliberately withheld — the name and email, and an app may not then insist on them. The name
+  // is offered, pre-filled when Apple shared it, and optional; the email is never asked for. A
+  // blank name is saved as "Kind stranger" (completeOnboarding) and can be changed any time.
+  const valid = Boolean(form.country) && (nameGiven || appleSignIn) && (Boolean(form.email) || appleSignIn) && dobComplete && !tooYoung;
 
   const onChange = (e) => { const { name, value } = e.target; setForm((prev) => ({ ...prev, [name]: value })); };
 
@@ -1341,13 +1365,13 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
         </InputRow>
 
         <InputRow icon={User}>
-          <input name="fullName" value={form.fullName} onChange={onChange} placeholder="Your name"
+          <input name="fullName" value={form.fullName} onChange={onChange} placeholder={appleSignIn ? "Name others see (optional)" : "Your name"}
             autoComplete="name"
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
         </InputRow>
         {/* Only once they've started filling the form in, so the very first thing a new
             person sees isn't an error about a field they haven't reached. */}
-        {!nameGiven && (form.country || form.dobMonth) && (
+        {!nameGiven && !appleSignIn && (form.country || form.dobMonth) && (
           <p className="px-1 -mt-1 text-xs font-semibold" style={{ color: "#B85F1D" }}>
             Add a name so people know who's saying hello.
           </p>
@@ -1361,7 +1385,7 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           <p className="px-1 pb-1 text-sm" style={{ color: "#7A6558" }}>
             Signed in as <span className="font-semibold" style={{ color: "#5C4A3E" }}>{form.email}</span>
           </p>
-        ) : (
+        ) : appleSignIn ? null : (
           <InputRow icon={Mail}>
             <input type="email" name="email" value={form.email} onChange={onChange} placeholder="Email Address"
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
@@ -1680,6 +1704,9 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [onboardingError, setOnboardingError] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  // After "Delete account" succeeds, the confirmation replaces everything (accountDeletion.js).
+  const [accountDeleted, setAccountDeleted] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
   const [showMapPrompt, setShowMapPrompt] = useState(false);
   const [lastSendTime, setLastSendTime] = useState(() => {
@@ -2466,6 +2493,7 @@ export default function App() {
   useBackLayer(Boolean(reactionBarId), () => setReactionBarId(null));
   useBackLayer(pickerOpen, () => setPickerOpen(false));
   useBackLayer(Boolean(glimpse), () => setGlimpse(null));
+  useBackLayer(showDeleteAccount, () => setShowDeleteAccount(false));
   useBackLayer(menuOpen, () => setMenuOpen(false));
   useBackLayer(showLevels, () => setShowLevels(false));
   useBackLayer(showUpgrade, () => setShowUpgrade(false));
@@ -2594,6 +2622,9 @@ export default function App() {
           // server has responded — without this it briefly looks like the user has no
           // profile and the onboarding screen flashes for an already-onboarded user.
           if (!snap.exists() && snap.metadata?.fromCache) return;
+          // The account is being deleted: its profile vanishing is expected, and must not flash
+          // the sign-up form behind the delete sheet.
+          if (accountDeletionInProgress()) return;
           const nextProfile = snap.exists() ? snap.data() : null;
           const done = Boolean(nextProfile?.onboardingCompletedAt) || Boolean(nextProfile?.fullName && nextProfile?.country && nextProfile?.dob);
           setProfile(nextProfile);
@@ -2945,6 +2976,16 @@ export default function App() {
         const provider = new OAuthProvider("apple.com");
         const credential = provider.credential({ idToken, rawNonce });
         await signInWithCredential(auth, credential);
+        // App Store Guideline 4 (Sign in with Apple): never ask for a name or email Apple has
+        // already given us. Apple shares the name ONCE, on the first authorisation, and the plugin
+        // hands it back as result.user.displayName — this used to be dropped on the floor, so the
+        // setup form asked for it again. Keep it on the Firebase user (so a later session can
+        // pre-fill it too) and pre-fill the form now.
+        const appleName = String(result?.user?.displayName || "").trim();
+        if (appleName) {
+          try { await updateAuthProfile(auth.currentUser, { displayName: appleName }); } catch { /* best-effort */ }
+          setPendingProfileData((prev) => ({ ...(prev || {}), fullName: appleName }));
+        }
         return;
       }
       const appleProvider = new OAuthProvider("apple.com");
@@ -3147,13 +3188,27 @@ export default function App() {
     finally { setIsSigningOut(false); }
   };
 
+  // What the setup form starts with: anything gathered at sign-up, else the name the sign-in
+  // provider already knows (Apple's first-time name, a Google account name) — nobody should have
+  // to type a name their account already carries. Memoised: Onboarding resets its form whenever
+  // this object changes identity.
+  const onboardingInitial = useMemo(
+    () => pendingProfileData || (currentUser?.displayName ? { fullName: currentUser.displayName } : null),
+    [pendingProfileData, currentUser?.displayName]
+  );
+
   const completeOnboarding = async (data) => {
     setOnboardingError(""); setIsSavingProfile(true);
     try {
       const user = auth.currentUser;
       if (!user || user.isAnonymous) { setOnboardingError("Please sign in before continuing."); return; }
       const normalizedEmail = normalizeEmail(user.email || data.email);
-      if (!normalizedEmail) { setOnboardingError("We could not verify your account email."); return; }
+      // Sign in with Apple may legitimately give us no email (and no name after the first
+      // authorisation) — Guideline 4 says we may not then require either. Everyone else signs
+      // in with an email, so a missing one there is still an error.
+      const appleUser = Boolean(user.providerData?.some((p) => p?.providerId === "apple.com"));
+      if (!normalizedEmail && !appleUser) { setOnboardingError("We could not verify your account email."); return; }
+      const fullName = String(data.fullName || "").trim() || "Kind stranger";
       // Show the welcome moment IMMEDIATELY (before the profile write). Otherwise the profile
       // onSnapshot fires the instant setDoc lands — flipping hasCompletedOnboarding true and
       // rendering the feed underneath for a beat before this function reaches its end and sets
@@ -3170,7 +3225,7 @@ export default function App() {
       // same prepare-and-screen route; see the note at the top of ProfilePhotoStep.jsx.
       const profilePhotoUrl = profile?.profilePhotoUrl || "";
       await setDoc(userProfileRef(user.uid), {
-        fullName: data.fullName, email: normalizedEmail, country: data.country, dob: data.dob,
+        fullName, email: normalizedEmail || null, country: data.country, dob: data.dob,
         mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
         profilePhotoUrl, ownerUid: user.uid, sparkBalance: Number(profile?.sparkBalance ?? 0),
         updatedAt: serverTimestamp(), onboardingCompletedAt: serverTimestamp(),
@@ -3179,7 +3234,7 @@ export default function App() {
       // Publish the readable subset so other members can see (and search for) this person
       // without `users` having to be world-readable. See src/publicProfile.js.
       syncPublicProfile(db, user.uid, {
-        fullName: data.fullName, country: data.country, profilePhotoUrl,
+        fullName, country: data.country, profilePhotoUrl,
         mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
       });
 
@@ -3631,6 +3686,11 @@ export default function App() {
   // Community greetings are AI-moderated at submit (api/submit-greeting) and champions rotate
   // automatically via the weekly cron — so there's no admin approve/reject/promote flow here.
 
+  // The account was just deleted. "Done" restarts the app once this device has forgotten it.
+  if (accountDeleted) {
+    return <AccountDeletedScreen onDone={() => { deviceForgotten().finally(() => { try { window.location.reload(); } catch { /* ignore */ } }); }} />;
+  }
+
   // Hold the loader until the profile read positively resolves, so an already-onboarded
   // user is never shown the onboarding screen during a transient cold-start read error.
   if (isAuthLoading || (isRealSignedInUser && !profileChecked)) {
@@ -3718,6 +3778,9 @@ export default function App() {
           <ModerationQueue db={db} darkMode={darkMode} onClose={() => setShowReports(false)} />
         )}
 
+        {showDeleteAccount && currentUser && !currentUser.isAnonymous && (
+          <DeleteAccount auth={auth} db={db} onClose={() => setShowDeleteAccount(false)} onDeleted={() => setAccountDeleted(true)} />
+        )}
         {glimpse && (
           <UserGlimpse db={db} uid={glimpse.uid} country={glimpse.country} name={glimpse.name} self={Boolean(glimpse.self)} onClose={() => setGlimpse(null)} />
         )}
@@ -3909,8 +3972,9 @@ export default function App() {
                 </div>
               ) : (
                 <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
-                  loading={isSavingProfile} initialData={pendingProfileData}
-                  initialEmail={currentUser?.email || ""} errorMessage={onboardingError} />
+                  loading={isSavingProfile} initialData={onboardingInitial}
+                  initialEmail={currentUser?.email || ""} errorMessage={onboardingError}
+                  appleSignIn={Boolean(currentUser?.providerData?.some((p) => p?.providerId === "apple.com"))} />
               )}
             </>
           )
@@ -4002,6 +4066,7 @@ export default function App() {
                       }}
                       onSignOut={handleSignOut}
                       isSigningOut={isSigningOut}
+                      onDeleteAccount={() => setShowDeleteAccount(true)}
                       globePulse={anim.globePulse}
                       db={db}
                       currentUser={currentUser}

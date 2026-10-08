@@ -25,6 +25,7 @@ import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimp
 import { syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { nextShowingUp } from "./rhythm";
 import { todayKey as localDayKey } from "./hytPrompts";
+import { accountDeletionInProgress } from "./accountDeletion";
 
 import {
   Bell,
@@ -685,7 +686,8 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
   useEffect(() => {
     if (!db || !currentUser) return;
     const pRef = doc(db, "presence", currentUser.uid);
-    const write = () => setDoc(pRef, { lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }).catch(() => {});
+    // Not while the account is being deleted — this would put back the record the server just removed.
+    const write = () => { if (!accountDeletionInProgress()) setDoc(pRef, { lastSeen: Date.now(), uid: currentUser.uid }, { merge: true }).catch(() => {}); };
     write();
     const id = setInterval(write, 60_000);
     return () => clearInterval(id);

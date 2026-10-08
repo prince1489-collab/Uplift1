@@ -107,7 +107,7 @@ workflows:
         #          submissions
         # Both mean the same thing — that version already shipped, so pick the next one. They are
         # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
-        MARKETING_VERSION: "3.19"
+        MARKETING_VERSION: "3.20"
       node: 20
       xcode: latest
       cocoapods: default
@@ -186,7 +186,7 @@ workflows:
           # the push + Sign in with Apple entitlements. See scripts/inject-google-plist.cjs.
           npm i xcode --no-save
           node scripts/inject-google-plist.cjs
-      - name: Configure Info.plist (Google URL scheme, push, export compliance)
+      - name: Configure Info.plist (Google URL scheme, push, export compliance, camera + photos)
         script: |
           PLIST=ios/App/App/Info.plist
           PB=/usr/libexec/PlistBuddy
@@ -201,6 +201,25 @@ workflows:
           $PB -c "Add :CFBundleURLTypes:0 dict" "$PLIST" 2>/dev/null || true
           $PB -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST" 2>/dev/null || true
           $PB -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REV" "$PLIST" 2>/dev/null || $PB -c "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 $REV" "$PLIST"
+          # Privacy strings for the camera and photo library (App Store rejection 2.1(a), build 76).
+          # The profile photo is an <input type="file" accept="image/*">, so iOS offers "Take Photo";
+          # without NSCameraUsageDescription iOS KILLS the app the moment the camera opens — which is
+          # exactly what App Review hit on an iPad. The library strings cover choosing a photo and the
+          # share sheet's "Save Image" (certificates, share cards). ios/ is regenerated every build,
+          # so these have to be written here, every time. No apostrophes: PlistBuddy's quoting is
+          # single quotes.
+          CAM="Seen uses your camera only when you choose to take a profile photo."
+          LIB="Seen opens your photos only when you choose a profile photo."
+          ADD="Seen saves an image to your photos only when you choose to, such as a kindness certificate."
+          $PB -c "Add :NSCameraUsageDescription string '$CAM'" "$PLIST" 2>/dev/null || $PB -c "Set :NSCameraUsageDescription '$CAM'" "$PLIST"
+          $PB -c "Add :NSPhotoLibraryUsageDescription string '$LIB'" "$PLIST" 2>/dev/null || $PB -c "Set :NSPhotoLibraryUsageDescription '$LIB'" "$PLIST"
+          $PB -c "Add :NSPhotoLibraryAddUsageDescription string '$ADD'" "$PLIST" 2>/dev/null || $PB -c "Set :NSPhotoLibraryAddUsageDescription '$ADD'" "$PLIST"
+          # Fail the build rather than ship an app that crashes on "Take Photo" again.
+          for KEY in NSCameraUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
+            VAL=$($PB -c "Print :$KEY" "$PLIST" 2>/dev/null || true)
+            if [ -z "$VAL" ]; then echo "ERROR: $KEY missing from Info.plist — the app would crash when it is used."; exit 1; fi
+            echo "  $KEY = $VAL"
+          done
           echo "Info.plist configured."
       - name: Generate app icon & splash from assets/ (non-fatal)
         script: |
@@ -403,7 +422,7 @@ workflows:
         #
         # Deliberately a rule and not a check: there is no honest way for a script to know which
         # commit is the last of a batch, and a guard that guessed would fire on every push.
-        ANDROID_VERSION_NAME: "3.19"
+        ANDROID_VERSION_NAME: "3.20"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.
