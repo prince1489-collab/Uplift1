@@ -60,3 +60,16 @@ export function setEveningCue(db, uid, cue) {
     : null;
   return setDoc(doc(db, "users", uid), { eveningCue: payload }, { merge: true }).catch(() => {});
 }
+
+// ── Today, in real life (3.25) ───────────────────────────────────────────────────────────────
+// "When will you do it?" — the plan realLife.planFor built (act, words, moment, hour, local date),
+// or null when it was done. Its own field rather than an evening cue: a journal thought held for
+// later must not overwrite the reminder for something someone said they would do at lunch, and
+// it is sent at the hour they chose, not at eight. api/send-reminder.js (realLifeDue) reads it.
+export function setRealLifePlan(db, uid, plan) {
+  if (!db || !uid) return Promise.resolve();
+  const payload = plan && plan.text && Number.isInteger(plan.hour) && plan.date
+    ? { ...plan, at: Date.now() }
+    : null;
+  return setDoc(doc(db, "users", uid), { realLifePlan: payload }, { merge: true }).catch(() => {});
+}

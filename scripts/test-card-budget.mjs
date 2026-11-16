@@ -22,7 +22,9 @@ check("and never both on one day", claimCard("2026-11-23", 2, t0 + 7 * DAY + 360
 check("telling someone how their words landed is followed by nothing", isQuietAct({ lastAct: { route: "reply", name: "Mona" } }));
 check("…nor is a kind note to someone you follow", isQuietAct({ lastAct: { route: "note", name: "Vidhi" } }));
 check("a message to a stranger can still get the week's card", !isQuietAct({ lastAct: { route: "sent" } }));
-check("…and so can something done in real life", !isQuietAct({ lastAct: { route: "act", name: null } }));
+// 3.25 — "Done it" on something done in real life is one warm line and nothing to fill in.
+check("something done in real life is followed by nothing", isQuietAct({ lastAct: { route: "act", name: null } }));
+check("…nor is someone you named yesterday", isQuietAct({ lastAct: { route: "act", name: "Sam" } }));
 check("a day saved before acts had a route is not quiet", !isQuietAct({ sent: true }) && !isQuietAct(null));
 
 let failed = 0;

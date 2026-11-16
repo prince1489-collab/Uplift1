@@ -5,6 +5,10 @@
 // self-care bank for the daily "Self" slot. Deterministic daily selection (date + uid),
 // so no server/cron is needed.
 
+// The everyday bank moved to realLife.js in 3.25, rewritten as acts with the words to say —
+// see its header. REAL_LIFE is what the bar shows when no area has been chosen.
+import { REAL_LIFE } from "./realLife.js";
+
 // ── The everyday bank ───────────────────────────────────────────
 // Where the daily kindness prompt comes from. It exists because of a plain finding in the
 // V2 review: the prompts were not too *hard*, they were too *situational*. Screening all 560
@@ -12,7 +16,7 @@
 // rotation for everyone, employed or not. Roughly one day in seven handed someone a task
 // they simply could not do, and a prompt you cannot do reads as a small daily failure.
 //
-// Every line here passes five tests:
+// Every line in it passed five tests (still true of realLife.js, which adds two more):
 //   1. under five minutes          2. costs nothing        3. no specific place
 //   4. no specific relationship — it works if you live alone and work alone
 //   5. not embarrassing to do in public
@@ -30,68 +34,6 @@
 //
 // scripts/check-hyt.cjs guards the shape of every line in this file. It cannot guard the MEANING
 // of one — see its header for what that costs and what to do about it.
-export const HYT_EVERYDAY = [
-  "Have you tried… replying to the message you've been putting off?",
-  "Have you tried… saying thank you to someone who was just doing their job?",
-  "Have you tried… letting one person go ahead of you today?",
-  "Have you tried… telling someone the specific thing they did that helped?",
-  "Have you tried… asking someone how they are, and waiting for the real answer?",
-  "Have you tried… sending a message to someone you thought about but never told?",
-  "Have you tried… letting someone finish their sentence when you already knew the ending?",
-  "Have you tried… paying someone a compliment you would normally only think?",
-  "Have you tried… putting your phone face down while someone is talking to you?",
-  "Have you tried… thanking someone for a thing nobody ever thanks them for?",
-  "Have you tried… noticing something new about someone, and saying so?",
-  "Have you tried… asking someone about the thing they love talking about?",
-  "Have you tried… telling someone you were wrong, before they have to raise it?",
-  "Have you tried… answering a question you find tedious patiently, one more time?",
-  "Have you tried… messaging someone the moment you think of them, rather than later?",
-  "Have you tried… giving someone your whole attention for one entire conversation?",
-  "Have you tried… saying “that sounds hard” instead of offering a solution?",
-  "Have you tried… thanking someone in front of other people rather than privately?",
-  "Have you tried… asking a follow-up question instead of changing the subject?",
-  "Have you tried… letting someone be right about something small?",
-  "Have you tried… noticing when someone has gone quiet, and checking in?",
-  "Have you tried… saying yes to a small request you would normally deflect?",
-  "Have you tried… telling someone what you would miss about them if they left?",
-  "Have you tried… making room for someone without being asked to?",
-  "Have you tried… greeting someone by name that you would usually just nod at?",
-  "Have you tried… apologising without adding “but” on the end of it?",
-  "Have you tried… asking someone what they need, instead of guessing?",
-  "Have you tried… asking about one detail someone told you last week?",
-  "Have you tried… telling someone their work made your day easier?",
-  "Have you tried… sharing something useful with the one person it would help most?",
-  "Have you tried… checking on someone who is fine, precisely because they always say fine?",
-  "Have you tried… letting someone help you, when refusing would have been easier?",
-  "Have you tried… saying the encouraging thing out loud instead of assuming they know?",
-  "Have you tried… being the one who breaks the silence after a disagreement?",
-  "Have you tried… asking someone older than you to tell you about something they know?",
-  "Have you tried… noticing one thing someone got right today, and saying so?",
-  "Have you tried… learning the name of someone you see every day?",
-  "Have you tried… telling someone it was good to see them, and meaning it?",
-  "Have you tried… telling someone you are proud of them, and saying why?",
-  "Have you tried… asking permission before giving advice?",
-  "Have you tried… making space in a conversation for the person who has not spoken?",
-  "Have you tried… asking someone's opinion on something you would usually decide alone?",
-  "Have you tried… thanking someone for their patience with you?",
-  "Have you tried… reaching out to the person you assume has plenty of people already?",
-  "Have you tried… letting someone tell you a story you have already heard?",
-  "Have you tried… being warm to someone who was short with you?",
-  "Have you tried… telling someone the good thing you heard said about them?",
-  "Have you tried… asking what went well in someone's day, not just what went wrong?",
-  "Have you tried… choosing the kinder interpretation of what someone just did?",
-  "Have you tried… saying goodbye properly rather than drifting off?",
-  "Have you tried… telling someone they do not have to explain themselves to you?",
-  "Have you tried… giving someone the benefit of a doubt you would want yourself?",
-  "Have you tried… asking someone to teach you the thing they are good at?",
-  "Have you tried… ending a message with something warm rather than just the facts?",
-  "Have you tried… letting someone change their mind without pointing out that they did?",
-  "Have you tried… saying the thing you have been meaning to say for weeks?",
-  "Have you tried… sitting with someone in a quiet moment without filling it?",
-  "Have you tried… asking someone what they are looking forward to?",
-  "Have you tried… thanking the person who taught you something you now do without thinking?",
-  "Have you tried… telling someone that what they said stayed with you?",
-];
 
 export const HYT_AREAS = [
   { id: "work", adultOnly: true, emoji: "💼", label: "Work life", prompts: [
@@ -907,7 +849,7 @@ export function todayKey(d = new Date()) {
 
 // Today's two: [kindness, self (age-banded self-care)].
 //
-// The kindness prompt comes from HYT_EVERYDAY by default — see the note on that bank for
+// The kindness prompt comes from REAL_LIFE (realLife.js) by default — see the note on that bank for
 // why. It used to rotate through the 14 themed areas, one per day, which meant everyone got
 // "Work life" every fortnight whether or not they had a workplace. The themed areas are now
 // opt-in: `chosenArea` selects one, and only then does the prompt come from it.
@@ -954,7 +896,9 @@ export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand
   const area = chosenArea
     ? areasForBand(ageBand).find((a) => a.id === chosenArea) || null
     : null;
-  const kindnessList = area ? area.prompts : HYT_EVERYDAY;
+  // The everyday list is acts with their words ({ act, say }, realLife.js); an area's prompts are
+  // still plain "Have you tried…" lines.
+  const kindnessList = area ? area.prompts : REAL_LIFE;
   // Kindness prompts are hour-agnostic by construction (five tests, none of them about time), so
   // only the self-care pool narrows. Filtering the pool rather than walking past a bad pick keeps
   // the choice an ordinary hash into a list, which is what makes it identical on two devices.
@@ -966,13 +910,15 @@ export function pickDaily({ uid = "anon", date = new Date(), swaps = {}, ageBand
   const pickFrom = (list, slot, offset = 0) =>
     list[(hytHash(`${uid}|${day}|${slot}`) + offset) % list.length];
 
+  const kind = pickFrom(kindnessList, "kindness", Math.min(1, swaps.kindness ?? 0));
   return [
     {
       slot: "kindness",
       areaId: area ? area.id : "everyday",
       emoji: area ? area.emoji : "🌱",
       label: area ? area.label : "Everyday kindness",
-      text: pickFrom(kindnessList, "kindness", Math.min(1, swaps.kindness ?? 0)),
+      text: typeof kind === "string" ? kind : kind.act,
+      say: typeof kind === "string" ? null : kind.say ?? null,
     },
     { slot: "self", areaId: SELF_META.id, emoji: SELF_META.emoji, label: SELF_META.label,
       text: pickFrom(selfList, "self", Math.min(1, swaps.self ?? 0)) },

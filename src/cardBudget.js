@@ -17,7 +17,12 @@
 // words — IS saying how you feel, in your own words or in one tap. Being asked straight after how
 // that felt, then why, then who's next was the screen people skipped every time. Those acts are
 // followed by nothing but the sheet's own "Sent ✓", and they don't use up the week's card.
-export const QUIET_ROUTES = new Set(["reply", "note"]);
+//
+// Since 3.25 the same goes for "Done it" on something done in real life: it is answered with one
+// warm line (SeenBar's REAL_LIFE_DONE) and nothing to fill in, because the person tapping it is
+// often standing in a queue or walking home — the moment to ask them anything has passed. That
+// leaves the week's card for a message sent to a stranger, the one act whose landing you can't see.
+export const QUIET_ROUTES = new Set(["reply", "note", "act"]);
 export const isQuietAct = (dayState) => QUIET_ROUTES.has(dayState?.lastAct?.route);
 
 const WEEK_MS = 7 * 86400000;

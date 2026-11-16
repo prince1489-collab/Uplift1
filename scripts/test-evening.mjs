@@ -15,7 +15,8 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, PLAN_FOR } from "../api/send-reminder.js";
+import { MOMENTS, planFor } from "../src/realLife.js";
 import { cueDateKey } from "../src/eveningCue.js";
 
 const results = [];
@@ -150,6 +151,30 @@ check("no away line for someone barely away", awayMessage(2) === null);
 check("hearts while away say so", newsMessage({ replies: 0, hearts: 3 }, 4)?.title === "While you were away ❤️");
 const GUILT = /streak|don't lose|running out|last chance|still haven't|should have|failed|miss(ed)? out|lose|losing/i;
 for (const m of [awayMessage(5), whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-05" } }, D), newsMessage({ replies: 0, hearts: 2 }, 5)]) {
+  check(`no guilt in "${m.title}"`, !GUILT.test(`${m.title} ${m.body}`));
+}
+
+// ── Today, in real life (3.25): the reminder at the moment they chose ────────────────────────
+// Sent at that hour, on that day, and never otherwise — and it quotes their own act and words.
+{
+  const lunch = MOMENTS.find((m) => m.id === "lunch");
+  const plan = planFor({ text: "Thank someone who's just doing their job.", say: "Thanks — you made that easy." }, lunch, "2026-11-16");
+  const at = (hour, today = "2026-11-16", p = plan) => realLifeDue({ hour, plan: p }, today);
+  check("real life: due at the hour they chose, on the day", at(12) === true);
+  check("real life: not an hour early", at(11) === false);
+  check("real life: not an hour late", at(13) === false);
+  check("real life: yesterday's plan stays quiet", at(12, "2026-11-17") === false);
+  check("real life: no plan, nothing", realLifeDue({ hour: 12, plan: null }, "2026-11-16") === false);
+  check("real life: an empty act sends nothing", at(12, "2026-11-16", { ...plan, text: "  " }) === false);
+  check("real life: an hour that isn't a number sends nothing", at(12, "2026-11-16", { ...plan, hour: "12" }) === false);
+  const m = realLifeMessage(plan);
+  check("real life: says which moment", m.title === "Your kind thing for lunch 👣", m.title);
+  check("real life: quotes the act and the words", m.body === "Thank someone who's just doing their job. Try: “Thanks — you made that easy.”", m.body);
+  check("real life: opens the bar, where the card is", m.open === "practice");
+  check("real life: no words, no \"Try:\"", !realLifeMessage({ ...plan, say: null }).body.includes("Try"));
+  check("real life: an unknown moment still reads", realLifeMessage({ ...plan, moment: "x" }).title === "Your kind thing for today 👣");
+  check("real life: the four moments match the app's", MOMENTS.every((x) => PLAN_FOR[x.id] === x.for) && Object.keys(PLAN_FOR).length === MOMENTS.length);
+  check("real life: the plan carries its local date and hour", plan.date === "2026-11-16" && plan.hour === 12 && plan.moment === "lunch");
   check(`no guilt in "${m.title}"`, !GUILT.test(`${m.title} ${m.body}`));
 }
 

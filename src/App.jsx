@@ -47,7 +47,7 @@ import MySeenStory from "./MySeenStory";
 import { awardPoints, getPoints, syncPoints } from "./points";
 import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./publicProfile";
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
-import { setEveningCue } from "./eveningCue";
+import { setRealLifePlan } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
 import { claimCertificate } from "./certificates";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
@@ -2778,14 +2778,26 @@ export default function App() {
     if (openTarget === "reflect") setShowJournal(true);
     // A reply notification opens the conversation list, where the whole exchange is.
     if (openTarget === "replies") setActiveTab("messages");
-    if (openTarget === "practice") openSeenBar();
-    // `kindness` waits for the inbox to load — see the effect below.
+    // `practice` and `kindness` wait for what they open — see the effects below.
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("open");
       window.history.replaceState({}, "", url.toString());
     } catch { /* ignore */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A reminder about the bar ("Your kind thing for lunch", "how did it go?") opens the bar, where
+  // today's real-life card is first and "Done it" is one tap (3.25). This used to fire on mount,
+  // and a tapped notification always STARTS the app (onOpenLink reloads): the request was made
+  // while the boot screen was up, the bar mounted afterwards already holding it as "seen", and the
+  // notification landed on a closed bar. So it waits until the main screen is there, once.
+  const practiceTargetDone = useRef(false);
+  const mainScreenReady = isRealSignedInUser && profileChecked && !isAuthLoading;
+  useEffect(() => {
+    if (openTarget !== "practice" || practiceTargetDone.current || !mainScreenReady) return;
+    practiceTargetDone.current = true;
+    openSeenBar();
+  }, [openTarget, mainScreenReady, openSeenBar]);
 
   // A "someone thought of you" notification opens the message it was about. The inbox arrives a
   // moment after the app does, so this waits for it, once.
@@ -4931,7 +4943,12 @@ export default function App() {
                 onSeeAllFollows={() => setShowFollowing(true)}
                 onFindPeople={() => setShowFollowing(true)}
                 onKindAct={creditRealAct}
-                onPlanChange={(text) => setEveningCue(db, currentUser?.uid, text ? { kind: "planned", text } : null)}
+                // "When will you do it?" (3.25): the plan the bar built, sent back at that moment by
+                // api/send-reminder.js — or null once it is done.
+                onPlanChange={(plan) => setRealLifePlan(db, currentUser?.uid, plan || null)}
+                // Whether a reminder can actually arrive: a device to send to and a timezone to
+                // know when "lunch" is. Without them the card still lets you plan, and says only that.
+                canRemind={Boolean(profile?.timezone) && Boolean(profile?.fcmToken || Object.values(profile?.fcmTokens || {}).some((v) => v?.token))}
                 onSayMore={() => setShowJournal(true)} />
               </footer>
             )}

@@ -12,7 +12,8 @@
 //   💬 someone you follow                  (tell them how their words landed)
 //   💌 a kind note to someone you follow
 //   🌍 a stranger, anywhere                (the send sheet)
-//   🤝 someone in real life                (today's idea, with one swap)
+//   🤝 someone in real life                (today's act and the words to say — its own card,
+//                                           first until done, with "when?" and a reminder; 3.25)
 //   🌱 yesterday's "who's next"            (a name you gave yourself)
 //
 // Any one of them completes the day. Now and then an act is followed by ONE question — "Feel it"
@@ -35,7 +36,8 @@ import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, feltFor, feltSkippedFor } from "./hytState";
-import { recordReflection, recordFeelingEntry, actPhrase } from "./feelings";
+import { recordReflection, recordFeelingEntry } from "./feelings";
+import { momentsLeft, momentById, planFor, actAsPhrase } from "./realLife";
 import { sentenceFor, playBack, pickFeelCard, readCardHistory, rememberCard, PULSE } from "./feelingWords";
 import { pickReflect, rememberPick, fillName, setWhosNext, whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
@@ -102,9 +104,18 @@ const kindnessFrom = (m) => {
 // what kind of thing happened, never a number that might be zero.
 // `delivery` (3.21) is where today's message to a stranger went: it now lands on one real person,
 // and the country it reached is the truest thing the bar can say — about THIS message, not any.
-function consequence(route, echo, name, delivery = null) {
+// After "Done it" in real life (3.25), the one warm line — true of any act, a different one now
+// and then so it never becomes wallpaper. It is all that follows: nothing to fill in.
+const REAL_LIFE_DONE = [
+  "That happened off the screen — and it counts.",
+  "Someone's day just got a little lighter.",
+  "Small, real and done. That's the kind people remember.",
+];
+
+function consequence(route, echo, name, delivery = null, n = 0) {
   if (route === "reply") return `Your words reached ${name || "them"}.`;
   if (route === "note") return `${name || "They"} will get your note — only them.`;
+  if (route === "act") return REAL_LIFE_DONE[Math.abs(Number(n) || 0) % REAL_LIFE_DONE.length];
   if (route === "sent" && delivery?.delivered) {
     return delivery.country
       ? `Your words reached someone in ${inCountry(delivery.country)} 💛 You'll hear if they write back.`
@@ -172,6 +183,74 @@ function FeelCard({ card, lead, onSave, onSkip }) {
   );
 }
 
+// ── Today, in real life (3.25) ───────────────────────────────────────────────────────────────
+// Its own card, first in the panel until it is done, because it was the option everybody read
+// past: fourth of four, styled like the rest, and the only one you can't finish on the phone. It
+// says the act, the words to say (realLife.js — "what do I even say" is what stops people in the
+// moment), and "Done it". "Not now?" asks WHEN — this morning, at lunch, on the way home, this
+// evening — and Seen sends the act and the words at that moment (api/send-reminder.js), so the
+// reminder arrives when it can be acted on rather than hours later. Done is one tap and one warm
+// line; nothing to fill in (cardBudget.isQuietAct).
+function RealLifeCard({ item, planMoment, canRemind, canSwap, onDone, onPlan, onSwap }) {
+  const [changing, setChanging] = useState(false);
+  const moment = momentById(planMoment);
+  const left = momentsLeft(new Date());
+  const choosing = !moment || changing;
+  return (
+    // bg-gradient-to-br + from-orange-50: the pair index.css already turns into the warm night tint.
+    <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white px-3.5 pb-3 pt-2.5 shadow-sm"
+      style={{ animation: "seenFadeUp 220ms ease both" }}>
+      <div className="flex items-center gap-1.5">
+        <Footprints size={13} className="text-orange-500" aria-hidden />
+        <p className="flex-1 text-[10.5px] font-bold uppercase tracking-wide text-orange-600">Today, in real life</p>
+        {canSwap && (
+          <button onClick={onSwap} aria-label="Swap for another one (once a day)" title="Swap (once a day)"
+            className="-mr-1 grid h-7 w-7 place-items-center rounded-lg text-orange-300 hover:text-orange-600">
+            <RefreshCw size={13} />
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-[15px] font-extrabold leading-snug text-slate-800">{item.text}</p>
+      {item.say && (
+        <p className="mt-1.5 text-[13px] leading-snug text-slate-600">
+          Try: <span className="font-semibold italic text-slate-800">“{item.say}”</span>
+        </p>
+      )}
+      <button onClick={onDone}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-2.5 text-[14px] font-bold text-white shadow-sm active:scale-[0.99]">
+        <Check size={15} strokeWidth={3} /> Done it
+      </button>
+      {moment && !changing && (
+        <p className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-snug text-slate-600">
+          <Clock size={12} className="mt-[1px] flex-shrink-0 text-orange-500" aria-hidden />
+          <span>
+            Planned for {moment.for}{canRemind ? ` — Seen will remind you at ${fmtHour(moment.hour)}` : ""}.{" "}
+            {left.length > 0 && <button onClick={() => setChanging(true)} className="font-semibold text-teal-700">Change</button>}
+          </span>
+        </p>
+      )}
+      {choosing && left.length > 0 && (
+        <div className="mt-2.5">
+          <p className="text-[11.5px] font-semibold text-slate-500">Not now? When will you do it?</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {left.map((m) => (
+              <button key={m.id} onClick={() => { onPlan(m); setChanging(false); }} aria-pressed={m.id === planMoment}
+                className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold active:scale-95 ${m.id === planMoment
+                  ? "border-orange-300 bg-orange-100 text-orange-700" : "border-orange-200 bg-white text-slate-700 hover:bg-orange-50"}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+          {canRemind && <p className="mt-1.5 text-[10.5px] text-slate-400">Seen will remind you then, with the words.</p>}
+        </div>
+      )}
+      {!moment && left.length === 0 && (
+        <p className="mt-2 text-center text-[11px] text-slate-500">Any time before bed counts.</p>
+      )}
+    </div>
+  );
+}
+
 const clip = (t, n = 60) => {
   const s = String(t || "").replace(/^[“"]|[”"]$/g, "").trim();
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
@@ -182,7 +261,7 @@ export default function SeenBar({
   inboxReply, followMessage, follows = [], delivery = null, kindnessIn = null, onOpenKindness,
   openRequest = 0, coach = false, sendLimitReached = false, onOpened,
   onSend, onReplyTo, onOpenReply, onNote, onSeeAllFollows, onFindPeople,
-  onKindAct, onPlanChange, onSayMore,
+  onKindAct, onPlanChange, onSayMore, canRemind = false,
 }) {
   const uid = currentUser?.uid ?? "anon";
   const view = useVisibleViewport();
@@ -193,6 +272,9 @@ export default function SeenBar({
   const [section, setSection] = useState(null); // "notes" | "time" — a sub-part of the panel
   const [answer, setAnswer] = useState("");
   const [askTime, setAskTime] = useState(() => !nudgeAsked());
+  // Something was just done in this open panel — "Done it" is followed by one warm line, so the
+  // one-time "when should we remind you?" waits for the next time the bar is opened.
+  const [justActed, setJustActed] = useState(false);
   // "Right now…" lines people you follow chose to share (3.15), read when the notes list opens.
   // Fresh ones (two weeks) go first, with the line as the hint — understanding turned into an act.
   const [lines, setLines] = useState({});
@@ -240,7 +322,7 @@ export default function SeenBar({
 
   // Somebody else asked for the bar to open (a notification, the Grow button).
   const [seenRequest, setSeenRequest] = useState(openRequest);
-  if (openRequest !== seenRequest) { setSeenRequest(openRequest); setOpen(true); }
+  if (openRequest !== seenRequest) { setSeenRequest(openRequest); setOpen(true); setJustActed(false); }
 
   const item = useMemo(
     () => pickDaily({ uid, swaps: state.swaps, ageBand, chosenArea: null, evening: state.evening !== false })
@@ -256,10 +338,12 @@ export default function SeenBar({
   const route = state.lastAct?.route
     ?? (actDone || whoDone ? "act" : state.sentVia === "reply" ? "reply" : state.sentVia === "note" ? "note" : "sent");
   const toName = state.lastAct ? state.lastAct.name : whoDone ? state.whoName : state.sentTo;
-  const planned = Boolean(state.planned?.kindness);
-  // ONE replacement a day, no more. The area picker that used to count as a second route to a
-  // different idea is gone with the Practice tab.
-  const canSwap = !state.swaps?.kindness && !actDone;
+  // When they said they'd do it (3.25): a moment id from realLife.MOMENTS. A day planned before
+  // 3.25 ("Later today") has `planned` with no moment, and is simply asked when.
+  const planMoment = state.planned?.kindness ? state.planMoment ?? null : null;
+  // ONE replacement a day, no more — and not once it is planned, so the reminder never quotes an
+  // act that is no longer on the card. The area picker went with the Practice tab.
+  const canSwap = !state.swaps?.kindness && !actDone && !planMoment;
   const next = whosNext(day);
 
   // ── Today's reflection ─────────────────────────────────────────────────────────────────────
@@ -290,12 +374,12 @@ export default function SeenBar({
   const awaitingFeel = done && !quiet && cardFor("feel", day, count) && !feltFor(state, count) && !feltSkippedFor(state, count);
   // The question about the other person: at most once a week, never the same day as "Feel it".
   const awaitingReflection = done && !quiet && !awaitingFeel && cardFor("reflect", day, count) && !state.reflected && !state.reflectSkipped;
-  const awaitingTime = done && !awaitingFeel && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
+  const awaitingTime = done && !justActed && !awaitingFeel && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
 
   const what = route === "reply" ? `told ${toName || "someone"} how their words landed`
     : route === "note" ? `sent ${toName || "someone"} a kind note`
     : route === "sent" ? "sent a kind message to someone in the world"
-    : toName ? `made ${toName} feel seen` : actPhrase(item.text);
+    : toName ? `made ${toName} feel seen` : `did something kind in real life (${actAsPhrase(item.text)})`;
 
   const reflect = (value) => {
     const a = String(value || "").trim();
@@ -355,24 +439,30 @@ export default function SeenBar({
   };
 
   // ── The real-life ways ─────────────────────────────────────────────────────────────────────
+  // "Done it" is one tap and one warm line (the summary above the card). Nothing to fill in:
+  // real-life acts are quiet (cardBudget.isQuietAct), and a plan's reminder is cleared by
+  // completeSlot through onPlanChange(null).
   const doneIt = () => {
     const after = completeSlot(state, "kindness", { onKindAct, onPlanChange });
-    claimCard(day, countOf(after));
+    if (!isQuietAct(after)) claimCard(day, countOf(after));
     update(after);
+    setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const doneWho = () => {
     // Done — so tomorrow's push shouldn't still be about them.
     if (db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: null }).catch(() => {});
     const after = { ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } };
-    claimCard(day, countOf(after));
+    if (!isQuietAct(after)) claimCard(day, countOf(after));
     update(after);
+    setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
-  const later = () => {
-    if (actDone || planned) return;
-    update({ ...state, planned: { ...(state.planned ?? {}), kindness: true } });
-    try { onPlanChange?.(item.text); } catch { /* ignore */ }
+  // "When will you do it?" — the moment, and the reminder at that moment (3.25).
+  const planIt = (m) => {
+    if (actDone || !m) return;
+    update({ ...state, planned: { ...(state.planned ?? {}), kindness: true }, planMoment: m.id });
+    try { onPlanChange?.(planFor(item, m, day)); } catch { /* ignore */ }
   };
   const swap = () => { if (canSwap) update({ ...state, swaps: { ...state.swaps, kindness: 1 } }); };
 
@@ -402,7 +492,7 @@ export default function SeenBar({
           button used to have, which is the action it now replaces. It always says the same
           thing. Before today's first kind act it pulses; after, it goes calm and a pill counts
           the people you made feel seen today — an invitation to one more, never a nag. */}
-      <button data-tour="send" onClick={() => { if (open) close(); else setOpen(true); setSection(null); onOpened?.(); }} aria-expanded={open}
+      <button data-tour="send" onClick={() => { if (open) close(); else { setOpen(true); setJustActed(false); } setSection(null); onOpened?.(); }} aria-expanded={open}
         className={`relative flex w-full items-center gap-1.5 overflow-hidden rounded-2xl py-3 pl-3.5 pr-2.5 text-left text-white active:scale-[0.99] transition-transform${done ? "" : " send-kindness-pulse"}`}
         style={{
           background: "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #E07C33 100%)",
@@ -500,7 +590,7 @@ export default function SeenBar({
                 {done && (
                   // Three clear lines: what it did, the question, your answer — never run together.
                   <div className="mb-2 rounded-xl bg-orange-50/80 px-3 py-2.5">
-                    <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName, delivery)}</p>
+                    <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName, delivery, count)}</p>
                     {thisFelt && (
                       <p className="mt-1 text-[13px] font-semibold leading-snug text-teal-700">{playBack(thisFelt)}</p>
                     )}
@@ -516,8 +606,15 @@ export default function SeenBar({
                     </div>
                   </div>
                 )}
+                {/* Today, in real life — first until it is done (3.25). */}
+                {!actDone && (
+                  <div className="pb-1.5">
+                    <RealLifeCard item={item} planMoment={planMoment} canRemind={canRemind} canSwap={canSwap}
+                      onDone={doneIt} onPlan={planIt} onSwap={swap} />
+                  </div>
+                )}
                 <p className="px-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  {done ? "Make someone else feel seen" : "Who will it be?"}
+                  {done ? "Make someone else feel seen" : "Or here, in a minute"}
                 </p>
 
                 {next && !whoDone && (
@@ -586,41 +683,15 @@ export default function SeenBar({
                     hint="Send a kind message · 20 seconds" onClick={go(onSend)} />
                 )}
 
-                {/* Someone in real life — today's idea, with one swap and no more. */}
-                <div className={`rounded-xl border px-3 py-2.5 ${actDone ? "border-teal-200 bg-teal-50/40" : "border-slate-100 bg-white"}`}>
-                  <div className="flex items-start gap-2.5">
+                {/* Today's real-life one, once done: kept in the list, quietly, as what you did. */}
+                {actDone && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-teal-200 bg-teal-50/40 px-3 py-2.5">
                     <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-teal-50 text-teal-600"><Footprints size={15} /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold leading-snug text-slate-800">Someone in real life</p>
-                      <p className="mt-0.5 text-[12px] leading-snug text-slate-600">{item.text}</p>
+                      <p className="text-[13px] font-semibold leading-snug text-slate-800">In real life <span className="text-teal-600">· ✓ Done today</span></p>
+                      <p className="mt-0.5 text-[12px] leading-snug text-slate-500">{item.text}</p>
                     </div>
-                    {canSwap && (
-                      <button onClick={swap} aria-label="Swap for another idea (once a day)" title="Swap (once a day)"
-                        className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg text-slate-300 hover:text-teal-600">
-                        <RefreshCw size={13} />
-                      </button>
-                    )}
                   </div>
-                  {actDone ? (
-                    <p className="mt-1.5 pl-[42px] text-[11px] font-semibold text-teal-600">✓ Done today</p>
-                  ) : (
-                    <div className="mt-2 flex gap-1.5 pl-[42px]">
-                      <button onClick={doneIt}
-                        className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-teal-200 bg-teal-50 py-1.5 text-[12px] font-bold text-teal-700 active:scale-[0.98]">
-                        <Check size={13} strokeWidth={3} /> Done it
-                      </button>
-                      {planned ? (
-                        <span className="flex-1 self-center text-center text-[11px] font-semibold text-teal-600">Planned for today</span>
-                      ) : (
-                        <button onClick={later} className="flex-1 rounded-lg border border-slate-200 py-1.5 text-[12px] font-semibold text-slate-500 active:scale-[0.98]">
-                          Later today
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {!canSwap && !actDone && state.swaps?.kindness && (
-                  <p className="px-1 text-[10px] text-slate-400">Today's swap is used — a fresh idea arrives tomorrow.</p>
                 )}
                 <button onClick={() => setSection("time")} className="flex items-center gap-1 px-1 pt-1 text-[10px] text-slate-500 hover:text-slate-600">
                   <Clock size={10} /> {nudgeLabel(nudgeHour) ? `Reminder: ${nudgeLabel(nudgeHour)}` : "Reminder: 9am"} · One is enough — anything more is a bonus.

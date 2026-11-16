@@ -119,6 +119,33 @@ export function plannedForDaily(e, todayKey) {
   return plannedMessage(e.cue.text);
 }
 
+// ── Today, in real life (3.25) ───────────────────────────────────────────────────────────────
+// "When will you do it?" — this morning, at lunch, on the way home, this evening. The person chose
+// the moment, so the push comes AT it, quoting the act and the words to say: a reminder that
+// arrives when the thing can be done, not at eight when the chances have gone. It is their own
+// plan, so it is not thinned for drifting or held back for having already acted today, and it
+// is the only push that hour (the daily and evening ones step aside). The plan carries the LOCAL
+// date it was made on and is cleared when they tap "Done it", so a plan nobody finished simply
+// stops matching at their midnight. The ids mirror realLife.js MOMENTS (scripts/test-evening.mjs).
+export const PLAN_FOR = { morning: "this morning", lunch: "lunch", home: "the way home", evening: "this evening" };
+
+export function realLifeDue(e, todayKey) {
+  const p = e?.plan;
+  return Boolean(p && typeof p.text === "string" && p.text.trim()
+    && p.date === todayKey && Number.isInteger(p.hour) && p.hour === e.hour);
+}
+
+export function realLifeMessage(plan) {
+  const text = String(plan?.text || "").trim().slice(0, 120);
+  const say = typeof plan?.say === "string" && plan.say.trim() ? ` Try: “${plan.say.trim().slice(0, 70)}”` : "";
+  return {
+    title: `Your kind thing for ${PLAN_FOR[plan?.moment] || "today"} 👣`,
+    body: `${text}${say}`,
+    // The bar, where this card is first and "Done it" is one tap.
+    open: "practice",
+  };
+}
+
 // Today, in the RECIPIENT's calendar rather than the server's. The cue carries the date it was
 // written on, and comparing them is the whole of its expiry: a cue nobody came back to simply
 // stops matching at their midnight. No sweep, no cleanup job, no stale state to go wrong.
@@ -332,6 +359,7 @@ export default async function handler(req, res) {
           timezone: data.timezone,
           eveningOn: data.eveningReminders === true,
           cue: data.eveningCue || null,
+          plan: data.realLifePlan || null,
           nudgeHour: data.nudgeHour,
           activeDates: Array.isArray(data.activeDates) ? data.activeDates : [],
           lastOpenDay: data.lastOpenDay || null,
@@ -346,18 +374,23 @@ export default async function handler(req, res) {
         today: localDateKey(e.timezone, now),
       }));
 
-    // Each person at the hour they chose (9am if they never did) — unless the evening slot is
-    // speaking to them this same hour, in which case that more specific message is the only one.
-    const entries = everyone.filter((e) => e.hour === dailyHourFor(e) && !eveningDue(e, e.today));
+    // Something they said they would do in real life, at the moment they chose (3.25). The most
+    // specific thing Seen could say this hour, so it is the only push they get this hour.
+    const planEntries = everyone.filter((e) => realLifeDue(e, e.today));
+
+    // Each person at the hour they chose (9am if they never did) — unless the evening slot or
+    // their own real-life plan is speaking to them this same hour, in which case that more
+    // specific message is the only one.
+    const entries = everyone.filter((e) => e.hour === dailyHourFor(e) && !eveningDue(e, e.today) && !realLifeDue(e, e.today));
 
     // The evening slot. Three conditions, all of them narrowing, and the result on an ordinary
     // day is an empty list: it is eight in the evening for you, you turned this on, and you left
     // something open TODAY in your own calendar — not the server's, which is why the cue carries
     // a date rather than a timestamp.
-    const eveningEntries = everyone.filter((e) => eveningDue(e, e.today));
+    const eveningEntries = everyone.filter((e) => eveningDue(e, e.today) && !realLifeDue(e, e.today));
 
-    if (!entries.length && !eveningEntries.length) {
-      return res.status(200).json({ sent: 0, total: snap.size, matched: 0, evening: 0 });
+    if (!entries.length && !eveningEntries.length && !planEntries.length) {
+      return res.status(200).json({ sent: 0, total: snap.size, matched: 0, evening: 0, realLife: 0 });
     }
 
     // Fortnightly parity (UTC week index) decides whether this Sunday includes the wellbeing prompt.
@@ -398,6 +431,15 @@ export default async function handler(req, res) {
 
     // The generic line is the same sentence for everybody, so it is worth computing once.
     const world = await worldOvernight(db, since);
+
+    // ── The real-life pass (3.25) ───────────────────────────────────────────────────────────
+    // First of all: each of these is a time the person picked themselves, today.
+    let realLifeSent = 0;
+    for (const e of planEntries) {
+      const before = sent;
+      await pushTo(e.uid, e.rows, realLifeMessage(e.plan));
+      if (sent > before) realLifeSent += 1;
+    }
 
     // ── The evening pass ────────────────────────────────────────────────────────────────────
     // Before the morning one, so that if anything below throws, the people who asked to be
@@ -446,6 +488,7 @@ export default async function handler(req, res) {
       // Reported separately, because "how many evening reminders went out" is the number to watch
       // on this feature. It should be small, and on most days zero.
       eveningMatched: eveningEntries.length, eveningSent,
+      realLifeMatched: planEntries.length, realLifeSent,
     });
   } catch (err) {
     console.error("[send-reminder]", err?.code, err?.message);
