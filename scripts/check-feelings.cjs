@@ -128,6 +128,23 @@ const GUILT = /should|must|failed|streak|lazy|selfish/i;
         hist = [...hist, { key: k.key, route, shape: k.shape, stem: k.stem, words: k.words, consequence: k.consequence, endings: ends }].slice(-12);
       });
     }
+
+    // ── One tap (3.24): what the bar asks for — never a two-question shape, still never the same card ──
+    let hist1 = [];
+    for (let d = 1; d <= 20; d++) {
+      const dd = `2026-12-${String(d).padStart(2, "0")}`;
+      for (const [i, route] of ["act", "sent", "act"].entries()) {
+        const k = m.pickFeelCard({ uid: "sim", day: dd, n: i + 1, route, routeCount: 1, name: "Sam", theirText: VIDHI, history: hist1, oneTap: true });
+        assert.equal(k.shape, "words", `one tap: ${route} on ${dd} is a ${k.shape} card`);
+        assert.ok(k.words.length >= 4 && k.words.some((w) => m.UNEASY.has(w)), "one tap: words to choose from, an uneasy one among them");
+        const prev = [...hist1].reverse().find((h) => h.route === route);
+        if (prev) assert.notEqual(prev.stem, k.stem, `one tap: same ${route} heading twice running on ${dd}`);
+        hist1 = [...hist1, { key: k.key, route, shape: k.shape, stem: k.stem, words: k.words, consequence: k.consequence, endings: [] }].slice(-12);
+      }
+    }
+    assert.equal(m.pickFeelCard({ uid: "u", day, n: 6, route: "sent", routeCount: 3, history: histA, oneTap: true }).shape, "pulse");
+    assert.equal(m.sentenceFor("words", { words: ["warm"] }), "I feel warm.");
+    assert.equal(m.playBack({ shape: "words", feelings: ["warm"], because: "" }), "You felt warm.");
   } catch (e) {
     problems.push(`helper test failed: ${e.message}`);
   }

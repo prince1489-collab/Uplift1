@@ -182,7 +182,11 @@ export function phrasesFrom(text, max = 3) {
 // ── The card ─────────────────────────────────────────────────────────────────────────────────
 // history: the last few cards shown (rememberCard), oldest first. Its own act's entry is ignored,
 // so the pick doesn't change once it has been remembered.
-export function pickFeelCard({ uid = "anon", day, n = 1, route = "sent", routeCount = 1, count = n, name = null, theirText = "", history = [] }) {
+//
+// `oneTap` (3.24, what the bar asks for): only shapes answered with a single tap — words, the
+// quick four, the pulse. The phrase and where-you-felt-it shapes are two questions in a row, and
+// one question is all a kind act is followed by now.
+export function pickFeelCard({ uid = "anon", day, n = 1, route = "sent", routeCount = 1, count = n, name = null, theirText = "", history = [], oneTap = false }) {
   const key = `${day}_${n}`;
   const rand = rng(`${uid}|${key}|${route}`);
   const prev = [...history].reverse().find((h) => h.route === route && h.key !== key) || null;
@@ -192,11 +196,13 @@ export function pickFeelCard({ uid = "anon", day, n = 1, route = "sent", routeCo
   let shape;
   if (routeCount >= 3) shape = "pulse";
   else if (routeCount === 2) shape = "quick";
+  else if (oneTap) shape = "words";
   else if (route === "reply" && phrases.length >= 2 && alt) shape = "quote";
   else if (route === "act" && alt) shape = "body";
   else shape = "words";
   // Never the same full shape for the same kind of act twice running.
-  if (prev && prev.shape === shape && (shape === "quote" || shape === "body")) shape = "words";
+  if (oneTap) { /* only one full shape; the heading and words still change (below) */ }
+  else if (prev && prev.shape === shape && (shape === "quote" || shape === "body")) shape = "words";
   else if (prev && prev.shape === "words" && shape === "words") {
     if (route === "reply" && phrases.length >= 2) shape = "quote";
     else if (route === "act") shape = "body";

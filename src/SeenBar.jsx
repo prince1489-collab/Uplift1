@@ -15,11 +15,11 @@
 //   🤝 someone in real life                (today's idea, with one swap)
 //   🌱 yesterday's "who's next"            (a name you gave yourself)
 //
-// Any one of them completes the day. After EVERY act comes "Feel it" (3.9): tap a word or two for
-// how it felt, tap an ending for why, and the app writes the sentence — "I feel proud because I
-// nearly didn't do it." (feelingWords.js says why words come first.) After the day's first act
-// it is followed by one optional question about the other person, a different one each day
-// (reflectPrompts.js). Then the bar folds back to one line that says what happened.
+// Any one of them completes the day. Now and then an act is followed by ONE question — "Feel it"
+// (a word for how it felt) or a small question about the other person — at most one of each a
+// week (cardBudget.js). It takes one tap, and then the bar folds away. Telling someone how their
+// words landed, or writing them a note, is never followed by anything: the feeling has just been
+// put into words, and asking about it again was the most-skipped screen in the app (3.24).
 //
 // The panel OVERLAYS the feed rather than pushing it, so opening it never moves anything, and
 // closing it puts everything back exactly where it was.
@@ -36,12 +36,12 @@ import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob, feltFor, feltSkippedFor } from "./hytState";
 import { recordReflection, recordFeelingEntry, actPhrase } from "./feelings";
-import { endingsFor, feelPhrase, sentenceFor, playBack, pickFeelCard, readCardHistory, rememberCard, PULSE, BODY_SPOTS, MAX_WORDS } from "./feelingWords";
+import { sentenceFor, playBack, pickFeelCard, readCardHistory, rememberCard, PULSE } from "./feelingWords";
 import { pickReflect, rememberPick, fillName, setWhosNext, whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
 import { inCountry } from "./countryName";
-import { claimCard, cardFor } from "./cardBudget";
+import { claimCard, cardFor, isQuietAct } from "./cardBudget";
 
 const PIN_KEY = (d) => `seen_reflect_pin_${d}`; // Journal.jsx's "hold this thought" key
 
@@ -116,177 +116,58 @@ function consequence(route, echo, name, delivery = null) {
 }
 
 // ── Feel it ──────────────────────────────────────────────────────────────────────────────────
-// The card pickFeelCard() chose for this act (feelingWords.js): its heading, its words and its
-// SHAPE — the full card, a quick row of four, a one-tap pulse, a phrase of their words (replies)
-// or where you felt it (real life). Two taps at most before Save; typing is always optional.
-// Keyed by the act's number, so each act starts clean.
+// The card pickFeelCard() chose for this act (feelingWords.js, `oneTap`): its heading and words.
+// ONE tap and it is kept, and the bar folds away (3.24). It used to be a word or two, then
+// "because…" with endings to pick, then Save — three answers to one question, and a screen
+// recording showed them skipped every time. A word you type yourself is still there for when
+// none of them fits. Keyed by the act's number, so each act starts clean.
 const chip = (on) => `rounded-xl border transition-all active:scale-95 ${on
   ? "border-teal-400 bg-teal-50 text-teal-700 shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`;
 
-function WordGrid({ words, picked, onToggle, cols = 4 }) {
-  return (
-    <div className={`mt-2 grid gap-1.5 ${cols === 4 ? "grid-cols-4" : "grid-cols-2"}`}>
-      {words.map((w) => (
-        <button key={w} onClick={() => onToggle(w)} aria-pressed={picked.includes(w)}
-          className={`truncate px-0.5 py-2 text-[12px] font-semibold tracking-tight ${chip(picked.includes(w))}`}>
-          {w}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function FeelCard({ card, lead, onSave, onSkip }) {
-  const [words, setWords] = useState([]);
   const [other, setOther] = useState(null); // null = closed; string = typing your own word
-  const [because, setBecause] = useState("");
-  const [why, setWhy] = useState(false);    // the quick card's "Add why"
-  const [body, setBody] = useState("");
-  const [quote, setQuote] = useState("");
-  const { shape, route } = card;
-  const toggle = (w) => setWords((cur) => cur.includes(w) ? cur.filter((x) => x !== w)
-    : [...cur, w].slice(shape === "words" ? -MAX_WORDS : -1)); // a further tap replaces — never a dead end
-  const addOther = () => {
-    const w = String(other || "").trim().toLowerCase().slice(0, 20);
-    if (w) toggle(w);
-    setOther(null);
+  const pick = (w) => {
+    const word = String(w || "").trim().toLowerCase().slice(0, 20);
+    if (word) onSave({ words: [word] });
   };
-  const endings = endingsFor(route, words, card.key, card.endingsAvoid);
-  const custom = words.filter((w) => !card.words.includes(w));
-  const save = (extra = {}) => onSave({ words, because, body, quote, endings, ...extra });
 
-  const head = (
-    <>
+  return (
+    <div style={{ animation: "seenFadeUp 220ms ease both" }}>
       <p className="text-[11px] font-semibold text-teal-600">{lead}</p>
       <p className="mt-1.5 text-[15px] font-extrabold leading-snug text-slate-800">{card.stem}</p>
-    </>
-  );
-  const because_ = (
-    <div className="mt-3 rounded-xl bg-orange-50/80 px-3 py-2.5" style={{ animation: "seenFadeUp 200ms ease both" }}>
-      <p className="text-[14px] font-bold leading-snug text-slate-800">
-        {feelPhrase(words)} because<span className="font-semibold text-slate-500">{because ? ` ${because}` : "…"}</span>
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {endings.map((b) => (
-          <button key={b} onClick={() => setBecause(because === b ? "" : b)}
-            className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${because === b ? chip(true) : "border border-orange-200 bg-white text-slate-600 active:scale-95"}`}>
-            …{b}
-          </button>
-        ))}
-      </div>
-      <input value={endings.includes(because) ? "" : because} onChange={(e) => setBecause(e.target.value.slice(0, 140))}
-        placeholder="…or in your own words"
-        className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
-    </div>
-  );
-  const actions = (ready) => (
-    <div className="mt-2.5 flex items-center gap-2">
-      <button onClick={() => save()} disabled={!ready}
-        className="flex-1 rounded-xl bg-teal-600 py-2 text-[13px] font-bold text-white transition-opacity disabled:opacity-40 active:scale-[0.99]">
-        Save
-      </button>
-      <button onClick={onSkip} className="px-2 py-2 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Skip</button>
-    </div>
-  );
-
-  // ── Pulse: one tap and done ──
-  if (shape === "pulse") {
-    return (
-      <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-        {head}
+      {card.shape === "pulse" ? (
         <div className="mt-3 grid grid-cols-5 gap-1.5">
           {PULSE.map((p) => (
-            <button key={p.word} onClick={() => save({ pulse: p })}
+            <button key={p.word} onClick={() => onSave({ pulse: p })}
               className={`flex flex-col items-center gap-0.5 py-2 ${chip(false)}`}>
               <span className="text-[22px] leading-none">{p.emoji}</span>
               <span className="text-[10.5px] font-semibold text-slate-500">{p.word}</span>
             </button>
           ))}
         </div>
-        <button onClick={onSkip} className="mt-2 w-full py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Skip</button>
-      </div>
-    );
-  }
-
-  // ── A phrase of THEIR words (replies) ──
-  if (shape === "quote") {
-    return (
-      <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-        {head}
-        <div className="mt-2 space-y-1.5">
-          {card.phrases.map((ph) => (
-            <button key={ph} onClick={() => setQuote(quote === ph ? "" : ph)}
-              className={`block w-full px-3 py-2 text-left text-[13px] italic ${chip(quote === ph)}`}>
-              “{ph}”
-            </button>
-          ))}
-        </div>
-        {quote && (
-          <div style={{ animation: "seenFadeUp 200ms ease both" }}>
-            <p className="mt-3 text-[13px] font-bold text-slate-700">…and it made you feel</p>
-            <WordGrid words={card.words} picked={words} onToggle={toggle} />
-          </div>
-        )}
-        {actions(Boolean(quote && words.length))}
-      </div>
-    );
-  }
-
-  // ── Where you felt it (real life) ──
-  if (shape === "body") {
-    return (
-      <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-        {head}
-        <p className="text-[11px] text-slate-400">Kindness often shows up in the body first.</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {BODY_SPOTS.map((b) => (
-            <button key={b} onClick={() => setBody(body === b ? "" : b)}
-              className={`px-3 py-1.5 text-[12.5px] font-semibold ${chip(body === b)}`}>{b}</button>
-          ))}
-        </div>
-        {body && (
-          <div style={{ animation: "seenFadeUp 200ms ease both" }}>
-            <p className="mt-3 text-[13px] font-bold text-slate-700">…and the feeling was</p>
-            <WordGrid words={card.words} picked={words} onToggle={toggle} />
-          </div>
-        )}
-        {actions(Boolean(body && words.length))}
-      </div>
-    );
-  }
-
-  // ── Quick: four words, "why" if you want it ──
-  if (shape === "quick") {
-    return (
-      <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-        {head}
-        <WordGrid words={card.words} picked={words} onToggle={toggle} />
-        {words.length > 0 && !why && (
-          <button onClick={() => setWhy(true)} className="mt-1.5 py-0.5 text-[11px] font-semibold text-teal-600">+ Add why</button>
-        )}
-        {words.length > 0 && why && because_}
-        {actions(words.length > 0)}
-      </div>
-    );
-  }
-
-  // ── The full card: words, then the sentence ──
-  return (
-    <div style={{ animation: "seenFadeUp 220ms ease both" }}>
-      {head}
-      <p className="text-[11px] text-slate-400">Pick one or two. There's no right answer.</p>
-      <WordGrid words={[...card.words, ...custom]} picked={words} onToggle={toggle} />
-      {other === null ? (
-        <button onClick={() => setOther("")} className="mt-1.5 py-0.5 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Something else…</button>
       ) : (
-        <form className="mt-1.5 flex gap-1.5" onSubmit={(e) => { e.preventDefault(); addOther(); }}>
-          <input value={other} onChange={(e) => setOther(e.target.value.slice(0, 20))} placeholder="Your own word" autoFocus
-            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[13px] focus:border-teal-400 focus:outline-none" />
-          <button type="submit" className="rounded-lg border border-teal-200 px-3 text-[12px] font-semibold text-teal-700">Add</button>
-        </form>
+        <>
+          <p className="text-[11px] text-slate-400">Tap the closest word. There's no right answer.</p>
+          <div className="mt-2 grid grid-cols-4 gap-1.5">
+            {card.words.map((w) => (
+              <button key={w} onClick={() => pick(w)}
+                className={`truncate px-0.5 py-2 text-[12px] font-semibold tracking-tight ${chip(false)}`}>
+                {w}
+              </button>
+            ))}
+          </div>
+          {other === null ? (
+            <button onClick={() => setOther("")} className="mt-1.5 py-0.5 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Something else…</button>
+          ) : (
+            <form className="mt-1.5 flex gap-1.5" onSubmit={(e) => { e.preventDefault(); pick(other); }}>
+              <input value={other} onChange={(e) => setOther(e.target.value.slice(0, 20))} placeholder="Your own word" autoFocus
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[13px] focus:border-teal-400 focus:outline-none" />
+              <button type="submit" disabled={!other.trim()} className="rounded-lg border border-teal-200 px-3 text-[12px] font-semibold text-teal-700 disabled:opacity-40">Keep</button>
+            </form>
+          )}
+        </>
       )}
-      {words.length > 0 && because_}
-      {actions(words.length > 0)}
+      <button onClick={onSkip} className="mt-2 w-full py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Not now</button>
     </div>
   );
 }
@@ -340,14 +221,15 @@ export default function SeenBar({
 
   // A send, reply or note elsewhere on the screen lands here live. Until 3.22 every one of them
   // opened the panel on a "Feel it" card; now only the act that gets this week's card does
-  // (cardBudget.js). Every other act is confirmed by the toast and the "✓ N today" pill, and the
-  // person is left to get on with their day.
+  // (cardBudget.js), and never a reply or a note (isQuietAct, 3.24) — those don't use up the
+  // week's card either. Every other act is confirmed by the toast and the "✓ N today" pill, and
+  // the person is left to get on with their day.
   useEffect(() => onDayState((d) => {
     if (d?.day !== day || !d.state) return;
     const n = countOf(d.state);
     const rose = n > countRef.current;
     setState(d.state);
-    if (rose && claimCard(day, n)) { setOpen(true); setSection(null); }
+    if (rose && !isQuietAct(d.state) && claimCard(day, n)) { setOpen(true); setSection(null); }
   }), [day]);
   const [shownCount, setShownCount] = useState(count);
   const [flash, setFlash] = useState(false);
@@ -403,10 +285,11 @@ export default function SeenBar({
   );
   const qText = fillName(question.q, toName);
   // Only for the act this week's card was offered for (cardBudget.js) — never a card from earlier
-  // in the day waiting in front of the options.
-  const awaitingFeel = done && cardFor("feel", day, count) && !feltFor(state, count) && !feltSkippedFor(state, count);
+  // in the day waiting in front of the options, and never after a reply or a note.
+  const quiet = isQuietAct(state);
+  const awaitingFeel = done && !quiet && cardFor("feel", day, count) && !feltFor(state, count) && !feltSkippedFor(state, count);
   // The question about the other person: at most once a week, never the same day as "Feel it".
-  const awaitingReflection = done && !awaitingFeel && cardFor("reflect", day, count) && !state.reflected && !state.reflectSkipped;
+  const awaitingReflection = done && !quiet && !awaitingFeel && cardFor("reflect", day, count) && !state.reflected && !state.reflectSkipped;
   const awaitingTime = done && !awaitingFeel && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
 
   const what = route === "reply" ? `told ${toName || "someone"} how their words landed`
@@ -429,6 +312,7 @@ export default function SeenBar({
       if (name && db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: { name, day } }).catch(() => {});
     }
     setAnswer("");
+    setOpen(false); // one question, then the bar folds away (3.24)
   };
   const skipReflection = () => { rememberPick(day, question.id); update({ ...state, reflectSkipped: true }); };
 
@@ -437,30 +321,33 @@ export default function SeenBar({
   const card = useMemo(
     () => pickFeelCard({
       uid, day, n: count, route, count, routeCount: state.routeCounts?.[route] || 1,
-      name: toName, theirText: state.lastAct?.theirText, history: readCardHistory(),
+      name: toName, theirText: state.lastAct?.theirText, history: readCardHistory(), oneTap: true,
     }),
     [uid, day, count, route, state.routeCounts, toName, state.lastAct]
   );
-  const saveFeel = ({ words, because, body, quote, pulse, endings }) => {
+  // One tap is the whole answer: kept, and the bar folds away — nothing else is asked after it.
+  const saveFeel = ({ words = [], pulse = null }) => {
     const feelings = pulse ? [pulse.word] : words;
-    const b = card.shape === "words" || card.shape === "quick" ? String(because || "").trim() : "";
-    const sentence = sentenceFor(card.shape, { words: feelings, because: b, body, quote, pulse });
-    const entry = { route, shape: card.shape, feelings, because: b, sentence, body: body || null, quote: quote || null, pulse: pulse?.emoji || null };
-    rememberCard(card, endings);
+    if (!feelings.length) return;
+    const sentence = sentenceFor(card.shape, { words: feelings, pulse });
+    const entry = { route, shape: card.shape, feelings, because: "", sentence, body: null, quote: null, pulse: pulse?.emoji || null };
+    rememberCard(card);
     update({ ...state, felt: { ...(state.felt || {}), [count]: entry } });
     recordFeelingEntry(db, currentUser?.uid, { day, n: count, route, act: what, toName, ...entry });
     try { navigator.vibrate?.([6]); } catch { /* ignore */ }
+    setOpen(false);
   };
   const skipFeel = () => {
     rememberCard(card);
     update({ ...state, feltSkipped: { ...(state.feltSkipped || {}), [count]: true } });
   };
-  // The most recent act that has words — what the done card plays back.
-  const lastFelt = Object.entries(state.felt || {}).sort((a, b) => Number(b[0]) - Number(a[0])).map(([, v]) => v).find((v) => v?.feelings?.length);
+  // How THIS act felt, if it was asked — what the done card plays back. (It used to be the latest
+  // act that had words, so "Your words reached Mona" sat over a feeling from a different act.)
+  const thisFelt = state.felt?.[count]?.feelings?.length ? state.felt[count] : null;
 
   const sayMore = () => {
     const r = state.reflected;
-    const felt = lastFelt?.sentence ? ` ${lastFelt.sentence}` : "";
+    const felt = thisFelt?.sentence ? ` ${thisFelt.sentence}` : "";
     const prompt = `Today you ${what}.${felt}${r ? ` ${r.q || qText} — ${r.answer}.` : ""} What happened, and what did you notice?`;
     try { localStorage.setItem(PIN_KEY(day), prompt); } catch { /* ignore */ }
     setOpen(false);
@@ -573,7 +460,7 @@ export default function SeenBar({
                 current={Number.isInteger(nudgeHour) ? nudgeHour : null}
                 onPick={pickTime} onSkip={skipTime} />
             ) : awaitingFeel ? (
-              <FeelCard key={card.key} card={card} onSave={saveFeel} onSkip={skipFeel}
+              <FeelCard key={card.key} card={card} onSave={saveFeel} onSkip={close}
                 lead={route === "sent" && (delivery?.delivered || echo?.country) ? consequence(route, echo, toName, delivery) : card.consequence} />
             ) : awaitingReflection ? (
               // ── A different small question each day, about the other person ───────────────
@@ -605,7 +492,7 @@ export default function SeenBar({
                 )}
                 <div className="mt-2 flex items-center justify-between">
                   <button onClick={sayMore} className="py-1 text-[11px] font-semibold text-teal-700 hover:text-teal-800">Want to say more?</button>
-                  <button onClick={skipReflection} className="py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Skip</button>
+                  <button onClick={close} className="py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Not now</button>
                 </div>
               </div>
             ) : (
@@ -614,8 +501,8 @@ export default function SeenBar({
                   // Three clear lines: what it did, the question, your answer — never run together.
                   <div className="mb-2 rounded-xl bg-orange-50/80 px-3 py-2.5">
                     <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName, delivery)}</p>
-                    {lastFelt && (
-                      <p className="mt-1 text-[13px] font-semibold leading-snug text-teal-700">{playBack(lastFelt)}</p>
+                    {thisFelt && (
+                      <p className="mt-1 text-[13px] font-semibold leading-snug text-teal-700">{playBack(thisFelt)}</p>
                     )}
                     {answered && (
                       <>

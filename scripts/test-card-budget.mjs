@@ -1,7 +1,7 @@
 // test-card-budget.mjs — at most one card a week after a kind act (3.22).
 const store = new Map();
 globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
-const { claimCard, cardFor } = await import("../src/cardBudget.js");
+const { claimCard, cardFor, isQuietAct } = await import("../src/cardBudget.js");
 
 const results = [];
 const check = (n, ok, d = "") => results.push([ok, ok ? n : `${n} — ${d}`]);
@@ -16,6 +16,14 @@ check("the next day the question can come", claimCard("2026-11-17", 1, t0 + DAY)
 check("…and then nothing else that week", claimCard("2026-11-18", 1, t0 + 2 * DAY) === null && claimCard("2026-11-21", 1, t0 + 5 * DAY) === null);
 check("a week on, the Feel it card again", claimCard("2026-11-23", 1, t0 + 7 * DAY) === "feel");
 check("and never both on one day", claimCard("2026-11-23", 2, t0 + 7 * DAY + 3600000) === null);
+
+// 3.24 — after telling someone how their words landed, nothing more is asked. The day state is
+// shaped the way hytState.markSentToday / completeSlot leave it.
+check("telling someone how their words landed is followed by nothing", isQuietAct({ lastAct: { route: "reply", name: "Mona" } }));
+check("…nor is a kind note to someone you follow", isQuietAct({ lastAct: { route: "note", name: "Vidhi" } }));
+check("a message to a stranger can still get the week's card", !isQuietAct({ lastAct: { route: "sent" } }));
+check("…and so can something done in real life", !isQuietAct({ lastAct: { route: "act", name: null } }));
+check("a day saved before acts had a route is not quiet", !isQuietAct({ sent: true }) && !isQuietAct(null));
 
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }

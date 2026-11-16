@@ -12,6 +12,14 @@
 // same day as the card, each tied to the ONE act it was offered for. Any other act gets one warm
 // confirmation and nothing to fill in. Per device, like the rest of the bar's day state.
 
+// ── Never after you've just said it (3.24) ───────────────────────────────────────────────────
+// Telling someone how their words landed — or writing them a note, or answering a stranger's kind
+// words — IS saying how you feel, in your own words or in one tap. Being asked straight after how
+// that felt, then why, then who's next was the screen people skipped every time. Those acts are
+// followed by nothing but the sheet's own "Sent ✓", and they don't use up the week's card.
+export const QUIET_ROUTES = new Set(["reply", "note"]);
+export const isQuietAct = (dayState) => QUIET_ROUTES.has(dayState?.lastAct?.route);
+
 const WEEK_MS = 7 * 86400000;
 const KEY = { feel: "seen_card_feel", reflect: "seen_card_reflect" };
 
