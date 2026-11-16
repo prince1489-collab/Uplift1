@@ -18,12 +18,8 @@ import { authedPost } from "./apiBase";
 import { recordKindMoment } from "./Feed2";
 import { privateReplyPayload } from "./privateReplies";
 
-// One tap each, in the receiver's voice. Short enough for a push, warm enough to be worth one.
-export const QUICK_ANSWERS = [
-  { id: "needed", text: "This was just what I needed today 💛" },
-  { id: "smile", text: "This made me smile 😊" },
-  { id: "thanks", text: "Thank you — truly 🙏" },
-];
+// One tap each, in the receiver's voice — shared with the reply sheet (privateReplies.js).
+export { QUICK_ANSWERS } from "./privateReplies";
 
 // How long a delivered message keeps asking for attention. After that it is still in the list,
 // just no longer at the bottom of the screen.

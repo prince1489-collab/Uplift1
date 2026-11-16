@@ -66,7 +66,9 @@ export const BECAUSE = {
 // heading that STARTS with the name is only used when there is a name.
 export const STEMS = {
   act:   ["Doing that in real life felt…", "In the moment, you felt…", "Afterwards, you feel…", "Face to face, it felt…"],
-  sent:  ["Sending that out into the world felt…", "Somewhere, someone's about to read it. You feel…", "Giving without knowing who felt…", "Words to a stranger. Right now you feel…"],
+  // 3.21: a message to a stranger now reaches one real person, so these speak of someone, not
+  // of "the world" or of not knowing whether anyone will read it.
+  sent:  ["Sending that to a stranger felt…", "Someone you've never met is about to read it. You feel…", "Kindness to someone you don't know felt…", "Words for a stranger. Right now you feel…"],
   reply: ["Telling {name} how their words landed felt…", "{name}'s words made you feel…", "Now {name} knows. You feel…"],
   note:  ["Saying that to {name} felt…", "Letting {name} know felt…", "A note just for {name}. You feel…"],
 };
@@ -74,7 +76,7 @@ export const STEMS = {
 // What it did for the other person — varied too, and only ever something true.
 export const CONSEQUENCES = {
   act:   ["That happened off the screen. That counts.", "Real life, real person. That counts.", "No screen needed — that was all you.", "That's {count} today, and one was face to face."],
-  sent:  ["Your words are on their way — you'll see here when someone feels them.", "Somewhere, someone's about to read that.", "That's {count} today — your kindness is crossing borders.", "Out into the world it goes."],
+  sent:  ["Your words are on their way to one person.", "Someone you've never met is about to read that.", "That's {count} today — your kindness is crossing borders.", "One person, somewhere, will read that today."],
   reply: ["Your words reached {name}.", "{name} will know their words mattered.", "You closed the loop — {name} will see it.", "That's the reply most people never send."],
   note:  ["{name} will get your note — only them.", "A private note, just for {name}.", "Not many people say it. You did.", "{name}'s day just got a little warmer."],
 };

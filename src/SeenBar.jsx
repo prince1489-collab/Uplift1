@@ -27,7 +27,7 @@
 // State is the per-day record in hytState.js — the same one the old Practice tab used — so
 // nothing about a day already in progress is lost in the move.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { readPublicProfile } from "./publicProfile";
@@ -41,6 +41,7 @@ import { pickReflect, rememberPick, fillName, setWhosNext, whosNext } from "./re
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
 import { inCountry } from "./countryName";
+import { claimCard, cardFor } from "./cardBudget";
 
 const PIN_KEY = (d) => `seen_reflect_pin_${d}`; // Journal.jsx's "hold this thought" key
 
@@ -88,6 +89,9 @@ function Option({ icon, title, hint, onClick, open, children }) {
   );
 }
 
+// How many acts a day's state holds — days saved before the counter existed count as one.
+const countOf = (x) => Math.max(Number(x?.seenCount || 0), x?.sent || x?.done?.kindness || x?.done?.who ? 1 : 0);
+
 const kindnessFrom = (m) => {
   const first = String(m?.sender || "").trim().split(/\s+/)[0] || "Someone";
   return m?.country ? `${first} in ${inCountry(m.country)}` : first;
@@ -107,7 +111,7 @@ function consequence(route, echo, name, delivery = null) {
       : "Your words reached someone 💛 You'll hear if they write back.";
   }
   if (echo?.country) return `Someone in ${echo.country} felt your kindness ${echo.emoji || "❤️"}`;
-  if (route === "sent") return "Your words are on their way — you'll see here when someone feels them.";
+  if (route === "sent") return "Your words are on their way to someone — you'll hear if they write back.";
   return "That happened off the screen. That counts.";
 }
 
@@ -329,20 +333,22 @@ export default function SeenBar({
 
   const update = (next) => { setState(next); saveDayState(day, next); };
 
-  // A send, reply or note elsewhere on the screen lands here live — and opens the panel on the
-  // reflection, because the moment just after is the one worth ten seconds of thought.
+  // One more person made to feel seen today → the "✓ N today" pill pops and the bar glows once.
+  const count = countOf(state);
+  const countRef = useRef(count);
+  useEffect(() => { countRef.current = count; }, [count]);
+
+  // A send, reply or note elsewhere on the screen lands here live. Until 3.22 every one of them
+  // opened the panel on a "Feel it" card; now only the act that gets this week's card does
+  // (cardBudget.js). Every other act is confirmed by the toast and the "✓ N today" pill, and the
+  // person is left to get on with their day.
   useEffect(() => onDayState((d) => {
     if (d?.day !== day || !d.state) return;
-    setState((prev) => {
-      // Every new act, not just the first — each one gets its own "Feel it".
-      const countOf = (x) => Math.max(Number(x.seenCount || 0), x.sent || x.done?.kindness || x.done?.who ? 1 : 0);
-      if (countOf(d.state) > countOf(prev)) { setOpen(true); setSection(null); }
-      return d.state;
-    });
+    const n = countOf(d.state);
+    const rose = n > countRef.current;
+    setState(d.state);
+    if (rose && claimCard(day, n)) { setOpen(true); setSection(null); }
   }), [day]);
-
-  // One more person made to feel seen today → the "✓ N today" pill pops and the bar glows once.
-  const count = Math.max(Number(state.seenCount || 0), state.sent || state.done?.kindness || state.done?.who ? 1 : 0);
   const [shownCount, setShownCount] = useState(count);
   const [flash, setFlash] = useState(false);
   if (count !== shownCount) {
@@ -396,9 +402,11 @@ export default function SeenBar({
     [uid, day, route, weekCount, topWord]
   );
   const qText = fillName(question.q, toName);
-  const awaitingFeel = done && !feltFor(state, count) && !feltSkippedFor(state, count);
-  // The question about the other person: once a day, after the first "Feel it" is dealt with.
-  const awaitingReflection = done && !awaitingFeel && !state.reflected && !state.reflectSkipped;
+  // Only for the act this week's card was offered for (cardBudget.js) — never a card from earlier
+  // in the day waiting in front of the options.
+  const awaitingFeel = done && cardFor("feel", day, count) && !feltFor(state, count) && !feltSkippedFor(state, count);
+  // The question about the other person: at most once a week, never the same day as "Feel it".
+  const awaitingReflection = done && !awaitingFeel && cardFor("reflect", day, count) && !state.reflected && !state.reflectSkipped;
   const awaitingTime = done && !awaitingFeel && !awaitingReflection && askTime && !Number.isInteger(nudgeHour);
 
   const what = route === "reply" ? `told ${toName || "someone"} how their words landed`
@@ -461,13 +469,17 @@ export default function SeenBar({
 
   // ── The real-life ways ─────────────────────────────────────────────────────────────────────
   const doneIt = () => {
-    update(completeSlot(state, "kindness", { onKindAct, onPlanChange }));
+    const after = completeSlot(state, "kindness", { onKindAct, onPlanChange });
+    claimCard(day, countOf(after));
+    update(after);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const doneWho = () => {
     // Done — so tomorrow's push shouldn't still be about them.
     if (db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: null }).catch(() => {});
-    update({ ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } });
+    const after = { ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } };
+    claimCard(day, countOf(after));
+    update(after);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
   const later = () => {
@@ -480,6 +492,13 @@ export default function SeenBar({
   const pickTime = (h) => { setNudgeHour(db, currentUser?.uid, h); setAskTime(false); setSection(null); };
   const skipTime = () => { markNudgeAsked(); setAskTime(false); setSection(null); };
 
+  // Putting the panel away while a card is up is an answer too — "not now" — so the card never
+  // waits in front of the options the next time the bar opens.
+  const close = () => {
+    if (awaitingFeel) skipFeel();
+    else if (awaitingReflection) skipReflection();
+    setOpen(false);
+  };
   const go = (fn) => () => { setOpen(false); fn?.(); };
   // Today counts as soon as it is done, so the rhythm never reads blank on someone's first day
   // while their profile is still catching up.
@@ -496,7 +515,7 @@ export default function SeenBar({
           button used to have, which is the action it now replaces. It always says the same
           thing. Before today's first kind act it pulses; after, it goes calm and a pill counts
           the people you made feel seen today — an invitation to one more, never a nag. */}
-      <button data-tour="send" onClick={() => { setOpen((v) => !v); setSection(null); onOpened?.(); }} aria-expanded={open}
+      <button data-tour="send" onClick={() => { if (open) close(); else setOpen(true); setSection(null); onOpened?.(); }} aria-expanded={open}
         className={`relative flex w-full items-center gap-1.5 overflow-hidden rounded-2xl py-3 pl-3.5 pr-2.5 text-left text-white active:scale-[0.99] transition-transform${done ? "" : " send-kindness-pulse"}`}
         style={{
           background: "linear-gradient(180deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #FFAD6E 0%, #FF9E57 55%, #E07C33 100%)",
@@ -535,13 +554,13 @@ export default function SeenBar({
       {/* ── The panel, as a bottom sheet ───────────────────────────────────────────────────── */}
       {open && createPortal(
         <div data-portal className="fixed inset-0 z-[230] flex flex-col justify-end" style={sheetBox(view)}>
-          <div className="absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={close} aria-hidden />
           <div className="relative sheet-slide-up flex flex-col rounded-t-3xl bg-white shadow-2xl" style={sheetCap(view)}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-shrink-0 items-center justify-between px-4 pt-3 pb-1">
               <span className="w-8" />
               <div className="h-1 w-10 rounded-full bg-slate-200" />
-              <button onClick={() => setOpen(false)} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:text-slate-600">
+              <button onClick={close} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:text-slate-600">
                 <ChevronDown size={18} />
               </button>
             </div>

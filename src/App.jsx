@@ -22,6 +22,8 @@ import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
 import AwayNote from "./AwayNote";
 import { onReactionGiven } from "./reactions";
+import { couldHaveLanded, readLandedOffer, rememberLandedOffer, offeredOn } from "./landed";
+import { inCountry } from "./countryName";
 import { KindnessNote, KindnessSheet } from "./KindnessForYou";
 import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, readDelivery, replyTargetOf, markKindness } from "./kindnessInbox";
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
@@ -226,13 +228,29 @@ const COUNTRY_OPTIONS = [
 // than leaving those few showing two.
 const stripQuotes = (s = "") => String(s).replace(/^\s*[“"']+/, "").replace(/[”"']+\s*$/, "");
 
+// Shown the moment a message is sent. Since 3.21 it goes to one real person, so none of these
+// may suggest it is drifting off to nobody in particular; where it reached replaces this a second
+// later (deliverToStranger).
 const SEND_AFFIRMATIONS = [
   "Someone will feel seen today",
   "Kindness sent — that's the point",
-  "Someone out there will feel that",
+  "On its way to someone",
   "On its way to someone who needs it",
   "A little more good in the world",
 ];
+
+// "Your kindness is travelling the world" — the globe card. It used to follow every send; with the
+// toast, the feeling card and the confirmation, that was the fourth thing on screen after one
+// tap (3.22). Now at most once a week.
+const GLOBE_PROMPT_KEY = "seen_globe_prompt_at";
+const globePromptDue = () => {
+  try {
+    const last = Number(localStorage.getItem(GLOBE_PROMPT_KEY)) || 0;
+    if (Date.now() - last < 7 * 86400000) return false;
+    localStorage.setItem(GLOBE_PROMPT_KEY, String(Date.now()));
+    return true;
+  } catch { return false; }
+};
 
 const nowMs = () => Date.now();
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
@@ -2147,7 +2165,8 @@ export default function App() {
   // Auto-dismiss the "💛 Sent" confirmation after ~1.6s
   useEffect(() => {
     if (!sentToast) return;
-    const t = setTimeout(() => setSentToast(""), 1800);
+    // Where your words went is worth a moment longer than "sent".
+    const t = setTimeout(() => setSentToast(""), sentToast.startsWith("Your words reached") ? 3200 : 1800);
     return () => clearTimeout(t);
   }, [sentToast]);
 
@@ -2236,6 +2255,8 @@ export default function App() {
       const info = { day: localDayKey(), messageId, delivered: Boolean(r?.delivered), country: r?.country ?? null };
       rememberDelivery(info.day, info);
       setDelivery(info);
+      // The one confirmation that says something true about THIS message (3.22): where it went.
+      if (info.delivered) setSentToast(info.country ? `Your words reached someone in ${inCountry(info.country)}` : "Your words reached someone");
     });
   }, [currentUser]);
   // A moment involving you or someone you follow belongs in the Focused Feed; a moment
@@ -3398,17 +3419,25 @@ export default function App() {
 
   // Today's best chance to make someone feel seen: a message from someone you follow, from the
   // last two days, that you hearted and have not yet answered. Offered first on the Today card.
+  // "Tell {name} how their words landed" only where words could have landed (3.22, landed.js):
+  // never a routine greeting or someone's usual line — a heart answers those — and never the
+  // person offered yesterday.
+  const landedSkipUid = useMemo(() => {
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    return offeredOn(readLandedOffer(), localDayKey(y));
+  }, []);
   const replyCandidate = useMemo(() => {
     const since = Date.now() - 2 * 86400000;
     const following = new Set(focusedUids);
     const m = messages
       .filter((x) => x?.id && x.uid && x.uid !== currentUser?.uid && following.has(x.uid) && x.text
-        && Number(x.timestamp) > since && reactionIdFor(x.id) && !hasReplied(x.id))
+        && Number(x.timestamp) > since && reactionIdFor(x.id) && !hasReplied(x.id)
+        && x.uid !== landedSkipUid && couldHaveLanded(x, messages))
       .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0];
     return m ? { message: m, name: String(m.sender || "").split(" ")[0] || "them" } : null;
     // repliedTick: hasReplied() reads storage, so a sent reply has to invalidate this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, focusedUids, currentUser?.uid, reactionIdFor, repliedTick]);
+  }, [messages, focusedUids, currentUser?.uid, reactionIdFor, repliedTick, landedSkipUid]);
   // The bar's "someone you follow" row: the hearted-but-unanswered message if there is one, else
   // the newest thing anyone you follow has said this week that you haven't answered.
   const followMessage = useMemo(() => {
@@ -3417,11 +3446,15 @@ export default function App() {
     const following = new Set(focusedUids);
     const m = messages
       .filter((x) => x?.id && x.uid && x.uid !== currentUser?.uid && following.has(x.uid) && x.text
-        && Number(x.timestamp) > since && !hasReplied(x.id))
+        && Number(x.timestamp) > since && !hasReplied(x.id)
+        && x.uid !== landedSkipUid && couldHaveLanded(x, messages))
       .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0];
     return m ? { message: m, name: String(m.sender || "").split(" ")[0] || "them" } : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replyCandidate, messages, focusedUids, currentUser?.uid, repliedTick]);
+  }, [replyCandidate, messages, focusedUids, currentUser?.uid, repliedTick, landedSkipUid]);
+  // Remembered so tomorrow offers someone else.
+  const followMessageUid = followMessage?.message?.uid;
+  useEffect(() => { if (followMessageUid) rememberLandedOffer(localDayKey(), followMessageUid); }, [followMessageUid]);
 
 
   // Ripple attribution: convert my recent reactions into "ripple" credits for the
@@ -3572,7 +3605,7 @@ export default function App() {
           setAutoWaterTree(true);
           setTimeout(() => { setShowMap(false); setShowLevels(true); }, 4200);
         }
-      } else {
+      } else if (globePromptDue()) {
         setShowMapPrompt(true);
       }
       // Only on the FIRST send of the day. `newStreak` is streak + 1 computed optimistically,
@@ -3877,8 +3910,8 @@ export default function App() {
               creditKindAct();
               try { markSentToday(localDayKey()); } catch { /* ignore */ }
               // Same offer the preset path makes — your words have just gone out to the world,
-              // so the globe is worth showing.
-              setShowMapPrompt(true);
+              // so the globe is worth showing. At most once a week (globePromptDue).
+              if (globePromptDue()) setShowMapPrompt(true);
             }}
             editing={editingPost}
             // Cleared on close, not on open. Leaving it set would pre-fill the NEXT new post with

@@ -24,3 +24,13 @@ export function privateReplyPayload({ me, uid, target, toName, text }) {
     read: false,
   };
 }
+
+// One tap each, in the receiver's voice: the light way to say someone's words landed (3.21 for a
+// stranger's delivered message, 3.22 for "Tell {name} how their words landed"). The app's own
+// words, so they go out without the kindness check a typed reply needs.
+export const QUICK_ANSWERS = [
+  { id: "needed", text: "This was just what I needed today 💛" },
+  { id: "smile", text: "This made me smile 😊" },
+  { id: "thanks", text: "Thank you — truly 🙏" },
+];
+export const isQuickAnswer = (text) => QUICK_ANSWERS.some((a) => a.text === text);

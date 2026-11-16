@@ -25,7 +25,7 @@ import { awardPoints, claimFirstToday } from "./points";
 import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
-import { privateReplyPayload } from "./privateReplies";
+import { privateReplyPayload, QUICK_ANSWERS, isQuickAnswer } from "./privateReplies";
 import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
@@ -857,6 +857,12 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   const other = firstName(answering ? answering.fromName : target?.sender);
   // A kind note: a first message to someone you follow that answers no post at all.
   const isNote = mode === "first" && (Boolean(target?.note) || !target?.id);
+  // "Tell {name} how it landed" (3.22): one tap first — "This made me smile 😊" — and the full
+  // composer only for someone who wants to write. It used to open straight onto a privacy box, a
+  // text box, a quote panel, six feeling chips and "More ideas", which is a lot of machinery for
+  // telling somebody their words were nice to read; the heavy sheet was why people stopped.
+  const quickFirst = mode === "first" && !isNote;
+  const [writing, setWriting] = useState(!quickFirst);
   const starters = isNote ? NOTE_STARTERS : REPLY_STARTERS;
   // 3.9 — easier words. A row of feelings writes the opening for you ("Your words made me feel
   // hopeful — "), and a quote chip offers a few of THEIR words back, which is the most specific
@@ -915,8 +921,9 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     || (mode === "answer" && Boolean(thread?.answer))
     || (mode === "final" && Boolean(thread?.last));
 
-  const send = async () => {
-    const clean = text.trim();
+  // `preset`: one of the one-tap answers. Anything else (the button's click event) sends the box.
+  const send = async (preset) => {
+    const clean = (typeof preset === "string" ? preset : text).trim();
     if (!clean || sent || busy || !db || !currentUser || !target?.uid) return;
     if (target.uid === myUid) { setError("You can't reply privately to yourself."); return; }
     if (blocked) { setError("You've blocked this person, so you can't message them."); return; }
@@ -925,19 +932,22 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
 
     // Screened before delivery, like every other piece of free text. Fails CLOSED — a
     // private message to a stranger on a mental-health app is the last place to let
-    // unreviewed text through because the checker happens to be down.
-    try {
-      const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "reply" });
-      if (!mod.checked || !mod.ok) {
-        setError(mod.reason || "That didn't pass our kindness check. Try rewording it.");
+    // unreviewed text through because the checker happens to be down. The one-tap answers are
+    // the app's own words and need no check.
+    if (!isQuickAnswer(clean)) {
+      try {
+        const mod = await authedPost(currentUser, "/api/moderate-message", { text: clean, context: "reply" });
+        if (!mod.checked || !mod.ok) {
+          setError(mod.reason || "That didn't pass our kindness check. Try rewording it.");
+          setBusy(false);
+          return;
+        }
+      } catch (err) {
+        const f = apiFailure(err, "kindness check");
+        setError(f.reason);
         setBusy(false);
         return;
       }
-    } catch (err) {
-      const f = apiFailure(err, "kindness check");
-      setError(f.reason);
-      setBusy(false);
-      return;
     }
 
     const payload = privateReplyPayload({
@@ -1062,7 +1072,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
           )}
           {/* Say who can see it, and — before they write — how many messages are left, so
               finding out afterwards that it was the last one never feels like a trick. */}
-          {mode !== "closed" && (
+          {mode !== "closed" && writing && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
               <p className="text-[11px] text-sky-700 leading-relaxed">
                 Only {mode === "first" ? firstName(target?.sender) : other} can read this — your words are never shown
@@ -1077,6 +1087,31 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
             </p>
           ) : !checked ? (
             <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-slate-300" /></div>
+          ) : !writing ? (
+            <div style={{ animation: "seenFadeUp 200ms ease both" }}>
+              <p className="text-[12.5px] font-bold uppercase tracking-wide text-slate-500">How did it land?</p>
+              <div className="mt-2 space-y-2">
+                {QUICK_ANSWERS.map((a) => (
+                  <button key={a.id} type="button" onClick={() => send(a.text)} disabled={busy || sent}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-teal-200 bg-white py-3 text-[14.5px] font-semibold text-teal-700 transition-colors hover:bg-teal-50 disabled:opacity-50">
+                    {busy ? <Loader2 size={15} className="animate-spin" /> : null}{a.text}
+                  </button>
+                ))}
+              </div>
+              {error && (
+                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{error}</p>
+              )}
+              {sent ? (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-[12.5px] font-semibold text-amber-700" role="status">
+                  Sent ✓ — {firstName(target?.sender)} will know their words reached you.
+                </p>
+              ) : (
+                <button type="button" onClick={() => setWriting(true)} className="mt-3 w-full py-2 text-[13.5px] font-semibold text-teal-700">
+                  Say more in your own words →
+                </button>
+              )}
+              <p className="mt-1 text-center text-[10.5px] text-slate-500">Only {firstName(target?.sender)} will see it.</p>
+            </div>
           ) : (
             <>
               {/* No autoFocus: the sheet opens showing who it's to and what they wrote; the keyboard
