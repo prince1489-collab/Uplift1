@@ -107,7 +107,7 @@ workflows:
         #          submissions
         # Both mean the same thing — that version already shipped, so pick the next one. They are
         # not signing or credential problems, which is what a wall of altool JSON tends to suggest.
-        MARKETING_VERSION: "3.22"
+        MARKETING_VERSION: "3.23"
       node: 20
       xcode: latest
       cocoapods: default
@@ -186,7 +186,7 @@ workflows:
           # the push + Sign in with Apple entitlements. See scripts/inject-google-plist.cjs.
           npm i xcode --no-save
           node scripts/inject-google-plist.cjs
-      - name: Configure Info.plist (Google URL scheme, push, export compliance, camera + photos)
+      - name: Configure Info.plist (Google URL scheme, push, export compliance, camera + photos, microphone + speech)
         script: |
           PLIST=ios/App/App/Info.plist
           PB=/usr/libexec/PlistBuddy
@@ -211,11 +211,17 @@ workflows:
           CAM="Seen uses your camera only when you choose to take a profile photo."
           LIB="Seen opens your photos only when you choose a profile photo."
           ADD="Seen saves an image to your photos only when you choose to, such as a kindness certificate."
+          # Talk instead of type (3.23, src/dictation.js). Missing either string, iOS terminates the
+          # app the moment the mic is tapped — the same failure App Review found with the camera.
+          MIC="Seen uses the microphone only while you choose to talk instead of type. Seen never records or keeps your voice."
+          SPEECH="Seen turns what you say into text, so you can say your message instead of typing it."
           $PB -c "Add :NSCameraUsageDescription string '$CAM'" "$PLIST" 2>/dev/null || $PB -c "Set :NSCameraUsageDescription '$CAM'" "$PLIST"
           $PB -c "Add :NSPhotoLibraryUsageDescription string '$LIB'" "$PLIST" 2>/dev/null || $PB -c "Set :NSPhotoLibraryUsageDescription '$LIB'" "$PLIST"
           $PB -c "Add :NSPhotoLibraryAddUsageDescription string '$ADD'" "$PLIST" 2>/dev/null || $PB -c "Set :NSPhotoLibraryAddUsageDescription '$ADD'" "$PLIST"
+          $PB -c "Add :NSMicrophoneUsageDescription string '$MIC'" "$PLIST" 2>/dev/null || $PB -c "Set :NSMicrophoneUsageDescription '$MIC'" "$PLIST"
+          $PB -c "Add :NSSpeechRecognitionUsageDescription string '$SPEECH'" "$PLIST" 2>/dev/null || $PB -c "Set :NSSpeechRecognitionUsageDescription '$SPEECH'" "$PLIST"
           # Fail the build rather than ship an app that crashes on "Take Photo" again.
-          for KEY in NSCameraUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription; do
+          for KEY in NSCameraUsageDescription NSPhotoLibraryUsageDescription NSPhotoLibraryAddUsageDescription NSMicrophoneUsageDescription NSSpeechRecognitionUsageDescription; do
             VAL=$($PB -c "Print :$KEY" "$PLIST" 2>/dev/null || true)
             if [ -z "$VAL" ]; then echo "ERROR: $KEY missing from Info.plist — the app would crash when it is used."; exit 1; fi
             echo "  $KEY = $VAL"
@@ -422,7 +428,7 @@ workflows:
         #
         # Deliberately a rule and not a check: there is no honest way for a script to know which
         # commit is the last of a batch, and a guard that guessed would fire on every push.
-        ANDROID_VERSION_NAME: "3.22"
+        ANDROID_VERSION_NAME: "3.23"
         # Play's target API requirement, not a preference. It moves every August — an app must
         # target an API level released within the last year — so this is expected to be bumped
         # annually, ahead of the deadline Play shows under Policy status.

@@ -13,6 +13,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, MoreHorizontal, Send, X, Loader2 } from "lucide-react";
 import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, shareRightNow, forgetEverything } from "./seenChat";
 import { readPublicProfile } from "./publicProfile";
+import { useDictation } from "./dictation";
+import MicButton from "./MicButton";
 
 export function SeenAvatar({ size = 44 }) {
   return (
@@ -169,6 +171,8 @@ function Consent({ onStart, onBack, busy }) {
 export default function SeenConversation({ db, currentUser, chat, state, consent, onBack, onWriteTo, onOpenSupport }) {
   const uid = currentUser.uid;
   const [text, setText] = useState("");
+  // Talk instead of type (3.23): talking about your week is far easier than typing it.
+  const dictation = useDictation({ text, setText, max: 600 });
   const [sending, setSending] = useState(false);
   const [starting, setStarting] = useState(false);
   const [knows, setKnows] = useState(false);
@@ -193,6 +197,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   const lastQOpen = lastQ && !(chat || []).some((m) => m.role === "me" && Number(m.createdAt) > Number(lastQ.createdAt));
 
   const send = async () => {
+    dictation.stop();
     const t = text.trim();
     if (!t || sending) return;
     setText(""); setSending(true);
@@ -275,9 +280,12 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder={lastQOpen ? "Your answer…" : "Reply to Seen, or ask it something…"}
                 className="min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[14px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
+              <MicButton dictation={dictation} variant="icon" />
               <button onClick={send} disabled={!text.trim() || sending} aria-label="Send"
                 className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-teal-600 text-white disabled:opacity-40"><Send size={14} /></button>
             </div>
+            {dictation.error && <p className="mt-1 text-center text-[11px] text-slate-500" role="status">{dictation.error}</p>}
+            {dictation.listening && <p className="mt-1 text-center text-[11px] font-semibold text-red-600" role="status">Listening… tap ■ when you're done</p>}
             <p className="mt-1 text-center text-[10px] text-slate-400">
               Seen is an AI. Only you can see this · <button onClick={() => setKnows(true)} className="underline">What Seen knows</button>
             </p>

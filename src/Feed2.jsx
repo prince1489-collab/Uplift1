@@ -26,6 +26,8 @@ import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
 import { privateReplyPayload, QUICK_ANSWERS, isQuickAnswer } from "./privateReplies";
+import { useDictation } from "./dictation";
+import MicButton from "./MicButton";
 import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
@@ -843,6 +845,8 @@ const REPLY_MAX = 200;
 export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedUids, answering = null, previous = [], onOpenConversation, onClose, onSent }) {
   const view = useVisibleViewport();
   const [text, setText] = useState("");
+  // Talk instead of type (3.23): what you say goes into the box, to edit before it is sent.
+  const dictation = useDictation({ text, setText, max: REPLY_MAX });
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -925,6 +929,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
   const send = async (preset) => {
     const clean = (typeof preset === "string" ? preset : text).trim();
     if (!clean || sent || busy || !db || !currentUser || !target?.uid) return;
+    dictation.stop();
     if (target.uid === myUid) { setError("You can't reply privately to yourself."); return; }
     if (blocked) { setError("You've blocked this person, so you can't message them."); return; }
     setBusy(true);
@@ -1120,6 +1125,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
                 onFocus={(e) => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ block: "nearest", behavior: "smooth" }), 250); }}
                 placeholder={isNote ? "Something you appreciate about them…" : mode === "first" ? "What did their words mean to you?" : "A private word of kindness, just between you two…"}
                 className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+              {!sent && <MicButton dictation={dictation} />}
               {/* Finish the thought (3.16): while the box holds only the start you tapped, three
                   endings that fit it. Tap one, then make it your own. */}
               {started && text === started.text && !sent && (
@@ -1601,6 +1607,8 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
   const view = useVisibleViewport();
   const isEditing = Boolean(editing?.id);
   const [text, setText] = useState(editing?.text ?? "");
+  // Talk instead of type (3.23) — see dictation.js.
+  const dictation = useDictation({ text, setText, max: MAX_LEN });
   const [anon, setAnon] = useState(false);
   const [state, setState] = useState("idle");
   const [reason, setReason] = useState("");
@@ -1637,6 +1645,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
 
   const submit = async () => {
     if (!len || state === "checking" || !db || !currentUser) return;
+    dictation.stop();
     setState("checking");
     setReason("");
     setFailKind(null);
@@ -1777,6 +1786,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
           <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, MAX_LEN))} rows={3} autoFocus
             placeholder="Write something kind, hopeful, or honest…"
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none" />
+          {state !== "done" && <MicButton dictation={dictation} />}
 
           {/* Phrasing help — rewrites of your own words. Tapping one fills the box to edit;
               it never sends, and the result is still screened on submit like anything else. */}

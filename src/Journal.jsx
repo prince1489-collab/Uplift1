@@ -18,6 +18,8 @@ import { writeFailure } from "./writeFailure";
 import { awardPoints, POINTS } from "./points";
 import { markDone } from "./invitations";
 import { authedPost } from "./apiBase";
+import { useDictation } from "./dictation";
+import MicButton from "./MicButton";
 
 const TYPES = [
   { id: "grateful", label: "Grateful", emoji: "🙏", color: "#f59e0b" },
@@ -358,6 +360,8 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
   // Keyed by date so an entry begun for yesterday is not handed to today, and cleared on save so
   // reopening shows an empty box rather than a copy of what was already stored.
   const [text, setText] = useState(() => readDraft(todayStr()));
+  // Talk instead of type (3.23) — see dictation.js.
+  const dictation = useDictation({ text, setText });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [entries, setEntries] = useState([]);
@@ -820,6 +824,7 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             placeholder="Write whatever comes…"
             className="w-full resize-none overflow-hidden rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-relaxed text-slate-800 focus:border-teal-400 focus:outline-none"
           />
+          <MicButton dictation={dictation} />
 
           {/* Almost every reflection is for today, so the date picker is folded away behind a
               line of text rather than sitting open as a permanent field. */}
