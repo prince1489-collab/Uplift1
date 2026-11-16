@@ -23,7 +23,7 @@ import { prepareImage, PREPARED_TYPE } from "./imagePrep";
 import { POINTS } from "./points";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 import { syncPublicProfile, readPublicProfile } from "./publicProfile";
-import { nextShowingUp } from "./rhythm";
+import { nextShowingUp, liveStreak } from "./rhythm";
 import { todayKey as localDayKey } from "./hytPrompts";
 import { accountDeletionInProgress } from "./accountDeletion";
 
@@ -215,44 +215,98 @@ export function computeSparkReward(baseReward, streakDays = 0) {
 
 const FREEZE_COST = 10;
 
+// One kind act's worth of "you showed up on `day`", written in one transaction.
+async function saveShowingUp(db, uid, day) {
+  const userRef = doc(db, "users", uid);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    const data = snap.exists() ? snap.data() : {};
+    // Streak (with its one free grace day), activeDays and the last 30 local dates, decided
+    // together from the one read — see nextShowingUp in rhythm.js.
+    // ── DAYS YOU SHOWED UP, WHICH IS NOT THE STREAK ─────────────────────────────────────
+    // streakDays answers "how many days in a row", and a real gap resets it to 1. That is the
+    // right number for the flame and the wrong one for a certificate: a wellbeing app whose
+    // reward for a year of kindness is destroyed by one missed Tuesday is running the guilt
+    // mechanic the roadmap rules out. So this counts days you turned up AT ALL, and a gap
+    // pauses it rather than erasing it.
+    //
+    // The increment rides in this transaction because it already knows the one thing that
+    // decides it — whether today is a day we have counted before. A separate writer would
+    // need the same read and could disagree with it.
+    //
+    // Seeded from the streak rather than from zero, because an account arriving here with an
+    // eleven-day streak has demonstrably shown up eleven times, and starting them at 0 would
+    // take something they had already earned. It is a floor, not a guess: max() means the
+    // real count overtakes it and never goes backwards.
+    tx.set(userRef, nextShowingUp(data, day, day), { merge: true });
+  });
+}
+
+// Days whose save failed, per account on this device, retried until they land. Only the last
+// three days are kept: a day older than that is a retry nobody is waiting for.
+const pendingKey = (uid) => `seen_pending_days_${uid}`;
+const PENDING_MAX_AGE_DAYS = 3;
+function readPendingDays(uid) {
+  try {
+    const list = JSON.parse(localStorage.getItem(pendingKey(uid)) || "[]");
+    const oldest = new Date();
+    oldest.setDate(oldest.getDate() - PENDING_MAX_AGE_DAYS);
+    const floor = localDayKey(oldest);
+    return Array.isArray(list) ? list.filter((d) => typeof d === "string" && d >= floor).sort() : [];
+  } catch { return []; }
+}
+function writePendingDays(uid, days) {
+  try { localStorage.setItem(pendingKey(uid), JSON.stringify(days)); } catch { /* storage blocked */ }
+}
+function keepPendingDay(uid, day) {
+  const days = readPendingDays(uid);
+  if (!days.includes(day)) writePendingDays(uid, [...days, day]);
+}
+function forgetPendingDay(uid, day) {
+  const days = readPendingDays(uid);
+  if (days.includes(day)) writePendingDays(uid, days.filter((d) => d !== day));
+}
+
 export function useStreak(db, uid, profile) {
   const [streak, setStreak] = useState(0);
   const [freezesAvailable, setFreezesAvailable] = useState(0);
 
   useEffect(() => {
     if (!profile) return;
-    setStreak(Number(profile.streakDays ?? 0));
+    // The streak as it stands today, not as it was last written — see liveStreak in rhythm.js.
+    setStreak(liveStreak(profile, localDayKey()));
     setFreezesAvailable(Number(profile.streakFreezes ?? 0));
   }, [profile]);
 
-  const recordGreetingDay = useCallback(async () => {
+  // `day` is the person's own date (3.21 — it was UTC). A save that fails — a transaction cannot
+  // run offline, and every caller swallows the error so the kind act itself is never blocked —
+  // used to lose the day without a trace. Now the day is kept and retried on the next open
+  // (retryPendingDays below), so a kind act on a bad connection still counts.
+  const recordGreetingDay = useCallback(async (day = localDayKey()) => {
     if (!db || !uid) return;
-    const today = todayKey();
-    const userRef = doc(db, "users", uid);
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      const data = snap.exists() ? snap.data() : {};
-      // Streak (with its one free grace day), activeDays and the last 30 local dates, decided
-      // together from the one read — see nextShowingUp in rhythm.js.
-      // ── DAYS YOU SHOWED UP, WHICH IS NOT THE STREAK ─────────────────────────────────────
-      // streakDays answers "how many days in a row", and a real gap resets it to 1. That is the
-      // right number for the flame and the wrong one for a certificate: a wellbeing app whose
-      // reward for a year of kindness is destroyed by one missed Tuesday is running the guilt
-      // mechanic the roadmap rules out. So this counts days you turned up AT ALL, and a gap
-      // pauses it rather than erasing it.
-      //
-      // The increment rides in this transaction because it already knows the one thing that
-      // decides it — whether today is a day we have counted before. A separate writer would
-      // need the same read and could disagree with it.
-      //
-      // Seeded from the streak rather than from zero, because an account arriving here with an
-      // eleven-day streak has demonstrably shown up eleven times, and starting them at 0 would
-      // take something they had already earned. It is a floor, not a guess: max() means the
-      // real count overtakes it and never goes backwards.
-      const fields = nextShowingUp(data, today, localDayKey());
-      tx.set(userRef, fields, { merge: true });
-    });
+    try {
+      await saveShowingUp(db, uid, day);
+      forgetPendingDay(uid, day);
+    } catch (err) {
+      keepPendingDay(uid, day);
+      throw err;
+    }
   }, [db, uid]);
+
+  const retryPendingDays = useCallback(async () => {
+    if (!db || !uid) return;
+    for (const day of readPendingDays(uid)) {
+      try { await saveShowingUp(db, uid, day); forgetPendingDay(uid, day); } catch { return; }
+    }
+  }, [db, uid]);
+
+  useEffect(() => {
+    if (!db || !uid) return undefined;
+    retryPendingDays();
+    const onOnline = () => { retryPendingDays(); };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [db, uid, retryPendingDays]);
 
   const buyFreeze = useCallback(async () => {
     if (!db || !uid) return { error: "Not signed in." };
@@ -274,7 +328,7 @@ export function useStreak(db, uid, profile) {
   const useFreeze = useCallback(async () => {
     if (!db || !uid) return { error: "Not signed in." };
     const userRef = doc(db, "users", uid);
-    const today = todayKey();
+    const today = localDayKey();
     try {
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(userRef);
@@ -283,7 +337,8 @@ export function useStreak(db, uid, profile) {
         if (freezes < 1) throw new Error("no_freezes");
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        const yKey = yesterday.toISOString().slice(0, 10);
+        // The person's own date, like every streak key since 3.21.
+        const yKey = localDayKey(yesterday);
         tx.set(userRef, { streakFreezes: freezes - 1, lastGreetingDate: yKey, lastFreezeUsed: today }, { merge: true });
       });
       return { ok: true };

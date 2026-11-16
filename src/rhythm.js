@@ -45,10 +45,18 @@ export function withActiveDate(activeDates, today) {
 // Pure, so the streak, the grace day, activeDays and activeDates can be tested without
 // Firestore (scripts/test-rhythm.mjs). recordGreetingDay runs it inside its transaction.
 //
-// `today` is the key the streak has always used (UTC — changing it now would break or
-// double-count live streaks on the day it shipped). `localToday` is the person's own calendar
-// date, which is what activeDates holds, because "N of the last 30 days" is read on their phone
-// against their own days.
+// `today` is the day being counted, and since 3.21 it is the person's own calendar date — the
+// same key as `localToday`, which is what activeDates holds. Until 3.21 the streak ran on UTC
+// while "N of the last 30 days" ran on local dates, so a kind act at 00:30 in British Summer Time
+// counted for the previous day on the flame and the right day on the rhythm, and the two
+// numbers drifted apart. A stored key from before the switch can be a day AHEAD of the person's
+// own date (anyone west of UTC acting in the evening); see "AN EARLIER DAY" below for why that
+// cannot reset anything.
+//
+// AN EARLIER DAY. `today` can be before the last day counted: a save that failed offline and is
+// being retried the next time the app opens (recordGreetingDay keeps it), or an old UTC key
+// that ran ahead. It was still a day the person showed up, so it joins activeDates and
+// activeDays; the streak, which has already moved past it, is left alone.
 //
 // THE GRACE DAY. A gap of exactly one missed day continues the streak instead of resetting it,
 // at most once in any seven days. Life has weekends away and phones left in drawers; the streak
@@ -61,9 +69,17 @@ const keyToUtcMs = (k) => Date.parse(`${k}T00:00:00Z`);
 const shiftKey = (k, n) => new Date(keyToUtcMs(k) + n * DAY_MS).toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((keyToUtcMs(b) - keyToUtcMs(a)) / DAY_MS);
 
-export function nextShowingUp(data, today, localToday) {
+export function nextShowingUp(data, today, localToday = today) {
   const lastDate = data.lastGreetingDate ?? "";
   const currentStreak = Number(data.streakDays ?? 0);
+  const recorded = Array.isArray(data.activeDates) ? data.activeDates.filter((d) => typeof d === "string") : [];
+  if (lastDate && today < lastDate) {
+    const known = recorded.includes(localToday);
+    return {
+      activeDays: Math.max(Number(data.activeDays ?? 0), currentStreak) + (known ? 0 : 1),
+      activeDates: withActiveDate(recorded, localToday),
+    };
+  }
   const countedToday = lastDate === today;
 
   let streakDays = 1;
@@ -95,4 +111,22 @@ export function nextShowingUp(data, today, localToday) {
   if (graceUsedAt) fields.graceUsedAt = graceUsedAt;
   if (!data.firstActiveDate) fields.firstActiveDate = today;
   return fields;
+}
+
+// ── The streak as it stands today ────────────────────────────────────────────────────────────
+// streakDays is only rewritten when somebody acts, so a streak that ended a week ago was still
+// sitting in the header as "12d" until the next kind act reset it to 1 — a number about the
+// person that was not true. This is what it really is on `today` (their own date): the stored
+// count while it can still continue — counted today or yesterday, or two days ago with the
+// grace day still free — and nothing once it cannot.
+export function liveStreak(data, today) {
+  const days = Number(data?.streakDays ?? 0);
+  const last = typeof data?.lastGreetingDate === "string" ? data.lastGreetingDate : "";
+  if (!days || !last || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return 0;
+  if (last >= shiftKey(today, -1)) return days; // today, yesterday, or an older UTC key ahead of today
+  if (last === shiftKey(today, -2)) {
+    const grace = typeof data?.graceUsedAt === "string" ? data.graceUsedAt : null;
+    if (!grace || daysBetween(grace, today) >= GRACE_EVERY_DAYS) return days;
+  }
+  return 0;
 }

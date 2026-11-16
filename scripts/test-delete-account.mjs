@@ -79,6 +79,12 @@ function seed() {
   put(db, "users/other/ripples/third", { responderUid: "third", originatorUid: "other" });
   put(db, "users/other/follows/me", { uid: "me", name: "Me" });
   put(db, "users/other/follows/third", { uid: "third", name: "Third" });
+  // A message of theirs delivered to a stranger, and one of someone else's delivered to them (3.21).
+  put(db, "users/other/kindnessInbox/m_me", { messageId: "m_me", fromUid: "me", deliveredAt: 1 });
+  put(db, "users/other/kindnessInbox/m_third", { messageId: "m_third", fromUid: "third", deliveredAt: 1 });
+  put(db, "users/me/kindnessInbox/m_other", { messageId: "m_other", fromUid: "other", deliveredAt: 1 });
+  put(db, "kindnessLedger/me", { outDay: "2026-11-16", outCount: 1, recent: ["other"] });
+  put(db, "kindnessLedger/other", { inDay: "2026-11-16", inCount: 1 });
   put(db, "reports/rep1", { reporterUid: "me", reportedUid: "other" });
   return db;
 }
@@ -111,6 +117,10 @@ check("their row on someone else's hearts-received list goes, others' stay",
   !db.store.has("users/other/reactionsReceived/m_other_me") && db.store.has("users/other/reactionsReceived/m_other_third"));
 check("their ripple on someone else goes, others' stay", !db.store.has("users/other/ripples/me") && db.store.has("users/other/ripples/third"));
 check("other people's follow-list entries for them go, the rest stay", !db.store.has("users/other/follows/me") && db.store.has("users/other/follows/third"));
+check("their messages delivered to strangers leave those inboxes, others' stay",
+  !db.store.has("users/other/kindnessInbox/m_me") && db.store.has("users/other/kindnessInbox/m_third"));
+check("their own inbox and delivery ledger go; other people's ledgers stay",
+  !db.store.has("users/me/kindnessInbox/m_other") && !db.store.has("kindnessLedger/me") && db.store.has("kindnessLedger/other"));
 
 // 2. Nobody else's does.
 const otherOk = ["users/other", "users/other/journal/j1", "users/other/seenChat/c1", "publicProfiles/other", "publicMessages/m_other",

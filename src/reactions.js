@@ -43,9 +43,25 @@ export const HEART = "❤️";
 // feed the globe and the "who felt this" ordering. All four move together. An earlier version of
 // the sticker path wrote `{ count, uids }` alone, which left sticker reactors with no country and
 // no timestamp — bottom of the panel, no dot on the map.
+// ── A reaction is a kind act ─────────────────────────────────────────────────────────────────
+// A heart or a sticker on someone's words tells them they landed — they get a push saying so —
+// and until 3.21 it was the one way of making someone feel seen that did not count as showing up
+// that day. Every reaction path (the heart chip, the quick bar, the sticker picker) ends here, so
+// this is the one place that can say it happened. App registers what "count the day" means;
+// nothing else is notified, and taking a reaction back counts as nothing.
+let reactionGiven = null;
+export function onReactionGiven(fn) { reactionGiven = typeof fn === "function" ? fn : null; }
+
 export function setMyReaction({ db, uid, messageId, fromId, toId, country = null }) {
   if (!db || !uid || !messageId || fromId === toId) return Promise.resolve();
 
+  return writeMyReaction({ db, uid, messageId, fromId, toId, country }).then((result) => {
+    if (toId) { try { reactionGiven?.(); } catch { /* never fail a reaction over bookkeeping */ } }
+    return result;
+  });
+}
+
+function writeMyReaction({ db, uid, messageId, fromId, toId, country }) {
   return runTransaction(db, async (tx) => {
     // Firestore requires every read in a transaction to happen before every write, so the old
     // document is read first even though nothing between them depends on it.

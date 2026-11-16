@@ -329,6 +329,33 @@ await check("…of at most 80 characters",
 await check("nobody can set someone else's line",
   assertFails(setDoc(doc(B, "publicProfiles", "uidA"), { uid: "uidA", rightNow: "hi" }, { merge: true })));
 
+// ── A stranger's message, delivered to you (3.21) ──────────────────────────────────────────
+// Only the server delivers; you can read your own, mark them, and delete them.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users/uidB/kindnessInbox/msgK"), { messageId: "msgK", fromUid: "uidA", deliveredAt: 1, seen: false, answered: false });
+  await setDoc(doc(ctx.firestore(), "kindnessLedger/uidA"), { outDay: "2026-11-16", outCount: 1 });
+});
+await check("you can read a message delivered to you",
+  assertSucceeds(getDoc(doc(B, "users/uidB/kindnessInbox/msgK"))));
+await check("nobody else can read your inbox — not even the sender",
+  assertFails(getDoc(doc(A, "users/uidB/kindnessInbox/msgK"))));
+await check("you can mark it seen and answered",
+  assertSucceeds(updateDoc(doc(B, "users/uidB/kindnessInbox/msgK"), { seen: true, answered: true, answeredAt: 2 })));
+await check("…or put it away",
+  assertSucceeds(updateDoc(doc(B, "users/uidB/kindnessInbox/msgK"), { dismissed: true })));
+await check("…but not change who it is from",
+  assertFails(updateDoc(doc(B, "users/uidB/kindnessInbox/msgK"), { fromUid: "uidC" })));
+await check("no client can deliver a message — not to someone else",
+  assertFails(setDoc(doc(A, "users/uidC/kindnessInbox/msgX"), { messageId: "msgX", fromUid: "uidA", deliveredAt: 1 })));
+await check("…and not to yourself",
+  assertFails(setDoc(doc(B, "users/uidB/kindnessInbox/msgY"), { messageId: "msgY", fromUid: "uidA", deliveredAt: 1 })));
+await check("you can delete a delivered message",
+  assertSucceeds(deleteDoc(doc(B, "users/uidB/kindnessInbox/msgK"))));
+await check("the delivery ledger is closed to its owner, for reading",
+  assertFails(getDoc(doc(A, "kindnessLedger/uidA"))));
+await check("…and for resetting their own daily count",
+  assertFails(setDoc(doc(A, "kindnessLedger/uidA"), { outDay: "2026-11-16", outCount: 0 })));
+
 console.log();
 for (const [ok, name] of results) console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}`);
 const failed = results.filter(([ok]) => !ok).length;

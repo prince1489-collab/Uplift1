@@ -4,7 +4,7 @@
 // so every transition the transaction can make is pinned here. Pure functions, no emulator:
 //   node scripts/test-rhythm.mjs
 
-import { nextShowingUp, rhythmOf, withActiveDate, GRACE_EVERY_DAYS } from "../src/rhythm.js";
+import { nextShowingUp, rhythmOf, withActiveDate, liveStreak, GRACE_EVERY_DAYS } from "../src/rhythm.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name}  — ${detail}`]);
@@ -68,6 +68,23 @@ r = run({ lastGreetingDate: "2026-10-09", streakDays: 21, activeDays: 40 });
 check("the first act after 3.6 backfills the stored dates from the streak",
   r.activeDates.length === 22 && r.activeDates.at(-1) === T && r.activeDates[0] === "2026-09-19",
   `${r.activeDates.length} ${r.activeDates[0]}`);
+
+// ── An earlier day: a retried save, or an old UTC key ahead of the local date (3.21) ─────────
+r = nextShowingUp({ lastGreetingDate: "2026-10-10", streakDays: 4, activeDays: 9, activeDates: ["2026-10-10"] }, "2026-10-09");
+check("a retried earlier day joins the record", r.activeDates.includes("2026-10-09") && r.activeDays === 10, JSON.stringify(r));
+check("…and leaves the streak and its date alone", !("streakDays" in r) && !("lastGreetingDate" in r), JSON.stringify(r));
+r = nextShowingUp({ lastGreetingDate: "2026-10-11", streakDays: 6, activeDays: 12, activeDates: ["2026-10-10"] }, "2026-10-10");
+check("an old UTC key a day ahead never resets the streak", !("streakDays" in r) && r.activeDays === 12, JSON.stringify(r));
+check("a local day is the default for both keys", nextShowingUp({}, T).activeDates.at(-1) === T);
+
+// ── The streak as it stands today ────────────────────────────────────────────────────────────
+check("a streak counted today is alive", liveStreak({ streakDays: 5, lastGreetingDate: T }, T) === 5);
+check("a streak counted yesterday is alive", liveStreak({ streakDays: 5, lastGreetingDate: "2026-10-09" }, T) === 5);
+check("two days ago is alive while the grace day is free", liveStreak({ streakDays: 5, lastGreetingDate: "2026-10-08" }, T) === 5);
+check("two days ago with grace just spent has ended", liveStreak({ streakDays: 5, lastGreetingDate: "2026-10-08", graceUsedAt: "2026-10-06" }, T) === 0);
+check("three days ago has ended — no stale number in the header", liveStreak({ streakDays: 12, lastGreetingDate: "2026-10-07" }, T) === 0);
+check("an old UTC key a day ahead still shows the streak", liveStreak({ streakDays: 3, lastGreetingDate: "2026-10-11" }, T) === 3);
+check("no streak shows nothing", liveStreak({}, T) === 0 && liveStreak(null, T) === 0);
 
 let failed = 0;
 for (const [ok, name] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${name}`); if (!ok) failed++; }

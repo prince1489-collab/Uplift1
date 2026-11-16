@@ -8,7 +8,7 @@
 //  - IMAGES fail CLOSED, and have no fallback at all. See below.
 //
 // ── THE IMAGE BRANCH, AND WHY IT IS NOT LIKE THE TEXT ONE ────────────────────────────────────
-// Text that cannot reach the model still gets wordlistCheck() below — blunt, but a real second
+// Text that cannot reach the model still gets wordlistCheck() (_screen.js) — blunt, but a real second
 // opinion, and enough to let somebody send an encouraging message during an outage. There is no
 // word list for pixels. So when the key is missing, the call throws, or the reply will not parse,
 // this returns { ok: false, checked: false } and the client refuses the upload.
@@ -29,6 +29,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { screenText } from "./_screen.js";
 
 function initAdmin() {
   if (!getApps().length) {
@@ -49,43 +50,6 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 // base64 carries 3 bytes in every 4 characters.
 const MAX_IMAGE_B64 = Math.ceil(MAX_IMAGE_BYTES * 4 / 3);
-
-// Lightweight safety net used when the AI is unavailable, so custom encouragement still works
-// (rather than being hard-blocked). Catches the obvious stuff; the AI does the nuanced work when
-// it's reachable, and user reporting is the final backstop.
-// HARD = profanity/slurs: matched even when EMBEDDED / spaced / leetspeak / stretched
-// ("motherfucker", "f u c k", "sh1t", "fuuuck"). SOFT = insults: whole-word only, so kind
-// phrasing like "you're not stupid" isn't wrongly blocked. The AI is the real reviewer.
-const HARD_WORDS = [
-  "fuck", "motherfuck", "shit", "bitch", "cunt", "asshole", "arsehole", "bastard",
-  "slut", "whore", "wank", "bollock", "twat", "nigger", "nigga", "faggot", "molest",
-  "kkk", "nazi", "killyourself",
-];
-const SOFT_WORDS = ["loser", "idiot", "stupid", "ugly", "worthless", "pathetic", "retard", "dickhead", "hate you"];
-function normalize(s) {
-  return s.toLowerCase()
-    .replace(/[@4]/g, "a").replace(/0/g, "o").replace(/[1!|]/g, "i").replace(/3/g, "e")
-    .replace(/[$5]/g, "s").replace(/7/g, "t").replace(/[^a-z]/g, "");
-}
-function wordlistCheck(text) {
-  // Contact-info / spam fishing: emails, URLs, long digit runs (phone numbers).
-  if (/https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.-]+\b/.test(text)) {
-    return { ok: false, reason: "Let's keep links and contact details out 💛" };
-  }
-  if (/\d[\d\s().-]{7,}\d/.test(text)) {
-    return { ok: false, reason: "Let's keep phone numbers private 💛" };
-  }
-  const flat = normalize(text);
-  const collapsed = flat.replace(/(.)\1+/g, "$1");
-  if (HARD_WORDS.find((w) => flat.includes(w) || collapsed.includes(w))) {
-    return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
-  }
-  const spaced = ` ${text.toLowerCase().replace(/[^a-z\s]/g, " ")} `;
-  if (SOFT_WORDS.find((w) => spaced.includes(` ${w} `))) {
-    return { ok: false, reason: "Let's keep it kind — try gentler words 💛" };
-  }
-  return { ok: true };
-}
 
 // ── The image reviewer ───────────────────────────────────────────────────────────────────────
 // Returns the JSON body to send. `checked: false` is the signal that no verdict was reached, and
@@ -190,7 +154,7 @@ export default async function handler(req, res) {
   // ── Image, or text ─────────────────────────────────────────────────────────────────────────
   // Branched here so the image path inherits the CORS preamble, the admin init and the token
   // check above it verbatim — one endpoint, one set of doors, and no second Vercel function
-  // against a ceiling of twelve that api/ already holds eleven of.
+  // against a ceiling of twelve that api/ already holds all twelve of.
   if (req.body?.image) {
     const { status, body } = await reviewImage(req.body.image);
     return res.status(status).json(body);
@@ -201,52 +165,7 @@ export default async function handler(req, res) {
   const context = ["feeling", "post", "post_anonymous"].includes(raw) ? raw : "reply";
   if (!text) return res.status(400).json({ error: "missing text" });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  // No AI available → fall back to the word-list check (still a real check, so callers can send).
-  if (!apiKey) {
-    const wl = wordlistCheck(text);
-    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
-  }
-
-  try {
-    const client = new Anthropic({ apiKey });
-    const role = context === "feeling"
-      ? "a short public status about how they're feeling"
-      : context === "post"
-        ? "a short message in their own words, shared to the public kindness feed where anyone can read it"
-        : context === "post_anonymous"
-          ? "a short message in their own words, shared ANONYMOUSLY to the public kindness feed. " +
-            "Because their name is hidden there is less accountability, so apply the rules STRICTLY: " +
-            "anything borderline should be flagged rather than allowed through"
-          : "a short private encouragement message to someone who shared a difficult feeling";
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      messages: [{
-        role: "user",
-        content:
-          `You are the safety reviewer for a kindness app used by people who may be vulnerable. ` +
-          `A user wrote ${role}:\n\n"${text}"\n\n` +
-          `Flag it ONLY if it contains: harassment/insults/mockery, hate speech, sexual content, ` +
-          `encouragement of self-harm, threats, requests for or offers of contact details / money ` +
-          `/ links, spam or advertising. Ordinary sadness, worry, venting, or imperfect grammar is ` +
-          `FINE and must pass.\n\n` +
-          `Reply with ONLY JSON: {"ok": true} or {"ok": false, "reason": "<ten words max, gentle, ` +
-          `user-facing>"}.`,
-      }],
-    });
-    const raw = response.content[0]?.text ?? "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    const parsed = match ? JSON.parse(match[0]) : null;
-    if (parsed && typeof parsed.ok === "boolean") {
-      return res.status(200).json({ ok: parsed.ok, reason: parsed.reason || null, checked: true });
-    }
-    // Malformed AI response → word-list fallback rather than blocking outright.
-    const wl = wordlistCheck(text);
-    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
-  } catch (err) {
-    console.error("[moderate-message]", err?.message);
-    const wl = wordlistCheck(text);
-    return res.status(200).json({ ok: wl.ok, reason: wl.reason || null, checked: true, source: "wordlist" });
-  }
+  // The reviewer itself lives in _screen.js since 3.21, because delivering a message to a
+  // stranger's inbox screens it there too and the two must never disagree about what passes.
+  return res.status(200).json(await screenText(text, context));
 }

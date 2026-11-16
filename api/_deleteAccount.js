@@ -17,7 +17,8 @@
 //   shared reflections and greeting submissions they wrote · their reactions on other people's
 //   messages · what those reactions left in other people's spaces (the "hearts received" rows
 //   with their first name, ripple records) · other people's follow-list entries for them (which
-//   carry their name) · their profile photos · an active supporter subscription (cancelled) ·
+//   carry their name) · their messages delivered to strangers' inboxes, and their delivery
+//   ledger (3.21) · their profile photos · an active supporter subscription (cancelled) ·
 //   and, last, the sign-in itself.
 //
 // WHAT STAYS, and why:
@@ -104,9 +105,12 @@ export async function deleteAccountData({ db, uid, deleteAuthUser, deleteStorage
   await soft("reactionsReceivedByOthers", async () => gone("reactionsReceivedByOthers", await group("reactionsReceived", "reactorUid")));
   await soft("ripplesOnOthers", async () => gone("ripplesOnOthers", await group("ripples", "responderUid")));
   await soft("followedByOthers", async () => gone("followedByOthers", await group("follows", "uid")));
+  // Their messages delivered to strangers (3.21) — pointers in other people's inboxes. The
+  // messages themselves went above, so these would show nothing; they still name the sender.
+  await soft("deliveredToOthers", async () => gone("deliveredToOthers", await group("kindnessInbox", "fromUid")));
 
   // 3. Documents named by their id.
-  for (const coll of ["publicProfiles", "presence", "feelings", "referrals"]) {
+  for (const coll of ["publicProfiles", "presence", "feelings", "referrals", "kindnessLedger"]) {
     const ref = db.collection(coll).doc(uid);
     const snap = await ref.get();
     if (snap.exists) await gone(coll, [ref]); else counts[coll] = 0;

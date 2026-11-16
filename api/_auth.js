@@ -2,8 +2,8 @@
 //
 // The leading underscore matters: Vercel does not treat `api/_*` as a serverless function, so
 // this is a shared module rather than a route. That is worth knowing here specifically —
-// the project is at 11 of Hobby's 12 function limit, and a helper that accidentally became a
-// route would eat the last slot.
+// the project is at all 12 of Hobby's function limit, and a helper that accidentally became a
+// route would break the deploy.
 //
 // This exists because `notify-like` shipped with NO authentication at all: it took a target
 // uid from the request body and sent that person a push. Anyone who knew a uid could push
@@ -195,7 +195,8 @@ export async function dropDeadToken(db, uid, row) {
 //
 // Kept in step with the identical set in src/App.jsx, which decides what `?open=` may be when it
 // arrives. A value added here and not there is a notification that silently opens the feed.
-const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice"]);
+// `kindness` (3.21): a message from a stranger was delivered to you — it opens on that message.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness"]);
 
 export function linkFor(target) {
   return OPEN_TARGETS.has(target) ? `${APP_URL}/?open=${target}` : APP_URL;

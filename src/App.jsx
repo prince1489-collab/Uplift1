@@ -21,6 +21,9 @@ import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
 import AwayNote from "./AwayNote";
+import { onReactionGiven } from "./reactions";
+import { KindnessNote, KindnessSheet } from "./KindnessForYou";
+import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, readDelivery, replyTargetOf, markKindness } from "./kindnessInbox";
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
 import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
 import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion } from "./seenChat";
@@ -104,7 +107,8 @@ import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimp
 // Every destination a tapped notification is allowed to name. The mirror of OPEN_TARGETS in
 // api/_auth.js — the sender builds `?open=x` from its copy and this decides what x may be, so a
 // value added to one and not the other is a notification that quietly lands on the feed.
-const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice"]);
+// `kindness` (3.21): a message from a stranger was delivered to you — it opens on that message.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness"]);
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -2210,6 +2214,30 @@ export default function App() {
   // one, and everyone sees it. Anonymous: the card names nobody. The uids below are used
   // only to decide which feed it belongs in, never rendered.
   const kindMoments = useKindMoments(db, currentUser, blockedUids);
+
+  // ── Kindness that lands on a real person (3.21) ─────────────────────────────────────────────
+  // Received: stranger messages delivered to you (kindnessInbox.js), and the one still waiting
+  // for an answer. Sent: where today's message to a stranger went — "someone in Canada".
+  const kindnessItems = useKindnessInbox(db, currentUser?.uid, blockedUids);
+  const kindnessWaiting = useMemo(() => waitingKindness(kindnessItems), [kindnessItems]);
+  // The item as it was opened, kept so the sheet survives it leaving the list (blocking the
+  // sender from inside the sheet does that) — the live copy is preferred while it is there.
+  const [kindnessOpened, setKindnessOpened] = useState(null);
+  const kindnessOpen = kindnessOpened ? kindnessItems.find((it) => it.id === kindnessOpened.id) ?? kindnessOpened : null;
+  const kindnessIds = useRef(new Set());
+  useEffect(() => { kindnessIds.current = new Set(kindnessItems.map((it) => it.id)); }, [kindnessItems]);
+  const [delivery, setDelivery] = useState(() => readDelivery(localDayKey()));
+  const todayDelivery = delivery?.day === localDayKey() ? delivery : null;
+  // Asks the server to put a message that just reached the feed in front of one real person.
+  // Fire and forget: the send has already succeeded whatever this says.
+  const deliverToStranger = useCallback((messageId) => {
+    if (!currentUser || !messageId) return;
+    deliverKindness(currentUser, messageId).then((r) => {
+      const info = { day: localDayKey(), messageId, delivered: Boolean(r?.delivered), country: r?.country ?? null };
+      rememberDelivery(info.day, info);
+      setDelivery(info);
+    });
+  }, [currentUser]);
   // A moment involving you or someone you follow belongs in the Focused Feed; a moment
   // between two strangers broadcasts in the Worldwide Feed.
   const { focused: focusedMoments, worldwide: worldwideMoments } = useMemo(
@@ -2493,6 +2521,7 @@ export default function App() {
   useBackLayer(Boolean(reactionBarId), () => setReactionBarId(null));
   useBackLayer(pickerOpen, () => setPickerOpen(false));
   useBackLayer(Boolean(glimpse), () => setGlimpse(null));
+  useBackLayer(Boolean(kindnessOpened), () => setKindnessOpened(null));
   useBackLayer(showDeleteAccount, () => setShowDeleteAccount(false));
   useBackLayer(menuOpen, () => setMenuOpen(false));
   useBackLayer(showLevels, () => setShowLevels(false));
@@ -2729,12 +2758,22 @@ export default function App() {
     // A reply notification opens the conversation list, where the whole exchange is.
     if (openTarget === "replies") setActiveTab("messages");
     if (openTarget === "practice") openSeenBar();
+    // `kindness` waits for the inbox to load — see the effect below.
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("open");
       window.history.replaceState({}, "", url.toString());
     } catch { /* ignore */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A "someone thought of you" notification opens the message it was about. The inbox arrives a
+  // moment after the app does, so this waits for it, once.
+  const kindnessTargetDone = useRef(false);
+  useEffect(() => {
+    if (openTarget !== "kindness" || kindnessTargetDone.current || !kindnessItems.length) return;
+    kindnessTargetDone.current = true;
+    setKindnessOpened(kindnessWaiting || kindnessItems[0]);
+  }, [openTarget, kindnessItems, kindnessWaiting]);
 
   // Auto-add buddy from invite link (?add=UID)
   useEffect(() => {
@@ -3295,6 +3334,13 @@ export default function App() {
     try { recordGreetingDay()?.catch?.(() => {}); } catch { /* never block the act itself */ }
   }, [recordGreetingDay]);
 
+  // A heart or a sticker on someone's words counts too (3.21) — see onReactionGiven in
+  // reactions.js, the one place every reaction path ends.
+  useEffect(() => {
+    onReactionGiven(creditKindAct);
+    return () => onReactionGiven(null);
+  }, [creditKindAct]);
+
   // ── Hearts that become words ─────────────────────────────────────────────────────────────
   // After a ❤️ on someone else's message, one line offers to tell them what it meant
   // (replyNudge.js decides when; ReplyNudge.jsx is the line). And a private reply, once sent,
@@ -3312,6 +3358,10 @@ export default function App() {
   const [repliedTick, setRepliedTick] = useState(0);
   const handleReplySent = useCallback(({ mode, name, messageId, note, theirText }) => {
     creditKindAct();
+    // Writing back to a stranger's delivered message, in your own words, answers it (3.21).
+    if (mode === "first" && messageId && kindnessIds.current.has(messageId) && currentUser?.uid) {
+      markKindness(db, currentUser.uid, messageId, { answered: true, answeredAt: Date.now(), seen: true }).catch(() => {});
+    }
     try { markSentToday(localDayKey(), { via: note ? "note" : "reply", name, theirText }); } catch { /* ignore */ }
     // Grow counts people who felt seen; replies and notes are kept as their own tally.
     if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { seenRepliesSent: increment(1) }).catch(() => {});
@@ -3461,7 +3511,7 @@ export default function App() {
     setSendError("");
     try {
       const earnedSparks = computeSparkReward(greeting.sparkReward, streak);
-      await addDoc(publicMessagesRef, {
+      const sentRef = await addDoc(publicMessagesRef, {
         uid: currentUser.uid,
         sender: profile.fullName,
         text: greeting.text,
@@ -3488,7 +3538,10 @@ export default function App() {
           : {}),
       });
 
-      // Message is written — close picker and play animations immediately
+      // Message is written — and now it goes to one real person, not just the feed (3.21).
+      deliverToStranger(sentRef.id);
+
+      // Close picker and play animations immediately
       setPickerOpen(false);
       setIsSending(false);
       setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]); // giving-focused confirmation
@@ -3778,6 +3831,15 @@ export default function App() {
           <ModerationQueue db={db} darkMode={darkMode} onClose={() => setShowReports(false)} />
         )}
 
+        {kindnessOpen && (
+          <KindnessSheet item={kindnessOpen} db={db} currentUser={currentUser} me={profile}
+            onClose={() => setKindnessOpened(null)}
+            onWriteBack={(it) => { setKindnessOpened(null); setReplyTarget(replyTargetOf(it)); }}
+            onAnswered={(it) => handleReplySent({
+              mode: "first", toUid: it.message.uid, name: (it.message.sender || "").split(" ")[0],
+              messageId: it.messageId, note: false, theirText: it.message.text,
+            })} />
+        )}
         {showDeleteAccount && currentUser && !currentUser.isAnonymous && (
           <DeleteAccount auth={auth} db={db} onClose={() => setShowDeleteAccount(false)} onDeleted={() => setAccountDeleted(true)} />
         )}
@@ -3802,12 +3864,16 @@ export default function App() {
             // all five, and ticking a checkbox got the biggest celebration in the product. It
             // even earned MORE drops (150 against 100) and never said so. PostComposer has
             // always called onPosted; App simply never passed one, so it was a no-op.
-            onPosted={() => {
+            onPosted={({ id, anon, edited } = {}) => {
+              // An edit says so and stops: it is the same post, not another kind act (3.21).
+              if (edited) { setSentToast("Updated 💛"); return; }
               setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]);
               requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
               anim.triggerSparkBurst(85, 92);
               haptic([10, 30, 10]);
               try { playSend(); } catch { /* ignore */ }
+              // To one real person as well as the feed — never an anonymous post (see _kindness.js).
+              if (id && !anon) deliverToStranger(id);
               creditKindAct();
               try { markSentToday(localDayKey()); } catch { /* ignore */ }
               // Same offer the preset path makes — your words have just gone out to the world,
@@ -4795,7 +4861,12 @@ export default function App() {
               // the send lands, so it can open on the day's question.
               <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
               <UpdateNote update={appUpdate} onDismiss={dismissAppUpdate} />
-              {!appUpdate && awayNote && (() => {
+              {!appUpdate && kindnessWaiting && !kindnessWaiting.dismissed && (
+                <KindnessNote item={kindnessWaiting}
+                  onOpen={() => setKindnessOpened(kindnessWaiting)}
+                  onDismiss={() => markKindness(db, currentUser?.uid, kindnessWaiting.id, { dismissed: true, seen: true }).catch(() => {})} />
+              )}
+              {!appUpdate && !(kindnessWaiting && !kindnessWaiting.dismissed) && awayNote && (() => {
                 const first = conversations.find((c) => c.unread > 0);
                 return (
                   <AwayNote note={awayNote}
@@ -4810,6 +4881,9 @@ export default function App() {
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}
                 echo={todayEcho}
+                delivery={todayDelivery}
+                kindnessIn={kindnessWaiting}
+                onOpenKindness={(it) => setKindnessOpened(it)}
                 inboxReply={unreadReply}
                 followMessage={followMessage}
                 follows={followsByActivity}

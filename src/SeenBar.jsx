@@ -40,6 +40,7 @@ import { endingsFor, feelPhrase, sentenceFor, playBack, pickFeelCard, readCardHi
 import { pickReflect, rememberPick, fillName, setWhosNext, whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
+import { inCountry } from "./countryName";
 
 const PIN_KEY = (d) => `seen_reflect_pin_${d}`; // Journal.jsx's "hold this thought" key
 
@@ -87,12 +88,24 @@ function Option({ icon, title, hint, onClick, open, children }) {
   );
 }
 
+const kindnessFrom = (m) => {
+  const first = String(m?.sender || "").trim().split(/\s+/)[0] || "Someone";
+  return m?.country ? `${first} in ${inCountry(m.country)}` : first;
+};
+
 // ── What it did for the other person ─────────────────────────────────────────────────────────
 // Only ever something true: a reaction that arrived today names its country; otherwise it says
 // what kind of thing happened, never a number that might be zero.
-function consequence(route, echo, name) {
+// `delivery` (3.21) is where today's message to a stranger went: it now lands on one real person,
+// and the country it reached is the truest thing the bar can say — about THIS message, not any.
+function consequence(route, echo, name, delivery = null) {
   if (route === "reply") return `Your words reached ${name || "them"}.`;
   if (route === "note") return `${name || "They"} will get your note — only them.`;
+  if (route === "sent" && delivery?.delivered) {
+    return delivery.country
+      ? `Your words reached someone in ${inCountry(delivery.country)} 💛 You'll hear if they write back.`
+      : "Your words reached someone 💛 You'll hear if they write back.";
+  }
   if (echo?.country) return `Someone in ${echo.country} felt your kindness ${echo.emoji || "❤️"}`;
   if (route === "sent") return "Your words are on their way — you'll see here when someone feels them.";
   return "That happened off the screen. That counts.";
@@ -281,7 +294,7 @@ const clip = (t, n = 60) => {
 
 export default function SeenBar({
   db, currentUser, dob, nudgeHour, activeDates, streak = null, echo,
-  inboxReply, followMessage, follows = [],
+  inboxReply, followMessage, follows = [], delivery = null, kindnessIn = null, onOpenKindness,
   openRequest = 0, coach = false, sendLimitReached = false, onOpened,
   onSend, onReplyTo, onOpenReply, onNote, onSeeAllFollows, onFindPeople,
   onKindAct, onPlanChange, onSayMore,
@@ -542,7 +555,7 @@ export default function SeenBar({
                 onPick={pickTime} onSkip={skipTime} />
             ) : awaitingFeel ? (
               <FeelCard key={card.key} card={card} onSave={saveFeel} onSkip={skipFeel}
-                lead={route === "sent" && echo?.country ? consequence(route, echo, toName) : card.consequence} />
+                lead={route === "sent" && (delivery?.delivered || echo?.country) ? consequence(route, echo, toName, delivery) : card.consequence} />
             ) : awaitingReflection ? (
               // ── A different small question each day, about the other person ───────────────
               <div style={{ animation: "seenFadeUp 220ms ease both" }}>
@@ -581,7 +594,7 @@ export default function SeenBar({
                 {done && (
                   // Three clear lines: what it did, the question, your answer — never run together.
                   <div className="mb-2 rounded-xl bg-orange-50/80 px-3 py-2.5">
-                    <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName)}</p>
+                    <p className="text-[13px] font-bold leading-snug text-slate-800">{consequence(route, echo, toName, delivery)}</p>
                     {lastFelt && (
                       <p className="mt-1 text-[13px] font-semibold leading-snug text-teal-700">{playBack(lastFelt)}</p>
                     )}
@@ -614,6 +627,13 @@ export default function SeenBar({
                       </div>
                     )}
                   </Option>
+                )}
+
+                {/* A stranger's words, delivered to you (3.21) — answering them is the most
+                    direct way there is to make that person feel seen, so it comes first. */}
+                {kindnessIn?.message && (
+                  <Option icon={<Heart size={15} />} title={`${kindnessFrom(kindnessIn.message)} sent you kind words — tell them how it landed`}
+                    hint={`“${clip(kindnessIn.message.text)}”`} onClick={go(() => onOpenKindness?.(kindnessIn))} />
                 )}
 
                 {inboxReply && (

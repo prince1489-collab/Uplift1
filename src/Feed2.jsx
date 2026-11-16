@@ -25,6 +25,7 @@ import { awardPoints, claimFirstToday } from "./points";
 import { STICKERS } from "./StickerReactions";
 import { computeSparkReward, ReportBlockBar } from "./UpliftRetentionFeatures";
 import { apiUrl, authedPost } from "./apiBase";
+import { privateReplyPayload } from "./privateReplies";
 import GifPicker from "./GifPicker";
 import { isKlipyConfigured } from "./klipy";
 import { hasReplied } from "./replyNudge";
@@ -939,19 +940,10 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
       return;
     }
 
-    const payload = {
-      fromUid: myUid ?? currentUser.uid,
-      fromName: firstName(me?.fullName) || "Someone",
-      fromCountry: me?.country ?? null,
-      toUid: target.uid,
-      // Who it was to, so your own Messages list can name them even before they write back.
-      toName: firstName(answering ? answering.fromName : target?.sender) || null,
-      messageId: target.id ?? null,
-      messageText: (target.text ?? "").slice(0, 120), // context for the recipient
-      text: clean,
-      ts: Date.now(),
-      read: false,
-    };
+    const payload = privateReplyPayload({
+      me, uid: myUid ?? currentUser.uid, target, text: clean,
+      toName: firstName(answering ? answering.fromName : target?.sender),
+    });
 
     let replyId;
     try {
@@ -1662,7 +1654,9 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
         return;
       }
       setState("done");
-      onPosted?.();
+      // An edit is not a new kind act (3.21): it used to count the day and add one to "✓ N
+      // today" like a fresh post. App celebrates it lightly and counts nothing.
+      onPosted?.({ edited: true });
       setTimeout(() => onClose?.(), 900);
       return;
     }
@@ -1730,7 +1724,8 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
     // so it is called exactly once, here, after the post has actually gone through.
     try { awardPoints(claimFirstToday("post") ? "postFirst" : "post"); } catch { /* ignore */ }
     setState("done");
-    onPosted?.();
+    // The id, so App can deliver it to one real person (3.21) — unless it was posted anonymously.
+    onPosted?.({ id: posted.id, anon });
     setTimeout(() => onClose?.(), 900);
   };
 
