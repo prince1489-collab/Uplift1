@@ -8,7 +8,11 @@
 import { useEffect, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 
-export function useKindLog(db, uid, days = 30) {
+// `ready` (3.30): whether this account's log has arrived at least once, so a weekly summary or a
+// level isn't decided from the empty list that stands in while it loads.
+const NOT_YET = Object.freeze({ rows: Object.freeze([]), ready: false });
+
+export function useKindLogState(db, uid, days = 30) {
   const [state, setState] = useState({ uid: null, rows: [] });
   useEffect(() => {
     if (!db || !uid) return undefined;
@@ -18,5 +22,9 @@ export function useKindLog(db, uid, days = 30) {
       (snap) => setState({ uid, rows: snap.docs.map((d) => ({ id: d.id, ...d.data() })) }),
       () => setState({ uid, rows: [] }));
   }, [db, uid, days]);
-  return state.uid === uid ? state.rows : [];
+  return state.uid === uid ? { rows: state.rows, ready: true } : NOT_YET;
+}
+
+export function useKindLog(db, uid, days = 30) {
+  return useKindLogState(db, uid, days).rows;
 }

@@ -29,7 +29,7 @@ import { KindnessNote, KindnessSheet } from "./KindnessForYou";
 import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, readDelivery, replyTargetOf, markKindness } from "./kindnessInbox";
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
 import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
-import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion, SEEN_ID } from "./seenChat";
+import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion, postSeenUpdate, SEEN_ID } from "./seenChat";
 import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
@@ -50,7 +50,7 @@ import { ensurePublicProfile, syncPublicProfile, readPublicProfile } from "./pub
 import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setRealLifePlan } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
-import { claimCertificate } from "./certificates";
+import { claimCertificate, sinceLabel } from "./certificates";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
@@ -109,8 +109,11 @@ import { registerNativePush, nativePushPermission, isNativeIOS, isNativeApp, pus
 import { pushAskDue, markPushAsked, askable } from "./pushAsk";
 import { guessCountry, deviceHints } from "./guessCountry";
 import { logKindAct, noteDelivery } from "./kindLog";
-import { useKindLog } from "./useKindLog";
-import { latestReflection, expandEvidence } from "./growMoments";
+import { useKindLogState } from "./useKindLog";
+import { timeToNext } from "./growMoments";
+import { mergeCountries, heartsThisWeek, planBadges, bestStreakOf } from "./growStats";
+import { recapWeekKey, weeklyRecap, stageUpdate, badgeUpdate, certUpdate, canCreate, parseAction } from "./seenUpdates";
+import { CertificateSheet } from "./CertificateSheet";
 import PushAskNote from "./PushAskNote";
 import { publicUrl } from "./apiBase";
 import { openUpdate, isPushOpen } from "./openDays";
@@ -121,7 +124,8 @@ import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimp
 // api/_auth.js — the sender builds `?open=x` from its copy and this decides what x may be, so a
 // value added to one and not the other is a notification that quietly lands on the feed.
 // `kindness` (3.21): a message from a stranger was delivered to you — it opens on that message.
-const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness"]);
+// `seen` (3.30): Sunday's "Your week in Seen" opens the Seen conversation, where the week is.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness", "seen"]);
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSez1kAaFXKZzM97E9y4HhDiqE3tRAeLE",
@@ -2033,10 +2037,19 @@ export default function App() {
   // delivers the event instantly without depending on the per-message reactions
   // listeners above re-firing. Belt-and-suspenders with the listener above — both feed
   // the same reactedCountries state with an idempotent "keep newest at" guard.
+  // Hearts received, for Grow's ❤️ number and countries, and for Seen's "Your week" (3.30): the
+  // count, this week's, the countries they came from and the rows themselves (own hearts left out).
+  const [heartsInfo, setHeartsInfo] = useState({ uid: null, count: 0, week: 0, countries: [], loaded: false });
+  const heartsDocsRef = useRef([]);
+  const [extraCountries, setExtraCountries] = useState([]);
   useEffect(() => {
     if (!db || !currentUser) return;
     const col = collection(db, "users", currentUser.uid, "reactionsReceived");
     const unsub = onSnapshot(col, (snap) => {
+      const rows = snap.docs.map((d) => d.data()).filter((x) => x?.reactorUid && x.reactorUid !== currentUser.uid);
+      heartsDocsRef.current = rows;
+      setHeartsInfo({ uid: currentUser.uid, count: snap.size, week: heartsThisWeek(rows, Date.now(), currentUser.uid),
+        countries: [...new Set(rows.map((x) => x.country).filter(Boolean))], loaded: true });
       const newToasts = [];
       snap.docChanges().forEach((chg) => {
         if (chg.type === "removed") return; // un-heart: let the 5h TTL fade coral
@@ -2059,7 +2072,10 @@ export default function App() {
         };
         if (data.country) applyCountry(data.country);
         else readPublicProfile(db, reactorUid)
-          .then((pub) => applyCountry(pub?.country))
+          .then((pub) => {
+            applyCountry(pub?.country);
+            if (pub?.country) setExtraCountries((prev) => (prev.includes(pub.country) ? prev : [...prev, pub.country]));
+          })
           .catch((e) => console.warn("[reactionsReceived] country fallback failed", e));
 
         // Toast once per message+user+emoji — shared dedupe with the listener above
@@ -2384,19 +2400,18 @@ export default function App() {
   // too (about twice a week), so the badge appears without having to open the tab first.
   const seenConsent = profile?.seenAI?.consent === true;
   // The private kindness log (3.29): Seen's "how did that feel?" and the Grow tab both read it.
-  const kindLog = useKindLog(db, currentUser && !currentUser.isAnonymous ? currentUser.uid : null);
-  const seenOn = seenConsent && Boolean(currentUser && !currentUser.isAnonymous);
-  const seenChat = useSeenChat(db, currentUser?.uid, seenOn);
+  const realUid = currentUser && !currentUser.isAnonymous ? currentUser.uid : null;
+  const kindLogState = useKindLogState(db, realUid);
+  const kindLog = kindLogState.rows;
+  const seenOn = seenConsent && Boolean(realUid);
+  // Loaded for everyone signed in since 3.30: the app's own updates (seenUpdates.js) arrive here
+  // whether or not the AI is on. The AI's questions still wait for consent (below).
+  const seenChat = useSeenChat(db, realUid, Boolean(realUid));
   const seenState = useUnderstanding(db, currentUser?.uid, seenOn);
   useEffect(() => {
     if (seenConsent && seenChat && seenState) ensureQuestion(db, currentUser?.uid, seenChat, seenState, Date.now(), kindLog);
   }, [seenConsent, seenChat, seenState, currentUser?.uid, kindLog]);
   const seenJournal = profile?.seenAI?.journal === true;
-  // What Seen has noticed most recently, for the Grow tab (3.29).
-  const seenReflection = useMemo(() => {
-    const r = seenOn ? latestReflection(seenChat) : null;
-    return r ? { ...r, evidence: expandEvidence(r.evidence, seenChat) } : null;
-  }, [seenOn, seenChat]);
   const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent, journal: seenJournal }), [seenChat, seenState, seenConsent, seenJournal]);
   const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0) + seenUnread(seenChat), [conversations, seenChat]);
   const [messagesOpenUid, setMessagesOpenUid] = useState(null);
@@ -2882,6 +2897,7 @@ export default function App() {
     if (openTarget === "reflect") setShowJournal(true);
     // A reply notification opens the conversation list, where the whole exchange is.
     if (openTarget === "replies") setActiveTab("messages");
+    if (openTarget === "seen") openConversation(SEEN_ID);
     // `practice` and `kindness` wait for what they open — see the effects below.
     try {
       const url = new URL(window.location.href);
@@ -3250,6 +3266,131 @@ export default function App() {
   const treeStage = useMemo(() => treeStageFor(sparkBalance + treePoints), [sparkBalance, treePoints]);
 
   const { displayed: displayedSparks, flashing: sparksFlashing } = useSparkCounter(sparkBalance);
+
+  // ── Seen's updates, Grow's numbers and their levels (3.30) ─────────────────────────────────
+  // The app's own messages in the Seen conversation (seenUpdates.js) are written only once the
+  // conversation has come from the server and the id is certainly missing — otherwise they wait
+  // here for it. Never awaited; a duplicate is refused by the rules.
+  const seenChatRef = useRef(null);
+  const pendingUpdatesRef = useRef([]);
+  useEffect(() => { seenChatRef.current = seenChat; }, [seenChat]);
+  const queueSeenUpdate = useCallback((update, opts = {}) => {
+    if (!update || !realUid) return;
+    const chat = seenChatRef.current;
+    if (chat?.fromServer) { if (canCreate(chat, update.id, { fromServer: true })) postSeenUpdate(db, realUid, update, opts); return; }
+    pendingUpdatesRef.current.push({ update, opts, uid: realUid });
+  }, [realUid]);
+  useEffect(() => {
+    if (!realUid || !seenChat?.fromServer || !pendingUpdatesRef.current.length) return;
+    const waiting = pendingUpdatesRef.current;
+    pendingUpdatesRef.current = [];
+    for (const p of waiting) {
+      if (p.uid === realUid && canCreate(seenChat, p.update.id, { fromServer: true })) postSeenUpdate(db, realUid, p.update, p.opts);
+    }
+  }, [seenChat, realUid]);
+
+  // The tree's next stage as time at this person's pace (growMoments.timeToNext).
+  const paceFor = useCallback((idx) => {
+    const st = TREE_STAGES[idx], nx = TREE_STAGES[idx + 1];
+    if (!st || !nx) return null;
+    const bal = sparkBalance + treePoints;
+    const recent = rhythmOf(profile?.activeDates, new Date(), { days: profile?.streakDays, last: profile?.lastGreetingDate });
+    return timeToNext({ remaining: nx.min - bal, balance: bal, activeDays: Number(profile?.activeDays ?? 0), recentDays: Number(recent) || 0 });
+  }, [sparkBalance, treePoints, profile]);
+
+  // Countries your kindness reached: a collection kept on the account (users/{uid}.countriesReached)
+  // so it never shrinks as the 30-day windows move on. Fed by hearts, by your words being delivered
+  // to someone, and by Grow's 30-day reactions (onCountriesSeen). Only new names are written.
+  const deliveredCountries = useMemo(() => kindLog.filter((e) => e?.route === "sent" && e.country).map((e) => e.country), [kindLog]);
+  const [growCountries, setGrowCountries] = useState([]);
+  const countriesMerge = useMemo(() => mergeCountries({
+    stored: profile?.countriesReached,
+    incoming: [...(heartsInfo.uid === realUid ? heartsInfo.countries : []), ...deliveredCountries, ...extraCountries, ...growCountries],
+    flagMap: FLAG_MAP,
+  }), [profile?.countriesReached, heartsInfo, realUid, deliveredCountries, extraCountries, growCountries]);
+  const countriesWrittenRef = useRef(new Set());
+  useEffect(() => {
+    if (!profile || !realUid || !countriesMerge.added.length) return;
+    const fresh = countriesMerge.added.filter((c) => !countriesWrittenRef.current.has(`${realUid}|${c}`));
+    if (!fresh.length) return;
+    fresh.forEach((c) => countriesWrittenRef.current.add(`${realUid}|${c}`));
+    updateDoc(doc(db, "users", realUid), { countriesReached: arrayUnion(...fresh) }).catch(() => {});
+  }, [countriesMerge, profile, realUid]);
+  const onCountriesSeen = useCallback((list) => {
+    setGrowCountries((prev) => { const add = (list || []).filter((c) => !prev.includes(c)); return add.length ? [...prev, ...add] : prev; });
+  }, []);
+
+  // Levels on Grow's three numbers (growStats.planBadges): users/{uid}.badges holds the highest
+  // level already announced. The first time, levels are recorded quietly; a stat is only judged
+  // once its numbers have loaded. A new level is told in Seen, and celebrated on its card the next
+  // time Grow is on screen (straight away if it already is — then Seen's message arrives read).
+  const heartsValue = Math.max(Number(profile?.reactionsReceivedCount) || 0, heartsInfo.uid === realUid ? heartsInfo.count : 0);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  const badgesRef = useRef({ uid: null, map: null });
+  const [freshBadges, setFreshBadges] = useState([]);
+  useEffect(() => {
+    if (!profile || !realUid) return undefined;
+    const stored = profile.badges && typeof profile.badges === "object" ? profile.badges : null;
+    const local = badgesRef.current.uid === realUid ? badgesRef.current.map : null;
+    const prev = stored || local ? Object.fromEntries(["streak", "hearts", "countries"]
+      .filter((k) => Number.isInteger(stored?.[k]) || Number.isInteger(local?.[k]))
+      .map((k) => [k, Math.max(Number.isInteger(stored?.[k]) ? stored[k] : 0, Number.isInteger(local?.[k]) ? local[k] : 0)])) : null;
+    const heartsReady = heartsInfo.loaded && heartsInfo.uid === realUid;
+    const plan = planBadges({
+      prev,
+      values: { streak: bestStreakOf(profile, localDayKey()), hearts: heartsValue, countries: countriesMerge.all.length },
+      ready: { streak: true, hearts: heartsReady, countries: heartsReady && kindLogState.ready },
+    });
+    if (!plan.changed) return undefined;
+    badgesRef.current = { uid: realUid, map: plan.next };
+    updateDoc(doc(db, "users", realUid), { badges: plan.next }).catch(() => {});
+    if (!plan.announce.length) return undefined;
+    const onGrow = activeTabRef.current === "impact";
+    plan.announce.forEach((a) => queueSeenUpdate(badgeUpdate(a), { read: onGrow }));
+    const t = setTimeout(() => setFreshBadges((prevFresh) => [...prevFresh.filter((f) => !plan.announce.some((a) => a.stat === f.stat)), ...plan.announce]), 0);
+    return () => clearTimeout(t);
+  }, [profile, realUid, heartsInfo, heartsValue, countriesMerge, kindLogState.ready, queueSeenUpdate]);
+  const onBadgeCelebrated = useCallback((stat) => setFreshBadges((prev) => prev.filter((f) => f.stat !== stat)), []);
+  const onGrowStageUp = useCallback((idx) => {
+    queueSeenUpdate(stageUpdate({ stageIdx: idx, stages: TREE_STAGES, pace: paceFor(idx) }), { read: true });
+  }, [queueSeenUpdate, paceFor]);
+
+  // "Your week" in Seen — the first open from Sunday to Tuesday, about Monday to then. Built once
+  // everything it reads has loaded; written once per week (fixed id), and never for a week before
+  // the account, or before "Forget everything".
+  const recapTriedRef = useRef("");
+  useEffect(() => {
+    if (!realUid || !profile || !seenChat?.fromServer || !kindLogState.ready || !(heartsInfo.loaded && heartsInfo.uid === realUid)) return;
+    const now = Date.now();
+    const weekKey = recapWeekKey(now);
+    if (!weekKey) return;
+    const id = `u-week-${weekKey}`;
+    if (recapTriedRef.current === `${realUid}|${id}` || !canCreate(seenChat, id, { fromServer: true })) return;
+    recapTriedRef.current = `${realUid}|${id}`;
+    const [y, m, d] = weekKey.split("-").map(Number);
+    const from = new Date(y, m - 1, d).getTime();
+    const idx = TREE_STAGES.indexOf(treeStage);
+    getDocs(query(collection(db, "users", realUid, "journal"), where("createdAt", ">=", from)))
+      .then((snap) => snap.size).catch(() => 0)
+      .then((journalCount) => {
+        const recap = weeklyRecap({
+          weekKey, now, activeDates: profile.activeDates, acts: kindLog, replies: inboxReplies, hearts: heartsDocsRef.current, journalCount,
+          pace: paceFor(idx), nextStage: TREE_STAGES[idx + 1]?.name || null,
+          createdAt: Date.parse(currentUser?.metadata?.creationTime || "") || 0, forgotAt: Number(profile.seenAI?.forgotAt) || 0,
+        });
+        if (recap) queueSeenUpdate(recap);
+      });
+  }, [realUid, profile, seenChat, kindLogState.ready, heartsInfo, kindLog, inboxReplies, treeStage, paceFor, queueSeenUpdate, currentUser]);
+
+  // What an update's button does (seenUpdates.parseAction): the tree, a certificate, or Grow.
+  const onSeenAction = useCallback((action) => {
+    const a = parseAction(action);
+    if (!a) return;
+    if (a.type === "tree") setShowLevels(true);
+    else if (a.type === "grow") { setMessagesOpenUid(null); setActiveTab("impact"); }
+    else if (a.type === "cert") setOpenCert(a.cert);
+  }, []);
   // ── Reaching a new stage of the tree, wherever you happen to be ─────────────────────────────
   // This used to be a chime and nothing else. The actual celebration — petals, the stage name
   // drawing itself in — lived inside the Grow tab and fired only when somebody opened it, and
@@ -3269,6 +3410,7 @@ export default function App() {
     prevStageRef.current = treeStage.min;
     if (!rose || activeTab === "impact") return;
     if (!claimStageUp(TREE_STAGES.indexOf(treeStage))) return;
+    queueSeenUpdate(stageUpdate({ stageIdx: TREE_STAGES.indexOf(treeStage), stages: TREE_STAGES, pace: paceFor(TREE_STAGES.indexOf(treeStage)) }));
     playLevelUp();
     setStageUp(treeStage);
     const t = setTimeout(() => setStageUp(null), 7000);
@@ -3295,11 +3437,14 @@ export default function App() {
   // Same shape as the tree stage-up above, deliberately: claimed here for anyone who is not
   // looking at Grow, and left to MySeenStory when they are, because it has the better version of
   // the moment with the certificates in front of them.
+  // 3.30: Grow no longer shows certificates (they're in the tree's panel), so this claims them on
+  // every tab, and Seen is told with a button that opens the certificate.
   const [certUp, setCertUp] = useState(null);
+  const [openCert, setOpenCert] = useState(null);
   useEffect(() => {
-    if (activeTab === "impact") return;
     const won = claimCertificate(Number(profile?.activeDays ?? 0));
     if (!won) return;
+    queueSeenUpdate(certUpdate(won));
     // Inside the timeout rather than called straight out: a synchronous setState in an effect is
     // the react-hooks/set-state-in-effect error this file already carries several of, and the
     // lint total is a number worth keeping still.
@@ -3346,17 +3491,6 @@ export default function App() {
     }
     return best;
   }, [reactedCountries]);
-
-  const liveImpact = useMemo(() => {
-    const weekAgo = Date.now() - 7 * 86400000;
-    const monthAgo = Date.now() - 30 * 86400000;
-    const uid = currentUser?.uid;
-    const sent7d = messages.filter(m => m.uid === uid && m.timestamp >= weekAgo).length;
-    const sent30d = messages.filter(m => m.uid === uid && m.timestamp >= monthAgo).length;
-    const countries7d = new Set(messages.filter(m => m.uid !== uid && m.timestamp >= weekAgo && m.country).map(m => m.country)).size;
-    const countries30d = new Set(messages.filter(m => m.uid !== uid && m.timestamp >= monthAgo && m.country).map(m => m.country)).size;
-    return { sent7d, sent30d, countries7d, countries30d };
-  }, [messages, currentUser]);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -4364,10 +4498,14 @@ export default function App() {
 
             {showLevels && (
               <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree}
+                activeDays={Number(profile?.activeDays ?? 0)} firstActiveDate={profile?.firstActiveDate} fullName={profile?.fullName || ""}
                 note={autoWaterTree ? (delivery?.delivered && delivery.day === localDayKey()
                   ? (delivery.country ? `Your words reached someone in ${inCountry(delivery.country)}` : "Your words reached someone")
                   : "Your words are on their way to someone") : null}
                 onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
+            )}
+            {openCert && (
+              <CertificateSheet cert={openCert} name={profile?.fullName || ""} since={sinceLabel(profile?.firstActiveDate)} onClose={() => setOpenCert(null)} />
             )}
 
             {openStory && (
@@ -4479,6 +4617,7 @@ export default function App() {
                 onMarkRead={markRepliesRead}
                 onStart={() => openSeenBar()}
                 db={db} currentUser={currentUser} seen={isRealSignedInUser ? seenForTab : null}
+                onSeenAction={onSeenAction}
                 onOpenSupport={() => setActiveTab("support")}
                 onWriteTo={(name) => {
                   // "Write to Sam ✨" — a kind note to them if you follow someone by that name,
@@ -4493,8 +4632,9 @@ export default function App() {
                 <Support country={profile?.country} />
               </Suspense>
             ) : activeTab === "impact" ? (
-              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} onMakeSeen={openSeenBar} onOpenJournal={() => setShowJournal(true)}
-                kindLog={kindLog} replies={inboxReplies} seenOn={seenOn} reflection={seenReflection} onOpenSeen={() => openConversation(SEEN_ID)} />
+              <MySeenStory db={db} currentUser={currentUser} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onMakeSeen={openSeenBar}
+                heartsTotal={heartsValue} heartsWeek={heartsInfo.uid === realUid ? heartsInfo.week : 0} countries={countriesMerge.all} onCountriesSeen={onCountriesSeen}
+                fresh={freshBadges} onCelebrated={onBadgeCelebrated} onStageUp={onGrowStageUp} />
             ) : (
             /* No onScroll here on purpose. React's onScroll is a non-passive listener on a
                scroll container that renders hundreds of messages; FeedDatePill subscribes to
@@ -5035,10 +5175,10 @@ export default function App() {
             {/* The certificate equivalent, and hidden on Grow for the same reason: there, the row
                 itself is the announcement. Nine seconds rather than the tree's seven, because
                 this one asks you to go somewhere to look at it. */}
-            {certUp && activeTab !== "impact" && (
+            {certUp && (
               <div className="pointer-events-none fixed inset-x-0 top-[104px] z-[240] flex justify-center px-4">
                 <button
-                  onClick={() => { setCertUp(null); setActiveTab("impact"); }}
+                  onClick={() => { setCertUp(null); setOpenCert(certUp); }}
                   className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-left shadow-lg active:scale-[0.98] transition-transform"
                   style={{ animation: "seenFadeUp 320ms ease both" }}>
                   <span className="text-xl leading-none" aria-hidden>{certUp.emoji}</span>

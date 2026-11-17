@@ -29,6 +29,8 @@ import { createPortal } from "react-dom";
 import { X, Droplets } from "lucide-react";
 import { getPoints } from "./points";
 import { playWatering } from "./sounds";
+import { CertificatesRow, CertificateSheet } from "./CertificateSheet";
+import { sinceLabel } from "./certificates";
 
 export const TREE_STAGES = [
   { min: 0,       name: "Seed",          blurb: "Every forest starts exactly here." },
@@ -523,7 +525,11 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
 
 // `note` (3.28): one line above the tree — on the very first kind act it says where the words went
 // ("Your words reached someone in the United Kingdom"), so that moment and the tree are one moment.
-export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false, note = null }) {
+// 3.30: the certificates and the real-tree promise live here now — Grow is only the tree and three
+// numbers. `activeDays`, `firstActiveDate` and `fullName` come from the profile for the certificates.
+export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false, note = null,
+  activeDays = 0, firstActiveDate = null, fullName = "" }) {
+  const [openCert, setOpenCert] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
   const { watering, startPour } = useWatering(true); // always pour on open — this panel IS "tend your tree"
   useEffect(() => {
@@ -581,6 +587,23 @@ export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, 
           </p>
         </div>
 
+        {/* Where this ends up — a fully grown tree plants a real one. It sat on Grow until 3.30. */}
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center">
+          {stageIdx === TREE_STAGES.length - 1 ? (
+            <>
+              <p className="text-[13px] font-bold leading-snug text-emerald-800">🌍 You reached Tree of Life.</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">A real tree will be planted in your name — we'll let you know when it's in the ground.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-[13px] font-bold leading-snug text-emerald-800">🌍 A fully grown tree here plants a real one.</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">Reach Tree of Life and a real tree goes into the ground, planted in your name.</p>
+            </>
+          )}
+        </div>
+
+        <CertificatesRow activeDays={Number(activeDays) || 0} onOpen={setOpenCert} />
+
         <div>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Growth stages</p>
           <div className="space-y-1">
@@ -603,8 +626,9 @@ export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, 
             })}
           </div>
         </div>
-        <p className="pb-6 text-center text-[10px] text-slate-400">A fully grown tree here plants a real one, in your name. 🌍</p>
+        <div className="pb-6" />
       </div>
+      {openCert && <CertificateSheet cert={openCert} name={fullName || ""} since={sinceLabel(firstActiveDate)} onClose={() => setOpenCert(null)} />}
     </div>,
     document.body
   );

@@ -15,7 +15,7 @@ import { pickDailyPrompt, isEveningNow } from "./JournalPrompts";
 import { PROMPT_HINTS } from "./JournalHints";
 import { setEveningCue } from "./eveningCue";
 import { writeFailure } from "./writeFailure";
-import { awardPoints, POINTS } from "./points";
+import { awardPoints, getPoints, POINTS } from "./points";
 import { markDone } from "./invitations";
 import { authedPost } from "./apiBase";
 import { useDictation } from "./dictation";
@@ -349,6 +349,20 @@ function ShareStorySheet({ entry, authorName, country, authorUid, db, currentUse
 
 export default function JournalPanel({ db, currentUser, profile, darkMode = false, inline = false, onClose, onKindAct }) {
   const uid = currentUser?.uid;
+  // ── Seen reads the journal, if you say so (3.30) ─────────────────────────────────────────────
+  // The journal stays its own place, but what you write here can help Seen — the AI in Messages —
+  // notice what matters to you. It reads entries only when users/{uid}.seenAI.journal is true (the
+  // same switch as "What Seen knows about you"). With Seen on and no answer yet, it's asked once,
+  // just after an entry is saved; when allowed, saving asks Seen whether a reflection is due.
+  const seenAiOn = profile?.seenAI?.consent === true;
+  const seenReadsJournal = profile?.seenAI?.journal; // true, false, or not asked yet
+  const [askSeen, setAskSeen] = useState(false);
+  const nudgeSeen = () => { if (currentUser) authedPost(currentUser, "/api/understand", { mode: "reflect" }).catch(() => {}); };
+  const answerSeen = (yes) => {
+    setAskSeen(false);
+    if (!db || !uid) return;
+    updateDoc(doc(db, "users", uid), { "seenAI.journal": yes }).then(() => { if (yes) nudgeSeen(); }).catch(() => {});
+  };
   const type = "reflection"; // v2: single-category journal
   const [date, setDate] = useState(todayStr());
   // ── A half-written entry survives leaving the tab ──────────────────────────────────────────
@@ -607,16 +621,24 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
         await addDoc(collection(db, "users", uid, "journal"), {
           type, text: trimmed, date, prompt: prompt || null, createdAt: Date.now(),
         });
-        try { awardPoints("reflect"); } catch { /* ignore */ } // v2: waters the Kindness Tree — new entries only
+        // Waters the Kindness Tree — once a day (3.30). One entry per date was only ever enforced
+        // here, so deleting and re-adding an entry, or backdating one into an empty day, paid 300
+        // drops each time.
+        let watered = false;
+        try { const before = getPoints(); watered = awardPoints("reflect", { oncePerDay: true }) > before; } catch { /* ignore */ }
         // Say thank you. Practice has burst "✨ +N drops" on every tick since it shipped;
         // Reflect awarded its points in complete silence, so the tab that asks for the most
-        // effort was the only one that never acknowledged it. New entries only — an edit
-        // earns nothing, and a burst over nothing would be a lie.
-        setDropsBurst(true);
-        setTimeout(() => setDropsBurst(false), 2200);
+        // effort was the only one that never acknowledged it. Only when drops actually landed —
+        // a burst over nothing would be a lie.
+        if (watered) {
+          setDropsBurst(true);
+          setTimeout(() => setDropsBurst(false), 2200);
+        }
         // New entries only, same as the points above: coming back to edit today's reflection is
         // still the same day's act, and the streak is already credited for it.
         try { onKindAct?.(); } catch { /* ignore */ }
+        if (seenAiOn && seenReadsJournal === true) nudgeSeen();
+        else if (seenAiOn && seenReadsJournal == null) setAskSeen(true);
       }
       setSaveError("");
       // Stamped on edits as well as new entries: coming back to today's reflection and adding
@@ -873,6 +895,17 @@ export default function JournalPanel({ db, currentUser, profile, darkMode = fals
             }`}>
             {saving ? "Saving…" : isCompleted ? "✓ Completed" : editingId ? "Save changes" : "Add reflection"}
           </button>
+          {askSeen && (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-3.5 py-3" role="dialog" aria-label="Let Seen read your journal?"
+              style={{ animation: "seenFadeUp 300ms ease both" }}>
+              <p className="text-[13px] font-bold text-slate-800">✨ Let Seen read your journal?</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-slate-600">It will notice what matters to you across what you write here and what you tell it — always showing why. You can change this any time in Seen.</p>
+              <div className="mt-2.5 flex gap-2">
+                <button onClick={() => answerSeen(true)} className="flex-1 rounded-full bg-teal-600 py-2 text-[12.5px] font-bold text-white">Yes</button>
+                <button onClick={() => answerSeen(false)} className="flex-1 rounded-full border border-slate-200 bg-white py-2 text-[12.5px] font-bold text-slate-600">Keep it private</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Order: the memory, then the calendar. It used to be the other way round, which put

@@ -79,3 +79,12 @@ export function claimCertificate(activeDays) {
   if (earned <= seen) return null;        // nothing new
   return CERTIFICATES[earned - 1];
 }
+
+// firstActiveDate is a YYYY-MM-DD key, stamped only from the moment that field shipped — so an
+// older account has none and the certificate omits the line rather than inventing a date.
+// Parsed at UTC noon so the displayed day cannot slide backwards in a western timezone.
+export function sinceLabel(key) {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const d = new Date(`${key}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}

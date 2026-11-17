@@ -47,9 +47,12 @@ const WEEKLY_MESSAGE_WELLBEING = {
   title: "Your fortnightly check-in 🌱",
   body: "Add a line to your journal, and see how the last two weeks have felt.",
 };
-const WEEKLY_MESSAGE_LITE = {
-  title: "Your weekly check-in 🌱",
-  body: "A quiet minute to look back — add a line to your journal.",
+// 3.30: the other Sundays point at "Your week" — written in the Seen conversation by the app the
+// first time it opens from Sunday on (src/seenUpdates.js), so the tap lands on it.
+export const WEEKLY_MESSAGE_LITE = {
+  title: "Your week in Seen 🌱",
+  body: "See what your kindness did this week.",
+  open: "seen",
 };
 
 // ── The evening slot ─────────────────────────────────────────────────────────────────────────

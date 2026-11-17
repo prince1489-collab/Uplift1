@@ -21,7 +21,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { cors, requireCaller } from "./_auth.js";
 import {
   safetyLevel, supportMessage, guardReply, guardReflection, buildDigest, validateReflections, mergeThemes,
-  reflectionDue, replyAllowed, nudgeFor, parseJson, replyPrompt, reflectPrompt,
+  reflectionDue, replyAllowed, nudgeFor, parseJson, replyPrompt, reflectPrompt, modelChat,
 } from "./_seen.js";
 
 const REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -79,7 +79,8 @@ export async function handle(body, { db, uid, ai, now = Date.now() }) {
   const name = String(user.name || user.displayName || "").split(" ")[0] || null;
 
   if (body?.mode === "reply") {
-    const last = chat[chat.length - 1];
+    const talk = modelChat(chat); // never the app's own updates (api/_seen.js)
+    const last = talk[talk.length - 1];
     if (!last || last.role !== "me") return { status: 200, json: { skipped: "nothing_to_answer" } };
     // Difficulty first: no analysis, no model call — a kind line and where to find support.
     const level = safetyLevel(last.text);
@@ -99,7 +100,7 @@ export async function handle(body, { db, uid, ai, now = Date.now() }) {
     const evidence = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now, acts: ctx.acts, journal: ctx.journal });
     let text = null;
     try {
-      const p = replyPrompt({ chat, themes: state.themes || [], evidence, name });
+      const p = replyPrompt({ chat: talk, themes: state.themes || [], evidence, name });
       text = guardReply(await ai({ model: REPLY_MODEL, system: p.system, user: p.user, max_tokens: 300 }));
     } catch (err) { console.error("[understand] reply model failed", err?.status || err?.message); }
     await write({ kind: "reply", text: text || FALLBACK_REPLY });
@@ -109,7 +110,7 @@ export async function handle(body, { db, uid, ai, now = Date.now() }) {
   }
 
   if (body?.mode === "reflect") {
-    if (!reflectionDue({ answers: ctx.answers, lastReflect: state.lastReflect, now })) return { status: 200, json: { skipped: "not_due" } };
+    if (!reflectionDue({ answers: ctx.answers, lastReflect: state.lastReflect, now, journal: ctx.journal })) return { status: 200, json: { skipped: "not_due" } };
     // Never analyse while the last thing they said sounded like difficulty.
     if (now - Number(state.safetyAt || 0) < 3 * DAY) return { status: 200, json: { skipped: "care" } };
     const items = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now, acts: ctx.acts, journal: ctx.journal });

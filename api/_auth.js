@@ -196,7 +196,8 @@ export async function dropDeadToken(db, uid, row) {
 // Kept in step with the identical set in src/App.jsx, which decides what `?open=` may be when it
 // arrives. A value added here and not there is a notification that silently opens the feed.
 // `kindness` (3.21): a message from a stranger was delivered to you — it opens on that message.
-const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness"]);
+// `seen` (3.30): Sunday's "Your week in Seen" opens the Seen conversation, where the week is.
+const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness", "seen"]);
 
 // Every push link also says it IS one (`via=push`, 3.26): the app counts the days a notification
 // brought someone back apart from the days they came on their own (src/openDays.js) — the

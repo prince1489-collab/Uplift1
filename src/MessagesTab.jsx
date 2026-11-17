@@ -118,7 +118,10 @@ function Conversation({ person, myUid, canNote, onBack, onAction, onNote, onMark
 function SeenRow({ seen, onOpen }) {
   const lastSeen = [...(seen.chat || [])].reverse().find((m) => m.role === "seen");
   const unread = seenUnread(seen.chat);
-  const preview = !seen.consent ? "A few questions about your life — just for you"
+  // 3.30: the app's own updates (your week, a new level…) arrive for everyone, AI on or not.
+  const firstLine = (t) => String(t || "").split("\n").filter(Boolean).slice(0, 2).join(" · ");
+  const preview = lastSeen?.kind === "update" ? firstLine(lastSeen.text)
+    : !seen.consent ? "A few questions about your life — just for you"
     : lastSeen?.kind === "reflection" ? "✨ Seen noticed something"
     : lastSeen?.text || "Every few days, a question about your life";
   return (
@@ -140,11 +143,11 @@ function SeenRow({ seen, onOpen }) {
 }
 
 export default function MessagesTab({ conversations = [], myUid, followUids = new Set(), openUid, onOpen, onClose, onAction, onNote, onMarkRead, onStart,
-  db, currentUser, seen = null, onWriteTo, onOpenSupport }) {
+  db, currentUser, seen = null, onWriteTo, onOpenSupport, onSeenAction }) {
   if (openUid === SEEN_ID && seen && currentUser) {
     return (
       <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent} journal={seen.journal}
-        onBack={onClose} onWriteTo={onWriteTo} onOpenSupport={onOpenSupport} />
+        onBack={onClose} onWriteTo={onWriteTo} onOpenSupport={onOpenSupport} onAction={onSeenAction} />
     );
   }
   const person = openUid ? conversations.find((c) => c.uid === openUid) : null;

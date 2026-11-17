@@ -69,6 +69,18 @@ const keyToUtcMs = (k) => Date.parse(`${k}T00:00:00Z`);
 const shiftKey = (k, n) => new Date(keyToUtcMs(k) + n * DAY_MS).toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((keyToUtcMs(b) - keyToUtcMs(a)) / DAY_MS);
 
+// The longest run of consecutive dates in a list of YYYY-MM-DD keys (any order, repeats fine).
+export function longestRun(dates) {
+  const days = [...new Set((Array.isArray(dates) ? dates : []).filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+  let best = 0, run = 0, prev = null;
+  for (const d of days) {
+    run = prev && shiftKey(prev, 1) === d ? run + 1 : 1;
+    if (run > best) best = run;
+    prev = d;
+  }
+  return best;
+}
+
 export function nextShowingUp(data, today, localToday = today) {
   const lastDate = data.lastGreetingDate ?? "";
   const currentStreak = Number(data.streakDays ?? 0);
@@ -110,6 +122,11 @@ export function nextShowingUp(data, today, localToday = today) {
   };
   if (graceUsedAt) fields.graceUsedAt = graceUsedAt;
   if (!data.firstActiveDate) fields.firstActiveDate = today;
+  // The best run ever (3.30), for the Grow tab's "days in a row" and its levels. Kept here, in the
+  // transaction that already counts each day, so it can only ever go up. The first time round it
+  // starts from the longest stretch the 30 days of dates can show.
+  const best = Math.max(Number(data.bestStreak) || 0, streakDays, currentStreak, longestRun(fields.activeDates));
+  if (best !== Number(data.bestStreak)) fields.bestStreak = best;
   return fields;
 }
 

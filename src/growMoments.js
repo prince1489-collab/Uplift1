@@ -15,20 +15,21 @@ const DAY = 86400000;
 const clip = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 const first = (name) => String(name || "").trim().split(/\s+/)[0] || "Someone";
 const lower = (s) => String(s || "").trim().toLowerCase();
-const tsOf = (x) => Number(x?.ts ?? x?.at ?? x?.reactedAt ?? x?.createdAt ?? 0);
+const tsOf = (x) => { const v = x?.ts ?? x?.at ?? x?.reactedAt ?? x?.createdAt ?? 0; return typeof v?.toMillis === "function" ? v.toMillis() : Number(v) || 0; };
 
 const ICON = { sent: "🌍", reply: "💬", note: "💌", act: "🤝" };
 
 // Up to `max` moments from the last week: replies and hearts that came back to you first (newest
 // first), then your own acts. Hearts from several people become one line.
-export function weekMoments({ acts = [], replies = [], hearts = [], now = Date.now(), max = 3 } = {}) {
-  const from = now - 7 * DAY;
+// `from` (3.30): the start of the window — the last 7 days unless given (Seen's "Your week" starts
+// on Monday). Nothing after `now` is included.
+export function weekMoments({ acts = [], replies = [], hearts = [], now = Date.now(), max = 3, from = now - 7 * DAY } = {}) {
   const back = [];
   for (const r of replies || []) {
-    if (tsOf(r) < from || !r?.text) continue;
+    if (tsOf(r) < from || tsOf(r) > now || !r?.text) continue;
     back.push({ at: tsOf(r), icon: "💬", text: `${first(r.fromName)} wrote back: “${clip(r.text, 70)}”` });
   }
-  const recentHearts = (hearts || []).filter((h) => tsOf(h) >= from);
+  const recentHearts = (hearts || []).filter((h) => tsOf(h) >= from && tsOf(h) <= now);
   const names = [...new Set(recentHearts.map((h) => first(h.reactorName)).filter((n) => n !== "Someone"))];
   if (recentHearts.length) {
     const at = Math.max(...recentHearts.map(tsOf));
@@ -39,7 +40,7 @@ export function weekMoments({ acts = [], replies = [], hearts = [], now = Date.n
   }
   back.sort((a, b) => b.at - a.at);
   const mine = (acts || [])
-    .filter((e) => e && ICON[e.route] && tsOf(e) >= from)
+    .filter((e) => e && ICON[e.route] && tsOf(e) >= from && tsOf(e) <= now)
     .sort((a, b) => tsOf(b) - tsOf(a))
     .map((e) => ({ at: tsOf(e), icon: ICON[e.route], text: `${kindLine(e)}${e.feeling ? ` — it felt ${lower(e.feeling)}` : ""}` }));
   return [...back, ...mine].slice(0, max);

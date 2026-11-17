@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  collection, doc, onSnapshot, orderBy, query, limit, addDoc, updateDoc, getDocs, deleteDoc, setDoc, writeBatch,
+  collection, doc, onSnapshot, orderBy, query, limit, addDoc, updateDoc, getDocs, deleteDoc, setDoc, writeBatch, deleteField,
 } from "firebase/firestore";
 import { authedPost } from "./apiBase.js";
 import { pickQuestion, questionDue, FIRST_MESSAGE, ANSWER_GAP_HOURS } from "./seenAsks.js";
@@ -18,14 +18,34 @@ import { kindFeelQuestion, kindFeelEntryId } from "./kindFeel.js";
 
 export const SEEN_ID = "seen"; // the pinned conversation's id in MessagesTab
 
+// Since 3.30 this runs for everyone signed in, not only people who switched the AI on: the app's
+// own updates (seenUpdates.js) arrive here for everybody. The list carries `fromServer` — whether
+// it came from the server rather than the device's cache — because an update is only written when
+// it is certainly missing. A listener error leaves it null ("not loaded"), not an empty list that
+// would look like a conversation with nothing in it.
 export function useSeenChat(db, uid, enabled) {
-  const [chat, setChat] = useState(null); // null until loaded
+  const [state, setState] = useState({ uid: null, chat: null }); // null until loaded
   useEffect(() => {
     if (!db || !uid || !enabled) return undefined;
     const q = query(collection(db, "users", uid, "seenChat"), orderBy("createdAt", "asc"), limit(300));
-    return onSnapshot(q, (snap) => setChat(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), () => setChat([]));
+    return onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      Object.defineProperty(list, "fromServer", { value: !snap.metadata.fromCache, enumerable: false });
+      setState({ uid, chat: list });
+    }, () => setState({ uid, chat: null }));
   }, [db, uid, enabled]);
-  return enabled ? chat : null;
+  return enabled && state.uid === uid ? state.chat : null;
+}
+
+// One of the app's own updates (seenUpdates.js) into the conversation, at its fixed id. Never
+// awaited by callers and never throws: the rules refuse a second write to the same id, which is
+// exactly what should happen when another device got there first. `read` is true when the moment
+// was already celebrated on screen, so it doesn't raise the Messages badge as well.
+export function postSeenUpdate(db, uid, update, { read = false } = {}) {
+  if (!db || !uid || !update?.id || !update?.text) return Promise.resolve();
+  const data = { role: "seen", kind: "update", text: String(update.text).slice(0, 400), createdAt: Date.now(), read: Boolean(read) };
+  if (update.action) data.action = String(update.action).slice(0, 40);
+  return setDoc(doc(db, "users", uid, "seenChat", update.id), data).catch(() => {});
 }
 
 export function useUnderstanding(db, uid, enabled) {
@@ -157,5 +177,10 @@ export async function forgetEverything(db, uid) {
   }
   await deleteDoc(doc(db, "users", uid, "understanding", "state")).catch(() => {});
   await setDoc(doc(db, "publicProfiles", uid), { uid, rightNow: null, rightNowAt: null }, { merge: true }).catch(() => {});
-  await setDoc(doc(db, "users", uid), { seenAI: { consent: false, at: Date.now() } }, { merge: true });
+  // A merge keeps nested fields it isn't told about, so `journal` has to be removed by name —
+  // until 3.30 it survived, and turning Seen back on quietly brought journal reading back with
+  // it. Removed rather than set to false, so Seen asks again (Journal.jsx) instead of assuming
+  // "no". `forgotAt` stops this week's "Your week" update being written again (seenUpdates.js).
+  const at = Date.now();
+  await setDoc(doc(db, "users", uid), { seenAI: { consent: false, at, forgotAt: at, journal: deleteField() } }, { merge: true });
 }

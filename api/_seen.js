@@ -121,7 +121,7 @@ export function buildDigest({ answers = [], feelings = [], user = {}, now = Date
     .forEach((j, i) => {
       items.push({ id: `J${i + 1}`, kind: "said", date: Number(j.createdAt),
         text: `In their journal (${dateLabel(j.createdAt)}): "${clip(j.text, 300)}"`,
-        label: `You wrote in your journal on ${dateLabel(j.createdAt)}` });
+        label: `You wrote in your journal on ${dateLabel(j.createdAt)}: “${clip(j.text, 320)}”` });
     });
 
   // K: the kind acts themselves (src/kindLog.js) — hearts are counted below, not listed.
@@ -209,9 +209,12 @@ export function mergeThemes(old = [], fresh = [], feedback = [], now = Date.now(
 
 // ── When things are due ──────────────────────────────────────────────────────────────────────
 export const REPLIES_PER_DAY = 5;
-export function reflectionDue({ answers = [], lastReflect = 0, now = Date.now() } = {}) {
-  const since = answers.filter((a) => Number(a.createdAt) > Number(lastReflect || 0)).length;
-  if (answers.length < 2) return false;                  // too soon to notice anything honestly
+// `journal` (3.30): entries Seen may read (users/{uid}.seenAI.journal) count as something new to
+// notice, the same as an answer — writing in the journal can lead to a reflection.
+export function reflectionDue({ answers = [], lastReflect = 0, now = Date.now(), journal = [] } = {}) {
+  const fresh = (list) => (list || []).filter((a) => Number(a.createdAt) > Number(lastReflect || 0)).length;
+  const since = fresh(answers) + fresh(journal);
+  if (answers.length + (journal || []).length < 2) return false; // too soon to notice anything honestly
   if (now - Number(lastReflect || 0) < 5 * DAY) return false;
   return since >= 2 || (since >= 1 && now - Number(lastReflect || 0) >= 7 * DAY);
 }
@@ -229,6 +232,12 @@ export function nudgeFor(user = {}, todayKey) {
   if (d < 1 || d > 2) return null;
   return { text: `${d === 1 ? "Yesterday" : "The other day"} you said you'd like to make ${w.name} feel seen. Want to send them a note?`, name: w.name };
 }
+
+// ── What the model is shown of the conversation ──────────────────────────────────────────────
+// The app's own updates (3.30, src/seenUpdates.js) — "Your week", a new level — carry other people's
+// names and the words they sent you. The AI reads only what you said and did, so they are never
+// part of what it sees, and never count as the last thing said.
+export const modelChat = (chat = []) => (chat || []).filter((m) => m && m.kind !== "update");
 
 // ── What the model is told ───────────────────────────────────────────────────────────────────
 const VOICE = `You are Seen, a warm, perceptive presence inside a kindness app whose purpose is helping people feel seen and make others feel seen. Speak in plain, natural English, second person, like a thoughtful friend — never clinical, never gushing, never preachy. Never give medical, legal, financial or therapeutic advice. Never diagnose. Never tell the person who they are or what they should do. Never guess at health, religion, sexuality, ethnicity or politics. Keep it short.`;

@@ -1,7 +1,7 @@
 // test-understanding.mjs — every rule the "Seen" conversation promises (3.15).
 // Pure functions from api/_seen.js; no network, no Firebase.
 import { safetyLevel, supportMessage, guardReflection, guardReply, buildDigest, validateReflections, mergeThemes,
-  reflectionDue, replyAllowed, nudgeFor, parseJson, replyPrompt, reflectPrompt, REPLIES_PER_DAY } from "../api/_seen.js";
+  reflectionDue, replyAllowed, nudgeFor, parseJson, replyPrompt, reflectPrompt, modelChat, REPLIES_PER_DAY } from "../api/_seen.js";
 const results = [];
 const check = (n, ok, d = "") => results.push([ok, ok ? n : `${n} — ${d}`]);
 const DAY = 86400000, NOW = Date.parse("2026-10-06T12:00:00Z");
@@ -105,6 +105,20 @@ check("an observation is still fine", typeof guardReflection("You've mentioned y
 const longA = { createdAt: NOW - DAY, text: "I have made progress in terms of my running and stopping when I do need a rest, which feels good, honestly", question: "What's changed?" };
 const dLong = buildDigest({ answers: [longA], feelings: [], user: {}, now: NOW });
 check("a reason is kept whole, not cut at 70 characters", /which feels good, honestly”$/.test(dLong.find((i) => i.id === "A1")?.label || ""), dLong.find((i) => i.id === "A1")?.label);
+
+// 3.30 — the app's own updates never reach the model; journal entries can make a reflection due
+const withUpdate = [{ role: "me", kind: "answer", text: "Training", createdAt: 1 }, { role: "seen", kind: "update", text: "Your week 🌱\n💬 Mona wrote back: “needed this”", createdAt: 2 }];
+check("the app's updates are not part of what the model sees", modelChat(withUpdate).length === 1 && modelChat(withUpdate)[0].kind === "answer");
+check("…messages without a kind are kept", modelChat([{ role: "me", text: "hi" }]).length === 1);
+check("…and nothing breaks on an empty or missing chat", modelChat(null).length === 0);
+const p2 = replyPrompt({ chat: modelChat(withUpdate) });
+check("…so another person's words in an update never go to the model", !/Mona/.test(p2.user));
+const jn = [{ text: "Rang my brother", createdAt: NOW - DAY }, { text: "A long walk", createdAt: NOW - 2 * DAY }];
+check("two new journal entries make a reflection due", reflectionDue({ answers: [], lastReflect: NOW - 8 * DAY, now: NOW, journal: jn }) === true);
+check("…not when they're older than the last reflection", reflectionDue({ answers: [], lastReflect: NOW - 8 * DAY, now: NOW, journal: jn.map((j) => ({ ...j, createdAt: NOW - 9 * DAY })) }) === false);
+check("…and not on one entry alone", reflectionDue({ answers: [], lastReflect: 0, now: NOW, journal: jn.slice(0, 1) }) === false);
+const dJ = buildDigest({ answers: [], feelings: [], user: {}, now: NOW, journal: [{ text: "Rang my brother for the first time in months.", createdAt: NOW - DAY }] });
+check("a journal reason quotes what they wrote", /^You wrote in your journal on .+: “Rang my brother for the first time in months\.”$/.test(dJ.find((i) => i.id === "J1")?.label || ""), dJ.find((i) => i.id === "J1")?.label);
 
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }

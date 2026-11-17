@@ -4,7 +4,7 @@
 // so every transition the transaction can make is pinned here. Pure functions, no emulator:
 //   node scripts/test-rhythm.mjs
 
-import { nextShowingUp, rhythmOf, withActiveDate, liveStreak, GRACE_EVERY_DAYS } from "../src/rhythm.js";
+import { nextShowingUp, rhythmOf, withActiveDate, liveStreak, longestRun, GRACE_EVERY_DAYS } from "../src/rhythm.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name}  — ${detail}`]);
@@ -85,6 +85,17 @@ check("two days ago with grace just spent has ended", liveStreak({ streakDays: 5
 check("three days ago has ended — no stale number in the header", liveStreak({ streakDays: 12, lastGreetingDate: "2026-10-07" }, T) === 0);
 check("an old UTC key a day ahead still shows the streak", liveStreak({ streakDays: 3, lastGreetingDate: "2026-10-11" }, T) === 3);
 check("no streak shows nothing", liveStreak({}, T) === 0 && liveStreak(null, T) === 0);
+
+// ── The best run (3.30) ───────────────────────────────────────────────────────────────────────
+r = run({ lastGreetingDate: "2026-10-09", streakDays: 5, activeDays: 9, bestStreak: 3 });
+check("the best run rises with the streak", r.bestStreak === 6, JSON.stringify(r));
+r = run({ lastGreetingDate: "2026-10-01", streakDays: 5, activeDays: 9, bestStreak: 20 });
+check("…and never falls when a new run starts", r.streakDays === 1 && !("bestStreak" in r), JSON.stringify(r));
+r = run({ lastGreetingDate: "2026-10-09", streakDays: 1, activeDays: 9, activeDates: ["2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-10-09"] });
+check("the first time, it starts from the longest stretch in the dates", r.bestStreak === 4, JSON.stringify(r));
+r = nextShowingUp({ lastGreetingDate: "2026-10-12", streakDays: 4, bestStreak: 2 }, "2026-10-11", "2026-10-11");
+check("an earlier day being saved late leaves it alone", !("bestStreak" in r), JSON.stringify(r));
+check("longestRun counts consecutive days only", longestRun(["2026-10-01", "2026-10-02", "2026-10-04"]) === 2);
 
 let failed = 0;
 for (const [ok, name] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${name}`); if (!ok) failed++; }

@@ -15,6 +15,7 @@ import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, share
 import { readPublicProfile } from "./publicProfile";
 import { doc, updateDoc } from "firebase/firestore";
 import { expandEvidence } from "./growMoments";
+import { parseAction } from "./seenUpdates";
 import { useDictation } from "./dictation";
 import MicButton from "./MicButton";
 
@@ -172,6 +173,37 @@ function KnowsPanel({ db, currentUser, state, journal = false, onClose }) {
   );
 }
 
+// One of the app's own messages (seenUpdates.js, 3.30): your week, a new stage, a new level, a
+// certificate. Written by the app from your own activity — not by the AI, and never sent to it —
+// so it carries no AI tag and says so, quietly.
+function UpdateCard({ m, onAction }) {
+  const act = parseAction(m.action);
+  return (
+    <div className="seen-update w-full max-w-[92%] self-start rounded-2xl border border-amber-200 bg-white px-3.5 py-3 shadow-sm">
+      <p className="whitespace-pre-line text-[13.5px] leading-snug text-slate-700">{m.text}</p>
+      {act && (
+        <button onClick={() => onAction?.(m.action)} className="mt-2 rounded-full bg-amber-100 px-3 py-1 text-[12px] font-extrabold text-amber-800 active:scale-95">
+          {act.label} →
+        </button>
+      )}
+      <p className="mt-1.5 text-[9.5px] text-slate-400">From your activity · {timeOf(m.createdAt)}</p>
+    </div>
+  );
+}
+
+// Below the updates, for anyone who hasn't switched the AI on: what it would add.
+function Invitation({ onStart, busy }) {
+  return (
+    <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 pt-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+      <p className="text-[13px] font-bold text-slate-800">Talk with Seen too <AiTag /></p>
+      <p className="mt-0.5 text-[12px] leading-snug text-slate-500">Every few days it asks you a question about your life, replies to what you share, and notices what matters to you — always showing why. Private to you; Anthropic's AI, not used to train it.</p>
+      <button onClick={onStart} disabled={busy} className="mt-2.5 w-full rounded-2xl bg-teal-600 py-2.5 text-[13.5px] font-bold text-white disabled:opacity-60">
+        {busy ? "Starting…" : "Start"}
+      </button>
+    </div>
+  );
+}
+
 function Consent({ onStart, onBack, busy }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center" style={{ animation: "seenFadeUp 250ms ease both" }}>
@@ -192,7 +224,7 @@ function Consent({ onStart, onBack, busy }) {
   );
 }
 
-export default function SeenConversation({ db, currentUser, chat, state, consent, journal = false, onBack, onWriteTo, onOpenSupport }) {
+export default function SeenConversation({ db, currentUser, chat, state, consent, journal = false, onBack, onWriteTo, onOpenSupport, onAction }) {
   const uid = currentUser.uid;
   const [text, setText] = useState("");
   // Talk instead of type (3.23): talking about your week is far easier than typing it.
@@ -204,7 +236,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   const scrollRef = useRef(null);
   const boxRef = useRef(null);
 
-  useEffect(() => { if (consent && chat) markSeenRead(db, uid, chat); }, [consent, chat, db, uid]);
+  useEffect(() => { if (chat) markSeenRead(db, uid, chat); }, [chat, db, uid]);
   useLayoutEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chat?.length, sending]);
   // The box grows with what you write — up to about five lines, then it scrolls — so a real
   // answer is never squeezed into one line where you can't see it (3.18).
@@ -215,8 +247,12 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
     el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
   }, [text]);
 
-  const last = chat?.[chat.length - 1];
-  const waiting = sending || last?.role === "me"; // Seen hasn't answered yet
+  // The app's updates (3.30) don't count as Seen answering: judged on the last message that isn't one.
+  const last = [...(chat || [])].reverse().find((m) => m.kind !== "update");
+  const waiting = consent && (sending || last?.role === "me"); // Seen hasn't answered yet
+  const start = async () => { setStarting(true); try { await enableSeen(db, uid); } finally { setStarting(false); } };
+  // Before the AI is on, the conversation is the app's updates — or, with none yet, the welcome.
+  const showConsent = !consent && !(chat || []).some((m) => m.kind === "update");
   const lastQ = [...(chat || [])].reverse().find((m) => m.role === "seen" && m.kind === "question");
   const lastQOpen = lastQ && !(chat || []).some((m) => m.role === "me" && Number(m.createdAt) > Number(lastQ.createdAt));
 
@@ -236,14 +272,14 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
         <button onClick={onBack} aria-label="Back to messages" className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><ChevronLeft size={20} /></button>
         <SeenAvatar size={34} />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-[15px] font-bold text-slate-800">Seen <AiTag /></p>
-          <p className="truncate text-[10.5px] text-slate-400">Private to you · learns what matters to you</p>
+          <p className="flex items-center gap-1.5 text-[15px] font-bold text-slate-800">Seen {consent && <AiTag />}</p>
+          <p className="truncate text-[10.5px] text-slate-400">{consent ? "Private to you · learns what matters to you" : "Private to you · your week and milestones"}</p>
         </div>
         {consent && <button onClick={() => setKnows(true)} aria-label="What Seen knows" className="grid h-10 w-10 place-items-center rounded-full text-slate-400"><MoreHorizontal size={20} /></button>}
       </div>
 
-      {!consent ? (
-        <Consent busy={starting} onBack={onBack} onStart={async () => { setStarting(true); try { await enableSeen(db, uid); } finally { setStarting(false); } }} />
+      {showConsent ? (
+        <Consent busy={starting} onBack={onBack} onStart={start} />
       ) : (
         <>
           <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain seen-chat-bg px-3.5 py-3">
@@ -260,6 +296,8 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                     <p className="mt-0.5 text-[9.5px] text-white">{timeOf(m.createdAt)}</p>
                   </div>
                 );
+              } else if (m.kind === "update") {
+                body = <UpdateCard m={m} onAction={onAction} />;
               } else if (m.kind === "reflection") {
                 body = <Reflection m={m} uid={uid} db={db} chat={chat} />;
               } else if (m.kind === "nudge") {
@@ -310,6 +348,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
               </div>
             )}
           </div>
+          {!consent ? <Invitation onStart={start} busy={starting} /> : (
           <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
             <div className="flex items-end gap-2 rounded-[20px] border border-slate-200 bg-slate-50 py-1.5 pl-3.5 pr-1.5">
               <textarea ref={boxRef} value={text} rows={1} onChange={(e) => setText(e.target.value.slice(0, 600))}
@@ -326,6 +365,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
               Seen is an AI. Only you can see this · <button onClick={() => setKnows(true)} className="underline">What Seen knows</button>
             </p>
           </div>
+          )}
         </>
       )}
       {knows && <KnowsPanel db={db} currentUser={currentUser} state={state} journal={journal} onClose={(forgot) => { setKnows(false); if (forgot === true) onBack?.(); }} />}

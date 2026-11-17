@@ -1,28 +1,23 @@
 // Copyright © 2025 Mahiman Singh Rathore. All rights reserved.
 //
-// MySeenStory.jsx — the "Grow" tab (v2, tab id still `impact`). The centrepiece is the animated
-// Kindness Tree; the whole page has gentle motion (staggered fade-in, idle tree sway,
-// count-up metrics). Only four metrics are shown: Countries reached, Ripple effect,
-// Tried in real life, Reflections. Tree balance = real sparkBalance + device-local
-// preview points, so demo actions visibly grow the hero tree.
+// MySeenStory.jsx — the "Grow" tab (tab id still `impact`). Since 3.30: the Kindness Tree and three
+// numbers with levels — days in a row, hearts received, countries reached (growStats.js). The
+// words that used to sit here are said in Seen instead (seenUpdates.js).
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { X } from "lucide-react";
 import { treeStageFor, TREE_STAGES, TreeScene, useWatering, WATERING_MS } from "./KindnessTree";
 import { getPoints } from "./points";
 import { playLevelUp, playGrowthSwell } from "./sounds";
-import { useReactionData, useRippleData, useOnwardReach } from "./MyImpact";
+import { useReactionData } from "./MyImpact";
 import { FLAG_MAP } from "./MicroAnimations";
 import { claimStageUp } from "./treeMilestone";
-import { CERTIFICATES, earnedCount, claimCertificate } from "./certificates";
-import { drawCertificate } from "./certificateImage";
 import { useBackLayer } from "./backStack";
-import { shareImage } from "./shareImage";
 import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
-import { rhythmOf } from "./rhythm";
-import { weekMoments, timeToNext } from "./growMoments";
+import { liveStreak } from "./rhythm";
+import { todayKey as localDayKey } from "./hytPrompts";
+import { TIERS, WORLD_COUNTRIES, tierFor, bestStreakOf, weekDots, doneToday, restDayReady, mergeCountries } from "./growStats";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -38,23 +33,6 @@ const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
 
-
-// Completed "Have you tried?" items on this device — the total, plus how many separate
-// days they were spread across, which is what makes the number mean something.
-function hytCompletedCount() {
-  let total = 0, days = 0;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("seen_hyt_state_")) {
-        const done = JSON.parse(localStorage.getItem(k) || "{}")?.done || {};
-        const n = Object.values(done).filter(Boolean).length;
-        if (n > 0) { total += n; days += 1; }
-      }
-    }
-  } catch { /* ignore */ }
-  return { total, days };
-}
 
 // Small count-up hook — rolls a number from 0 → target on mount / change.
 function useCountUp(target, duration = 900) {
@@ -75,200 +53,6 @@ function useCountUp(target, duration = 900) {
     return () => cancelAnimationFrame(raf.current);
   }, [target, duration]);
   return val;
-}
-
-// One metric, opened up: a human line, then the actual data behind the figure.
-function MetricCard({ card, onClose }) {
-  if (!card) return null;
-  return createPortal(
-    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up flex max-h-[85dvh] flex-col rounded-t-3xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
-        <div className="flex items-center justify-between px-5 pb-1">
-          <h2 className="text-lg font-bold text-slate-800">{card.emoji} {card.label}</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
-        </div>
-        <p className="px-5 pb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{card.basis}</p>
-
-        <div className="overflow-y-auto overscroll-contain px-5 pb-8 space-y-4">
-          <div className="seen-grad-cool rounded-2xl bg-gradient-to-br from-teal-50 to-sky-50 px-4 py-4 text-center">
-            <p className="text-4xl font-extrabold tabular-nums text-slate-800">{card.value.toLocaleString()}</p>
-            <p className="mt-1.5 text-[14px] leading-relaxed text-slate-600">{card.line}</p>
-          </div>
-
-          {card.rows?.length > 0 && (
-            <div className="space-y-1">
-              <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{card.rowsTitle}</p>
-              {card.rows.map((r, i) => (
-                <div key={i} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-3.5 py-2.5">
-                  <span className="flex-shrink-0 text-base leading-snug">{r.icon}</span>
-                  <span className="min-w-0 flex-1 text-sm leading-snug text-slate-700">{r.label}</span>
-                  {r.value != null && <span className="flex-shrink-0 text-sm font-bold tabular-nums leading-snug text-slate-500">{r.value}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {card.empty && <p className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-400">{card.empty}</p>}
-
-          <p className="text-[12px] leading-relaxed text-slate-500">{card.how}</p>
-          <button onClick={onClose}
-            className="w-full rounded-2xl bg-teal-600 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-700">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ── Certificates ─────────────────────────────────────────────────────────────
-// Seven of them, earned on days somebody showed up. The row is a ledger, not a scoreboard: the
-// ones behind you are in colour, the next one names its number so the target is a fact rather
-// than a mystery, and the rest stay quiet. Nothing here says how far BEHIND anyone is.
-function CertificatesRow({ activeDays, newCert, onOpen }) {
-  const earned = earnedCount(activeDays);
-  const next = CERTIFICATES[earned];
-  return (
-    <div style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "500ms" }}>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <p className="flex-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-          {/* activeDays is exactly this count — every way a day is counted is a kind act. */}
-          {activeDays > 0 ? `${activeDays} ${activeDays === 1 ? "day" : "days"} you made someone feel seen` : "Your certificates"}
-        </p>
-        {next && (
-          <span className="text-[10px] font-semibold text-slate-300">
-            {next.days - activeDays} more {next.days - activeDays === 1 ? "day" : "days"}
-          </span>
-        )}
-      </div>
-      {/* The announcement sits IN FLOW above the row rather than floating over it — the same
-          lesson MilestoneEffects carries in its own header, learned on the tree card. A button,
-          not a toast, because the useful thing to do with a new certificate is open it. */}
-      {newCert && (
-        <button onClick={() => onOpen(newCert)}
-          className="mb-2 flex w-full items-center gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-left active:scale-[0.99] transition-transform"
-          style={{ animation: "seenFadeUp 420ms ease both" }}>
-          <span className="text-lg leading-none" aria-hidden>{newCert.emoji}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-wide text-amber-700">New certificate</span>
-            <span className="block text-[13px] font-bold leading-snug text-slate-800">{newCert.name} of kindness</span>
-          </span>
-          <span className="flex-shrink-0 text-[11px] font-semibold text-amber-700">Open →</span>
-        </button>
-      )}
-      {/* Horizontal, because seven of anything in a column would own the screen. overflow-x with
-          the scrollbar hidden is the same treatment the app gives every other side-scrolling row. */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "none" }}>
-        {CERTIFICATES.map((c, i) => {
-          const got = i < earned;
-          const isNext = i === earned;
-          return (
-            <button
-              key={c.days}
-              onClick={got ? () => onOpen(c) : undefined}
-              disabled={!got}
-              aria-label={got ? `Open your ${c.name} certificate` : `${c.name} — ${c.days} days, not yet earned`}
-              className={`flex w-[92px] flex-shrink-0 flex-col items-center gap-1 rounded-2xl border px-2 py-2.5 transition-all ${
-                got
-                  ? "border-emerald-200 bg-white active:scale-[0.97]"
-                  : isNext
-                    ? "border-dashed border-slate-300 bg-white/60"
-                    : "border-slate-100 bg-slate-50"
-              }`}>
-              <span className="text-xl leading-none" style={{ opacity: got ? 1 : 0.35 }} aria-hidden>{c.emoji}</span>
-              <span className={`text-[11px] font-bold leading-tight ${got ? "text-slate-700" : "text-slate-400"}`}>{c.name}</span>
-              <span className="text-[9px] font-semibold text-slate-400">{got ? "earned" : `${c.days} days`}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// The sheet. Draws the real PNG on open and shares that exact file — what you look at is what
-// gets sent, rather than a second rendering nobody checked.
-function CertificateSheet({ cert, name, since, onClose }) {
-  useBackLayer(true, onClose);
-  const [url, setUrl] = useState("");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const blobRef = useRef(null);
-
-  useEffect(() => {
-    let alive = true;
-    let made = "";
-    drawCertificate({ name, days: cert.days, emoji: cert.emoji, since })
-      .then((blob) => {
-        if (!alive) return;
-        blobRef.current = blob;
-        made = URL.createObjectURL(blob);
-        setUrl(made);
-      })
-      .catch(() => { if (alive) setNote("Couldn't draw your certificate just now."); });
-    return () => { alive = false; if (made) URL.revokeObjectURL(made); };
-  }, [cert, name, since]);
-
-  const share = async () => {
-    const blob = blobRef.current;
-    if (!blob || busy) return;
-    setBusy(true);
-    setNote("");
-    try {
-      // Handed to shareImage, which knows the difference between a browser and a WebView. This
-      // used to call navigator.share directly, which does not exist in either of the WebViews
-      // this app actually ships in — so on a phone it fell through to an <a download> that a
-      // WebView discards, and then said "Saved to your downloads." See src/shareImage.js.
-      const result = await shareImage({
-        blob,
-        fileName: `seen-${cert.days}-days.png`,
-        title: "My Seen certificate",
-      });
-      // Only the browser path can honestly claim a download, and a dismissal says nothing at all.
-      if (result === "downloaded") setNote("Saved to your downloads.");
-    } catch (err) {
-      console.error("[certificate] share failed:", err?.message);
-      setNote("Couldn't share that just now — please try again.");
-    }
-    setBusy(false);
-  };
-
-  return createPortal(
-    <div data-portal className="fixed inset-0 z-[245] flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up flex max-h-[92dvh] flex-col rounded-t-3xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
-        <div className="flex flex-shrink-0 items-center justify-between px-5 pb-3">
-          <h2 className="text-lg font-bold text-slate-800">{cert.emoji} {cert.name}</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5">
-          {url ? (
-            <img src={url} alt={`Certificate for ${cert.days} days of kindness`}
-              className="mx-auto w-full max-w-[320px] rounded-2xl border border-slate-200 shadow-sm" />
-          ) : (
-            <div className="mx-auto aspect-[4/5] w-full max-w-[320px] rounded-2xl bg-slate-100" />
-          )}
-          <p className="mt-3 text-center text-[12px] leading-relaxed text-slate-500">{cert.blurb}</p>
-        </div>
-
-        <div className="flex-shrink-0 border-t border-slate-100 px-5 pb-6 pt-3">
-          {note && <p className="mb-2 text-center text-[12px] font-semibold text-slate-500">{note}</p>}
-          <button onClick={share} disabled={!url || busy}
-            className="w-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40">
-            {busy ? "Sharing…" : "Share"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
 }
 
 // ── milestone celebration ────────────────────────────────────────────────────
@@ -311,213 +95,180 @@ function MilestoneEffects({ onDone }) {
   );
 }
 
-function MetricTile({ emoji, value, label, delay = 0, onOpen, wide = false }) {
-  const shown = useCountUp(value);
+// ── Levels, drawn ───────────────────────────────────────────────────────────────────────────
+// A medal with the level on it. Colours climb bronze → silver → gold → teal-blue → violet. Inline,
+// because the Tailwind palette is remapped (teal is coral here) and a medal must look like one.
+const MEDALS = [
+  ["#e2e8f0", "#cbd5e1", "#64748b"], // level 0: not yet
+  ["#f3c9a1", "#cd7f32", "#7a4a1f"], ["#f3c9a1", "#b8692a", "#6b3f17"],
+  ["#eef2f6", "#a8b2bd", "#475569"], ["#eef2f6", "#8e99a6", "#334155"],
+  ["#fff1b8", "#f2b705", "#7a5a00"], ["#fff1b8", "#e09a00", "#6b4700"],
+  ["#d6f4fb", "#38bdf8", "#075985"], ["#ede4ff", "#8b5cf6", "#4c1d95"],
+];
+function Medal({ level, size = 44 }) {
+  const [hi, mid, ink] = MEDALS[Math.min(level, MEDALS.length - 1)];
   return (
-    <button onClick={onOpen}
-      className={`rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center transition-transform active:scale-[0.97] ${wide ? "col-span-2" : ""}`}
-      style={{ animation: "seenFadeUp 500ms ease both", animationDelay: `${delay}ms` }}>
-      <div className="text-2xl mb-1">{emoji}</div>
-      <div className="text-2xl font-extrabold text-slate-800 tabular-nums leading-none">{shown.toLocaleString()}</div>
-      <div className="text-[11px] text-slate-500 mt-1.5 leading-tight">{label}</div>
-    </button>
+    <span aria-hidden className="grid flex-shrink-0 place-items-center rounded-full font-extrabold tabular-nums"
+      style={{ width: size, height: size, fontSize: size * 0.4, color: ink,
+        background: `radial-gradient(circle at 32% 28%, ${hi}, ${mid})`, boxShadow: `inset 0 -2px 0 rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.12)` }}>
+      {level}
+    </span>
   );
 }
 
-// ── The Grow tab, 3.29 ──────────────────────────────────────────────────────────────────────
-// Moments and time, not counts. It led with nine numbers about more or less the same thing, then
-// "How kindness felt this week: warm. You felt warm." and "Your answers" — answers with no act,
-// date or person, which the founder rightly called meaningless. Now, top to bottom:
-//   1. the tree, with its next stage as TIME at your own pace, and the real-tree promise under it;
-//   2. this week — real moments: who wrote back, who felt your words, then what you did and how it
-//      felt (growMoments.js, from the kindness log);
-//   3. what Seen has noticed — its latest reflection, with why it thinks so — or an invitation to
-//      try Seen;
-//   4. milestones (certificates);
-//   5. your numbers, folded into one line you can open;
-//   6. your journal.
-export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0, darkMode = false, onOpenTree, onMakeSeen, onOpenJournal,
-  kindLog = [], replies = [], seenOn = false, reflection = null, onOpenSeen }) {
-  const [journalCount, setJournalCount] = useState(null);
+function Bar({ pct, color }) {
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(3, pct)}%`, background: color }} />
+    </div>
+  );
+}
+
+const STAT_LOOK = {
+  streak: { emoji: "🔥", title: "Days in a row", color: "linear-gradient(90deg,#fb923c,#ef4444)", unit: (n) => (n === 1 ? "day" : "days") },
+  hearts: { emoji: "❤️", title: "Hearts received", color: "linear-gradient(90deg,#fb7185,#e11d48)", unit: (n) => (n === 1 ? "heart" : "hearts") },
+  countries: { emoji: "🌍", title: "Countries reached", color: "linear-gradient(90deg,#34d399,#0ea5e9)", unit: (n) => (n === 1 ? "country" : "countries") },
+};
+
+// One of the three. `value` is the big number; `levelValue` is what the level is measured on (the
+// best run for days in a row, the number itself for the others).
+function StatCard({ stat, value, levelValue = value, sub = null, children, celebrate = false, onCelebrated, onOpen, delay = 0 }) {
+  const look = STAT_LOOK[stat];
+  const shown = useCountUp(value);
+  const t = tierFor(levelValue, TIERS[stat]);
+  // For days in a row the bar runs from today's run towards the next level above your best.
+  const pct = stat === "streak" && t.next ? Math.min(100, Math.floor((value / t.next) * 100)) : t.pct;
+  const toGo = t.next == null ? 0 : (stat === "streak" ? t.next - value : t.toNext);
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white"
+      style={{ animation: "seenFadeUp 500ms ease both", animationDelay: `${delay}ms` }}>
+      {celebrate && <MilestoneEffects onDone={onCelebrated} />}
+      <button onClick={onOpen} className="block w-full px-4 pb-3 pt-3.5 text-left active:scale-[0.99] transition-transform"
+        aria-label={`${look.title}: ${value}. Level ${t.level}. Open levels`}>
+        <div className="flex items-center gap-3">
+          <Medal level={t.level} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{look.emoji} {look.title}</p>
+            <p className="flex items-baseline gap-1.5">
+              <span className="text-[30px] font-extrabold leading-none tabular-nums text-slate-800">{shown.toLocaleString()}</span>
+              {sub && <span className="text-[12px] font-semibold text-slate-400">{sub}</span>}
+            </p>
+          </div>
+          <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${celebrate ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}
+            style={celebrate ? { animation: "seenStageReveal 900ms cubic-bezier(0.2,0.9,0.3,1) both" } : undefined}>
+            {celebrate ? `Level ${t.level}!` : `Level ${t.level}`}
+          </span>
+        </div>
+        <div className="mt-3"><Bar pct={pct} color={look.color} /></div>
+        <p className="mt-1.5 text-[11.5px] font-semibold text-slate-500">
+          {t.next == null ? "Top level reached" : `${toGo.toLocaleString()} more ${look.unit(toGo)} to Level ${t.level + 1}`}
+        </p>
+      </button>
+      {children && <div className="px-4 pb-3.5">{children}</div>}
+    </div>
+  );
+}
+
+// The ladder for one stat, opened from its card: every level, the ones reached lit up.
+function LevelSheet({ stat, value, levelValue = value, countries = [], best = 0, onClose }) {
+  useBackLayer(true, onClose);
+  const look = STAT_LOOK[stat];
+  const tiers = TIERS[stat];
+  const t = tierFor(levelValue, tiers);
+  return createPortal(
+    <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative sheet-slide-up flex max-h-[85dvh] flex-col rounded-t-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-shrink-0 justify-center pt-3 pb-2"><div className="h-1 w-10 rounded-full bg-slate-200" /></div>
+        <div className="flex items-center justify-between px-5 pb-2">
+          <h2 className="text-lg font-bold text-slate-800">{look.emoji} {look.title}</h2>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain px-5 pb-8 space-y-4">
+          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+            <Medal level={t.level} size={52} />
+            <div>
+              <p className="text-[26px] font-extrabold leading-none tabular-nums text-slate-800">{value.toLocaleString()}</p>
+              <p className="mt-1 text-[12px] font-semibold text-slate-500">
+                {stat === "streak" ? `Your best: ${best} ${look.unit(best)}` : stat === "countries" ? `of ${WORLD_COUNTRIES} countries` : `Level ${t.level}`}
+              </p>
+            </div>
+          </div>
+          {stat === "countries" && countries.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {countries.map((c) => (
+                <span key={c} title={c} className="rounded-xl border border-slate-100 bg-white px-2 py-1 text-[12px] text-slate-600">
+                  <span className="mr-1 text-base leading-none" aria-hidden>{FLAG_MAP[c] || "🌍"}</span>{c}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-4 gap-2">
+            {tiers.map((n, i) => {
+              const got = i < t.level;
+              return (
+                <div key={n} className={`flex flex-col items-center gap-1 rounded-2xl border px-1 py-2.5 ${got ? "border-amber-200 bg-amber-50/60" : i === t.level ? "border-dashed border-slate-300" : "border-slate-100 bg-slate-50"}`}>
+                  <span style={{ opacity: got ? 1 : 0.45 }}><Medal level={i + 1} size={30} /></span>
+                  <span className={`text-[12px] font-extrabold tabular-nums ${got ? "text-slate-800" : "text-slate-400"}`}>{n.toLocaleString()}</span>
+                </div>
+              );
+            })}
+          </div>
+          {stat === "streak" && (
+            <p className="text-[12px] leading-relaxed text-slate-500">Levels count your best run. 🛡️ One rest day in any seven keeps a run going — you don't have to do anything.</p>
+          )}
+          <button onClick={onClose} className="w-full rounded-2xl bg-teal-600 py-3 text-sm font-bold text-white">Close</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── The Grow tab, 3.30 ──────────────────────────────────────────────────────────────────────
+// The tree and three numbers, each a ladder to climb. Everything Grow used to SAY — this week's
+// moments, what Seen noticed, new certificates, the tree's pace — is now said in Seen, the
+// conversation in Messages (seenUpdates.js), where words already live. The certificates and the
+// real-tree promise moved into the tree's own panel. The numbers come from App: the hearts
+// listener and the countries collection live there because they're needed on every tab.
+export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0, darkMode = false, onOpenTree, onMakeSeen,
+  heartsTotal = 0, heartsWeek = 0, countries = [], onCountriesSeen, fresh = [], onCelebrated, onStageUp }) {
   const [localPts, setLocalPts] = useState(() => getPoints());
-  // Hearts on your words, newest first — who felt them this week (owner-only, read once on open).
-  const [hearts, setHearts] = useState([]);
-  useEffect(() => {
-    if (!db || !currentUser?.uid) return;
-    let alive = true;
-    getDocs(query(collection(db, "users", currentUser.uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(20)))
-      .then((snap) => { if (alive) setHearts(snap.docs.map((d) => d.data())); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [db, currentUser?.uid]);
-  // This week, as moments (growMoments.js).
-  const moments = useMemo(() => weekMoments({ acts: kindLog, replies, hearts }), [kindLog, replies, hearts]);
-  const [showNumbers, setShowNumbers] = useState(false);
-  const [showWhy, setShowWhy] = useState(false);
-  // Today's additions to the tree (todayGrowth.js), live as they happen.
   const [today, setToday] = useState(() => todayGrowth());
   useEffect(() => {
     const on = (e) => setToday(e.detail?.items ?? todayGrowth());
     window.addEventListener(GROWTH_EVENT, on);
     return () => window.removeEventListener(GROWTH_EVENT, on);
   }, []);
-  // Pour on open. Points are only ever awarded on Connect / Practice / Reflect, and this
-  // component isn't mounted then — so waiting for a "seen-points" event meant the watering
-  // animation could never actually play here. Opening the tab is the moment to show it.
+  // Pour on open — this tab is where the tree is watched.
   const { watering, startPour } = useWatering(true);
-  const [openCard, setOpenCard] = useState(null); // which metric card is open
-  const [openCert, setOpenCert] = useState(null); // which certificate is being viewed
-  const [newCert, setNewCert] = useState(null);   // one just earned, announced above the row
-  const certRowRef = useRef(null);
-  const hytTried = useMemo(() => hytCompletedCount(), []);
-
-  // Live points → grow + water the hero tree (useWatering owns the pour timing + sound).
   useEffect(() => {
     const onPts = () => { setLocalPts(getPoints()); startPour(); };
     window.addEventListener("seen-points", onPts);
     return () => window.removeEventListener("seen-points", onPts);
   }, [startPour]);
+  const [openStat, setOpenStat] = useState(null);
 
-  // How many journal entries there are, for the "Your journal" link.
-  useEffect(() => {
-    if (!db || !currentUser?.uid) return;
-    let alive = true;
-    getDocs(collection(db, "users", currentUser.uid, "journal"))
-      .then((snap) => { if (alive) setJournalCount(snap.size); })
-      .catch(() => { if (alive) setJournalCount(0); });
-    return () => { alive = false; };
-  }, [db, currentUser?.uid]);
+  // Hearts and countries on your own messages over 30 days — read here as before, so nobody's
+  // hearts number is smaller than 3.29 showed, and any country they add joins the collection.
+  const { data: reactData } = useReactionData(db, currentUser, "30d");
+  const reactCountries = useMemo(() => Object.keys(reactData?.reactionByCountry || {}), [reactData]);
+  const merged = useMemo(() => mergeCountries({ stored: countries, incoming: reactCountries, flagMap: FLAG_MAP }), [countries, reactCountries]);
+  useEffect(() => { if (merged.added.length) onCountriesSeen?.(merged.added); }, [merged.added, onCountriesSeen]);
+  const hearts = Math.max(Number(heartsTotal) || 0, Number(reactData?.totalReactions ?? 0));
 
-  // Real impact hooks (same as MyImpact): countries reached + ripple effect.
-  // The Week/Month/All-time selector is gone. It drove exactly one of the four numbers,
-  // and its "All time" was really 30 days — a control that changes one number in four,
-  // mislabelled, is worse than no control. Each metric now states its own true basis.
-  const reactPeriod = "30d"; // the widest window useReactionData supports
-  const { data: reactData } = useReactionData(db, currentUser, reactPeriod);
-  const { rippleCount, ripples } = useRippleData(db, currentUser);
-  const onwardReach = useOnwardReach(db, currentUser, ripples);
-
-  // Countries reached = countries the people who hearted your messages were in.
-  // This used to take Math.max() with a figure from liveStats, but that counts every country
-  // appearing anywhere in the feed — including people with no connection to your messages —
-  // so the headline could exceed the real list and contradict the breakdown card below it.
-  const countryCounts = reactData?.reactionByCountry || {};
-  const countryRows = useMemo(
-    () => Object.entries(countryCounts).sort((a, b) => b[1] - a[1]),
-    [countryCounts]
-  );
-  const countries = countryRows.length;
-  const ripple = rippleCount + onwardReach;
-
-  // ── Everything measured in people who felt seen ──────────────────────────────────────────
-  // Messages to the world, person-to-person replies and notes, and real-life acts. The act count
-  // syncs on the profile from 3.4; before that it lived only on this device, so the larger of the
-  // two is shown and nobody's history goes backwards.
-  const messagesSent = Number(profile?.greetingsSentCount ?? 0);
-  const repliesSent = Number(profile?.seenRepliesSent ?? 0);
-  const actsDone = Math.max(Number(profile?.seenActsDone ?? 0), hytTried.total);
-  const wordsSent = messagesSent + repliesSent;
-  const seenTotal = wordsSent + actsDone;
-  const felt = Math.max(Number(profile?.reactionsReceivedCount ?? 0), Number(reactData?.totalReactions ?? 0));
-  const rhythm = rhythmOf(profile?.activeDates, new Date(), { days: profile?.streakDays, last: profile?.lastGreetingDate });
-
-  // Each metric opened up. Bases genuinely differ, so each card says which it is.
-  const periodWord = "Last 30 days";
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  const METRIC_CARDS = {
-    countries: {
-      emoji: "🌍", label: "Countries that felt it", value: countries, basis: periodWord,
-      line: countries === 0
-        ? "No hearts from abroad yet — they often arrive a little after you've forgotten you sent anything."
-        : `${plural(countries, "place", "places")} where someone opened their phone and found a stranger had thought of them.`,
-      rowsTitle: "Where they were",
-      rows: countryRows.map(([c, n]) => ({ icon: FLAG_MAP[c] || "🌍", label: c, value: n })),
-      empty: countries === 0 ? "Countries appear here once someone hearts a message you sent." : null,
-      how: "Counted from the reactions on messages you sent, one entry per country, over the last 30 days.",
-    },
-    ripple: {
-      emoji: "🌱", label: "People who passed it on", value: ripple, basis: "All time",
-      line: ripple === 0
-        ? "Nothing has rippled onward yet. It tends to start the moment someone reacts to you."
-        : "Kindness that carried on without you.",
-      rowsTitle: "How it breaks down",
-      rows: ripple === 0 ? [] : [
-        { icon: "🌱", label: "People you reached who went on to send their own kindness", value: rippleCount },
-        { icon: "❤️", label: "Hearts those onward messages went on to receive", value: onwardReach },
-      ],
-      empty: ripple === 0 ? "This fills in when someone you reached goes on to be kind to somebody else." : null,
-      how: "The two figures added together, counted over your whole time in Seen.",
-    },
-    words: {
-      emoji: "💌", label: "Kind words sent", value: wordsSent, basis: "All time",
-      line: wordsSent === 0
-        ? "Nothing sent yet. One kind word to anyone is a start."
-        : "Every message, reply and note you sent to make someone feel seen.",
-      rowsTitle: "How it breaks down",
-      rows: wordsSent === 0 ? [] : [
-        { icon: "🌍", label: "Messages to the world", value: messagesSent },
-        { icon: "💬", label: "Replies and kind notes, person to person", value: repliesSent },
-      ],
-      empty: wordsSent === 0 ? "Open the bar on Connect and pick anyone — it takes twenty seconds." : null,
-      how: "Messages you posted, plus private replies and kind notes you sent.",
-    },
-    acts: {
-      emoji: "🤝", label: "Kind acts in real life", value: actsDone, basis: "All time",
-      line: actsDone === 0
-        ? "Nothing ticked off yet. One small thing counts."
-        : "Things that happened off this screen, because you decided to.",
-      rowsTitle: "The shape of it",
-      rows: actsDone === 0 ? [] : [{ icon: "✅", label: "Real-life acts marked done", value: actsDone }],
-      empty: actsDone === 0 ? "Pick \"Someone in real life\" in the bar on Connect, then tick it when it happens." : null,
-      how: "Every real-life idea you marked done.",
-    },
-    felt: {
-      emoji: "❤️", label: "Hearts on your words", value: felt, basis: "All time",
-      line: felt === 0
-        ? "No hearts yet — they often arrive a little after you've forgotten you sent anything."
-        : "Each one is a person who read what you wrote and felt it.",
-      rowsTitle: null, rows: [], empty: null,
-      how: "Hearts and reactions on the messages you sent.",
-    },
-  };
+  const dayKey = localDayKey();
+  const run = liveStreak(profile || {}, dayKey);
+  const best = bestStreakOf(profile, dayKey);
+  const dots = useMemo(() => weekDots(profile, dayKey), [profile, dayKey]);
+  const didToday = doneToday(profile, dayKey);
+  const restReady = restDayReady(profile, dayKey);
 
   const balance = sparkBalance + localPts;
   const stage = treeStageFor(balance);
   const stageIdx = TREE_STAGES.indexOf(stage);
   const next = TREE_STAGES[stageIdx + 1] ?? null;
   const pct = next ? Math.max(0, Math.min(100, Math.round(((balance - stage.min) / (next.min - stage.min)) * 100))) : 100;
-  // The next stage as time at the pace they actually keep (growMoments.timeToNext).
-  const pace = next ? timeToNext({ remaining: next.min - balance, balance, activeDays: Number(profile?.activeDays ?? 0), recentDays: Number(rhythm) || 0 }) : null;
-
-  // Days somebody showed up — NOT the streak. Written by recordGreetingDay; see the long note
-  // there and in certificates.js for why a certificate must not be destroyed by a missed day.
-  const activeDays = Number(profile?.activeDays ?? 0);
-  // firstActiveDate is a YYYY-MM-DD key, stamped only from the moment that field shipped — so an
-  // older account has none and the certificate omits the line rather than inventing a date.
-  // Parsed at UTC noon so the displayed day cannot slide backwards in a western timezone.
-  const since = useMemo(() => {
-    const key = profile?.firstActiveDate;
-    if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
-    const d = new Date(`${key}T12:00:00Z`);
-    return Number.isNaN(d.getTime())
-      ? null
-      : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-  }, [profile?.firstActiveDate]);
-
-  // What, if anything, is still open today — read from the same per-day records the two habit
-  // tabs already keep, so this needs no new state and cannot disagree with them.
-  //
-  // NOTHING is deliberately a valid answer. On a day where both are done, or a day somebody has
-  // not touched either and does not want to be asked, this renders nothing at all. A reward
-  // surface that always has a task on it stops being a reward surface.
-  const onward = useMemo(() => {
-    const d = new Date();
-    const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    let rec = null;
-    try { rec = JSON.parse(localStorage.getItem(`seen_hyt_state_${dayKey}`) || "null"); } catch { /* ignore */ }
-    const doneToday = Boolean(rec?.sent || rec?.done?.kindness || rec?.done?.who);
-    return doneToday ? null : { emoji: "✨", text: "Make someone feel seen today", go: () => onMakeSeen?.() };
-  }, [onMakeSeen]);
 
   // ── Grow-from-seed replay ──────────────────────────────────────────────────
   // On open, walk the tree from bare soil up to where it actually is, so the whole
@@ -552,46 +303,34 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
     return () => { clearTimeout(begin); cancelAnimationFrame(replayRaf.current); };
   }, [targetGrowth]);
 
-  // ── Milestone moment ───────────────────────────────────────────────────────
-  // Fires once per stage, the first time you reach it — never on every visit.
-  //
-  // The latch lives in treeMilestone.js now, because App.jsx wants to announce the same event
-  // when you are anywhere else in the app. Whoever asks first claims it; App skips while the Grow
-  // tab is open precisely so that this one wins here, where the tree is on screen and the full
-  // petals-and-name treatment is worth waiting for.
-  // A certificate crossing, claimed once. Same latch shape as the tree stage below — and the same
-  // first-run rule, which matters more here: every existing account gets an activeDays count the
-  // moment the field appears, so without it the first launch after this update would announce a
-  // fistful of certificates nobody earned this morning.
-  useEffect(() => {
-    const won = claimCertificate(activeDays);
-    if (!won) return;
-    const t = setTimeout(() => {
-      setNewCert(won);
-      try { playLevelUp(); } catch { /* ignore */ }
-      // Bring it into view. A reward nobody scrolls to is not a reward, and the sound cannot be
-      // relied on — the phone this was reported from has its speaker muted, which is the normal
-      // posture for most people most of the time.
-      certRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 600);
-    return () => clearTimeout(t);
-  }, [activeDays]);
-
+  // ── A new stage, the first time you reach it ───────────────────────────────────────────────
+  // The latch is shared with App (treeMilestone.js), which skips while Grow is open so this one
+  // wins: the tree is on screen for the petals. Seen is told too (read, since it was seen here).
   const [milestone, setMilestone] = useState(null);
   useEffect(() => {
     if (!claimStageUp(stageIdx)) return;
-    // Let the growth replay finish before celebrating on top of it.
     const t = setTimeout(() => {
       setMilestone(TREE_STAGES[stageIdx]);
       try { playLevelUp(); } catch { /* ignore */ }
+      onStageUp?.(stageIdx);
     }, prefersReducedMotion() ? 200 : MILESTONE_DELAY_MS);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageIdx]);
 
+  // A new level on one of the cards (App decides, growStats.planBadges): petals on that card.
+  const freshStats = useMemo(() => new Set((fresh || []).map((f) => f.stat)), [fresh]);
+  useEffect(() => {
+    if (!freshStats.size) return undefined;
+    const t = setTimeout(() => { try { playLevelUp(); } catch { /* ignore */ } }, 500);
+    return () => clearTimeout(t);
+  }, [freshStats]);
+
+  const flags = merged.all.slice().reverse(); // newest first
   return (
     <main {...(darkMode ? { "data-dark-shell": "" } : {})} className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4"
       style={{ background: darkMode ? "#0e1219" : undefined }}>
-      <div className="mx-auto w-full max-w-md space-y-4">
+      <div className="mx-auto w-full max-w-md space-y-3.5 pb-4">
         {/* Hero — the animated Kindness Tree (centrepiece) */}
         <button onClick={onOpenTree}
           className="relative block w-full seen-grad-hero rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-5 pb-6 text-center overflow-hidden active:scale-[0.99] transition-transform"
@@ -610,7 +349,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
               min-h keeps the progress bar and the link still while the two states change over:
               name+blurb and eyebrow+name are within a few pixels of each other, so this is a
               guard, not a correction. */}
-          <div className="min-h-[52px]">
+          <div className="min-h-[34px]">
             {milestone ? (
               <>
                 <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600"
@@ -623,7 +362,6 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
             ) : (
               <>
                 <p className="mt-1 text-xl font-extrabold text-slate-800">{stage.name}</p>
-                <p className="text-[12px] text-slate-500 mt-0.5">{stage.blurb}</p>
               </>
             )}
           </div>
@@ -634,9 +372,9 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
                   <div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-teal-400 transition-all duration-700" style={{ width: `${pct}%` }} />
                 </div>
                 <p className="mt-1.5 text-[12px] font-semibold text-slate-600">
-                  {pace ? <><strong>{next.name}</strong> in {pace} at your pace</> : <>{Math.max(0, next.min - balance).toLocaleString()} more drops until <strong>{next.name}</strong></>}
+                  {Math.max(0, next.min - balance).toLocaleString()} drops to <strong>{next.name}</strong>
                 </p>
-                <p className="text-[10.5px] text-slate-400">{balance.toLocaleString()} drops</p>
+                <p className="text-[10.5px] text-slate-400">💧 {balance.toLocaleString()} drops</p>
               </>
             ) : (
               <p className="text-[11px] font-semibold text-teal-700">Fully grown — {balance.toLocaleString()} drops of kindness 🌸</p>
@@ -651,144 +389,55 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
           <span className="mt-3 inline-block text-[11px] font-semibold text-teal-600">See how it grows →</span>
         </button>
 
-        {/* What today put on the tree — the daily layer under the weeks-long stages. Says what
-            is there rather than counting what is missing: an empty day is an invitation. */}
-        <p className="-mt-2 text-center text-[12px] leading-snug text-slate-500 px-2">
-          {today.length
-            ? <>Today: <span className="tracking-wide">{today.slice(-8).join(" ")}</span> — your tree is a little different because of what you did.</>
-            : "Nothing on your tree yet today — one kind thing changes it."}
-        </p>
-
-        {/* ── Where this ends up ──────────────────────────────────────────────────────────────
-            This sentence lived at the bottom of the stage sheet, in 10px grey, behind a
-            seventeen-item list — the least visible thing in the app, and the most motivating. A
-            concrete outcome outside the app is the strongest reason anyone has to keep going.
-
-            It also said "may". That hedge is gone because the intention is real; what stays is a
-            promise no bigger than the one actually being made. */}
-        <div className="mt-1 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center"
-          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "560ms" }}>
-          {stageIdx === TREE_STAGES.length - 1 ? (
-            <>
-              <p className="text-[13px] font-bold leading-snug text-emerald-800">🌍 You reached Tree of Life.</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
-                A real tree will be planted in your name — we'll let you know when it's in the ground.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-[13px] font-bold leading-snug text-emerald-800">
-                🌍 A fully grown tree here plants a real one.
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
-                Reach Tree of Life and a real tree goes into the ground, planted in your name.
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* ── This week: moments, not numbers (3.29) ────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">This week</p>
-          {moments.length ? (
-            <ul className="mt-2 space-y-2">
-              {moments.map((mo, i) => (
-                <li key={i} className="flex items-start gap-2.5">
-                  <span className="mt-[1px] text-[15px] leading-none" aria-hidden>{mo.icon}</span>
-                  <span className="text-[13.5px] leading-snug text-slate-700">{mo.text}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5 text-[13px] leading-snug text-slate-500">Quiet so far. One kind word to anyone, and this is where you'll see what it did.</p>
-          )}
-        </section>
-
-        {/* ── What Seen has noticed (3.29) — from your acts, your words and, if you allow it, your
-            journal; always with why. Or an invitation, for anyone who hasn't switched Seen on. ── */}
-        <section className="rounded-2xl border border-orange-200 bg-orange-50/60 px-4 py-3.5" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "200ms" }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600">✨ What Seen has noticed</p>
-          {seenOn && reflection ? (
-            <>
-              <p className="mt-1.5 text-[14px] leading-snug text-slate-800">{reflection.text}</p>
-              {Array.isArray(reflection.evidence) && reflection.evidence.length > 0 && (
-                <>
-                  <button onClick={() => setShowWhy((v) => !v)} className="mt-1.5 text-[11.5px] font-semibold text-orange-700">
-                    {showWhy ? "Hide why" : "Why I think this ›"}
-                  </button>
-                  {showWhy && (
-                    <ul className="mt-1 space-y-0.5 text-[12px] leading-snug text-slate-600">
-                      {reflection.evidence.map((ev, i) => <li key={i}>• {ev.label}</li>)}
-                    </ul>
-                  )}
-                </>
-              )}
-            </>
-          ) : seenOn ? (
-            <p className="mt-1.5 text-[13px] leading-snug text-slate-600">Nothing yet. Answer a couple of Seen's questions, and what it notices about your kindness will show up here.</p>
-          ) : (
-            <p className="mt-1.5 text-[13px] leading-snug text-slate-600">Seen, the AI in Messages, can notice what your kindness says about you — from what you do and say here, always showing why.</p>
-          )}
-          <button onClick={onOpenSeen} className="mt-2.5 block text-[12.5px] font-bold text-teal-700">
-            {seenOn ? (reflection ? "Talk to Seen about it →" : "Open Seen →") : "Try Seen →"}
-          </button>
-        </section>
-
-        <div ref={certRowRef}>
-          <CertificatesRow activeDays={activeDays} newCert={newCert}
-            onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
-        </div>
-
-        {/* ── Your numbers, folded into one line (3.29) — open it for the whole grid. ── */}
-        <button onClick={() => setShowNumbers((v) => !v)} aria-expanded={showNumbers}
-          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
-          <span className="text-base leading-none" aria-hidden>🌱</span>
-          <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-slate-700">
-            {seenTotal.toLocaleString()} kind {seenTotal === 1 ? "act" : "acts"}{activeDays ? ` over ${activeDays} ${activeDays === 1 ? "day" : "days"}` : ""}{countries ? ` · ${countries} ${countries === 1 ? "country" : "countries"}` : ""}
-          </span>
-          <span aria-hidden className="text-[11px] font-bold text-teal-600">{showNumbers ? "Hide" : "See all"}</span>
-        </button>
-        {showNumbers && (
-          <div className="grid grid-cols-2 gap-2.5">
-            <MetricTile emoji="💌" value={wordsSent} label="Kind words sent" delay={0} onOpen={() => setOpenCard("words")} />
-            <MetricTile emoji="🤝" value={actsDone} label="Kind acts in real life" delay={40} onOpen={() => setOpenCard("acts")} />
-            <MetricTile emoji="❤️" value={felt} label="Hearts on your words" delay={80} onOpen={() => setOpenCard("felt")} />
-            <MetricTile emoji="🌍" value={countries} label="Countries that felt it" delay={120} onOpen={() => setOpenCard("countries")} />
-            <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={160} onOpen={() => setOpenCard("ripple")} wide />
+        <StatCard stat="streak" value={run} levelValue={best} delay={120}
+          sub={best > run ? `best ${best}` : null}
+          celebrate={freshStats.has("streak")} onCelebrated={() => onCelebrated?.("streak")} onOpen={() => setOpenStat("streak")}>
+          <div className="flex items-center gap-1.5">
+            {dots.map((d) => (
+              <span key={d.key} title={d.key}
+                className={`grid h-7 w-7 place-items-center rounded-full text-[10.5px] font-bold ${d.done ? "text-white" : "text-slate-300"} ${d.isToday && !d.done ? "ring-2 ring-orange-200" : ""}`}
+                style={d.done ? { background: "linear-gradient(135deg,#fb923c,#ef4444)" } : undefined}>
+                {d.done ? "🔥" : d.letter}
+              </span>
+            ))}
+            {restReady && <span className="ml-auto whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10.5px] font-bold text-sky-700" title="One rest day in any seven keeps a run going">🛡️ Rest day</span>}
           </div>
-        )}
+          {didToday ? (
+            <p className="mt-2 text-[12px] font-bold text-emerald-700">✓ Today's done</p>
+          ) : (
+            <button onClick={onMakeSeen} className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-extrabold text-white active:scale-[0.99] transition-transform"
+              style={{ background: "linear-gradient(90deg,#fb923c,#ef4444)" }}>
+              ✨ Today's still open — make someone feel seen
+            </button>
+          )}
+        </StatCard>
 
-        <button onClick={onOpenJournal}
-          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
-          <span className="text-base leading-none" aria-hidden>📓</span>
-          <span className="min-w-0 flex-1 text-[12px] font-semibold text-slate-700">
-            Your journal{journalCount ? ` · ${journalCount} ${journalCount === 1 ? "entry" : "entries"}` : ""}
-          </span>
-          <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
-        </button>
+        <StatCard stat="hearts" value={hearts} delay={180}
+          celebrate={freshStats.has("hearts")} onCelebrated={() => onCelebrated?.("hearts")} onOpen={() => setOpenStat("hearts")}>
+          {heartsWeek > 0 && (
+            <span className="inline-block rounded-full px-2.5 py-1 text-[11px] font-bold"
+              style={{ background: darkMode ? "rgba(251,113,133,0.16)" : "#fff1f2", color: darkMode ? "#fda4af" : "#be123c" }}>+{heartsWeek} this week</span>
+          )}
+        </StatCard>
 
-        {/* ── A way back to the doing ─────────────────────────────────────────────────────────
-            Grow is the only tab with nothing to do on it, which is right — it is where you come
-            to see, not to act. But it was also a dead end, and a reward surface that does not
-            hand you back to the thing being rewarded is a page people stop returning to.
-
-            Names whichever habit tab has something outstanding today, and says nothing at all on
-            a day when neither does. It never counts what was missed. */}
-        {onward && (
-          <button onClick={onward.go}
-            className="mb-4 flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform"
-            style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "600ms" }}>
-            <span className="text-base leading-none" aria-hidden>{onward.emoji}</span>
-            <span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-slate-700">{onward.text}</span>
-            <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
-          </button>
-        )}
+        <StatCard stat="countries" value={merged.all.length} sub={`of ${WORLD_COUNTRIES}`} delay={240}
+          celebrate={freshStats.has("countries")} onCelebrated={() => onCelebrated?.("countries")} onOpen={() => setOpenStat("countries")}>
+          {flags.length > 0 && (
+            <div className="flex items-center gap-1">
+              {flags.slice(0, 10).map((c, i) => (
+                <span key={c} title={c} className={`text-[20px] leading-none ${i === 0 ? "rounded-md ring-2 ring-amber-300" : ""}`}>{FLAG_MAP[c] || "🌍"}</span>
+              ))}
+              {flags.length > 10 && <span className="ml-1 text-[11px] font-bold text-slate-400">+{flags.length - 10}</span>}
+            </div>
+          )}
+        </StatCard>
       </div>
 
-      {openCard && <MetricCard card={METRIC_CARDS[openCard]} onClose={() => setOpenCard(null)} />}
-      {openCert && (
-        <CertificateSheet cert={openCert} name={profile?.fullName || ""} since={since}
-          onClose={() => setOpenCert(null)} />
+      {openStat && (
+        <LevelSheet stat={openStat} best={best} countries={flags}
+          value={openStat === "streak" ? run : openStat === "hearts" ? hearts : merged.all.length}
+          levelValue={openStat === "streak" ? best : undefined}
+          onClose={() => setOpenStat(null)} />
       )}
     </main>
   );

@@ -159,6 +159,31 @@ const say = (db, id, msg) => put(db, `users/u1/seenChat/${id}`, { read: true, ..
   check("…when they have, the journal is evidence too", /J1: In their journal .*brother/.test(seen));
 }
 
+// 3.30 — an update from the app after the person's message: Seen still replies, and never sees it.
+{
+  const db = setup(); let seen = "";
+  say(db, "q1", { role: "seen", kind: "question", text: "What's been keeping you busy lately?", createdAt: NOW - 3000 });
+  say(db, "a1", { role: "me", kind: "answer", text: "Training for my first 10k", createdAt: NOW - 2000 });
+  say(db, "u-week-2026-10-05", { role: "seen", kind: "update", text: "Your week 🌱\n💬 Mona wrote back: “needed this today”", createdAt: NOW - 1000 });
+  const r = await handle({ mode: "reply" }, { db, uid: "u1", ai: async ({ user }) => { seen += user; return "A first 10k — that's a lot of early mornings."; }, now: NOW });
+  check("an update after your message doesn't stop Seen replying", r.json.wrote === "reply", JSON.stringify(r.json));
+  check("…and another person's words in it never reach the model", seen && !/Mona|needed this/.test(seen));
+}
+// 3.30 — journal entries (when allowed) can lead to a reflection without any chat answers.
+{
+  const db = setup(); let calls = 0;
+  put(db, "users/u1", { ...db.store.get("users/u1"), seenAI: { consent: true, journal: true } });
+  put(db, "users/u1/journal/j1", { text: "Rang my brother for the first time in months.", createdAt: NOW - DAY });
+  put(db, "users/u1/journal/j2", { text: "Long walk, and I finally felt rested.", createdAt: NOW - 2 * DAY });
+  await handle({ mode: "reflect" }, { db, uid: "u1", ai: async () => { calls++; return "{}"; }, now: NOW });
+  check("two journal entries make Seen consider a reflection", calls >= 1, String(calls));
+  const db2 = setup(); let calls2 = 0;
+  put(db2, "users/u1/journal/j1", { text: "Rang my brother.", createdAt: NOW - DAY });
+  put(db2, "users/u1/journal/j2", { text: "Long walk.", createdAt: NOW - 2 * DAY });
+  await handle({ mode: "reflect" }, { db: db2, uid: "u1", ai: async () => { calls2++; return "{}"; }, now: NOW });
+  check("…but not when Seen isn't allowed to read the journal", calls2 === 0, String(calls2));
+}
+
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} Seen API tests passed.`);

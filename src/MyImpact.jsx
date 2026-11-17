@@ -7,6 +7,7 @@ import {
 import { countryToFlag } from "./MicroAnimations";
 import { COUNTRY_COORDS } from "./WorldMap";
 import { readPublicProfile } from "./publicProfile";
+import { MILESTONES } from "./growStats";
 
 // ── Theme tokens ──────────────────────────────────────────────────
 export const DARK = {
@@ -357,7 +358,6 @@ function StatTile({ value, label, sub, loading, dark = false }) {
 
 // ── Milestone card ────────────────────────────────────────────────
 
-const MILESTONES = [1, 5, 10, 20, 35, 50, 75, 100];
 
 export function MilestoneCard({ countriesCount, dark = false }) {
   const C = dark ? DARK : LIGHT;

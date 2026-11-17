@@ -243,21 +243,36 @@ service cloud.firestore {
       match /seenChat/{msgId} {
         allow read, delete: if request.auth != null && request.auth.uid == userId;
         allow create: if request.auth != null && request.auth.uid == userId
-            && request.resource.data.keys().hasOnly(['role','kind','text','qid','createdAt','read','options'])
+            && request.resource.data.keys().hasOnly(['role','kind','text','qid','createdAt','read','options','action'])
             && request.resource.data.text is string
             && request.resource.data.createdAt is number
             // Quick answers under a question Seen asks (3.29: "How did that feel?") — a short list.
             && (!('options' in request.resource.data)
                 || (request.resource.data.role == 'seen' && request.resource.data.kind == 'question'
                     && request.resource.data.options is list && request.resource.data.options.size() <= 6))
+            // One button on one of the app's own updates (3.30) — what it does is decided by the app
+            // (seenUpdates.parseAction), never by the stored string.
+            && (!('action' in request.resource.data)
+                || (request.resource.data.role == 'seen' && request.resource.data.kind == 'update'
+                    && request.resource.data.action is string && request.resource.data.action.size() <= 40))
             && ((request.resource.data.role == 'me'
                   && request.resource.data.kind in ['answer','ask']
                   && request.resource.data.text.size() <= 600)
               || (request.resource.data.role == 'seen'
                   && request.resource.data.kind in ['question','intro']
+                  && request.resource.data.text.size() <= 400)
+              // The app's own updates (3.30, seenUpdates.js): your week, a new stage, a new level, a
+              // certificate. Only at a fixed id ("u-week-2026-11-16"), so a second device's copy is
+              // an update of an existing message — refused below — rather than a duplicate.
+              || (request.resource.data.role == 'seen'
+                  && request.resource.data.kind == 'update'
+                  && msgId.matches('u-[a-z0-9-]{3,60}')
                   && request.resource.data.text.size() <= 400));
+        // Marking read, and "That's me / Not quite / Forget this" on a reflection. `read` only ever
+        // becomes true (3.30): a late duplicate write can't make something already read unread again.
         allow update: if request.auth != null && request.auth.uid == userId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read','feedback'])
+            && (!('read' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.read == true)
             && (!('feedback' in request.resource.data) || request.resource.data.feedback in [null,'yes','no','forget']);
       }
       // What Seen understands (themes, timing, the next follow-up). Written only by the server;

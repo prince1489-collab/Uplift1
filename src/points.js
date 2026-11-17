@@ -54,9 +54,9 @@ export const POINTS = {
 // Writing your own message takes a minute of someone's actual attention, so the first one of the
 // day is worth 500.
 //
-// Reflect needs no protection either way: Journal.jsx keeps one entry per date, and a second save that day
-// EDITS the first rather than creating another, so the award can only land once however many
-// times you press save.
+// Reflect needs a guard too (3.30). Journal.jsx keeps one entry per date and a second save that
+// day edits the first — but deleting an entry and writing it again, or backdating one into an
+// empty day, created a new entry and paid 300 again. It is now `oncePerDay`.
 //
 // Sending does. DAILY_GREETING_LIMIT is 50, so a flat 500 would pay 25,000 drops a day to
 // someone typing "hi" fifty times — which would outrun the whole tree in under a week and make

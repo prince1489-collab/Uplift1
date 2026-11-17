@@ -351,6 +351,27 @@ await check("you can forget everything",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "understanding", "state"))));
 await check("…and delete Seen's messages",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "seenChat", "refl"))));
+// ── 3.30: the app's own updates in Seen ─────────────────────────────────────────────────────
+const UPD = { role: "seen", kind: "update", text: "Your week 🌱\nYou made someone feel seen on 4 days.", createdAt: NOWT, read: false };
+await check("an update at its fixed id can be written",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "seenChat", "u-week-2026-11-16"), { ...UPD, action: "grow" })));
+await check("…a second device writing it again is refused",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "u-week-2026-11-16"), { ...UPD, createdAt: NOWT + 5, action: "grow" })));
+await check("…marking it read is allowed",
+  assertSucceeds(updateDoc(doc(A, "users", "uidA", "seenChat", "u-week-2026-11-16"), { read: true })));
+await check("…and it can't be made unread again",
+  assertFails(updateDoc(doc(A, "users", "uidA", "seenChat", "u-week-2026-11-16"), { read: false })));
+await check("an update at a random id is refused",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "Xk29abQ"), UPD)));
+await check("an update longer than 400 is refused",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "u-stage-4"), { ...UPD, text: "x".repeat(401) })));
+await check("a button longer than 40 is refused",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "u-stage-5"), { ...UPD, action: "x".repeat(41) })));
+await check("a button on your own message is refused",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "a-btn"), { role: "me", kind: "answer", text: "hi", action: "grow", createdAt: NOWT, read: true })));
+await check("someone else can't write an update into your conversation",
+  assertFails(setDoc(doc(B, "users", "uidA", "seenChat", "u-badge-hearts-5"), UPD)));
+
 await check("you can share a Right now line",
   assertSucceeds(setDoc(doc(A, "publicProfiles", "uidA"), { uid: "uidA", rightNow: "Training for my first 10k" }, { merge: true })));
 await check("…of at most 80 characters",

@@ -15,7 +15,8 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, PLAN_FOR } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, PLAN_FOR, WEEKLY_MESSAGE_LITE } from "../api/send-reminder.js";
+import { linkFor } from "../api/_auth.js";
 import { MOMENTS, planFor } from "../src/realLife.js";
 import { cueDateKey } from "../src/eveningCue.js";
 
@@ -179,6 +180,11 @@ for (const m of [awayMessage(5), whosNextMessage({ whosNext: { name: "Sam", day:
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────
+// 3.30 — Sunday's lighter push points at "Your week" in Seen.
+check("Sunday's push opens Seen", WEEKLY_MESSAGE_LITE.open === "seen" && /Your week in Seen/.test(WEEKLY_MESSAGE_LITE.title));
+check("…with no guilt in it", !GUILT.test(`${WEEKLY_MESSAGE_LITE.title} ${WEEKLY_MESSAGE_LITE.body}`));
+check("…and its link lands on Seen, counted as a push open", /\/\?open=seen&via=push$/.test(linkFor("seen")), linkFor("seen"));
+
 let failed = 0;
 for (const [ok, name] of results) {
   console.log(`${ok ? "  ok  " : "  FAIL"}  ${name}`);
