@@ -17,15 +17,16 @@
 // an absolute value is harmless; a duplicated increment silently inflates someone's tree, and
 // there is no way to tell afterwards that it happened.
 
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, runTransaction } from "firebase/firestore";
 
 const KEY = "seen_v2_points";
 const META = "seen_v2_points_meta"; // once-per-day guards
 const FIELD = "treePoints";         // users/{uid}.treePoints
 
-// Set once by syncPoints() after sign-in. Until then every award is local-only, which is correct:
-// a signed-out user has nowhere to mirror to.
-let mirror = null; // { db, uid }
+// Set once by syncPoints() after sign-in — AFTER it has read the account's total (3.29.1). Until
+// then every award is local-only, which is correct: syncPoints takes the larger of the two.
+// `floor` is the largest total the account is known to hold; nothing smaller is ever written.
+let mirror = null; // { db, uid, floor }
 
 // Point values per action (varied by effort).
 export const POINTS = {
@@ -83,12 +84,31 @@ function announce(action, value, total) {
 // Best-effort, deliberately not awaited: the tree must animate the instant you act, and a slow or
 // failed write must never make an earned point look like it did not land. The local ledger is
 // already authoritative for this session, and the next sync reconciles.
-function pushRemote(total) {
+//
+// NEVER DOWNWARDS (3.29.1). The mirror writes an absolute total, and the local ledger can be
+// emptied — a reinstall, or another account's data being cleared from the device (deviceOwner.js).
+// The mirror used to be armed BEFORE syncPoints had read the account's total, and the day's first
+// award ("dailyOpen", at start-up) landed in that gap: 0 + 50 was written over a tree of 57,000
+// drops, and the sync that followed read the 50 back. The founder's tree went from 57,330 drops to
+// about 4,500 that way. Now the mirror is armed only after the read, nothing below the known
+// floor is ever sent, and the write itself only ever raises the stored total (a transaction), so
+// no device, however empty its ledger, can shrink anyone's tree.
+export function pushRemote(total, io = defaultIo) {
   if (!mirror) return;
-  try {
-    setDoc(doc(mirror.db, "users", mirror.uid), { [FIELD]: total }, { merge: true }).catch(() => {});
-  } catch { /* ignore */ }
+  if (!(total > (mirror.floor || 0))) return;
+  mirror.floor = total;
+  try { io.raise(mirror.db, mirror.uid, total).catch?.(() => {}); } catch { /* ignore */ }
 }
+
+// Only ever the signed-in person's own account document.
+const defaultIo = {
+  read: async (db, myUid) => Number((await getDoc(doc(db, "users", myUid))).data()?.[FIELD]) || 0,
+  raise: (db, myUid, total) => runTransaction(db, async (tx) => {
+    const ref = doc(db, "users", myUid);
+    const cur = Number((await tx.get(ref)).data()?.[FIELD]) || 0;
+    if (total > cur) tx.set(ref, { [FIELD]: total }, { merge: true });
+  }),
+};
 
 // Called once after sign-in. Reconciles the two ledgers and arms the mirror.
 //
@@ -101,18 +121,19 @@ function pushRemote(total) {
 // as the signal that a users/{uid} read is of your OWN document rather than someone else's, and
 // asks call sites to say so rather than accepting an ambiguous name. This only ever reads the
 // signed-in user's own doc — the rules would deny anything else.
-export async function syncPoints(db, myUid) {
+export async function syncPoints(db, myUid, io = defaultIo) {
   if (!db || !myUid) return getPoints();
-  mirror = { db, uid: myUid };
+  mirror = null; // nothing is written for this account until its total has been read
 
   let remote = 0;
   try {
-    const snap = await getDoc(doc(db, "users", myUid));
-    remote = Number(snap.data()?.[FIELD]) || 0;
+    remote = await io.read(db, myUid);
   } catch {
     return getPoints(); // offline or denied — keep what we have, never clobber either side
   }
+  mirror = { db, uid: myUid, floor: remote };
 
+  // Read now, not before the await: anything awarded while the read was in flight is included.
   const local = getPoints();
   const merged = Math.max(remote, local);
 
@@ -122,7 +143,7 @@ export async function syncPoints(db, myUid) {
     // the next remount.
     announce("sync", 0, merged);
   }
-  if (merged !== remote) pushRemote(merged);
+  if (merged > remote) pushRemote(merged, io);
   return merged;
 }
 
@@ -180,7 +201,7 @@ export function awardPoints(action, opts = {}) {
   }
   const next = getPoints() + value;
   setPoints(next);
-  pushRemote(next);
+  pushRemote(next, opts.io || defaultIo);
   announce(action, value, next);
   return next;
 }

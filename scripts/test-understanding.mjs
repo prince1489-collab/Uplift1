@@ -97,6 +97,15 @@ check("the reply prompt answers from evidence only", /only from the evidence/.te
   check("the people they were kind to include those from the log", d.some((i) => /^S/.test(i.id) && /Mona ×1/.test(i.text)));
 }
 
+// 3.29.1 — an adverb doesn't hide a label, and drinking stays off the record
+check("\"you're also the kind of person who…\" is a label, and is dropped", guardReflection("You've mentioned work, and you're also the kind of person who tackles problems.") === null);
+check("\"you are really someone who…\" too", guardReflection("You are really someone who keeps going.") === null);
+check("a reflection about drinking is dropped", guardReflection("You've noticed real shifts — drinking differently, mornings clearer.") === null);
+check("an observation is still fine", typeof guardReflection("You've mentioned your brother twice this week, and you wrote to him on Sunday.") === "string");
+const longA = { createdAt: NOW - DAY, text: "I have made progress in terms of my running and stopping when I do need a rest, which feels good, honestly", question: "What's changed?" };
+const dLong = buildDigest({ answers: [longA], feelings: [], user: {}, now: NOW });
+check("a reason is kept whole, not cut at 70 characters", /which feels good, honestly”$/.test(dLong.find((i) => i.id === "A1")?.label || ""), dLong.find((i) => i.id === "A1")?.label);
+
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} understanding tests passed.`);

@@ -110,7 +110,7 @@ import { pushAskDue, markPushAsked, askable } from "./pushAsk";
 import { guessCountry, deviceHints } from "./guessCountry";
 import { logKindAct, noteDelivery } from "./kindLog";
 import { useKindLog } from "./useKindLog";
-import { latestReflection } from "./growMoments";
+import { latestReflection, expandEvidence } from "./growMoments";
 import PushAskNote from "./PushAskNote";
 import { publicUrl } from "./apiBase";
 import { openUpdate, isPushOpen } from "./openDays";
@@ -2393,7 +2393,10 @@ export default function App() {
   }, [seenConsent, seenChat, seenState, currentUser?.uid, kindLog]);
   const seenJournal = profile?.seenAI?.journal === true;
   // What Seen has noticed most recently, for the Grow tab (3.29).
-  const seenReflection = useMemo(() => (seenOn ? latestReflection(seenChat) : null), [seenOn, seenChat]);
+  const seenReflection = useMemo(() => {
+    const r = seenOn ? latestReflection(seenChat) : null;
+    return r ? { ...r, evidence: expandEvidence(r.evidence, seenChat) } : null;
+  }, [seenOn, seenChat]);
   const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent, journal: seenJournal }), [seenChat, seenState, seenConsent, seenJournal]);
   const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0) + seenUnread(seenChat), [conversations, seenChat]);
   const [messagesOpenUid, setMessagesOpenUid] = useState(null);

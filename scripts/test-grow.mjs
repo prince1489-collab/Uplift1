@@ -2,7 +2,7 @@
 //
 //   node scripts/test-grow.mjs
 
-import { weekMoments, timeToNext, latestReflection } from "../src/growMoments.js";
+import { weekMoments, timeToNext, latestReflection, expandEvidence } from "../src/growMoments.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name} — ${detail}`]);
@@ -44,6 +44,19 @@ const chat = [
 ];
 check("the newest reflection they haven't turned away", latestReflection(chat)?.text === "You keep reaching out to family on Sundays.");
 check("none yet, nothing shown", latestReflection([]) === null && latestReflection(undefined) === null);
+
+// 3.29.1 — a reason saved cut short gets its full sentence back from the person's own message.
+{
+  const chat2 = [{ role: "me", kind: "answer", text: "I have made progress in terms of my\nrunning and stopping when I do need a rest, which feels good." }];
+  const ev = expandEvidence([
+    { kind: "said", label: "You said on Sunday: “I have made progress in terms of my running and stopping when I do n…”" },
+    { kind: "did", label: "You made someone feel seen on 25 of the last 30 days" },
+    { kind: "said", label: "You said on Monday: “Something nobody wrote…”" },
+  ], chat2);
+  check("a cut-off reason is made whole from what they wrote", ev[0].label === "You said on Sunday: “I have made progress in terms of my running and stopping when I do need a rest, which feels good.”", ev[0].label);
+  check("…a reason that wasn't cut is left alone", ev[1].label === "You made someone feel seen on 25 of the last 30 days");
+  check("…and one that can't be matched stays as it was", /Something nobody wrote…/.test(ev[2].label));
+}
 
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }

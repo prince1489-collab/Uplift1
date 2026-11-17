@@ -14,6 +14,7 @@ import { ChevronLeft, MoreHorizontal, Send, X, Loader2 } from "lucide-react";
 import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, shareRightNow, forgetEverything } from "./seenChat";
 import { readPublicProfile } from "./publicProfile";
 import { doc, updateDoc } from "firebase/firestore";
+import { expandEvidence } from "./growMoments";
 import { useDictation } from "./dictation";
 import MicButton from "./MicButton";
 
@@ -37,7 +38,7 @@ const dayLabel = (ts) => {
 };
 const timeOf = (ts) => new Date(Number(ts)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-function Reflection({ m, uid, db }) {
+function Reflection({ m, uid, db, chat = [] }) {
   const [why, setWhy] = useState(false);
   const fb = m.feedback;
   return (
@@ -49,7 +50,7 @@ function Reflection({ m, uid, db }) {
       </button>
       {why && (
         <ul className="mt-1.5 space-y-0.5 rounded-xl bg-orange-50/80 px-2.5 py-2 text-[11.5px] leading-snug text-slate-600">
-          {(m.evidence || []).map((e, i) => <li key={i}>• {e.label}</li>)}
+          {expandEvidence(m.evidence || [], chat).map((e, i) => <li key={i}>• {e.label}</li>)}
         </ul>
       )}
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -260,7 +261,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                   </div>
                 );
               } else if (m.kind === "reflection") {
-                body = <Reflection m={m} uid={uid} db={db} />;
+                body = <Reflection m={m} uid={uid} db={db} chat={chat} />;
               } else if (m.kind === "nudge") {
                 body = (
                   <div className="seen-bubble max-w-[88%] self-start rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[13.5px] leading-snug text-slate-700">

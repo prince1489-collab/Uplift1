@@ -64,3 +64,19 @@ export function timeToNext({ remaining, balance, activeDays, recentDays }) {
 export function latestReflection(chat = []) {
   return [...(chat || [])].reverse().find((m) => m?.role === "seen" && m.kind === "reflection" && m.text && !["no", "forget"].includes(m.feedback)) || null;
 }
+
+// A reason saved before 3.29.1 was cut to 70 characters ("You said on Sunday: “I have made
+// progress in terms of my…”"). The person's own message is still in their Seen conversation, so
+// the full sentence is put back from there. Anything that can't be matched is left as it was.
+export function expandEvidence(evidence = [], chat = []) {
+  const mine = (chat || []).filter((m) => m?.role === "me" && typeof m.text === "string");
+  return (evidence || []).map((ev) => {
+    const label = String(ev?.label || "");
+    const m = label.match(/^(.*“)(.+?)…”(.*)$/);
+    if (!m) return ev;
+    const norm = (t) => String(t).replace(/\s+/g, " ").trim();
+    const prefix = norm(m[2]);
+    const full = mine.find((x) => norm(x.text).startsWith(prefix));
+    return full ? { ...ev, label: `${m[1]}${norm(full.text)}”${m[3]}` } : ev;
+  });
+}

@@ -36,10 +36,12 @@ export function supportMessage(level) {
 }
 
 // ── Wording guard ────────────────────────────────────────────────────────────────────────────
-const LABELS = /\b(you are (a|an|the|so|very|clearly|definitely|really|someone|somebody|the kind)|you'?re (clearly|definitely|the kind|someone who|a natural|an? \w+ person)|you seem to be (a|an|someone|somebody|the)|this (shows|proves|means) you('re| are))\b/i;
+const LABELS = /\b(you are (also |really |truly |just |actually )?(a|an|the|so|very|clearly|definitely|really|someone|somebody|the kind)|you'?re (also |really |truly |just |actually )?(clearly|definitely|the kind|someone who|a natural|an? \w+ person)|you seem to be (a|an|someone|somebody|the)|this (shows|proves|means) you('re| are))\b/i;
 const INSTRUCT = /\b(you (should|must|need to|have to|ought to)|make sure (you|to)|try to|i recommend|my advice)\b/i;
 const CLINICAL = /\b(depress\w*|anxiety disorder|disorder|adhd|autis\w*|bipolar|ocd|ptsd|diagnos\w*|symptom\w*|therap(y|ist)|medication|burn-?out)\b/i;
-const SPECIAL = /\b(relig\w*|faith|christian|muslim|islam\w*|hindu\w*|jewish|sikh|buddhis\w*|athei\w*|gay|lesbian|bisexual|queer|trans\w*gender|sexual\w*|ethnic\w*|racial|politic\w*|conservative|liberal|labour|tory|democrat\w*|republican|pregnan\w*|disab\w*|illness|sick)\b/i;
+// Alcohol and drinking (3.29.1): a reflection about someone's drinking surfaced on the Grow tab — a
+// health matter, and the main screen of the app is not where it belongs, however it was worded.
+const SPECIAL = /\b(alcohol\w*|drinking|drunk|hangover\w*|sober\w*|sobriety|addict\w*|rehab|relig\w*|faith|christian|muslim|islam\w*|hindu\w*|jewish|sikh|buddhis\w*|athei\w*|gay|lesbian|bisexual|queer|trans\w*gender|sexual\w*|ethnic\w*|racial|politic\w*|conservative|liberal|labour|tory|democrat\w*|republican|pregnan\w*|disab\w*|illness|sick)\b/i;
 
 // For reflections and follow-up questions: everything above is off limits.
 export function guardReflection(text, max = 260) {
@@ -94,7 +96,9 @@ export function buildDigest({ answers = [], feelings = [], user = {}, now = Date
   answers.filter((a) => Number(a.createdAt) >= from && a.text).slice(-12).forEach((a, i) => {
     items.push({ id: `A${i + 1}`, kind: "said", date: Number(a.createdAt),
       text: `Asked "${clip(a.question, 90)}" they answered: "${clip(a.text, 320)}"`,
-      label: `You said on ${dayName(a.createdAt)}: “${clip(a.text, 70)}”` });
+      // Whole, not a 70-character teaser (3.29.1): "Why I think this" is where someone checks Seen's
+      // reasoning, and a reason cut off mid-word can't be checked.
+      label: `You said on ${dayName(a.createdAt)}: “${clip(a.text, 320)}”` });
   });
   const felt = feelings.filter((f) => Number(f.createdAt) >= from && f.feelings?.length)
     .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
@@ -109,7 +113,7 @@ export function buildDigest({ answers = [], feelings = [], user = {}, now = Date
     .sort((a, b) => Number(a.createdAt) - Number(b.createdAt)).slice(-6).forEach((f, i) => {
       items.push({ id: `R${i + 1}`, kind: "said", date: Number(f.createdAt),
         text: `After a ${ROUTE[f.route] || "kind act"} (${dateLabel(f.createdAt)}), asked "${clip(f.question, 90)}" they answered: "${clip(f.answer, 140)}"`,
-        label: `You answered “${clip(f.answer, 50)}” to “${clip(f.question, 60)}”` });
+        label: `You answered “${clip(f.answer, 140)}” to “${clip(f.question, 120)}”` });
     });
 
   // J: journal entries — only when they've said Seen may read them.
