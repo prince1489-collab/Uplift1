@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { BarChart3, X, RefreshCw } from "lucide-react";
-import { summarise } from "./usageStats";
+import { summarise, MIN_COUNTED } from "./usageStats";
 import { todayKey } from "./hytPrompts";
 
 const HOUR = (h) => (h == null ? "Not chosen (9am)" : h === 0 ? "Midnight" : h === 12 ? "Noon" : h < 12 ? `${h}am` : `${h - 12}pm`);
@@ -120,7 +120,9 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
               <Tile value={s.week.openedPct != null ? `${s.week.openedPct}%` : null} label="Opened, each day (last 7)"
                 sub={s.week.openedPct != null
                   ? `Of people whose app counts opens${s.week.pushShare != null ? ` · ${s.week.pushShare}% from a notification` : ""}`
-                  : "Starts once phones report opens"} />
+                  : s.week.counted > 0
+                    ? `Only ${s.week.counted} ${s.week.counted === 1 ? "person's app counts" : "people's apps count"} opens so far — shown from ${MIN_COUNTED}`
+                    : "Starts once phones report opens"} />
               <Tile value={s.week.actedPct != null ? `${s.week.actedPct}%` : null} label="Did a kind act, each day (last 7)" />
             </div>
 

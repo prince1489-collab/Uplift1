@@ -2,7 +2,7 @@
 //
 //   node scripts/test-admin-stats.mjs
 
-import { summarise, lastDays, isPerson, canRemind, lastSeen } from "../src/usageStats.js";
+import { summarise, lastDays, isPerson, canRemind, lastSeen, MIN_COUNTED } from "../src/usageStats.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name} — ${detail}`]);
@@ -45,6 +45,12 @@ check("reach: a device and a timezone", s.reach.canRemind === 2 && s.reach.platf
 check("reminder hours, unchosen as its own row", s.reach.hours.some((h) => h.hour === null && h.count === 3) && s.reach.hours.some((h) => h.hour === 12));
 check("coverage: two on a reporting version", s.coverage.reporting === 2 && s.coverage.builds[0]?.build === "abc1234");
 check("totals add up", s.totals.messages === 43 && s.totals.replies === 10 && s.totals.realLife === 5);
+
+// The weekly share of opens waits until enough phones count them (the "75%" of three people).
+check("too few counted: no weekly open share, but how many are counted", s.week.openedPct === null && s.week.counted === 2, JSON.stringify(s.week));
+const many = Array.from({ length: MIN_COUNTED }, (_, i) => ({ id: "r" + i, onboardingCompletedAt: 1, lastOpenDay: T, openDates: i % 2 ? [ago(1), T] : [ago(1)] }));
+const m = summarise(many, { today: T });
+check(`from ${MIN_COUNTED} counted, the weekly share appears`, m.week.counted === MIN_COUNTED && m.week.openedPct === 75, JSON.stringify(m.week));
 
 const w = summarise(users, { today: T, adminUid: "me", withoutMe: true });
 check("without me: one fewer person, and my every-day habit leaves the numbers", w.people === 4 && w.today.opened === 1 && w.depth.find((b) => b.id === "21-30").count === 0);

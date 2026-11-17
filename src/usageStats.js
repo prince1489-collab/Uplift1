@@ -72,6 +72,11 @@ export const DEPTH = [
 ];
 
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
+
+// A daily share of opens is only shown once at least this many people's apps report them. With
+// the first one to three phones on 3.26 it read "75% opened each day" — true of three people and
+// misleading about ninety-seven.
+export const MIN_COUNTED = 10;
 const mean = (xs) => { const v = xs.filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
 
 export function summarise(users, { today, adminUid = null, withoutMe = false, window = 30 } = {}) {
@@ -135,7 +140,9 @@ export function summarise(users, { today, adminUid = null, withoutMe = false, wi
     },
     week: {
       actedPct: mean(week.map((d) => d.actedPct)),
-      openedPct: mean(week.map((d) => d.openedPct)),
+      // The most people counted on any day this week, and the average only when that is enough.
+      counted: Math.max(0, ...week.map((d) => d.reporting || 0)),
+      openedPct: Math.max(0, ...week.map((d) => d.reporting || 0)) >= MIN_COUNTED ? mean(week.map((d) => d.openedPct)) : null,
       pushShare: (() => {
         const o = week.reduce((s, d) => s + (d.opened || 0), 0);
         const p = week.reduce((s, d) => s + (d.fromPush || 0), 0);
