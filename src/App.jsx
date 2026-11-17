@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowLeft, Bell, Calendar, ChevronDown, ChevronRight, CreditCard, Globe, Heart,
   Loader2, Mail, LogOut, Trash2, Moon, Send, Sparkles, Gift, Sun, User, UserPlus, Users, Share2, Shield, X, Info, Volume2, VolumeX,
+  BarChart3,
 } from "lucide-react";
 import WorldMap, { COUNTRY_COORDS } from "./WorldMap";
 import { AnimationLayer, useAnimations, useSparkCounter,
@@ -53,6 +54,8 @@ import { claimCertificate } from "./certificates";
 import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
+// "How Seen is doing" (3.26) — admin only, so it never ships in anyone else's first load.
+const AdminStats = React.lazy(() => import("./AdminStats"));
 
 import {
   useStreak, computeSparkReward,
@@ -104,6 +107,7 @@ import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
 import { publicUrl } from "./apiBase";
+import { openUpdate, isPushOpen } from "./openDays";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
 // Every destination a tapped notification is allowed to name. The mirror of OPEN_TARGETS in
@@ -294,7 +298,7 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, onDeleteAccount, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, onDeleteAccount, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminStats, onAdminClearFeed, onAdminFullReset }) {
   const installedVersion = useInstalledVersion();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -459,6 +463,18 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                     <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
                     {/* Community greetings are now AI-moderated at submit; the weekly champion
                         rotation runs automatically via cron — no manual admin steps needed. */}
+                    {/* Written out rather than through Row/IconBox, which are defined inside this
+                        component — each new use of those adds to an existing lint error. */}
+                    <button onClick={() => { onAdminStats?.(); close(); }}
+                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-slate-50">
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-teal-50">
+                        <BarChart3 size={15} className="text-teal-600" />
+                      </span>
+                      <div className="min-w-0 flex-1 text-left">
+                        <p className="truncate text-sm font-medium text-slate-700">How Seen is doing</p>
+                        <p className="truncate text-[11px] text-slate-400">Daily opens and kind acts — counts only</p>
+                      </div>
+                    </button>
                     <Row
                       onClick={() => { onAdminReports?.(); close(); }}
                       icon={<IconBox className="bg-rose-50"><Shield size={15} className="text-rose-500" /></IconBox>}
@@ -1661,6 +1677,9 @@ export default function App() {
       return OPEN_TARGETS.has(v) ? v : null;
     } catch { return null; }
   });
+  // Every push link carries `via=push` (api/_auth.js linkFor), so this page load is known to be
+  // a tapped notification — counted as such in pushOpenDates (openDays.js, 3.26).
+  const [openedViaPush] = useState(() => { try { return isPushOpen(window.location.search); } catch { return false; } });
   const [isSending, setIsSending] = useState(false);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
@@ -2556,6 +2575,7 @@ export default function App() {
   useEffect(() => { if (isRealSignedInUser) awardPoints("dailyOpen", { oncePerDay: true }); }, [isRealSignedInUser]);
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [showReports, setShowReports] = useState(false);
+  const [showAdminStats, setShowAdminStats] = useState(false);
   const [adminConfirm, setAdminConfirm] = useState(false); // two-step clear-chat confirmation
   const [adminClearing, setAdminClearing] = useState(false);
   const [adminClearError, setAdminClearError] = useState("");
@@ -2581,7 +2601,6 @@ export default function App() {
       .filter((k) => typeof k === "string" && k < today).sort();
     const last = seen[seen.length - 1];
     const days = last ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / 86400000) : 0;
-    updateDoc(doc(db, "users", currentUser.uid), { lastOpenDay: today }).catch(() => {});
     if (days < 2) return;
     // The hearts their words got while they were gone — one small, bounded read.
     const since = Date.parse(`${last}T00:00:00`);
@@ -2590,6 +2609,48 @@ export default function App() {
       .catch(() => 0)
       .then((hearts) => setAwayNote({ days, since, hearts }));
   }, [isRealSignedInUser, profile, currentUser?.uid]);
+
+  // ── Which days they opened Seen (3.26, openDays.js) ──────────────────────────────────────────
+  // Every open adds today (local) to `openDates`, and to `pushOpenDates` when a tapped
+  // notification brought them — what the admin's stats screen counts for "opens Seen every day".
+  // Not only when the page loads: a phone app can sit in the background for days and come back on
+  // a new one without restarting, and that return is an open too. One write per day at most.
+  const openProfileRef = useRef(profile);
+  useEffect(() => { openProfileRef.current = profile; }, [profile]);
+  const openRecordedRef = useRef(null);  // the local day already written in this session
+  const openPushPendingRef = useRef(openedViaPush); // only the load a notification opened counts as one
+  const recordOpen = useCallback(() => {
+    const p = openProfileRef.current;
+    if (!db || !currentUser?.uid || currentUser.isAnonymous || !p) return;
+    const day = localDayKey();
+    if (openRecordedRef.current === day) return;
+    openRecordedRef.current = day;
+    const viaPush = openPushPendingRef.current;
+    openPushPendingRef.current = false;
+    const update = openUpdate(p, day, { viaPush, build: __BUILD_ID__ });
+    if (update) updateDoc(doc(db, "users", currentUser.uid), update).catch(() => { openRecordedRef.current = null; });
+  }, [currentUser?.uid, currentUser?.isAnonymous]);
+  useEffect(() => { if (isRealSignedInUser && profile) recordOpen(); }, [isRealSignedInUser, profile, recordOpen]);
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") recordOpen(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    // The native shells say so directly too, in case a resumed WebView doesn't fire the above.
+    let handle = null;
+    let gone = false;
+    if (isNativeApp()) {
+      import("@capacitor/app")
+        .then(({ App: CapApp }) => CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) recordOpen(); }))
+        .then((h) => { if (gone) h?.remove?.(); else handle = h; })
+        .catch(() => {});
+    }
+    return () => {
+      gone = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      handle?.remove?.();
+    };
+  }, [recordOpen]);
   const publicMessagesRef = collection(db, "publicMessages");
 
   const { streak, freezesAvailable, recordGreetingDay, buyFreeze, useFreeze, sellFreeze } =
@@ -2771,7 +2832,7 @@ export default function App() {
   // so every later reload reopens the bell — and copying the URL to someone hands them a link
   // that opens a panel about events they do not have.
   useEffect(() => {
-    if (!openTarget) return;
+    if (!openTarget && !openedViaPush) return;
     // reflect opens the journal; practice opens the "make someone feel seen" bar. Both used to
     // name tabs that no longer exist — the targets stay, so links in notifications already on
     // people's phones still land somewhere sensible.
@@ -2782,6 +2843,7 @@ export default function App() {
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("open");
+      url.searchParams.delete("via"); // read once into openedViaPush; a reload must not count again
       window.history.replaceState({}, "", url.toString());
     } catch { /* ignore */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3872,6 +3934,11 @@ export default function App() {
           <MessageReactionsPanel db={db} message={reactorsFor} currentUser={currentUser} blockedUids={blockedUids} onClose={() => setReactorsFor(null)} />
         )}
 
+        {showAdminStats && isAdmin && (
+          <Suspense fallback={null}>
+            <AdminStats db={db} adminUid={currentUser?.uid} darkMode={darkMode} onClose={() => setShowAdminStats(false)} />
+          </Suspense>
+        )}
         {showReports && isAdmin && (
           <ModerationQueue db={db} darkMode={darkMode} onClose={() => setShowReports(false)} />
         )}
@@ -4189,6 +4256,7 @@ export default function App() {
                       rightNow={myRightNow}
                       isAdmin={isAdmin}
                       onAdminReports={() => setShowReports(true)}
+                      onAdminStats={() => setShowAdminStats(true)}
                       onAdminClearFeed={() => setAdminConfirm(true)}
                       onAdminFullReset={() => setAdminResetConfirm(true)}
                     />

@@ -198,15 +198,21 @@ export async function dropDeadToken(db, uid, row) {
 // `kindness` (3.21): a message from a stranger was delivered to you — it opens on that message.
 const OPEN_TARGETS = new Set(["replies", "hearts", "reflect", "practice", "kindness"]);
 
+// Every push link also says it IS one (`via=push`, 3.26): the app counts the days a notification
+// brought someone back apart from the days they came on their own (src/openDays.js) — the
+// difference between "opens Seen every day" and "opens Seen when reminded". Links with nowhere
+// specific to go use PUSH_HOME rather than the bare site, for the same reason.
+export const PUSH_HOME = `${APP_URL}/?via=push`;
+
 export function linkFor(target) {
-  return OPEN_TARGETS.has(target) ? `${APP_URL}/?open=${target}` : APP_URL;
+  return OPEN_TARGETS.has(target) ? `${APP_URL}/?open=${target}&via=push` : PUSH_HOME;
 }
 
 // `title` and `link` used to be hard-coded here: every envelope said "Seen" and pointed at the
 // bare origin. So a like and a reply arrived under the same generic heading, and tapping either
 // one opened the feed with no indication of what had happened or where to look — which is the
 // complaint that started this, still true because the sender never put a path in.
-export function pushEnvelope(token, body, platform, { title = "Seen", link = APP_URL } = {}) {
+export function pushEnvelope(token, body, platform, { title = "Seen", link = PUSH_HOME } = {}) {
   const envelope = {
     token,
     data: { title, body, link },

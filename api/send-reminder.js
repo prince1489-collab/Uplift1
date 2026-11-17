@@ -2,7 +2,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 // Shared with notify-like/notify-reply so the Android payload shape exists in exactly one place.
-import { androidNotification, tokensFor, dropDeadToken, linkFor, APP_URL } from "./_auth.js";
+import { androidNotification, tokensFor, dropDeadToken, linkFor } from "./_auth.js";
 
 function initAdmin() {
   if (!getApps().length) {
@@ -10,8 +10,9 @@ function initAdmin() {
   }
 }
 
-// APP_URL is imported rather than redeclared. It was a second copy of the same string, and two
-// copies of a base URL drift exactly once — silently, in whichever file nobody remembered.
+// Links come from linkFor (api/_auth.js) rather than a local copy of the site's address: two
+// copies of a base URL drift exactly once — silently, in whichever file nobody remembered. Since
+// 3.26 every one of them also carries via=push, so the app can count opens a notification caused.
 
 // One daily push, at the hour the person chose (9am by default). On Sundays we replace the daily kindness nudge with a combined
 // weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
@@ -410,7 +411,8 @@ export default async function handler(req, res) {
         // Only the personal messages have somewhere specific to go. The world line and the
         // evergreen one are about nobody in particular, so they open the app and stop there —
         // sending those to the bell would promise an event that is not in it.
-        const link = msg.open ? linkFor(msg.open) : APP_URL;
+        // linkFor sends a message with no target to PUSH_HOME — still marked as a push (3.26).
+        const link = linkFor(msg.open);
         const payload = {
           token: r.token,
           data: { title: msg.title, body: msg.body, link },
