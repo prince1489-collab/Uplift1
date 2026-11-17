@@ -164,9 +164,19 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
             </Section>
 
             {/* ── Where everyone is ── */}
-            <Section title="When each person was last here" note="The latest day they opened Seen or did a kind act.">
+            <Section title="When each person was last here" note="The latest day they opened Seen or did a kind act (their last kind act is kept forever).">
               {s.recency.map((b) => <CountRow key={b.id} label={b.label} count={b.count} total={s.people} />)}
-              {s.never > 0 && <CountRow label="Never, after signing up" count={s.never} total={s.people} />}
+              {s.never > 0 && <CountRow label="Never did anything" count={s.never} total={s.people} />}
+              {s.undated > 0 && <CountRow label="Used it, date not recorded" count={s.undated} total={s.people} />}
+            </Section>
+
+            <Section title="Days each person has ever done a kind act" note="Their whole time on Seen: tried it once, or kept going?">
+              {s.lifetime.map((b) => <CountRow key={b.id} label={b.label} count={b.count} total={s.people} />)}
+            </Section>
+
+            <Section title="When they joined" note="When each person finished signing up.">
+              {s.joined.map((b) => <CountRow key={b.id} label={b.label} count={b.count} total={s.people} />)}
+              {s.joinedUnknown > 0 && <CountRow label="Not recorded (joined before it was)" count={s.joinedUnknown} total={s.people} />}
             </Section>
 
             <Section title="How many days of the last 30 had a kind act" note="Per person: the habit, not just today.">
@@ -176,6 +186,10 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
             {/* ── Can Seen reach them ── */}
             <Section title="Reach" note="A reminder needs a device that allowed notifications and a timezone.">
               <CountRow label="Can get a reminder" count={s.reach.canRemind} total={s.people} />
+              <p className="mb-1 mt-0.5 text-[11.5px] leading-snug text-slate-600">
+                Did a kind act in the last 30 days: <strong className="font-semibold text-slate-800">{s.reach.actedReachable} of {s.reach.canRemind}</strong> who can get a reminder,{" "}
+                <strong className="font-semibold text-slate-800">{s.reach.actedUnreachable} of {s.people - s.reach.canRemind}</strong> who can't.
+              </p>
               <CountRow label="iPhone or iPad" count={s.reach.platforms.ios} total={s.people} />
               <CountRow label="Android" count={s.reach.platforms.android} total={s.people} />
               <CountRow label="Web browser" count={s.reach.platforms.web} total={s.people} />

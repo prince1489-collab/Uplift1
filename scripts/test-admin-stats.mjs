@@ -2,7 +2,7 @@
 //
 //   node scripts/test-admin-stats.mjs
 
-import { summarise, lastDays, isPerson, canRemind, lastSeen, MIN_COUNTED } from "../src/usageStats.js";
+import { summarise, lastDays, isPerson, canRemind, lastSeen, lifetimeDays, MIN_COUNTED } from "../src/usageStats.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name} — ${detail}`]);
@@ -51,6 +51,30 @@ check("too few counted: no weekly open share, but how many are counted", s.week.
 const many = Array.from({ length: MIN_COUNTED }, (_, i) => ({ id: "r" + i, onboardingCompletedAt: 1, lastOpenDay: T, openDates: i % 2 ? [ago(1), T] : [ago(1)] }));
 const m = summarise(many, { today: T });
 check(`from ${MIN_COUNTED} counted, the weekly share appears`, m.week.counted === MIN_COUNTED && m.week.openedPct === 75, JSON.stringify(m.week));
+
+// ── 3.26.1: people who left before the open and 30-day records began ──
+const joinedMs = (n) => Date.parse(`${ago(n)}T12:00:00Z`);
+const olds = [
+  { id: "o1", onboardingCompletedAt: joinedMs(60), lastGreetingDate: ago(45), activeDays: 12 }, // used it for weeks, left 6 weeks ago
+  { id: "o2", onboardingCompletedAt: joinedMs(40), lastGreetingDate: ago(40), activeDays: 1 },  // tried it once
+  { id: "o3", onboardingCompletedAt: joinedMs(3) },                                               // signed up this week, nothing yet
+  { id: "o4", onboardingCompletedAt: 1, activeDays: 4 },                                          // used it, no date kept
+];
+const o = summarise(olds, { today: T });
+check("the last kind act counts as a sign of them, however old", o.recency.find((b) => b.id === "30+").count === 2 && lastSeen(olds[0]) === ago(45));
+check("'never' means never did anything", o.never === 1 && o.undated === 1, JSON.stringify([o.never, o.undated]));
+check("lifetime days: never / just 1 / 2-6 / 7-29", ["0", "1", "2-6", "7-29"].map((id) => o.lifetime.find((b) => b.id === id).count).join() === "1,1,1,1",
+  JSON.stringify(o.lifetime.map((b) => b.count)));
+check("lifetimeDays never undercounts the 30-day record", lifetimeDays({ activeDays: 2, activeDates: [T, ago(1), ago(2)] }) === 3);
+check("joined: this week, 1-3 months, unknown", o.joined.find((b) => b.id === "7").count === 1 && o.joined.find((b) => b.id === "90").count === 2 && o.joinedUnknown === 0,
+  JSON.stringify([o.joined.map((b) => b.count), o.joinedUnknown]));
+check("joined at time 1 (a placeholder) reads as long ago, not unknown", o.joined.find((b) => b.id === "older").count === 1);
+// As Firestore hands it back: a Timestamp (toMillis) — or a plain { seconds } after a JSON round trip.
+const ts = (n) => ({ toMillis: () => joinedMs(n) });
+const f = summarise([{ id: "t1", onboardingCompletedAt: ts(2) }, { id: "t2", onboardingCompletedAt: { seconds: joinedMs(20) / 1000, nanoseconds: 0 } }, { id: "t3", onboardingCompletedAt: "x", activeDays: 1 }], { today: T });
+check("join dates from Firestore Timestamps", f.joined.find((b) => b.id === "7").count === 1 && f.joined.find((b) => b.id === "30").count === 1 && f.joinedUnknown === 1,
+  JSON.stringify([f.joined.map((b) => b.count), f.joinedUnknown]));
+check("reach split: acted in 30 days, reachable vs not", s.reach.actedReachable === 2 && s.reach.actedUnreachable === 2, JSON.stringify(s.reach));
 
 const w = summarise(users, { today: T, adminUid: "me", withoutMe: true });
 check("without me: one fewer person, and my every-day habit leaves the numbers", w.people === 4 && w.today.opened === 1 && w.depth.find((b) => b.id === "21-30").count === 0);

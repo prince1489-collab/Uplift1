@@ -12,7 +12,11 @@
 //   • opens per day from `openDates`, and opens a notification caused from `pushOpenDates`
 //     (openDays.js) — only from 3.26 on, so each day's opens are counted among the people whose
 //     app was already reporting them that day, and the screen says how many that is;
-//   • "where everyone is" from the latest of lastOpenDay / openDates / activeDates.
+//   • "where everyone is" from the latest of lastOpenDay / openDates / activeDates and
+//     lastGreetingDate — the last kind act, kept forever. Without that last one, anyone who left
+//     before the open and 30-day records began (6 Oct / 1 Oct 2026) read as "never" (3.26.1);
+//   • a whole-life view: how many days each person has EVER done a kind act (activeDays) and
+//     when they joined (onboardingCompletedAt), which tells "tried it once" from "stopped".
 //
 // Days are compared as the YYYY-MM-DD strings each person's own device wrote, against the admin's
 // today — close enough for a daily count, and the same convention the reminder sender uses.
@@ -51,9 +55,9 @@ export function devicesOf(u) {
 }
 export const canRemind = (u) => devicesOf(u).length > 0 && typeof u?.timezone === "string" && u.timezone.length > 0;
 
-// The last day there is any sign of them.
+// The last day there is any sign of them — lastGreetingDate is the last kind act, kept forever.
 export function lastSeen(u) {
-  const all = [u?.lastOpenDay, ...days(u?.openDates), ...days(u?.activeDates)].filter(isDay).sort();
+  const all = [u?.lastOpenDay, u?.lastGreetingDate, ...days(u?.openDates), ...days(u?.activeDates)].filter(isDay).sort();
   return all.length ? all[all.length - 1] : null;
 }
 
@@ -64,6 +68,33 @@ export const RECENCY = [
   { id: "7-29", label: "1–4 weeks ago", test: (d) => d >= 7 && d <= 29 },
   { id: "30+", label: "A month or more", test: (d) => d >= 30 },
 ];
+// Days each person has EVER done a kind act (activeDays; at least as many as the 30-day record shows).
+export const LIFETIME = [
+  { id: "0", label: "Never", test: (n) => n === 0 },
+  { id: "1", label: "Just 1 day", test: (n) => n === 1 },
+  { id: "2-6", label: "2–6 days", test: (n) => n >= 2 && n <= 6 },
+  { id: "7-29", label: "7–29 days", test: (n) => n >= 7 && n <= 29 },
+  { id: "30+", label: "30 days or more", test: (n) => n >= 30 },
+];
+export const lifetimeDays = (u) => Math.max(Number(u?.activeDays) || 0, days(u?.activeDates).length, isDay(u?.lastGreetingDate) ? 1 : 0);
+
+// onboardingCompletedAt is a Firestore serverTimestamp (App.jsx), read back as a Timestamp; older or
+// test records may hold milliseconds. Anything else is unknown.
+export function toMillis(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (v && typeof v.toMillis === "function") { try { return v.toMillis(); } catch { return null; } }
+  if (v && typeof v.seconds === "number") return v.seconds * 1000;
+  return null;
+}
+
+// When they finished signing up, against `today`.
+export const JOINED = [
+  { id: "7", label: "In the last week", test: (d) => d <= 6 },
+  { id: "30", label: "1–4 weeks ago", test: (d) => d >= 7 && d <= 29 },
+  { id: "90", label: "1–3 months ago", test: (d) => d >= 30 && d <= 89 },
+  { id: "older", label: "Longer ago", test: (d) => d >= 90 },
+];
+
 export const DEPTH = [
   { id: "0", label: "No acts", test: (n) => n === 0 },
   { id: "1-7", label: "1–7 days", test: (n) => n >= 1 && n <= 7 },
@@ -111,7 +142,19 @@ export function summarise(users, { today, adminUid = null, withoutMe = false, wi
   const recency = RECENCY.map((b) => ({
     ...b, count: people.filter((u) => { const s = lastSeen(u); const d = s ? daysBetween(s, today) : null; return d != null && b.test(d); }).length,
   }));
-  const never = people.filter((u) => !lastSeen(u)).length;
+  // No date anywhere: either they never did anything after signing up, or (rarely) they did
+  // before any of these records existed.
+  const never = people.filter((u) => !lastSeen(u) && lifetimeDays(u) === 0).length;
+  const undated = people.filter((u) => !lastSeen(u) && lifetimeDays(u) > 0).length;
+
+  const lifetime = LIFETIME.map((b) => ({ ...b, count: people.filter((u) => b.test(lifetimeDays(u))).length }));
+  const todayMs = Date.parse(`${today}T23:59:59Z`);
+  const joinedAgo = (u) => {
+    const ms = toMillis(u.onboardingCompletedAt);
+    return ms != null && Number.isFinite(todayMs) ? Math.floor((todayMs - ms) / 86400000) : null;
+  };
+  const joined = JOINED.map((b) => ({ ...b, count: people.filter((u) => { const d = joinedAgo(u); return d != null && d >= 0 && b.test(d); }).length }));
+  const joinedUnknown = people.filter((u) => joinedAgo(u) == null).length;
 
   const inWindow = (u) => days(u.activeDates).filter((d) => { const n = daysBetween(d, today); return n != null && n >= 0 && n < 30; }).length;
   const depth = DEPTH.map((b) => ({ ...b, count: people.filter((u) => b.test(inWindow(u))).length }));
@@ -151,10 +194,14 @@ export function summarise(users, { today, adminUid = null, withoutMe = false, wi
     },
     series,
     firstOpenDay,
-    recency, never,
+    recency, never, undated,
+    lifetime, joined, joinedUnknown,
     depth,
     reach: {
       canRemind: people.filter(canRemind).length,
+      // Does being reachable go with staying? Kind acts in the last 30 days, split by reach.
+      actedReachable: people.filter((u) => canRemind(u) && inWindow(u) > 0).length,
+      actedUnreachable: people.filter((u) => !canRemind(u) && inWindow(u) > 0).length,
       platforms,
       hours: [...hours.entries()].sort((a, b) => (a[0] ?? 99) - (b[0] ?? 99)).map(([hour, count]) => ({ hour, count })),
       evening: people.filter((u) => u.eveningReminders === true).length,
