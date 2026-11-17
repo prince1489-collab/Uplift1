@@ -108,6 +108,7 @@ import { Capacitor } from "@capacitor/core";
 import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
 import { publicUrl } from "./apiBase";
 import { openUpdate, isPushOpen } from "./openDays";
+import { claimDevice, releaseDevice } from "./deviceOwner";
 import { GlimpseChips, MOST_DAYS_EXAMPLES, ANOTHER_LIFE_EXAMPLES } from "./glimpseExamples";
 
 // Every destination a tapped notification is allowed to name. The mirror of OPEN_TARGETS in
@@ -2794,6 +2795,14 @@ export default function App() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       clearTimeout(authFailsafe);
+      // This device's personal data belongs to one account (deviceOwner.js, 3.27). If what it holds
+      // was someone else's, it goes before anything reads it — and the app restarts once, so nothing
+      // already read into memory (the follows cache, today's acts, the open tab) survives either.
+      if (user && !user.isAnonymous) {
+        let wiped = false;
+        try { wiped = claimDevice(user.uid).wiped; } catch { /* storage blocked */ }
+        if (wiped) { try { window.location.reload(); } catch { /* ignore */ } return; }
+      }
       if (unsubscribeProfile) { unsubscribeProfile(); unsubscribeProfile = null; }
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       attempts = 0;
@@ -3330,7 +3339,14 @@ export default function App() {
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
-    try { setIsSigningOut(true); await signOut(auth); setPickerOpen(false); }
+    try {
+      setIsSigningOut(true); await signOut(auth); setPickerOpen(false);
+      // Nothing personal stays on the device for whoever signs in next, and the app starts again
+      // clean — App never remounts on its own, so state read at start (the open tab, hearts given,
+      // the follow list) would otherwise carry straight into the next account (3.27).
+      try { releaseDevice(); } catch { /* storage blocked */ }
+      try { window.location.reload(); } catch { /* ignore */ }
+    }
     catch (error) { console.error(error); }
     finally { setIsSigningOut(false); }
   };

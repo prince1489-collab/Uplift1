@@ -36,8 +36,7 @@ import { rowLine, ago, headline, dayLine } from "./kindMoments";
 import { REPLY_FEEL, NOTE_FEEL, replyOpening, noteOpening, phrasesFrom, continuationsFor, STARTER_KIND } from "./feelingWords";
 
 const POSTS_KEY = "seen_v2_local_posts";
-const FOCUS_KEY = "seen_v2_focused_uids"; // legacy: bare uid array, migrated into FOLLOWS_KEY
-const FOLLOWS_KEY = "seen_v2_follows";    // [{ uid, name, country, label }]
+const FOLLOWS_KEY = "seen_v2_follows";    // + `_${uid}`: [{ uid, name, country, label }], per account (3.27)
 const MOMENTS_KEY = "seen_v2_kind_moments";
 // Sticker reactions share the `reactions` subcollection with hearts, keyed by sticker id.
 // This resolves an id back to its emoji and label so the panel can show what was actually sent.
@@ -75,68 +74,43 @@ const saveLocalPosts = (l) => writeJSON(POSTS_KEY, l.slice(0, 30));
 // Suggested labels; users can also type their own via "Custom…".
 export const FOLLOW_LABELS = ["Family", "Friend", "Work", "Neighbour"];
 
-// Reads the cached follow list, migrating the legacy bare-uid array on first run so existing
-// testers keep everyone they already followed.
+// The follow list, cached on the device PER ACCOUNT so the Focused Feed paints instantly on open
+// and works offline. localStorage is a cache, never the source of truth — see useFollows.
 //
-// localStorage is now a CACHE, not the source of truth — see useFollows below. It is kept so
-// the Focused Feed paints instantly on open rather than flashing empty while Firestore
-// connects, and so the app still works offline.
-export function loadFollows() {
-  const stored = readJSON(FOLLOWS_KEY, null);
-  if (Array.isArray(stored)) return stored;
-  const legacy = readJSON(FOCUS_KEY, []);
-  const migrated = (Array.isArray(legacy) ? legacy : [])
-    .filter(Boolean)
-    .map((uid) => ({ uid, name: "", country: null, label: null }));
-  if (migrated.length) writeJSON(FOLLOWS_KEY, migrated);
-  return migrated;
+// It used to be one list for the whole device, and when an account with no follows signed in,
+// useFollows "migrated" that list into it — so a new account made on someone's phone inherited
+// all 17 people they follow, Family labels and all, on the server (3.27). The cache is now keyed
+// by account and nothing is ever copied from the device into an account. The old device-wide
+// keys (seen_v2_follows, seen_v2_focused_uids) are cleared with the rest of the device's
+// personal data when the account changes (deviceOwner.js).
+const followsKey = (uid) => `${FOLLOWS_KEY}_${uid}`;
+export function loadFollows(uid) {
+  if (!uid) return [];
+  const stored = readJSON(followsKey(uid), null);
+  return Array.isArray(stored) ? stored : [];
 }
-export const saveFollows = (list) => writeJSON(FOLLOWS_KEY, list.slice(0, 200));
+export const saveFollows = (uid, list) => { if (uid) writeJSON(followsKey(uid), list.slice(0, 200)); };
 
 // ── Follows, synced ──────────────────────────────────────────────────────────
-// Who you follow used to live only in localStorage, which meant signing in on a second
-// device gave you an empty Focused Feed and no way to recover the list except rebuilding it
-// by hand. Follows are an account fact, not a device fact.
-//
-// They live at users/{uid}/follows/{followedUid} — the same owner-only subcollection shape
-// as blockedUsers, so nobody can see who you follow. The doc id IS the followed uid, which
-// makes follow/unfollow idempotent: following twice writes the same document rather than
-// creating a duplicate.
-//
-// localStorage stays as a read-through cache so the feed paints immediately on open.
+// Who you follow is an account fact, not a device fact. It lives at
+// users/{uid}/follows/{followedUid} — the same owner-only subcollection shape as blockedUsers,
+// so nobody can see who you follow. The doc id IS the followed uid, which makes follow/unfollow
+// idempotent: following twice writes the same document rather than creating a duplicate.
 export function useFollows(db, currentUser) {
-  const [follows, setFollows] = useState(() => loadFollows());
   const uid = currentUser?.uid ?? null;
+  // Rows are kept with the account they were read for, so a different account never sees them.
+  const [state, setState] = useState({ uid: null, rows: [] });
+  const cached = useMemo(() => loadFollows(uid), [uid]);
 
   useEffect(() => {
-    if (!db || !uid) return;
+    if (!db || !uid) return undefined;
     const col = collection(db, "users", uid, "follows");
-
-    // One-time lift of whatever this device already had. Without it, the first device to
-    // load after this change would find an empty collection and silently wipe a follow list
-    // the user spent time building.
-    let migrated = false;
-    const migrateOnce = async (serverIsEmpty) => {
-      if (migrated || !serverIsEmpty) return;
-      migrated = true;
-      const local = loadFollows();
-      if (!local.length) return;
-      await Promise.all(local.slice(0, 200).map((f) =>
-        setDoc(doc(col, f.uid), {
-          uid: f.uid,
-          name: f.name || "",
-          country: f.country ?? null,
-          label: f.label ?? null,
-          ts: Date.now(),
-        }).catch(() => {})
-      ));
-    };
-
     const unsub = onSnapshot(col, (snap) => {
+      // An empty answer from the local cache says nothing yet; wait for the server's.
+      if (snap.empty && snap.metadata.fromCache) return;
       const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-      if (snap.empty && !snap.metadata.fromCache) { migrateOnce(true); return; }
-      setFollows(rows);
-      saveFollows(rows); // keep the cache warm for the next cold start
+      setState({ uid, rows });
+      saveFollows(uid, rows); // keep the cache warm for the next cold start
     }, (err) => {
       // Falling back to the cache is the right failure: a transient read error should not
       // look like "you follow nobody".
@@ -145,7 +119,7 @@ export function useFollows(db, currentUser) {
     return unsub;
   }, [db, uid]);
 
-  return follows;
+  return state.uid === uid ? state.rows : cached;
 }
 
 // Follow / unfollow / relabel. Each writes one document and lets the listener update state,
