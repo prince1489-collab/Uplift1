@@ -56,23 +56,20 @@ workflows:
     name: Seen iOS (Capacitor)
     instance_type: mac_mini_m2
     max_build_duration: 60
-    triggering:
-      # Pin the branch. Without this it is a per-build dropdown in the Codemagic UI, and
-      # picking the wrong entry ships the wrong code to TestFlight — a mistake invisible
-      # until a tester reports it.
-      #
-      # This pin used to name v2-preview, back when it and claude/improve-app-design-HJrCm
-      # were different codebases (V2 preview vs frozen V1). They were merged, the two
-      # branches became identical, and v2-preview was retired. Everything now ships from
-      # claude/improve-app-design-HJrCm, which is also what Vercel deploys — the branch that
-      # goes to the web and the branch that gets packaged must not be allowed to drift.
-      events:
-        - push
-      branch_patterns:
-        - pattern: claude/improve-app-design-HJrCm
-          include: true
-          source: true
-      cancel_previous_builds: true
+    # ── NO AUTOMATIC TRIGGER: iPhone builds run only from "Start new build" ─────────────────
+    # This workflow used to build on every push to claude/improve-app-design-HJrCm. A run of
+    # small commits (the 3.26 stats fixes) then put several builds of the SAME version on App
+    # Store Connect: the first took the one TestFlight beta-review slot a version gets, and the
+    # next one's publishing step failed with 422 "Another build in the same train is already in
+    # beta review" — a red build whose upload had in fact worked (see `publishing` below). Every
+    # push also spent Mac build minutes on commits nobody was going to test on an iPhone.
+    #
+    # So iPhone builds are deliberate now. When you start one, CHOOSE THE BRANCH
+    # claude/improve-app-design-HJrCm — the same branch Vercel deploys and Android builds from.
+    # The old trigger pinned it automatically; a manual start doesn't, and picking another
+    # branch would ship the wrong code to TestFlight, a mistake invisible until a tester
+    # reports it. Android (below) still builds on every push: Play internal testing has no
+    # review queue to collide in.
     integrations:
       app_store_connect: CodemagicASCKey   # <-- name of your App Store Connect API key integration
     environment:
@@ -399,6 +396,16 @@ workflows:
         # app-store-connect CLI, not a key in this block; changing it means replacing this
         # publishing section with an explicit script step, which is a bigger change than the
         # problem currently justifies. Left as it is, deliberately, with the failure written down.
+        #
+        # ── 422 "ANOTHER BUILD IS IN REVIEW" IS ALSO NOT A FAILED UPLOAD ──────────────────────
+        #   POST …/v1/betaAppReviewSubmissions returned 422: Another build is in review. -
+        #   Another build in the same train is already in beta review.
+        # Apple allows one build per version ("train") in TestFlight beta review at a time. The
+        # build above that line WAS uploaded and processed: internal testers can install it now.
+        # For external testers, wait for the earlier review to finish, then in App Store Connect
+        # → TestFlight pick the newer build and add it to the external group (or bump
+        # MARKETING_VERSION so it starts a new train). It happened with 3.26, when this workflow
+        # still built on every push — the reason it no longer does (see the top of the workflow).
         # submit_to_app_store: false   # flip to true (with a release type) when ready to ship publicly
 
   # ── Android (Capacitor) ─────────────────────────────────────────────────────
