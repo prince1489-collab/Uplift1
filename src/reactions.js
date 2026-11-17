@@ -56,7 +56,7 @@ export function setMyReaction({ db, uid, messageId, fromId, toId, country = null
   if (!db || !uid || !messageId || fromId === toId) return Promise.resolve();
 
   return writeMyReaction({ db, uid, messageId, fromId, toId, country }).then((result) => {
-    if (toId) { try { reactionGiven?.(); } catch { /* never fail a reaction over bookkeeping */ } }
+    if (toId) { try { reactionGiven?.({ messageId, toUid: toId }); } catch { /* never fail a reaction over bookkeeping */ } }
     return result;
   });
 }

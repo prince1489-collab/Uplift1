@@ -216,6 +216,25 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
+      // The kindness log (3.29, src/kindLog.js): one small private entry per kind act — what it
+      // was, who for, the words, where it landed, and later how it felt. Read by the owner (the
+      // Grow tab) and by the server for Seen, which uses the Admin SDK. Owner only, fields checked
+      // so it stays what it says it is; deleted with the account (recursiveDelete of users/{uid}).
+      match /kindLog/{entryId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling'])
+            && request.resource.data.route in ['sent','reply','note','act','heart']
+            && request.resource.data.at is number
+            && (!('text' in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 240))
+            && (!('toName' in request.resource.data) || (request.resource.data.toName is string && request.resource.data.toName.size() <= 40));
+        allow update: if request.auth != null && request.auth.uid == userId
+            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling'])
+            && request.resource.data.route in ['sent','reply','note','act','heart']
+            && (!('feeling' in request.resource.data) || (request.resource.data.feeling is string && request.resource.data.feeling.size() <= 60))
+            && (!('country' in request.resource.data) || (request.resource.data.country is string && request.resource.data.country.size() <= 60));
+      }
+
       // "Seen" — the AI conversation pinned in Messages (3.15). Private to the owner. They write
       // their own side (answers, questions to Seen) and the questions Seen asks from the app's
       // bank; Seen's replies, reflections and nudges come only from /api/understand (Admin SDK),
@@ -224,9 +243,13 @@ service cloud.firestore {
       match /seenChat/{msgId} {
         allow read, delete: if request.auth != null && request.auth.uid == userId;
         allow create: if request.auth != null && request.auth.uid == userId
-            && request.resource.data.keys().hasOnly(['role','kind','text','qid','createdAt','read'])
+            && request.resource.data.keys().hasOnly(['role','kind','text','qid','createdAt','read','options'])
             && request.resource.data.text is string
             && request.resource.data.createdAt is number
+            // Quick answers under a question Seen asks (3.29: "How did that feel?") — a short list.
+            && (!('options' in request.resource.data)
+                || (request.resource.data.role == 'seen' && request.resource.data.kind == 'question'
+                    && request.resource.data.options is list && request.resource.data.options.size() <= 6))
             && ((request.resource.data.role == 'me'
                   && request.resource.data.kind in ['answer','ask']
                   && request.resource.data.text.size() <= 600)

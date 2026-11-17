@@ -29,7 +29,7 @@ import { KindnessNote, KindnessSheet } from "./KindnessForYou";
 import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, readDelivery, replyTargetOf, markKindness } from "./kindnessInbox";
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
 import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
-import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion } from "./seenChat";
+import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion, SEEN_ID } from "./seenChat";
 import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
@@ -108,6 +108,9 @@ import { Capacitor } from "@capacitor/core";
 import { registerNativePush, nativePushPermission, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
 import { pushAskDue, markPushAsked, askable } from "./pushAsk";
 import { guessCountry, deviceHints } from "./guessCountry";
+import { logKindAct, noteDelivery } from "./kindLog";
+import { useKindLog } from "./useKindLog";
+import { latestReflection } from "./growMoments";
 import PushAskNote from "./PushAskNote";
 import { publicUrl } from "./apiBase";
 import { openUpdate, isPushOpen } from "./openDays";
@@ -2284,6 +2287,7 @@ export default function App() {
       const info = { day: localDayKey(), messageId, delivered: Boolean(r?.delivered), country: r?.country ?? null };
       rememberDelivery(info.day, info);
       setDelivery(info);
+      if (info.delivered) noteDelivery(db, currentUser.uid, messageId, info.country);
       // The one confirmation that says something true about THIS message (3.22): where it went.
       if (info.delivered) setSentToast(info.country ? `Your words reached someone in ${inCountry(info.country)}` : "Your words reached someone");
     });
@@ -2379,13 +2383,18 @@ export default function App() {
   // its unread messages count towards the Messages badge, and its next question is asked here
   // too (about twice a week), so the badge appears without having to open the tab first.
   const seenConsent = profile?.seenAI?.consent === true;
+  // The private kindness log (3.29): Seen's "how did that feel?" and the Grow tab both read it.
+  const kindLog = useKindLog(db, currentUser && !currentUser.isAnonymous ? currentUser.uid : null);
   const seenOn = seenConsent && Boolean(currentUser && !currentUser.isAnonymous);
   const seenChat = useSeenChat(db, currentUser?.uid, seenOn);
   const seenState = useUnderstanding(db, currentUser?.uid, seenOn);
   useEffect(() => {
-    if (seenConsent && seenChat && seenState) ensureQuestion(db, currentUser?.uid, seenChat, seenState);
-  }, [seenConsent, seenChat, seenState, currentUser?.uid]);
-  const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent }), [seenChat, seenState, seenConsent]);
+    if (seenConsent && seenChat && seenState) ensureQuestion(db, currentUser?.uid, seenChat, seenState, Date.now(), kindLog);
+  }, [seenConsent, seenChat, seenState, currentUser?.uid, kindLog]);
+  const seenJournal = profile?.seenAI?.journal === true;
+  // What Seen has noticed most recently, for the Grow tab (3.29).
+  const seenReflection = useMemo(() => (seenOn ? latestReflection(seenChat) : null), [seenOn, seenChat]);
+  const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent, journal: seenJournal }), [seenChat, seenState, seenConsent, seenJournal]);
   const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0) + seenUnread(seenChat), [conversations, seenChat]);
   const [messagesOpenUid, setMessagesOpenUid] = useState(null);
   const openConversation = useCallback((uid) => { setActiveTab("messages"); setMessagesOpenUid(uid || null); }, []);
@@ -3487,10 +3496,21 @@ export default function App() {
 
   // A heart or a sticker on someone's words counts too (3.21) — see onReactionGiven in
   // reactions.js, the one place every reaction path ends.
+  // …and goes into the kindness log (3.29), with whose words they were when the feed knows.
+  const messagesForLog = useRef(messages);
+  useEffect(() => { messagesForLog.current = messages; }, [messages]);
   useEffect(() => {
-    onReactionGiven(creditKindAct);
+    onReactionGiven((info) => {
+      creditKindAct();
+      if (!info?.messageId) return;
+      const m = (messagesForLog.current || []).find((x) => x.id === info.messageId);
+      logKindAct(db, currentUser?.uid, {
+        id: `heart_${info.messageId}`, route: "heart", toUid: info.toUid,
+        toName: String(m?.sender || "").trim().split(/\s+/)[0] || null,
+      });
+    });
     return () => onReactionGiven(null);
-  }, [creditKindAct]);
+  }, [creditKindAct, currentUser?.uid]);
 
   // ── Hearts that become words ─────────────────────────────────────────────────────────────
   // After a ❤️ on someone else's message, one line offers to tell them what it meant
@@ -3507,8 +3527,9 @@ export default function App() {
     replyNudgeTimer.current = setTimeout(() => setReplyNudge(null), NUDGE_MS);
   }, [currentUser?.uid]);
   const [repliedTick, setRepliedTick] = useState(0);
-  const handleReplySent = useCallback(({ mode, name, messageId, note, theirText }) => {
+  const handleReplySent = useCallback(({ mode, name, messageId, note, theirText, text, replyId, toUid }) => {
     creditKindAct();
+    logKindAct(db, currentUser?.uid, { id: replyId ? `reply_${replyId}` : null, route: note ? "note" : "reply", toName: name, toUid, text });
     // Writing back to a stranger's delivered message, in your own words, answers it (3.21).
     if (mode === "first" && messageId && kindnessIds.current.has(messageId) && currentUser?.uid) {
       markKindness(db, currentUser.uid, messageId, { answered: true, answeredAt: Date.now(), seen: true }).catch(() => {});
@@ -3701,7 +3722,9 @@ export default function App() {
           : {}),
       });
 
-      // Message is written — and now it goes to one real person, not just the feed (3.21).
+      // Message is written — and now it goes to one real person, not just the feed (3.21) — and
+      // into the private kindness log (kindLog.js, 3.29), keyed by the message so delivery finds it.
+      logKindAct(db, currentUser.uid, { id: `sent_${sentRef.id}`, route: "sent", text: greeting.text });
       deliverToStranger(sentRef.id);
 
       // Close picker and play animations immediately
@@ -4005,9 +4028,9 @@ export default function App() {
           <KindnessSheet item={kindnessOpen} db={db} currentUser={currentUser} me={profile}
             onClose={() => setKindnessOpened(null)}
             onWriteBack={(it) => { setKindnessOpened(null); setReplyTarget(replyTargetOf(it)); }}
-            onAnswered={(it) => handleReplySent({
+            onAnswered={(it, text) => handleReplySent({
               mode: "first", toUid: it.message.uid, name: (it.message.sender || "").split(" ")[0],
-              messageId: it.messageId, note: false, theirText: it.message.text,
+              messageId: it.messageId, note: false, theirText: it.message.text, text,
             })} />
         )}
         {showDeleteAccount && currentUser && !currentUser.isAnonymous && (
@@ -4034,7 +4057,7 @@ export default function App() {
             // all five, and ticking a checkbox got the biggest celebration in the product. It
             // even earned MORE drops (150 against 100) and never said so. PostComposer has
             // always called onPosted; App simply never passed one, so it was a no-op.
-            onPosted={({ id, anon, edited } = {}) => {
+            onPosted={({ id, anon, edited, text } = {}) => {
               // An edit says so and stops: it is the same post, not another kind act (3.21).
               if (edited) { setSentToast("Updated 💛"); return; }
               setSentToast(SEND_AFFIRMATIONS[Math.floor(Math.random() * SEND_AFFIRMATIONS.length)]);
@@ -4043,6 +4066,7 @@ export default function App() {
               haptic([10, 30, 10]);
               try { playSend(); } catch { /* ignore */ }
               // To one real person as well as the feed — never an anonymous post (see _kindness.js).
+              if (id) logKindAct(db, currentUser?.uid, { id: `sent_${id}`, route: "sent", text });
               if (id && !anon) deliverToStranger(id);
               creditKindAct();
               try { markSentToday(localDayKey()); } catch { /* ignore */ }
@@ -4466,7 +4490,8 @@ export default function App() {
                 <Support country={profile?.country} />
               </Suspense>
             ) : activeTab === "impact" ? (
-              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} onMakeSeen={openSeenBar} onOpenJournal={() => setShowJournal(true)} />
+              <MySeenStory db={db} currentUser={currentUser} liveStats={liveImpact} streak={streak} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onGoTo={setActiveTab} onMakeSeen={openSeenBar} onOpenJournal={() => setShowJournal(true)}
+                kindLog={kindLog} replies={inboxReplies} seenOn={seenOn} reflection={seenReflection} onOpenSeen={() => openConversation(SEEN_ID)} />
             ) : (
             /* No onScroll here on purpose. React's onScroll is a non-passive listener on a
                scroll container that renders hundreds of messages; FeedDatePill subscribes to

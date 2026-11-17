@@ -22,7 +22,7 @@ import { useBackLayer } from "./backStack";
 import { shareImage } from "./shareImage";
 import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
 import { rhythmOf } from "./rhythm";
-import { feelingSummary } from "./feelingWords";
+import { weekMoments, timeToNext } from "./growMoments";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -324,24 +324,36 @@ function MetricTile({ emoji, value, label, delay = 0, onOpen, wide = false }) {
   );
 }
 
-export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0, darkMode = false, onOpenTree, onMakeSeen, onOpenJournal }) {
+// ── The Grow tab, 3.29 ──────────────────────────────────────────────────────────────────────
+// Moments and time, not counts. It led with nine numbers about more or less the same thing, then
+// "How kindness felt this week: warm. You felt warm." and "Your answers" — answers with no act,
+// date or person, which the founder rightly called meaningless. Now, top to bottom:
+//   1. the tree, with its next stage as TIME at your own pace, and the real-tree promise under it;
+//   2. this week — real moments: who wrote back, who felt your words, then what you did and how it
+//      felt (growMoments.js, from the kindness log);
+//   3. what Seen has noticed — its latest reflection, with why it thinks so — or an invitation to
+//      try Seen;
+//   4. milestones (certificates);
+//   5. your numbers, folded into one line you can open;
+//   6. your journal.
+export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0, darkMode = false, onOpenTree, onMakeSeen, onOpenJournal,
+  kindLog = [], replies = [], seenOn = false, reflection = null, onOpenSeen }) {
   const [journalCount, setJournalCount] = useState(null);
   const [localPts, setLocalPts] = useState(() => getPoints());
-  // The last few answers to the daily question — your own words about other people, which is
-  // what makes looking back worth doing. Private (users/{uid}/feelings), read once on open.
-  // 3.9: the same documents now also hold how each act FELT — read more of them, so the week's
-  // feeling words can be counted ("warm ×4 · proud ×2").
-  const [entries, setEntries] = useState([]);
-  const answers = useMemo(() => entries.filter((x) => x?.answer && x?.question).slice(0, 5), [entries]);
-  const feltWeek = useMemo(() => feelingSummary(entries), [entries]);
+  // Hearts on your words, newest first — who felt them this week (owner-only, read once on open).
+  const [hearts, setHearts] = useState([]);
   useEffect(() => {
     if (!db || !currentUser?.uid) return;
     let alive = true;
-    getDocs(query(collection(db, "users", currentUser.uid, "feelings"), orderBy("createdAt", "desc"), limit(40)))
-      .then((snap) => { if (alive) setEntries(snap.docs.map((d) => d.data())); })
+    getDocs(query(collection(db, "users", currentUser.uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(20)))
+      .then((snap) => { if (alive) setHearts(snap.docs.map((d) => d.data())); })
       .catch(() => {});
     return () => { alive = false; };
   }, [db, currentUser?.uid]);
+  // This week, as moments (growMoments.js).
+  const moments = useMemo(() => weekMoments({ acts: kindLog, replies, hearts }), [kindLog, replies, hearts]);
+  const [showNumbers, setShowNumbers] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
   // Today's additions to the tree (todayGrowth.js), live as they happen.
   const [today, setToday] = useState(() => todayGrowth());
   useEffect(() => {
@@ -474,7 +486,8 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
   const stageIdx = TREE_STAGES.indexOf(stage);
   const next = TREE_STAGES[stageIdx + 1] ?? null;
   const pct = next ? Math.max(0, Math.min(100, Math.round(((balance - stage.min) / (next.min - stage.min)) * 100))) : 100;
-  const first = (profile?.fullName || "").trim().split(" ")[0] || "you";
+  // The next stage as time at the pace they actually keep (growMoments.timeToNext).
+  const pace = next ? timeToNext({ remaining: next.min - balance, balance, activeDays: Number(profile?.activeDays ?? 0), recentDays: Number(rhythm) || 0 }) : null;
 
   // Days somebody showed up — NOT the streak. Written by recordGreetingDay; see the long note
   // there and in certificates.js for why a certificate must not be destroyed by a missed day.
@@ -620,9 +633,10 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
                 <div className="h-2 rounded-full bg-white/70 overflow-hidden">
                   <div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-teal-400 transition-all duration-700" style={{ width: `${pct}%` }} />
                 </div>
-                <p className="mt-1.5 text-[11px] text-slate-500">
-                  {balance.toLocaleString()} drops · {Math.max(0, next.min - balance).toLocaleString()} more until <strong>{next.name}</strong>
+                <p className="mt-1.5 text-[12px] font-semibold text-slate-600">
+                  {pace ? <><strong>{next.name}</strong> in {pace} at your pace</> : <>{Math.max(0, next.min - balance).toLocaleString()} more drops until <strong>{next.name}</strong></>}
                 </p>
+                <p className="text-[10.5px] text-slate-400">{balance.toLocaleString()} drops</p>
               </>
             ) : (
               <p className="text-[11px] font-semibold text-teal-700">Fully grown — {balance.toLocaleString()} drops of kindness 🌸</p>
@@ -644,89 +658,6 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
             ? <>Today: <span className="tracking-wide">{today.slice(-8).join(" ")}</span> — your tree is a little different because of what you did.</>
             : "Nothing on your tree yet today — one kind thing changes it."}
         </p>
-
-        {/* Reflective one-liner */}
-        <p className="text-center text-[13px] text-slate-500 leading-relaxed px-2"
-          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
-          Every kind act you make waters this tree, {first}. Here's the reach of your kindness.
-        </p>
-
-        {/* ── Measured in people ────────────────────────────────────────────────────────────
-            Seen is about making someone feel seen, so that is the number at the top, and every
-            tile underneath is a part of it or a consequence of it. */}
-        <div className="rounded-2xl border border-teal-100 bg-white px-4 py-3.5 text-center"
-          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
-          <p className="text-3xl font-extrabold tabular-nums text-teal-700 leading-none">{seenTotal.toLocaleString()}</p>
-          <p className="mt-1 text-[13px] font-semibold text-slate-700">
-            {seenTotal === 1 ? "time you made someone feel seen" : "times you made someone feel seen"}
-          </p>
-          {rhythm != null && <p className="mt-0.5 text-[11px] text-slate-400">{rhythm} of the last 30 days</p>}
-        </div>
-        <div className="flex items-center gap-2 px-1" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "180ms" }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex-1">People who felt seen because of you</p>
-          <span className="text-[10px] font-semibold text-slate-300">tap any number</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <MetricTile emoji="💌" value={wordsSent} label="Kind words sent" delay={200} onOpen={() => setOpenCard("words")} />
-          <MetricTile emoji="🤝" value={actsDone} label="Kind acts in real life" delay={260} onOpen={() => setOpenCard("acts")} />
-          <MetricTile emoji="❤️" value={felt} label="Hearts on your words" delay={320} onOpen={() => setOpenCard("felt")} />
-          <MetricTile emoji="🌍" value={countries} label="Countries that felt it" delay={380} onOpen={() => setOpenCard("countries")} />
-          <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={440} onOpen={() => setOpenCard("ripple")} wide />
-        </div>
-
-        {/* How kindness felt this week — the words from "Feel it", counted, and your last few
-            sentences played back. Naming it is the point; seeing it add up is the payoff. */}
-        {feltWeek.total > 0 && (
-          <div className="rounded-2xl border border-orange-200 bg-orange-50/60 px-4 py-3" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "460ms" }}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-orange-500">How kindness felt this week</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {feltWeek.top.map(([w, n]) => (
-                <span key={w} className="rounded-full border border-orange-200 bg-white px-2.5 py-0.5 text-[12px] font-semibold text-orange-700">
-                  {w}{n > 1 ? <span className="ml-1 text-orange-400">×{n}</span> : null}
-                </span>
-              ))}
-            </div>
-            <ul className="mt-2 space-y-1">
-              {feltWeek.lines.map((l, i) => <li key={i} className="text-[12px] leading-snug text-slate-700">{l}</li>)}
-            </ul>
-          </div>
-        )}
-        {/* Your own words about other people — the daily question's answers, newest first. */}
-        {answers.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "480ms" }}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Your answers</p>
-            <ul className="mt-1.5 space-y-1.5">
-              {answers.map((x, i) => (
-                <li key={i} className="text-[12px] leading-snug">
-                  <span className="text-slate-500">{String(x.question).replace(/^Finish it:\s*/, "")}</span>{" "}
-                  <span className="font-semibold text-slate-800">{x.answer}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <button onClick={onOpenJournal}
-          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
-          <span className="text-base leading-none" aria-hidden>📓</span>
-          <span className="min-w-0 flex-1 text-[12px] font-semibold text-slate-700">
-            Your journal{journalCount ? ` · ${journalCount} ${journalCount === 1 ? "entry" : "entries"}` : ""}
-          </span>
-          <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
-        </button>
-
-        <p className="text-center text-[10px] text-slate-400 leading-relaxed"
-          style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "520ms" }}>
-          A gentle mirror of your journey — never a score.
-        </p>
-
-        {/* Wrapped so the announcement can be scrolled to. The row sits below the hero, the
-            one-liner, a label and four metric tiles — comfortably off the bottom of a phone — so
-            a banner rendered here was invisible unless somebody happened to scroll. That is half
-            of why "there was no celebration" was a fair description of a celebration that fired. */}
-        <div ref={certRowRef}>
-          <CertificatesRow activeDays={activeDays} newCert={newCert}
-            onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
-        </div>
 
         {/* ── Where this ends up ──────────────────────────────────────────────────────────────
             This sentence lived at the bottom of the stage sheet, in 10px grey, behind a
@@ -755,6 +686,86 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
             </>
           )}
         </div>
+
+        {/* ── This week: moments, not numbers (3.29) ────────────────────────────────────────── */}
+        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "160ms" }}>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">This week</p>
+          {moments.length ? (
+            <ul className="mt-2 space-y-2">
+              {moments.map((mo, i) => (
+                <li key={i} className="flex items-start gap-2.5">
+                  <span className="mt-[1px] text-[15px] leading-none" aria-hidden>{mo.icon}</span>
+                  <span className="text-[13.5px] leading-snug text-slate-700">{mo.text}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1.5 text-[13px] leading-snug text-slate-500">Quiet so far. One kind word to anyone, and this is where you'll see what it did.</p>
+          )}
+        </section>
+
+        {/* ── What Seen has noticed (3.29) — from your acts, your words and, if you allow it, your
+            journal; always with why. Or an invitation, for anyone who hasn't switched Seen on. ── */}
+        <section className="rounded-2xl border border-orange-200 bg-orange-50/60 px-4 py-3.5" style={{ animation: "seenFadeUp 500ms ease both", animationDelay: "200ms" }}>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600">✨ What Seen has noticed</p>
+          {seenOn && reflection ? (
+            <>
+              <p className="mt-1.5 text-[14px] leading-snug text-slate-800">{reflection.text}</p>
+              {Array.isArray(reflection.evidence) && reflection.evidence.length > 0 && (
+                <>
+                  <button onClick={() => setShowWhy((v) => !v)} className="mt-1.5 text-[11.5px] font-semibold text-orange-700">
+                    {showWhy ? "Hide why" : "Why I think this ›"}
+                  </button>
+                  {showWhy && (
+                    <ul className="mt-1 space-y-0.5 text-[12px] leading-snug text-slate-600">
+                      {reflection.evidence.map((ev, i) => <li key={i}>• {ev.label}</li>)}
+                    </ul>
+                  )}
+                </>
+              )}
+            </>
+          ) : seenOn ? (
+            <p className="mt-1.5 text-[13px] leading-snug text-slate-600">Nothing yet. Answer a couple of Seen's questions, and what it notices about your kindness will show up here.</p>
+          ) : (
+            <p className="mt-1.5 text-[13px] leading-snug text-slate-600">Seen, the AI in Messages, can notice what your kindness says about you — from what you do and say here, always showing why.</p>
+          )}
+          <button onClick={onOpenSeen} className="mt-2.5 block text-[12.5px] font-bold text-teal-700">
+            {seenOn ? (reflection ? "Talk to Seen about it →" : "Open Seen →") : "Try Seen →"}
+          </button>
+        </section>
+
+        <div ref={certRowRef}>
+          <CertificatesRow activeDays={activeDays} newCert={newCert}
+            onOpen={(c) => { setNewCert(null); setOpenCert(c); }} />
+        </div>
+
+        {/* ── Your numbers, folded into one line (3.29) — open it for the whole grid. ── */}
+        <button onClick={() => setShowNumbers((v) => !v)} aria-expanded={showNumbers}
+          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
+          <span className="text-base leading-none" aria-hidden>🌱</span>
+          <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-slate-700">
+            {seenTotal.toLocaleString()} kind {seenTotal === 1 ? "act" : "acts"}{activeDays ? ` over ${activeDays} ${activeDays === 1 ? "day" : "days"}` : ""}{countries ? ` · ${countries} ${countries === 1 ? "country" : "countries"}` : ""}
+          </span>
+          <span aria-hidden className="text-[11px] font-bold text-teal-600">{showNumbers ? "Hide" : "See all"}</span>
+        </button>
+        {showNumbers && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <MetricTile emoji="💌" value={wordsSent} label="Kind words sent" delay={0} onOpen={() => setOpenCard("words")} />
+            <MetricTile emoji="🤝" value={actsDone} label="Kind acts in real life" delay={40} onOpen={() => setOpenCard("acts")} />
+            <MetricTile emoji="❤️" value={felt} label="Hearts on your words" delay={80} onOpen={() => setOpenCard("felt")} />
+            <MetricTile emoji="🌍" value={countries} label="Countries that felt it" delay={120} onOpen={() => setOpenCard("countries")} />
+            <MetricTile emoji="🌱" value={ripple} label="People who passed it on" delay={160} onOpen={() => setOpenCard("ripple")} wide />
+          </div>
+        )}
+
+        <button onClick={onOpenJournal}
+          className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left active:scale-[0.99] transition-transform">
+          <span className="text-base leading-none" aria-hidden>📓</span>
+          <span className="min-w-0 flex-1 text-[12px] font-semibold text-slate-700">
+            Your journal{journalCount ? ` · ${journalCount} ${journalCount === 1 ? "entry" : "entries"}` : ""}
+          </span>
+          <span aria-hidden className="text-[11px] font-bold text-teal-600">→</span>
+        </button>
 
         {/* ── A way back to the doing ─────────────────────────────────────────────────────────
             Grow is the only tab with nothing to do on it, which is right — it is where you come

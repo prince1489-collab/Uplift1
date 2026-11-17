@@ -82,6 +82,21 @@ check("the reflection prompt forbids labels and demands evidence", /NEVER "You a
 const rep = replyPrompt({ chat: [{ role: "me", text: "why do you think that?" }], themes: [{ name: "running" }], evidence: items });
 check("the reply prompt answers from evidence only", /only from the evidence/.test(rep.system) && /A1/.test(rep.user));
 
+// 3.29 — answers to the bar's old questions, and the acts themselves, are evidence now
+{
+  const fs = [{ route: "act", question: "Did you nearly not do it?", answer: "Very nearly", createdAt: NOW - DAY }];
+  const acts = [
+    { route: "reply", toName: "Mona", text: "Needed this today", at: NOW - 2 * DAY },
+    { route: "heart", at: NOW - DAY }, { route: "heart", at: NOW - DAY },
+  ];
+  const d = buildDigest({ answers: [], feelings: fs, user: {}, now: NOW, acts });
+  const R = d.find((i) => i.id === "R1"), K = d.find((i) => i.id === "K1");
+  check("a stored answer to the bar's question reaches Seen as something they said", R?.kind === "said" && /Very nearly/.test(R.text) && /Very nearly/.test(R.label));
+  check("an act from the kindness log is something they did, in plain words", K?.kind === "did" && /told Mona how their words landed/.test(K.text) && /Needed this today/.test(K.text) && /^You told Mona/.test(K.label));
+  check("hearts are counted, not listed one by one", !d.some((i) => /^K/.test(i.id) && /heart/i.test(i.text)) && d.some((i) => /^S/.test(i.id) && /hearted 2 messages/.test(i.text)));
+  check("the people they were kind to include those from the log", d.some((i) => /^S/.test(i.id) && /Mona ×1/.test(i.text)));
+}
+
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} understanding tests passed.`);

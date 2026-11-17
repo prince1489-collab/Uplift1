@@ -13,6 +13,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, MoreHorizontal, Send, X, Loader2 } from "lucide-react";
 import { enableSeen, sendToSeen, markSeenRead, giveFeedback, swapQuestion, shareRightNow, forgetEverything } from "./seenChat";
 import { readPublicProfile } from "./publicProfile";
+import { doc, updateDoc } from "firebase/firestore";
 import { useDictation } from "./dictation";
 import MicButton from "./MicButton";
 
@@ -67,7 +68,7 @@ function Reflection({ m, uid, db }) {
 }
 
 // What Seen knows: the living themes, your shared line, and Forget everything.
-function KnowsPanel({ db, currentUser, state, onClose }) {
+function KnowsPanel({ db, currentUser, state, journal = false, onClose }) {
   const [line, setLine] = useState(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,6 +80,14 @@ function KnowsPanel({ db, currentUser, state, onClose }) {
     return () => { alive = false; };
   }, [db, currentUser.uid]);
   const themes = state?.themes || [];
+  // Whether Seen may read the journal too (3.29). Off unless they turn it on; turning Seen off
+  // ("Forget everything") resets it with the rest of seenAI.
+  const [readsJournal, setReadsJournal] = useState(journal);
+  const setJournal = async (on) => {
+    setReadsJournal(on);
+    try { await updateDoc(doc(db, "users", currentUser.uid), { "seenAI.journal": on }); }
+    catch { setReadsJournal(!on); }
+  };
   const save = async (text) => {
     setBusy(true); setMsg("");
     try { await shareRightNow(db, currentUser, text); setLine(text.trim()); setMsg(text.trim() ? "Shared ✓" : "Removed from your profile."); }
@@ -126,8 +135,22 @@ function KnowsPanel({ db, currentUser, state, onClose }) {
             </div>
           ) : null}
         </section>
+        <section>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">What Seen reads</p>
+          <ul className="mt-1.5 space-y-1 text-[12.5px] leading-snug text-slate-600">
+            <li>• What you write here, and your answers to its questions</li>
+            <li>• Your kind acts in Seen — who you wrote to, what you said, where it landed, and how it felt</li>
+          </ul>
+          <label className="mt-2.5 flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold text-slate-700">Your journal too</span>
+              <span className="block text-[11.5px] leading-snug text-slate-500">So what Seen notices can include what you write there. Off unless you turn it on.</span>
+            </span>
+            <input type="checkbox" checked={readsJournal} onChange={(e) => setJournal(e.target.checked)} className="mt-1 h-4 w-4 flex-shrink-0 accent-teal-600" />
+          </label>
+        </section>
         <section className="rounded-2xl bg-slate-50 px-3.5 py-3 text-[12px] leading-relaxed text-slate-500">
-          Seen is an AI. Your conversation is private to you. To reply and notice patterns, what you write here and how you use Seen are processed by Anthropic's AI on our behalf; it isn't used to train their models. Nothing here is ever shown to anyone else unless you share a line above.
+          Seen is an AI. Your conversation is private to you. To reply and notice patterns, what you write here, your kind acts in Seen{readsJournal ? ", your journal" : ""} and how you use Seen are processed by Anthropic's AI on our behalf; it isn't used to train their models. Nothing here is ever shown to anyone else unless you share a line above.
         </section>
         <section>
           {!confirm ? (
@@ -168,7 +191,7 @@ function Consent({ onStart, onBack, busy }) {
   );
 }
 
-export default function SeenConversation({ db, currentUser, chat, state, consent, onBack, onWriteTo, onOpenSupport }) {
+export default function SeenConversation({ db, currentUser, chat, state, consent, journal = false, onBack, onWriteTo, onOpenSupport }) {
   const uid = currentUser.uid;
   const [text, setText] = useState("");
   // Talk instead of type (3.23): talking about your week is far easier than typing it.
@@ -196,11 +219,12 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   const lastQ = [...(chat || [])].reverse().find((m) => m.role === "seen" && m.kind === "question");
   const lastQOpen = lastQ && !(chat || []).some((m) => m.role === "me" && Number(m.createdAt) > Number(lastQ.createdAt));
 
-  const send = async () => {
+  const send = async (said = null) => {
     dictation.stop();
-    const t = text.trim();
+    const t = String(said ?? text).trim();
     if (!t || sending) return;
-    setText(""); setSending(true);
+    if (said == null) setText("");
+    setSending(true);
     try { await sendToSeen(db, currentUser, chat, t); } finally { setSending(false); }
   };
 
@@ -259,6 +283,17 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                     <div className="seen-bubble rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[14px] leading-snug text-slate-700">
                       <p className={m.kind === "question" ? "font-bold text-slate-800" : ""}>{m.text}</p>
                     </div>
+                    {/* One-tap answers (3.29: "How did that feel?"). Saying more is still the box below. */}
+                    {isOpenQ && Array.isArray(m.options) && m.options.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {m.options.map((o) => (
+                          <button key={o} onClick={() => send(o)} disabled={sending}
+                            className="rounded-full border border-orange-200 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-slate-700 active:scale-95 disabled:opacity-50">
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {isOpenQ && !swapped.has(m.id) && m.qid !== "followup" && (
                       <button onClick={async () => { setSwapped((s) => new Set(s).add(m.id)); await swapQuestion(db, uid, chat, m); }}
                         className="mt-1 px-1 text-[11px] font-semibold text-slate-400">Ask me something else</button>
@@ -292,7 +327,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
           </div>
         </>
       )}
-      {knows && <KnowsPanel db={db} currentUser={currentUser} state={state} onClose={(forgot) => { setKnows(false); if (forgot === true) onBack?.(); }} />}
+      {knows && <KnowsPanel db={db} currentUser={currentUser} state={state} journal={journal} onClose={(forgot) => { setKnows(false); if (forgot === true) onBack?.(); }} />}
     </div>
   );
 }

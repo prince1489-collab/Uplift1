@@ -65,9 +65,30 @@ const dayName = (ts) => new Date(Number(ts)).toLocaleDateString("en-GB", { weekd
 const dateLabel = (ts) => new Date(Number(ts)).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 const clip = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
-// What the person SAID (A: answers to Seen; F: Feel-it sentences) and DID (S: patterns), last 30
-// days, each with an id the model must cite and a plain label the person will be shown.
-export function buildDigest({ answers = [], feelings = [], user = {}, now = Date.now() } = {}) {
+// What the person SAID (A: answers to Seen; F: Feel-it sentences; R: their answers to the bar's
+// questions about an act; J: their journal, only if they let Seen read it) and DID (K: kind acts
+// from the kindness log; S: patterns), last 30 days, each with an id the model must cite and a
+// plain label the person will be shown.
+//
+// 3.29: K, R and J are new. Seen used to learn about someone's kindness only through the "Feel it"
+// card — and once that card went weekly (3.24) and then went altogether (3.28), it was learning
+// almost nothing. The kindness log (src/kindLog.js) records the acts themselves; the bar's old
+// question answers ("Did you nearly not do it? Very nearly") were stored but dropped by the filter
+// below, which only kept entries with feeling words; and the journal is the richest thing anyone
+// writes in Seen, read only with their say-so (users/{uid}.seenAI.journal).
+const ACT = {
+  sent: (a) => (a.delivered || a.country ? `sent kind words to a stranger, which reached someone in ${a.country || "the world"}` : "sent kind words to a stranger"),
+  reply: (a) => `told ${a.toName || "someone"} how their words landed`,
+  note: (a) => `sent ${a.toName || "someone"} a kind note`,
+  act: (a) => (a.text ? `did something kind in real life: ${a.text}` : `made ${a.toName || "someone"} feel seen in real life`),
+};
+export function actLabel(a) {
+  const say = ACT[a?.route];
+  if (!say) return null;
+  return `You ${say(a)}`;
+}
+
+export function buildDigest({ answers = [], feelings = [], user = {}, now = Date.now(), acts = [], journal = [] } = {}) {
   const from = now - 30 * DAY;
   const items = [];
   answers.filter((a) => Number(a.createdAt) >= from && a.text).slice(-12).forEach((a, i) => {
@@ -83,15 +104,45 @@ export function buildDigest({ answers = [], feelings = [], user = {}, now = Date
       label: `You felt ${f.feelings.join(" and ")} after a ${ROUTE[f.route] || "kind act"} on ${dateLabel(f.createdAt)}` });
   });
 
+  // R: answers to the bar's questions after an act (3.22 and before), kept on feelings entries.
+  feelings.filter((f) => Number(f.createdAt) >= from && f.question && f.answer)
+    .sort((a, b) => Number(a.createdAt) - Number(b.createdAt)).slice(-6).forEach((f, i) => {
+      items.push({ id: `R${i + 1}`, kind: "said", date: Number(f.createdAt),
+        text: `After a ${ROUTE[f.route] || "kind act"} (${dateLabel(f.createdAt)}), asked "${clip(f.question, 90)}" they answered: "${clip(f.answer, 140)}"`,
+        label: `You answered “${clip(f.answer, 50)}” to “${clip(f.question, 60)}”` });
+    });
+
+  // J: journal entries — only when they've said Seen may read them.
+  journal.filter((j) => Number(j.createdAt) >= from && j.text).sort((a, b) => Number(a.createdAt) - Number(b.createdAt)).slice(-6)
+    .forEach((j, i) => {
+      items.push({ id: `J${i + 1}`, kind: "said", date: Number(j.createdAt),
+        text: `In their journal (${dateLabel(j.createdAt)}): "${clip(j.text, 300)}"`,
+        label: `You wrote in your journal on ${dateLabel(j.createdAt)}` });
+    });
+
+  // K: the kind acts themselves (src/kindLog.js) — hearts are counted below, not listed.
+  const realActs = acts.filter((a) => Number(a.at) >= from && ACT[a.route]).sort((a, b) => Number(a.at) - Number(b.at));
+  realActs.slice(-12).forEach((a, i) => {
+    const words = a.text && a.route !== "act" ? `: "${clip(a.text, 140)}"` : "";
+    const felt = a.feeling ? ` (afterwards they said it felt: ${clip(a.feeling, 40)})` : "";
+    items.push({ id: `K${i + 1}`, kind: "did", date: Number(a.at),
+      text: `On ${dateLabel(a.at)} they ${ACT[a.route](a)}${words}${felt}`,
+      label: `${actLabel(a)} on ${dateLabel(a.at)}` });
+  });
+
   const S = [];
+  const hearts = acts.filter((a) => Number(a.at) >= from && a.route === "heart").length;
+  if (hearts) S.push({ text: `hearted ${hearts} ${hearts === 1 ? "message" : "messages"} from other people in the last 30 days`, label: `You hearted ${hearts} ${hearts === 1 ? "message" : "messages"} in the last 30 days` });
   const days = new Set((user.activeDates || []).filter((d) => typeof d === "string" && Date.parse(`${d}T12:00:00Z`) >= from));
   if (days.size) S.push({ text: `made someone feel seen on ${days.size} of the last 30 days`, label: `You made someone feel seen on ${days.size} of the last 30 days` });
   const routes = {};
   felt.forEach((f) => { routes[f.route] = (routes[f.route] || 0) + 1; });
+  realActs.forEach((a) => { routes[a.route] = (routes[a.route] || 0) + 1; });
   const mix = Object.entries(routes).sort((a, b) => b[1] - a[1]);
   if (mix.length) S.push({ text: `kinds of kind acts: ${mix.map(([r, n]) => `${ROUTE[r] || r} ×${n}`).join(", ")}`, label: `Your kind acts were mostly ${ROUTE[mix[0][0]] || mix[0][0]}s (${mix[0][1]})` });
   const people = {};
   felt.forEach((f) => { if (f.toName) people[f.toName] = (people[f.toName] || 0) + 1; });
+  realActs.forEach((a) => { if (a.toName) people[a.toName] = (people[a.toName] || 0) + 1; });
   const top = Object.entries(people).sort((a, b) => b[1] - a[1]).slice(0, 2);
   if (top.length) S.push({ text: `the people they were kind to most: ${top.map(([n, c]) => `${n} ×${c}`).join(", ")}`, label: `You were kind to ${top.map(([n]) => n).join(" and ")} more than once` });
   const words = {};
@@ -188,7 +239,7 @@ export function replyPrompt({ chat = [], themes = [], evidence = [], name = null
 
 export function reflectPrompt({ items, themes = [], feedback = [] }) {
   return {
-    system: `${VOICE}\n\nYou notice patterns in what a person has SAID (ids starting A or F) and what they have DONE (ids starting S), and reflect them back so they feel recognised. Rules:\n- Observe, don't define: "You've mentioned… and you've also…", "It sounds like…". NEVER "You are…", "You seem to be someone who…".\n- Every reflection must cite at least two evidence ids, and at least one must be an A or F id.\n- Under 240 characters each. At most 2 reflections. If nothing is well supported, return none — saying less is better than guessing.\n- Themes are 1–3 word plain labels of what matters to them right now (e.g. "running", "family", "a new job").\n- followUp: one warm, specific question that remembers something they said (under 110 characters), or null.\n- safety: "crisis" if anything suggests risk of harm, "concern" if they seem in real difficulty, otherwise "ok".`,
+    system: `${VOICE}\n\nYou notice patterns in what a person has SAID (ids starting A, F, R or J) and what they have DONE (ids starting K for kind acts, S for patterns), and reflect them back so they feel recognised. Rules:\n- Observe, don't define: "You've mentioned… and you've also…", "It sounds like…". NEVER "You are…", "You seem to be someone who…".\n- Every reflection must cite at least two evidence ids, and at least one must be an A, F, R or J id.\n- Under 240 characters each. At most 2 reflections. If nothing is well supported, return none — saying less is better than guessing.\n- Themes are 1–3 word plain labels of what matters to them right now (e.g. "running", "family", "a new job").\n- followUp: one warm, specific question that remembers something they said (under 110 characters), or null.\n- safety: "crisis" if anything suggests risk of harm, "concern" if they seem in real difficulty, otherwise "ok".`,
     user: `Evidence:\n${digestText(items)}\n\nThemes noticed before: ${themes.map((t) => `${t.name} (strength ${t.strength})`).join(", ") || "none"}\nTheir feedback on earlier reflections: ${feedback.map((f) => `"${f.theme}": ${f.feedback}`).join(", ") || "none"}\n\nReturn ONLY JSON: {"safety":"ok|concern|crisis","reflections":[{"theme":"…","text":"…","evidence":["A1","S2"]}],"themes":["…"],"followUp":"…"|null}`,
   };
 }

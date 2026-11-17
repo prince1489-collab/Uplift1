@@ -38,6 +38,7 @@ import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob } from "./hytState";
 import { momentsLeft, momentById, planFor, actAsPhrase } from "./realLife";
+import { logKindAct } from "./kindLog";
 import { whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
@@ -303,6 +304,7 @@ export default function SeenBar({
   const doneIt = () => {
     const after = completeSlot(state, "kindness", { onKindAct, onPlanChange });
     update(after);
+    logKindAct(db, currentUser?.uid, { route: "act", text: item.text }); // the private log (3.29)
     setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
@@ -311,6 +313,7 @@ export default function SeenBar({
     if (db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: null }).catch(() => {});
     const after = { ...completeSlot(state, "who", { onKindAct }), whoName: next, lastAct: { route: "act", name: next } };
     update(after);
+    logKindAct(db, currentUser?.uid, { route: "act", toName: next });
     setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };

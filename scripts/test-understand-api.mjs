@@ -8,11 +8,12 @@ const DAY = 86400000, NOW = Date.parse("2026-10-06T12:00:00Z");
 // ── A tiny Firestore ──
 function fakeDb() {
   const store = new Map(); let auto = 0;
-  const coll = (path) => ({
+  const coll = (path, filter = null) => ({
     doc: (id) => docRef(`${path}/${id ?? `auto${++auto}`}`),
+    where: (field, op, value) => coll(path, op === ">=" ? (v) => Number(v[field]) >= value : null),
     add: async (data) => { const id = `auto${++auto}`; store.set(`${path}/${id}`, { ...data }); return docRef(`${path}/${id}`); },
     orderBy: (field, dir = "asc") => ({ limit: (n) => ({ get: async () => {
-      const docs = [...store.entries()].filter(([k]) => k.startsWith(`${path}/`) && !k.slice(path.length + 1).includes("/"))
+      const docs = [...store.entries()].filter(([k, v]) => k.startsWith(`${path}/`) && !k.slice(path.length + 1).includes("/") && (!filter || filter(v)))
         .map(([k, v]) => ({ id: k.split("/").pop(), data: () => v }))
         .sort((a, b) => (Number(a.data()[field]) - Number(b.data()[field])) * (dir === "desc" ? -1 : 1)).slice(0, n);
       return { docs };
@@ -133,6 +134,29 @@ const say = (db, id, msg) => put(db, `users/u1/seenChat/${id}`, { read: true, ..
   say(db, "a1", { role: "me", kind: "ask", text: "hi Seen", createdAt: NOW - 1000 });
   const r = await handle({ mode: "reply" }, { db, uid: "u1", ai: async () => { throw new Error("overloaded"); }, now: NOW });
   check("if the model is down, a kind fallback is written", r.json.fallback === true && chatOf(db).pop().role === "seen");
+}
+
+// 9. 3.29 — what Seen reads: the kindness log always; the journal only when allowed.
+{
+  let seen = "";
+  const ai = async ({ user }) => { seen = user; return JSON.stringify({ safety: "ok", reflections: [], themes: [] }); };
+  const db = setup();
+  put(db, "users/u1/kindLog/sent_m1", { route: "sent", at: NOW - 2 * DAY, text: "Someone in the world is rooting for you", delivered: true, country: "Algeria", feeling: "Nervous" });
+  put(db, "users/u1/kindLog/old", { route: "act", at: NOW - 40 * DAY, text: "Too long ago" });
+  put(db, "users/u1/journal/j1", { text: "Rang my brother for the first time in months.", createdAt: NOW - DAY });
+  say(db, "a1", { role: "me", kind: "answer", text: "Busy with my new job", createdAt: NOW - 2 * DAY });
+  say(db, "a2", { role: "me", kind: "answer", text: "Learning the ropes", createdAt: NOW - DAY });
+  await handle({ mode: "reflect" }, { db, uid: "u1", ai, now: NOW });
+  check("Seen reads the kindness log: the act, where it landed and how it felt", /K1: .*reached someone in Algeria.*rooting for you.*Nervous/.test(seen), seen.split("\n").filter((l) => /^K/.test(l)).join(" | "));
+  check("…only the last 30 days of it", !/Too long ago/.test(seen));
+  check("…and not the journal unless they've said so", !/brother/.test(seen));
+  const db2 = setup();
+  put(db2, "users/u1", { ...db2.store.get("users/u1"), seenAI: { consent: true, journal: true } });
+  put(db2, "users/u1/journal/j1", { text: "Rang my brother for the first time in months.", createdAt: NOW - DAY });
+  say(db2, "a1", { role: "me", kind: "answer", text: "Busy with my new job", createdAt: NOW - 2 * DAY });
+  say(db2, "a2", { role: "me", kind: "answer", text: "Learning the ropes", createdAt: NOW - DAY });
+  await handle({ mode: "reflect" }, { db: db2, uid: "u1", ai, now: NOW });
+  check("…when they have, the journal is evidence too", /J1: In their journal .*brother/.test(seen));
 }
 
 let failed = 0;

@@ -304,6 +304,35 @@ await check("nobody else can read your conversation with Seen",
   assertFails(getDoc(doc(B, "users", "uidA", "seenChat", "a1"))));
 await check("nobody else can write in it",
   assertFails(setDoc(doc(B, "users", "uidA", "seenChat", "b1"), { role: "me", kind: "answer", text: "hi", createdAt: NOWT })));
+// 3.29 — quick answers under a question Seen asks, and nowhere else
+await check("Seen's question can carry quick answers",
+  assertSucceeds(setDoc(doc(A, "users", "uidA", "seenChat", "q-kf"), { role: "seen", kind: "question", qid: "kindfeel:sent_x", text: "On Tuesday your words reached someone in Algeria. How did sending them feel?", options: ["Warm", "Proud", "Lighter", "Nervous", "Not much"], createdAt: NOWT, read: false })));
+await check("…but not more than six",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "q-kf2"), { role: "seen", kind: "question", qid: "x", text: "?", options: ["a","b","c","d","e","f","g"], createdAt: NOWT, read: false })));
+await check("…and an answer can't carry options",
+  assertFails(setDoc(doc(A, "users", "uidA", "seenChat", "a-kf"), { role: "me", kind: "answer", text: "Warm", options: ["x"], createdAt: NOWT, read: true })));
+
+// 3.29 — the kindness log: yours alone, and only what it says it is
+const KL = (who) => doc(who, "users", "uidA", "kindLog", "sent_m1");
+await check("you can log your own kind act",
+  assertSucceeds(setDoc(KL(A), { route: "sent", at: NOWT, day: "2026-11-17", text: "Someone in the world is rooting for you" })));
+await check("…and record where it landed, and how it felt",
+  assertSucceeds(setDoc(KL(A), { delivered: true, country: "Algeria", feeling: "Nervous" }, { merge: true })));
+await check("…and read it back",
+  assertSucceeds(getDoc(KL(A))));
+await check("nobody else can read your kindness log",
+  assertFails(getDoc(KL(B))));
+await check("…or write to it",
+  assertFails(setDoc(doc(B, "users", "uidA", "kindLog", "fake"), { route: "act", at: NOWT })));
+await check("an entry must be a known kind of act",
+  assertFails(setDoc(doc(A, "users", "uidA", "kindLog", "bad1"), { route: "anything", at: NOWT })));
+await check("…with nothing extra hidden in it",
+  assertFails(setDoc(doc(A, "users", "uidA", "kindLog", "bad2"), { route: "act", at: NOWT, email: "x@y.z" })));
+await check("…and words of a sensible length",
+  assertFails(setDoc(doc(A, "users", "uidA", "kindLog", "bad3"), { route: "reply", at: NOWT, text: "x".repeat(241) })));
+await check("you can delete an entry",
+  assertSucceeds(deleteDoc(KL(A))));
+
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), "users", "uidA", "seenChat", "refl"), { role: "seen", kind: "reflection", text: "You've mentioned…", theme: "running", feedback: null, createdAt: NOWT, read: false });
   await setDoc(doc(ctx.firestore(), "users", "uidA", "understanding", "state"), { themes: [{ name: "running" }] });

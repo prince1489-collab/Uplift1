@@ -962,7 +962,7 @@ export function PrivateReplySheet({ target, me, myUid, currentUser, db, blockedU
     // the day, exactly like sending a message does.
     // theirText: the words being answered, so "Feel it" can offer a phrase of them back (3.10).
     const theirText = mode === "first" ? target?.text : answering?.text;
-    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null, note: isNote, theirText: isNote ? null : theirText }); } catch { /* ignore */ }
+    try { onSent?.({ mode, toUid: target.uid, name: other, messageId: target.id ?? null, note: isNote, theirText: isNote ? null : theirText, text: clean, replyId }); } catch { /* ignore */ }
 
     // Everything below here is best-effort and deliberately NOT awaited. The reply has
     // already landed; a failure to push a notification or write a celebratory card must
@@ -1743,7 +1743,7 @@ export function PostComposer({ profile, myUid, currentUser, db, streak = 0, spar
     try { awardPoints(claimFirstToday("post") ? "postFirst" : "post"); } catch { /* ignore */ }
     setState("done");
     // The id, so App can deliver it to one real person (3.21) — unless it was posted anonymously.
-    onPosted?.({ id: posted.id, anon });
+    onPosted?.({ id: posted.id, anon, text: clean });
     setTimeout(() => onClose?.(), 900);
   };
 

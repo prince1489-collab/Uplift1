@@ -143,7 +143,7 @@ export default function MessagesTab({ conversations = [], myUid, followUids = ne
   db, currentUser, seen = null, onWriteTo, onOpenSupport }) {
   if (openUid === SEEN_ID && seen && currentUser) {
     return (
-      <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent}
+      <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent} journal={seen.journal}
         onBack={onClose} onWriteTo={onWriteTo} onOpenSupport={onOpenSupport} />
     );
   }

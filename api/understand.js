@@ -46,6 +46,17 @@ async function load(db, uid, now) {
   const chat = chatSnap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
   const feelings = feelSnap.docs.map((d) => d.data()).filter((f) => Number(f.createdAt) >= now - 30 * DAY);
   const state = stateSnap.exists ? stateSnap.data() : {};
+  // The kindness log (3.29) — what they actually did — and their journal, only if they've said so.
+  const since = now - 30 * DAY;
+  const softly = (read) => { try { return Promise.resolve(read()).catch(() => null); } catch { return Promise.resolve(null); } };
+  const [actSnap, journalSnap] = await Promise.all([
+    softly(() => userRef.collection("kindLog").where("at", ">=", since).orderBy("at", "desc").limit(60).get()),
+    user?.seenAI?.journal === true
+      ? softly(() => userRef.collection("journal").orderBy("createdAt", "desc").limit(10).get())
+      : Promise.resolve(null),
+  ]);
+  const acts = actSnap ? actSnap.docs.map((d) => d.data()) : [];
+  const journal = journalSnap ? journalSnap.docs.map((d) => d.data()).filter((j) => Number(j.createdAt) >= since) : [];
   // Answers are the person's messages that followed a question from Seen.
   const answers = [];
   let lastQ = null;
@@ -53,7 +64,7 @@ async function load(db, uid, now) {
     if (m.role === "seen" && m.kind === "question") lastQ = m;
     if (m.role === "me" && m.kind === "answer") answers.push({ ...m, question: lastQ?.text || "" });
   }
-  return { userRef, user, chat, feelings, state, answers };
+  return { userRef, user, chat, feelings, state, answers, acts, journal };
 }
 
 // The heart of it, with the database and the model passed in so it can be tested without either.
@@ -85,7 +96,7 @@ export async function handle(body, { db, uid, ai, now = Date.now() }) {
       }
       return { status: 200, json: { skipped: "daily_limit" } };
     }
-    const evidence = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now });
+    const evidence = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now, acts: ctx.acts, journal: ctx.journal });
     let text = null;
     try {
       const p = replyPrompt({ chat, themes: state.themes || [], evidence, name });
@@ -101,7 +112,7 @@ export async function handle(body, { db, uid, ai, now = Date.now() }) {
     if (!reflectionDue({ answers: ctx.answers, lastReflect: state.lastReflect, now })) return { status: 200, json: { skipped: "not_due" } };
     // Never analyse while the last thing they said sounded like difficulty.
     if (now - Number(state.safetyAt || 0) < 3 * DAY) return { status: 200, json: { skipped: "care" } };
-    const items = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now });
+    const items = buildDigest({ answers: ctx.answers, feelings: ctx.feelings, user, now, acts: ctx.acts, journal: ctx.journal });
     const applied = new Set(state.appliedFeedback || []);
     const feedback = chat.filter((m) => m.kind === "reflection" && m.feedback && m.theme && !applied.has(m.id))
       .map((m) => ({ id: m.id, theme: m.theme, feedback: m.feedback }));

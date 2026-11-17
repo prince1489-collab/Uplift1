@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { authedPost } from "./apiBase.js";
 import { pickQuestion, questionDue, FIRST_MESSAGE, ANSWER_GAP_HOURS } from "./seenAsks.js";
+import { kindFeelQuestion, kindFeelEntryId } from "./kindFeel.js";
 
 export const SEEN_ID = "seen"; // the pinned conversation's id in MessagesTab
 
@@ -54,11 +55,16 @@ export const slotOf = (now) => Math.floor(now / (ANSWER_GAP_HOURS * 3600000));
 export const questionIdFor = (now) => `q-${slotOf(now)}`;
 
 // What to ask now, if anything — pure, so the race can be tested (scripts/test-seen-chat.mjs).
-export function planQuestion({ uid, chat, state, now = Date.now(), lastSlot = null }) {
+// `kindEntries` (3.29): the kindness log. At most once a week the slot's question is about one of
+// those acts — "How did that feel?", with one-tap answers (kindFeel.js) — unless the server left a
+// follow-up of its own, which always comes first.
+export function planQuestion({ uid, chat, state, now = Date.now(), lastSlot = null, kindEntries = [] }) {
   if (!chat) return null;
   const id = questionIdFor(now);
   if (lastSlot === slotOf(now) || chat.some((m) => m.id === id) || !questionDue(chat, now)) return null;
   const q = pickQuestion({ uid, now, answered: answeredFrom(chat), asked: askedFrom(chat), followUp: state?.followUp || null });
+  const kq = q.id === "followup" ? null : kindFeelQuestion({ entries: kindEntries, chat, now });
+  if (kq) return { id, data: { role: "seen", kind: "question", qid: kq.id, text: kq.q, options: kq.options, createdAt: now, read: false } };
   return { id, data: { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now, read: false } };
 }
 
@@ -76,10 +82,10 @@ export function duplicateQuestionIds(chat = []) {
 }
 
 let lastSlot = null;
-export async function ensureQuestion(db, uid, chat, state, now = Date.now()) {
+export async function ensureQuestion(db, uid, chat, state, now = Date.now(), kindEntries = []) {
   if (!db || !uid || !chat) return;
   duplicateQuestionIds(chat).forEach((id) => deleteDoc(doc(db, "users", uid, "seenChat", id)).catch(() => {}));
-  const plan = planQuestion({ uid, chat, state, now, lastSlot });
+  const plan = planQuestion({ uid, chat, state, now, lastSlot, kindEntries });
   if (!plan) return;
   lastSlot = slotOf(now);
   try { await setDoc(doc(db, "users", uid, "seenChat", plan.id), plan.data); } catch { /* already asked in this slot */ }
@@ -114,6 +120,10 @@ export async function sendToSeen(db, currentUser, chat, text) {
   await addDoc(collection(db, "users", uid, "seenChat"), {
     role: "me", kind: lastQ && !answeredSince ? "answer" : "ask", text: clean, createdAt: Date.now(), read: true,
   });
+  // An answer to "How did that feel?" also goes on the act it was about (kindLog.js, 3.29), so
+  // the Grow tab can say how that act felt.
+  const entryId = lastQ && !answeredSince ? kindFeelEntryId(lastQ.qid) : null;
+  if (entryId) setDoc(doc(db, "users", uid, "kindLog", entryId), { feeling: clean.slice(0, 60) }, { merge: true }).catch(() => {});
   try { await authedPost(currentUser, "/api/understand", { mode: "reply" }); } catch { /* reply arrives when it can */ }
   try { await authedPost(currentUser, "/api/understand", { mode: "reflect" }); } catch { /* not due, or later */ }
 }
