@@ -110,9 +110,18 @@ const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
 export const MIN_COUNTED = 10;
 const mean = (xs) => { const v = xs.filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
 
-export function summarise(users, { today, adminUid = null, withoutMe = false, window = 30 } = {}) {
+// Accounts made for testing: "test" anywhere in the email or name (test1@…, seen.test@…, "Test
+// User"). They are the admin's own, and in a group this small they move every percentage. The
+// screen says how many were left out, so an innocent match ("contest@…") would show.
+export function isTestAccount(u) {
+  return /test/i.test(String(u?.email || "")) || /test/i.test(String(u?.fullName || ""));
+}
+
+export function summarise(users, { today, adminUid = null, withoutMe = false, withoutTests = false, window = 30 } = {}) {
   const all = (Array.isArray(users) ? users : []).filter(Boolean);
-  const pool = withoutMe && adminUid ? all.filter((u) => u.id !== adminUid) : all;
+  const mine = withoutMe && adminUid ? all.filter((u) => u.id !== adminUid) : all;
+  const pool = withoutTests ? mine.filter((u) => !isTestAccount(u)) : mine;
+  const testsLeftOut = mine.length - pool.length;
   const people = pool.filter(isPerson);
   const P = people.length;
   const range = lastDays(today, window);
@@ -173,6 +182,7 @@ export function summarise(users, { today, adminUid = null, withoutMe = false, wi
   const sum = (k) => people.reduce((s, u) => s + (Number(u[k]) || 0), 0);
   return {
     accounts: pool.length,
+    testsLeftOut,
     people: P,
     unfinished: pool.length - P,
     today: {

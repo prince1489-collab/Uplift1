@@ -2,7 +2,7 @@
 //
 //   node scripts/test-admin-stats.mjs
 
-import { summarise, lastDays, isPerson, canRemind, lastSeen, lifetimeDays, MIN_COUNTED } from "../src/usageStats.js";
+import { summarise, lastDays, isPerson, canRemind, lastSeen, lifetimeDays, isTestAccount, MIN_COUNTED } from "../src/usageStats.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name} — ${detail}`]);
@@ -75,6 +75,18 @@ const f = summarise([{ id: "t1", onboardingCompletedAt: ts(2) }, { id: "t2", onb
 check("join dates from Firestore Timestamps", f.joined.find((b) => b.id === "7").count === 1 && f.joined.find((b) => b.id === "30").count === 1 && f.joinedUnknown === 1,
   JSON.stringify([f.joined.map((b) => b.count), f.joinedUnknown]));
 check("reach split: acted in 30 days, reachable vs not", s.reach.actedReachable === 2 && s.reach.actedUnreachable === 2, JSON.stringify(s.reach));
+
+// ── Test accounts ("test" in the email or name) ──
+check("test accounts are recognised in any case", isTestAccount({ email: "test1@x.com" }) && isTestAccount({ email: "seen.TEST@x.com" })
+  && isTestAccount({ fullName: "Test User" }) && !isTestAccount({ email: "maria@x.com", fullName: "Maria" }) && !isTestAccount({}) && !isTestAccount(null));
+const withTests = [...users, { id: "x1", onboardingCompletedAt: 1, email: "test1@x.com", activeDates: [T] }, { id: "x2", onboardingCompletedAt: 1, fullName: "Seen Test", lastOpenDay: T }];
+const keep = summarise(withTests, { today: T });
+const drop = summarise(withTests, { today: T, withoutTests: true });
+check("with tests: they count", keep.people === 7 && keep.today.acted === 3 && keep.testsLeftOut === 0, JSON.stringify([keep.people, keep.today.acted]));
+check("without tests: left out of everything, and how many is said", drop.people === 5 && drop.today.acted === 2 && drop.today.opened === 2 && drop.testsLeftOut === 2,
+  JSON.stringify([drop.people, drop.today, drop.testsLeftOut]));
+check("both switches together", summarise(withTests, { today: T, adminUid: "me", withoutMe: true, withoutTests: true }).people === 4);
+check("still nothing identifying comes back", !/test1@|Seen Test|"x1"|"x2"/.test(JSON.stringify(drop)));
 
 const w = summarise(users, { today: T, adminUid: "me", withoutMe: true });
 check("without me: one fewer person, and my every-day habit leaves the numbers", w.people === 4 && w.today.opened === 1 && w.depth.find((b) => b.id === "21-30").count === 0);

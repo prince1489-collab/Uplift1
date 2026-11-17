@@ -72,6 +72,7 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
   const [users, setUsers] = useState(null); // null = loading
   const [error, setError] = useState("");
   const [withoutMe, setWithoutMe] = useState(true);
+  const [withoutTests, setWithoutTests] = useState(true);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -84,7 +85,8 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
   }, [db, tick]);
 
   const today = todayKey();
-  const s = useMemo(() => (users ? summarise(users, { today, adminUid, withoutMe }) : null), [users, today, adminUid, withoutMe]);
+  const s = useMemo(() => (users ? summarise(users, { today, adminUid, withoutMe, withoutTests }) : null), [users, today, adminUid, withoutMe, withoutTests]);
+  const leftOut = [withoutMe && "you", s?.testsLeftOut ? `${s.testsLeftOut} test ${s.testsLeftOut === 1 ? "account" : "accounts"}` : null].filter(Boolean);
 
   return createPortal(
     <div data-portal {...(darkMode ? { "data-dark-shell": "" } : {})} className="fixed inset-0 z-[260] flex flex-col bg-white">
@@ -93,7 +95,7 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-bold text-slate-800">How Seen is doing</h2>
           <p className="text-[11px] text-slate-500">
-            {s ? `${s.people} people${withoutMe ? ", not counting you" : ""} · counts only, no names` : "Loading…"}
+            {s ? `${s.people} people${leftOut.length ? `, not counting ${leftOut.join(" or ")}` : ""} · counts only, no names` : "Loading…"}
           </p>
         </div>
         <button onClick={() => { setUsers(null); setTick((n) => n + 1); }} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Refresh"><RefreshCw size={17} /></button>
@@ -104,6 +106,13 @@ export default function AdminStats({ db, adminUid, darkMode = false, onClose }) 
         <label className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-2.5">
           <span className="text-[13px] font-semibold text-slate-700">Without me</span>
           <input type="checkbox" checked={withoutMe} onChange={(e) => setWithoutMe(e.target.checked)} className="h-4 w-4 accent-teal-600" />
+        </label>
+        <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-2.5">
+          <span className="min-w-0">
+            <span className="block text-[13px] font-semibold text-slate-700">Without test accounts</span>
+            <span className="block text-[11px] text-slate-500">"test" in the name or email{s && withoutTests ? ` · ${s.testsLeftOut} left out` : ""}</span>
+          </span>
+          <input type="checkbox" checked={withoutTests} onChange={(e) => setWithoutTests(e.target.checked)} className="h-4 w-4 flex-shrink-0 accent-teal-600" />
         </label>
 
         {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-600" role="alert">{error}</p>}
