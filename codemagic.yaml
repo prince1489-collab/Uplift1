@@ -234,6 +234,13 @@ workflows:
           if [ -f "assets/icon.png" ]; then npx @capacitor/assets generate --ios || true; fi
       - name: Set up code signing (create cert + profile via App Store Connect API key)
         script: |
+          # Every command here must succeed. Without this the step carried on past a failed fetch
+          # from Apple, reported success, and left the ARCHIVE to fail a minute later with
+          #   "App" requires a provisioning profile with the Push Notifications and Sign In with
+          #   Apple features. Select a provisioning profile in the Signing & Capabilities editor.
+          # which is Xcode saying no profile is attached to the app at all — the symptom, three
+          # steps away from the cause (3.25, after the same failure as 3.7).
+          set -e
           keychain initialize
           # Distribution certificate private key. If IOS_DIST_CERT_KEY (base64 of an RSA PEM) is set
           # as an encrypted env var, reuse it every build so ONE certificate is created and reused
@@ -246,10 +253,23 @@ workflows:
             openssl genrsa -out /tmp/cert_key.pem 2048
             echo "NOTE: IOS_DIST_CERT_KEY not set — created an ephemeral key (new cert this build)."
           fi
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+          if ! app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key @file:/tmp/cert_key.pem \
-            --create
+            --create; then
+            echo ""
+            echo "!! Apple did not hand over a signing certificate and App Store profile — Apple's own"
+            echo "!! reason is printed just above. The usual causes, most likely first:"
+            echo "!!  1. An updated Apple agreement is waiting. The Account Holder signs in at"
+            echo "!!     developer.apple.com and appstoreconnect.apple.com and accepts it (a banner says so)."
+            echo "!!  2. The limit on distribution certificates is reached. developer.apple.com →"
+            echo "!!     Certificates → revoke old 'Apple Distribution' certificates nobody uses. Apps already"
+            echo "!!     on the App Store are not affected. Then make sure IOS_DIST_CERT_KEY is set in the"
+            echo "!!     ios_signing group, so every build reuses ONE certificate instead of making another."
+            echo "!!  3. The App Store Connect API key behind the CodemagicASCKey integration was revoked or"
+            echo "!!     lost its App Manager / Admin role."
+            exit 1
+          fi
           keychain add-certificates
           xcode-project use-profiles
 
@@ -288,6 +308,32 @@ workflows:
               echo "!! $BUNDLE_ID, and re-run this build (a fresh profile is created automatically)."
               exit 1
             fi
+          fi
+
+          # ── Is a profile actually attached to the app? ──────────────────────────────────────
+          # The one question the archive's error is really about. use-profiles writes the
+          # profile into the App target's build settings; if the App target comes out with none,
+          # the archive cannot succeed, so stop here and say why. If the settings can't be read
+          # at all, don't block — the archive step remains the judge.
+          SETTINGS=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -showBuildSettings 2>/dev/null || true)
+          if [ -z "$SETTINGS" ]; then
+            echo "!! Couldn't read the App target's build settings to confirm its profile — continuing."
+          else
+            ATTACHED=$(printf '%s\n' "$SETTINGS" | awk '
+              /^Build settings for action [a-z]+ and target / { t = $NF }
+              t == "App:" && ($1 == "PROVISIONING_PROFILE_SPECIFIER" || $1 == "PROVISIONING_PROFILE") {
+                v = $0; sub(/^[^=]*= ?/, "", v); if (v != "") { print v; exit } }')
+            if [ -z "$ATTACHED" ]; then
+              echo "!! No provisioning profile is attached to the App target, so the archive would fail with"
+              echo "!! \"requires a provisioning profile with the Push Notifications and Sign In with Apple features\"."
+              echo "!! Profiles installed on this machine for $BUNDLE_ID:"
+              ls -1 "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/" "$HOME/Library/MobileDevice/Provisioning Profiles/" 2>/dev/null || echo "!!   (none)"
+              echo "!! Fix at developer.apple.com → Profiles: delete the App Store profile(s) for $BUNDLE_ID"
+              echo "!! (a fresh one is created on the next build), check Identifiers → $BUNDLE_ID still has"
+              echo "!! Push Notifications and Sign In with Apple ticked, then re-run."
+              exit 1
+            fi
+            echo "── App target signs with: $ATTACHED"
           fi
       - name: Stamp the marketing version and build number
         script: |
