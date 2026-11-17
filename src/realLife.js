@@ -18,7 +18,7 @@
 //     Deciding when in advance ("implementation intentions") is the best-evidenced way there is
 //     of turning "I should" into "I did";
 //   • the notification opens the bar, where the card is first and "Done it" is one tap, followed
-//     by one warm line and nothing to fill in (cardBudget.isQuietAct).
+//     by one warm line and nothing to fill in (3.28: nothing is asked after any act).
 //
 // ── EVERY ACT PASSES FIVE TESTS (from the old bank, still true) ──────────────────────────────
 //   1. under five minutes          2. costs nothing        3. no specific place

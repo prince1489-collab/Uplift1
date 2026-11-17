@@ -80,9 +80,25 @@ export function tokenEntry(token, platform, timezone) {
 
 let started = false;
 
-// Call once after the user is authenticated. Idempotent.
-export async function registerNativePush({ db, uid, onOpenLink } = {}) {
-  if (!isNativeApp() || !db || !uid || started) return;
+// Whether this phone lets Seen notify: "granted", "denied", "prompt" (never asked) or
+// "prompt-with-rationale" (Android: asked once, may ask again). Null on the web or on failure.
+export async function nativePushPermission() {
+  if (!isNativeApp()) return null;
+  try {
+    const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
+    return (await FirebaseMessaging.checkPermissions())?.receive ?? null;
+  } catch { return null; }
+}
+
+// Call once after the user is authenticated. Idempotent. Returns the permission it ended with.
+//
+// `ask` (3.28): the system's "Allow Seen to send you notifications?" used to appear the moment
+// anyone signed in — over a busy first screen, before they had done anything or knew what Seen
+// would send — and 72 of 96 accounts ended up unreachable. Now sign-in only REGISTERS if
+// notifications are already allowed; the question itself is asked after a kind act, behind a
+// line that says why (PushAskNote, pushAsk.js), by calling this again with `ask: true`.
+export async function registerNativePush({ db, uid, onOpenLink, ask = false } = {}) {
+  if (!isNativeApp() || !db || !uid || started) return null;
   // Latched HERE, before the first await, so a re-render while the permission prompt is still
   // open cannot start a second run and register the listeners twice. It is released again below
   // if permission is refused — see there for why.
@@ -107,7 +123,12 @@ export async function registerNativePush({ db, uid, onOpenLink } = {}) {
   };
 
   try {
-    const perm = await FirebaseMessaging.requestPermissions();
+    let perm = await FirebaseMessaging.checkPermissions().catch(() => null);
+    if (perm?.receive !== "granted") {
+      // Not allowed (yet). Without `ask`, leave it there — nothing is shown at sign-in.
+      if (!ask) { started = false; return perm?.receive ?? null; }
+      perm = await FirebaseMessaging.requestPermissions();
+    }
     if (perm?.receive !== "granted") {
       // RELEASE THE LATCH. It used to stay closed here, so dismissing the Android 13+
       // notification prompt once meant no later mount ever asked again — the user was silently
@@ -118,7 +139,7 @@ export async function registerNativePush({ db, uid, onOpenLink } = {}) {
       // someone who swipes the prompt away while reading a message should be asked again next
       // time they open the app, not written off.
       started = false;
-      return;
+      return perm?.receive ?? "denied";
     }
 
     // Keep the stored token fresh.
@@ -137,7 +158,9 @@ export async function registerNativePush({ db, uid, onOpenLink } = {}) {
 
     const { token } = await FirebaseMessaging.getToken();
     await saveToken(token);
+    return "granted";
   } catch {
     started = false; // allow a retry on a later mount
+    return null;
   }
 }

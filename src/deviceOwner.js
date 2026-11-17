@@ -38,6 +38,43 @@ const KEEP = new Set([
 ]);
 const KEEP_PREFIXES = ["seen_update_dismissed_"]; // "a new version is ready", per version
 
+// "Already seen / already done" markers (3.28). Not personal data — that you've sent before, seen
+// the two-feeds note, been shown a certificate, chosen a reminder time — but they ARE per person,
+// and clearing them with everything else made a returning account replay first-time screens: the
+// founder, signing back in, got the two explainer cards and the "30 days" certificate again. So on
+// sign-out (and before another account's leftovers are cleared) they are set aside under the
+// account's id — a key carrying a uid, which nobody else's session ever reads — and put back when
+// that same account signs in again.
+export const MARKERS = [
+  "seen_has_sent", "seen_v2_first_send_done", "seen_two_feeds_intro_v1", "seen_welcome_dismissed",
+  "seen_v2_certificates_seen", "seen_v2_tree_stage_seen", "seen_send_coach_seen", "seen_v2_nudge_asked",
+  "seen_globe_prompt_at", "seen_km_collapsed", "seen_notif_dismissed", "seen-likes-at", "seen-ripples-at",
+  "seen_last_active", "seen_visit_start", "seen_last_send_time",
+];
+const stashKey = (k, uid) => `${k}__${uid}`;
+
+// Set this account's markers aside (before they are cleared). Returns how many.
+export function stashMarkers(uid, storage) {
+  if (!uid || !storage) return 0;
+  let n = 0;
+  for (const k of MARKERS) {
+    try { const v = storage.getItem(k); if (v != null) { storage.setItem(stashKey(k, uid), v); n += 1; } } catch { /* blocked */ }
+  }
+  return n;
+}
+// Put this account's markers back, without overwriting anything already there. Returns how many.
+export function restoreMarkers(uid, storage) {
+  if (!uid || !storage) return 0;
+  let n = 0;
+  for (const k of MARKERS) {
+    try {
+      const v = storage.getItem(stashKey(k, uid));
+      if (v != null && storage.getItem(k) == null) { storage.setItem(k, v); n += 1; }
+    } catch { /* blocked */ }
+  }
+  return n;
+}
+
 const isSeenKey = (k) => typeof k === "string" && /^seen/i.test(k);
 
 // A Firebase uid inside a key — 20+ letters and digits as its own segment. Dates (2026-11-17),
@@ -87,7 +124,10 @@ export function claimDevice(uid, storage = defaultStorage()) {
   const foreign = owner === "" ? false
     : owner ? owner !== uid
     : keysOf(storage).some((k) => isSeenKey(k) && uidInKey(k) && uidInKey(k) !== uid);
+  // The previous owner's markers are kept for them, even though they never signed out.
+  if (foreign && owner) stashMarkers(owner, storage);
   const wiped = foreign ? wipePersonal(storage) > 0 : false;
+  restoreMarkers(uid, storage);
   try { storage.setItem(OWNER_KEY, uid); } catch { /* blocked */ }
   return { wiped, previous: owner };
 }
@@ -95,8 +135,9 @@ export function claimDevice(uid, storage = defaultStorage()) {
 // Signing out: nothing personal stays behind for whoever uses the device next. The owner is set
 // to "" — nobody, and clean — so the next sign-in doesn't take the welcome screens' few keys for
 // someone else's data and restart the app mid-sign-up.
-export function releaseDevice(storage = defaultStorage()) {
+export function releaseDevice(uid = null, storage = defaultStorage()) {
   if (!storage) return 0;
+  stashMarkers(uid, storage);
   const n = wipePersonal(storage);
   try { storage.setItem(OWNER_KEY, ""); } catch { /* blocked */ }
   return n;

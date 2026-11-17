@@ -2,7 +2,7 @@
 //
 //   node scripts/test-device-owner.mjs
 
-import { claimDevice, releaseDevice, isPersonalKey, uidInKey, OWNER_KEY } from "../src/deviceOwner.js";
+import { claimDevice, releaseDevice, isPersonalKey, uidInKey, OWNER_KEY, MARKERS } from "../src/deviceOwner.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name} — ${detail}`]);
@@ -69,7 +69,7 @@ check("a different account later clears it", claimDevice(NEW, s).wiped === true 
 
 // ── Signing out ──
 s = founderPhone(); claimDevice(ME, s);
-const n = releaseDevice(s);
+const n = releaseDevice(ME, s);
 check("signing out removes everything personal", n >= 5 && !s.has("seen_hyt_state_2026-11-17") && !s.has("seen_v2_points") && !s.has("seen_card_feel"));
 check("…keeps preferences and the account's own unsaved days", s.has("seen-theme") && s.has(`seen_pending_days_${ME}`));
 check("…and leaves the device owned by nobody", s.getItem(OWNER_KEY) === "");
@@ -79,9 +79,25 @@ const next = claimDevice(NEW, s);
 check("the next account after a sign-out doesn't restart (sign-up isn't interrupted)", next.wiped === false && s.has("seen_visit_start") && s.getItem(OWNER_KEY) === NEW);
 
 // ── No storage, blocked storage ──
-check("no storage, no uid: nothing happens", claimDevice(null, s).wiped === false && claimDevice(NEW, null).wiped === false && releaseDevice(null) === 0);
+check("no storage, no uid: nothing happens", claimDevice(null, s).wiped === false && claimDevice(NEW, null).wiped === false && releaseDevice(ME, null) === 0);
 const blocked = { get length() { throw new Error("blocked"); }, key() { throw new Error("blocked"); }, getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } };
-check("blocked storage never throws and never restarts", claimDevice(NEW, blocked).wiped === false && releaseDevice(blocked) === 0);
+check("blocked storage never throws and never restarts", claimDevice(NEW, blocked).wiped === false && releaseDevice(NEW, blocked) === 0);
+
+// ── 3.28: "already seen" markers stay with their account ──
+s = founderPhone(); claimDevice(ME, s);
+s.setItem("seen_has_sent", "1"); s.setItem("seen_v2_certificates_seen", '["30d"]'); s.setItem("seen_two_feeds_intro_v1", "1");
+releaseDevice(ME, s);
+check("signing out sets the markers aside and clears them", !s.has("seen_has_sent") && s.getItem(`seen_has_sent__${ME}`) === "1" && !isPersonalKey(`seen_two_feeds_intro_v1__${ME}`));
+claimDevice(NEW, s);
+check("a different account doesn't get them", !s.has("seen_has_sent") && !s.has("seen_v2_certificates_seen") && !s.has("seen_two_feeds_intro_v1"));
+releaseDevice(NEW, s);
+const back = claimDevice(ME, s);
+check("the same account gets them back, without a restart", back.wiped === false && s.getItem("seen_has_sent") === "1" && s.getItem("seen_v2_certificates_seen") === '["30d"]');
+// An owner who never signed out (data from before, or a crash) keeps their markers too.
+s = founderPhone(); claimDevice(ME, s); s.setItem("seen_two_feeds_intro_v1", "1");
+claimDevice(NEW, s); releaseDevice(NEW, s); claimDevice(ME, s);
+check("an owner who never signed out keeps their markers", s.getItem("seen_two_feeds_intro_v1") === "1");
+check("every marker is personal (so it's cleared) but its set-aside copy isn't", MARKERS.every((k) => isPersonalKey(k) && !isPersonalKey(`${k}__${ME}`)));
 
 let failed = 0;
 for (const [ok, nme] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${nme}`); if (!ok) failed++; }

@@ -105,7 +105,10 @@ import {
 
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { Capacitor } from "@capacitor/core";
-import { registerNativePush, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
+import { registerNativePush, nativePushPermission, isNativeIOS, isNativeApp, pushPlatform, tokenEntry } from "./nativePush";
+import { pushAskDue, markPushAsked, askable } from "./pushAsk";
+import { guessCountry, deviceHints } from "./guessCountry";
+import PushAskNote from "./PushAskNote";
 import { publicUrl } from "./apiBase";
 import { openUpdate, isPushOpen } from "./openDays";
 import { claimDevice, releaseDevice } from "./deviceOwner";
@@ -933,6 +936,31 @@ function FeedDatePill({ scrollRef }) {
   );
 }
 
+// Where a tapped notification goes (native).
+// nativePush resolves the link the notification was carrying and hands it over; this
+// used to drop it and navigate to "/", so tapping "Kalpana replied to you" put you on
+// the feed with no idea where to look.
+//
+// An ABSOLUTE url is deliberately reduced to its path: inside a Capacitor WebView the
+// app is served from its own origin, so assigning https://www.seenapp.app/... leaves the
+// app and opens a browser — the very symptom being fixed. Anything that is not a
+// same-site path falls back to the feed rather than navigating somewhere unexpected.
+function openPushLink(link) {
+  try {
+    let path = "/";
+    if (typeof link === "string" && link) {
+      if (link.startsWith("/")) path = link;
+      else {
+        try {
+          const u = new URL(link);
+          if (/(^|\.)seenapp\.app$/i.test(u.hostname)) path = `${u.pathname}${u.search}${u.hash}` || "/";
+        } catch { /* not a url — keep "/" */ }
+      }
+    }
+    window.location.assign(path);
+  } catch { /* ignore */ }
+}
+
 // The one time the app speaks in the founder's voice rather than the product's.
 //
 // It fires the instant onboarding succeeds — the most receptive second there is, because the
@@ -943,7 +971,7 @@ function FeedDatePill({ scrollRef }) {
 // someone reaches the app costs people, which is why the guided tour was retired. So it sits
 // AFTER the finish line, says one small true thing, and gets out of the way. The long version
 // lives at /story.html for whoever wants it, and this never appears again.
-function WelcomeMoment({ firstName, onClose }) {
+function WelcomeMoment({ firstName, onClose, onStart }) {
   useBackLayer(true, onClose);
   return createPortal(
     <div data-portal className="fixed inset-0 z-[320] flex items-end sm:items-center justify-center bg-black/45 p-0 sm:p-4"
@@ -971,7 +999,9 @@ function WelcomeMoment({ firstName, onClose }) {
           <p>Seen is that, turned into an app. Thank you for being here.</p>
         </div>
         <p className="mt-4 text-[15px] font-semibold text-slate-800">— Mahiman</p>
-        <button onClick={onClose}
+        {/* It says "Start sending kindness", so it does (3.28): it opens the message to a stranger —
+            the one act a newcomer can do with nobody on Seen yet — instead of dropping them on a feed. */}
+        <button onClick={onStart || onClose}
           className="mt-6 w-full rounded-full bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 transition-colors">
           Start sending kindness
         </button>
@@ -1342,7 +1372,8 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
     const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
     setForm((prev) => ({
       ...prev,
-      country: initialData?.country || "",
+      // Pre-selected from the phone's time zone or region (3.28) — the list starts at Afghanistan.
+      country: initialData?.country || prev.country || guessCountry({ ...deviceHints(), options: COUNTRY_OPTIONS, flagMap: FLAG_MAP }) || "",
       fullName: initialData?.fullName || "",
       email: initialEmail || initialData?.email || "",
       dobMonth, dobDay, dobYear,
@@ -1844,29 +1875,7 @@ export default function App() {
       registerNativePush({
         db,
         uid: currentUser.uid,
-        // nativePush resolves the link the notification was carrying and hands it over; this
-        // used to drop it and navigate to "/", so tapping "Kalpana replied to you" put you on
-        // the feed with no idea where to look.
-        //
-        // An ABSOLUTE url is deliberately reduced to its path: inside a Capacitor WebView the
-        // app is served from its own origin, so assigning https://www.seenapp.app/... leaves the
-        // app and opens a browser — the very symptom being fixed. Anything that is not a
-        // same-site path falls back to the feed rather than navigating somewhere unexpected.
-        onOpenLink: (link) => {
-          try {
-            let path = "/";
-            if (typeof link === "string" && link) {
-              if (link.startsWith("/")) path = link;
-              else {
-                try {
-                  const u = new URL(link);
-                  if (/(^|\.)seenapp\.app$/i.test(u.hostname)) path = `${u.pathname}${u.search}${u.hash}` || "/";
-                } catch { /* not a url — keep "/" */ }
-              }
-            }
-            window.location.assign(path);
-          } catch { /* ignore */ }
-        },
+        onOpenLink: openPushLink,
       });
       return;
     }
@@ -3344,7 +3353,7 @@ export default function App() {
       // Nothing personal stays on the device for whoever signs in next, and the app starts again
       // clean — App never remounts on its own, so state read at start (the open tab, hearts given,
       // the follow list) would otherwise carry straight into the next account (3.27).
-      try { releaseDevice(); } catch { /* storage blocked */ }
+      try { releaseDevice(currentUser?.uid); } catch { /* storage blocked */ }
       try { window.location.reload(); } catch { /* ignore */ }
     }
     catch (error) { console.error(error); }
@@ -3454,9 +3463,27 @@ export default function App() {
   //
   // Safe to call more than once a day: recordGreetingDay's transaction returns the existing
   // streak unchanged when lastGreetingDate is already today.
+  // ── "Want to know when your words land?" (3.28, pushAsk.js) ───────────────────────────────
+  // Asked just after a kind act, never at sign-in. Yes brings up the phone's own question.
+  const [pushAsk, setPushAsk] = useState(false);
+  const checkPushAsk = useCallback(async () => {
+    const uid = currentUser?.uid;
+    if (!isNativeApp() || !uid || currentUser?.isAnonymous || !pushAskDue(uid)) return;
+    if (askable(await nativePushPermission())) setPushAsk(true);
+  }, [currentUser?.uid, currentUser?.isAnonymous]);
+  const answerPushAsk = useCallback((yes) => {
+    const uid = currentUser?.uid;
+    setPushAsk(false);
+    if (!uid) return;
+    markPushAsked(uid);
+    if (yes) registerNativePush({ db, uid, onOpenLink: openPushLink, ask: true });
+  }, [currentUser?.uid]);
+
   const creditKindAct = useCallback(() => {
     try { recordGreetingDay()?.catch?.(() => {}); } catch { /* never block the act itself */ }
-  }, [recordGreetingDay]);
+    // A beat after the act's own confirmation, so the two never land on top of each other.
+    setTimeout(() => { checkPushAsk(); }, 1500);
+  }, [recordGreetingDay, checkPushAsk]);
 
   // A heart or a sticker on someone's words counts too (3.21) — see onReactionGiven in
   // reactions.js, the one place every reaction path ends.
@@ -3695,18 +3722,19 @@ export default function App() {
       // Bust the impact cache so the next tab open reflects this new greeting
       try { ["7d","30d"].forEach(p => localStorage.removeItem(`seen_react_v1_${p}_${currentUser.uid}`)); } catch (_) {}
       if (!hasSent) {
-        // First send ever — skip the prompt, open the globe automatically so they
-        // see their arc flying to another country, then (v2) glide straight to the
-        // Kindness Tree so they watch their kindness water the seed.
+        // First send ever: ONE moment (3.28) — their tree being watered, with where the words went
+        // ("Your words reached someone in the United Kingdom") on the same screen. It used to be
+        // the globe, then the tree four seconds later, then a "how did that feel" card on top: a
+        // recording of a first visit showed 18 seconds of the app talking after a 3-second act,
+        // all of it skipped. The globe is still a tap away on Connect.
         setHasSent(true);
         try { localStorage.setItem("seen_has_sent", "1"); } catch (_) {}
-        setTimeout(() => setShowMap(true), 1100);
         let firstV2 = false;
         try { firstV2 = !localStorage.getItem("seen_v2_first_send_done"); } catch (_) {}
         if (firstV2) {
           try { localStorage.setItem("seen_v2_first_send_done", "1"); } catch (_) {}
           setAutoWaterTree(true);
-          setTimeout(() => { setShowMap(false); setShowLevels(true); }, 4200);
+          setTimeout(() => setShowLevels(true), 900);
         }
       } else if (globePromptDue()) {
         setShowMapPrompt(true);
@@ -3934,7 +3962,8 @@ export default function App() {
 
         {showWelcomeMoment && (
           <WelcomeMoment firstName={String(profile?.fullName || "").trim().split(/\s+/)[0]}
-            onClose={() => setShowWelcomeMoment(false)} />
+            onClose={() => setShowWelcomeMoment(false)}
+            onStart={() => { setShowWelcomeMoment(false); setActiveTab("feed"); setPickerOpen(true); markCoachSeen(); }} />
         )}
         {showProfileCard && (
           <ProfileCard profile={profile} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
@@ -4307,7 +4336,11 @@ export default function App() {
             </header>
 
             {showLevels && (
-              <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree} onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
+              <KindnessTreePanel sparkBalance={sparkBalance} darkMode={darkMode} autoWater={autoWaterTree}
+                note={autoWaterTree ? (delivery?.delivered && delivery.day === localDayKey()
+                  ? (delivery.country ? `Your words reached someone in ${inCountry(delivery.country)}` : "Your words reached someone")
+                  : "Your words are on their way to someone") : null}
+                onClose={() => { setShowLevels(false); setAutoWaterTree(false); }} />
             )}
 
             {openStory && (
@@ -5002,7 +5035,8 @@ export default function App() {
               // Hidden, not unmounted, while the picker is up: the bar has to be listening when
               // the send lands, so it can open on the day's question.
               <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
-              <UpdateNote update={appUpdate} onDismiss={dismissAppUpdate} />
+              {pushAsk && <PushAskNote onYes={() => answerPushAsk(true)} onLater={() => answerPushAsk(false)} />}
+              {!pushAsk && <UpdateNote update={appUpdate} onDismiss={dismissAppUpdate} />}
               {!appUpdate && kindnessWaiting && !kindnessWaiting.dismissed && (
                 <KindnessNote item={kindnessWaiting}
                   onOpen={() => setKindnessOpened(kindnessWaiting)}

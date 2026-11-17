@@ -521,7 +521,9 @@ export function TreeScene({ stageIdx = 0, watering = false, size = 200, growth =
   );
 }
 
-export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false }) {
+// `note` (3.28): one line above the tree — on the very first kind act it says where the words went
+// ("Your words reached someone in the United Kingdom"), so that moment and the tree are one moment.
+export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, onClose, autoWater = false, note = null }) {
   const [localPts, setLocalPts] = useState(() => getPoints());
   const { watering, startPour } = useWatering(true); // always pour on open — this panel IS "tend your tree"
   useEffect(() => {
@@ -545,6 +547,12 @@ export default function KindnessTreePanel({ sparkBalance = 0, darkMode = false, 
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {note && (
+          <p className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-center text-[14px] font-bold leading-snug text-slate-800"
+            role="status" style={{ animation: "seenFadeUp 300ms ease both" }}>
+            {note} 💛
+          </p>
+        )}
         <div className="seen-grad-hero rounded-3xl border border-teal-100 bg-gradient-to-b from-sky-50 to-teal-50 px-4 pt-4 pb-5 text-center overflow-hidden">
           <div className="mx-auto" style={{ width: 200, height: 200 }}><TreeScene stageIdx={stageIdx} watering={watering} darkMode={darkMode} /></div>
           <p className="mt-1 text-lg font-bold text-slate-800">{stage.name}</p>
