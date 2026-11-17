@@ -31,14 +31,31 @@ export function isPushOpen(search) {
   try { return new URLSearchParams(search || "").get("via") === "push"; } catch { return false; }
 }
 
-// What to write for an open on `day`, given the profile as it stands — or null when there is
-// nothing new to say (today is already counted, and so is the notification if one brought them).
+// The oldest days beyond the cap, once `day` is in — what to take back out of a list.
+export function overflow(list, day, cap = OPEN_DAYS_KEPT) {
+  const ok = (k) => typeof k === "string" && /^\d{4}-\d{2}-\d{2}$/.test(k);
+  const all = [...new Set([...(Array.isArray(list) ? list.filter(ok) : []), ...(ok(day) ? [day] : [])])].sort();
+  return all.slice(0, Math.max(0, all.length - cap));
+}
+
+// What to record for an open on `day`, given the profile as this device has it — or null when there
+// is nothing new to say (today is already counted, and so is the notification if one brought them).
+//
+// ADD-ONLY (3.26.1). The first version rewrote the whole list from this device's copy of the
+// profile, and the first real stats screen lost an open: a copy read from cache, or from a second
+// device, that didn't have yesterday yet wrote back a list without it. Now the day is ADDED on the
+// server (arrayUnion in App.jsx) and nothing this device hasn't seen can be lost; days beyond the
+// cap are removed separately (arrayRemove of `trimOpen` / `trimPush`), and only ones it has seen.
 export function openUpdate(profile, day, { viaPush = false, build = null } = {}) {
   const opened = Array.isArray(profile?.openDates) && profile.openDates.includes(day);
   const pushed = Array.isArray(profile?.pushOpenDates) && profile.pushOpenDates.includes(day);
   if (opened && profile?.lastOpenDay === day && (!viaPush || pushed)) return null;
-  const update = { lastOpenDay: day, openDates: nextOpenDates(profile?.openDates, day) };
-  if (viaPush && !pushed) update.pushOpenDates = nextOpenDates(profile?.pushOpenDates, day);
-  if (build) update.openBuild = String(build).slice(0, 12);
-  return update;
+  return {
+    lastOpenDay: day,
+    addOpenDay: day,
+    addPushDay: viaPush && !pushed ? day : null,
+    openBuild: build ? String(build).slice(0, 12) : null,
+    trimOpen: overflow(profile?.openDates, day),
+    trimPush: viaPush && !pushed ? overflow(profile?.pushOpenDates, day) : [],
+  };
 }

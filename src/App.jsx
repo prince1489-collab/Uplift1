@@ -97,7 +97,7 @@ import {
 } from "firebase/auth";
 
 import {
-  addDoc, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
+  addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   increment, limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
@@ -2627,8 +2627,21 @@ export default function App() {
     openRecordedRef.current = day;
     const viaPush = openPushPendingRef.current;
     openPushPendingRef.current = false;
-    const update = openUpdate(p, day, { viaPush, build: __BUILD_ID__ });
-    if (update) updateDoc(doc(db, "users", currentUser.uid), update).catch(() => { openRecordedRef.current = null; });
+    const plan = openUpdate(p, day, { viaPush, build: __BUILD_ID__ });
+    if (!plan) return;
+    // Added on the server, never rewritten from this device's copy (see openDays.js).
+    const ref = doc(db, "users", currentUser.uid);
+    const fields = { lastOpenDay: plan.lastOpenDay, openDates: arrayUnion(plan.addOpenDay) };
+    if (plan.addPushDay) fields.pushOpenDates = arrayUnion(plan.addPushDay);
+    if (plan.openBuild) fields.openBuild = plan.openBuild;
+    updateDoc(ref, fields)
+      .then(() => {
+        const trim = {};
+        if (plan.trimOpen.length) trim.openDates = arrayRemove(...plan.trimOpen);
+        if (plan.trimPush.length) trim.pushOpenDates = arrayRemove(...plan.trimPush);
+        return Object.keys(trim).length ? updateDoc(ref, trim) : null;
+      })
+      .catch(() => { openRecordedRef.current = null; });
   }, [currentUser?.uid, currentUser?.isAnonymous]);
   useEffect(() => { if (isRealSignedInUser && profile) recordOpen(); }, [isRealSignedInUser, profile, recordOpen]);
   useEffect(() => {
