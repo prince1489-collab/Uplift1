@@ -653,37 +653,6 @@ workflows:
           echo "── Password sharing ──"
           grep -h 'asset_statements' "$MANIFEST" "$STRINGS"
 
-      - name: Make the microphone optional, so Play keeps Seen on devices without one
-        script: |
-          set -e
-          # WHY THIS EXISTS (3.36.4). Play's device check found 7 phones (barcode scanners and a
-          # few others) that are dropped from this release because the speech-input plugin
-          # declares android.hardware.microphone as REQUIRED. Dropped devices can't install Seen
-          # and don't get updates. The app works without a microphone: speech input simply isn't
-          # offered there, and typing is the same as before. So the feature is declared optional.
-          # The app's own declaration overrides a library's when the manifests merge.
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          python3 - "$MANIFEST" <<'PY'
-          import re, sys
-          path = sys.argv[1]
-          src = open(path, encoding="utf-8").read()
-          # Drop any microphone declaration the build already has, then add the optional one.
-          src = re.sub(r'\s*<uses-feature\b[^>]*android:name="android\.hardware\.microphone"[^>]*/>', "", src)
-          m = re.search(r"<manifest\b[^>]*>", src)
-          if not m:
-              sys.exit("!! no <manifest> in the manifest")
-          tag = '\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />'
-          open(path, "w", encoding="utf-8").write(src[:m.end()] + tag + src[m.end():])
-          print("microphone declared optional")
-          PY
-          # Verify rather than trust: exactly one declaration, and it is optional.
-          COUNT=$(grep -c 'android.hardware.microphone' "$MANIFEST")
-          [ "$COUNT" = "1" ] || { echo "!! expected one microphone declaration, found $COUNT"; exit 1; }
-          grep -q 'android:name="android.hardware.microphone" android:required="false"' "$MANIFEST" \
-            || { echo "!! microphone is not optional after patch"; exit 1; }
-          echo "── Microphone ──"
-          grep -h 'android.hardware.microphone' "$MANIFEST"
-
       - name: Raise the target API level to Play's minimum
         script: |
           set -e
