@@ -88,6 +88,17 @@ export function restDayReady(profile, today) {
   return Math.round((noonMs(today) - noonMs(used)) / DAY_MS) >= GRACE_EVERY_DAYS;
 }
 
+// Shown from a 3-day run (3.31.1): on day one a "rest day" means nothing yet.
+export const restDayShown = (profile, today) => liveStreak(profile || {}, today) >= 3 && restDayReady(profile, today);
+
+// What the level chip says before the first level (3.31.1) — a goal, never "Level 0".
+export function firstLevelLabel(stat) {
+  const n = TIERS[stat]?.[0];
+  if (!n) return "Level 1";
+  const unit = stat === "streak" ? (n === 1 ? "day" : "days") : stat === "hearts" ? (n === 1 ? "heart" : "hearts") : n === 1 ? "country" : "countries";
+  return `Level 1 at ${n} ${unit}`;
+}
+
 // ── Hearts ──────────────────────────────────────────────────────────────────────────────────
 const msOf = (t) => (typeof t?.toMillis === "function" ? t.toMillis() : Number(t) || 0);
 

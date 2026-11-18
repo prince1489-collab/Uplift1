@@ -1,6 +1,6 @@
 // test-seen-chat.mjs — Seen asks ONE question at a time, even when two parts of the app ask at
 // once (the 3.15 double), and the duplicates already out there get cleaned up.
-import { planQuestion, duplicateQuestionIds, questionIdFor, slotOf } from "../src/seenChat.js";
+import { planQuestion, duplicateQuestionIds, questionIdFor, slotOf, firstQuestion } from "../src/seenChat.js";
 import { ANSWER_GAP_HOURS } from "../src/seenAsks.js";
 const results = [];
 const check = (n, ok, d = "") => results.push([ok, ok ? n : `${n} — ${d}`]);
@@ -45,6 +45,18 @@ check("the later duplicate is found", duplicateQuestionIds(doubled).join() === "
 const answered = [intro, doubled[1], { id: "a", role: "me", kind: "answer", text: "walks" }, { id: "q3", role: "seen", kind: "question", text: "What helps you recharge when you get the chance?" }];
 check("a question asked again after an answer is not a duplicate", duplicateQuestionIds(answered).length === 0);
 check("different questions are left alone", duplicateQuestionIds([doubled[1], { id: "q4", role: "seen", kind: "question", text: "What's on your mind?" }]).length === 0);
+
+// 3.31.1 — one first question when Seen is switched on
+{
+  const NOW = Date.parse("2026-11-18T07:55:00Z");
+  const acts = [{ id: "sent_m1", route: "sent", at: NOW - 60000, delivered: true, country: "Egypt" }];
+  const f = firstQuestion({ uid: "u1", now: NOW, kindEntries: acts });
+  check("after a kind act, the first question is about it, with one-tap answers",
+    /reached someone in Egypt/.test(f.data.text) && Array.isArray(f.data.options) && f.data.options.includes("Warm") && f.data.qid === "kindfeel:sent_m1", JSON.stringify(f.data));
+  const g = firstQuestion({ uid: "u1", now: NOW, kindEntries: [] });
+  check("with no act, it's the bank's first question, without answers", g.data.kind === "question" && !g.data.options && typeof g.data.text === "string" && g.data.text.endsWith("?"), JSON.stringify(g.data));
+  check("…and it goes in this slot", f.id === questionIdFor(NOW) && g.id === questionIdFor(NOW));
+}
 
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }

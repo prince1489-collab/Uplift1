@@ -194,7 +194,10 @@ const safeLocalSet = (key, value) => { try { localStorage.setItem(key, value); }
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
-const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
+// From the youngest year anyone can be and still join (13 this year) back a hundred years. It began at
+// this year, so everyone scrolled past thirteen years nobody can choose (3.31.1). The 13+ check
+// in Onboarding still decides the edge cases by month and day.
+const YEARS = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - 13 - i));
 
 const COUNTRY_OPTIONS = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
@@ -1328,6 +1331,8 @@ function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenRe
 
 function Onboarding({ onContinue, loading, initialData = null, errorMessage = "", initialEmail = "", appleSignIn = false }) {
   const [form, setForm] = useState({ country: "", fullName: "", email: "", dobMonth: "", dobDay: "", dobYear: "", mostDays: "", anotherLife: "" });
+  // Whether Continue has been tapped (3.31.1): what's missing is only pointed out after that.
+  const [tried, setTried] = useState(false);
 
   useEffect(() => {
     const [dobMonth = "", dobDay = "", dobYear = ""] = (initialData?.dob || "").replace(",", "").split(" ");
@@ -1335,7 +1340,9 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
       ...prev,
       // Pre-selected from the phone's time zone or region (3.28) — the list starts at Afghanistan.
       country: initialData?.country || prev.country || guessCountry({ ...deviceHints(), options: COUNTRY_OPTIONS, flagMap: FLAG_MAP }) || "",
-      fullName: initialData?.fullName || "",
+      // The name typed at sign-up arrives a moment after this form opens (3.31.1): fill it in then,
+      // but never over a name the person has already started typing.
+      fullName: prev.fullName.trim() ? prev.fullName : (initialData?.fullName || ""),
       email: initialEmail || initialData?.email || "",
       dobMonth, dobDay, dobYear,
       mostDays: initialData?.mostDays || "",
@@ -1400,9 +1407,10 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
             autoComplete="name"
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-900 placeholder:text-slate-500" />
         </InputRow>
-        {/* Only once they've started filling the form in, so the very first thing a new
-            person sees isn't an error about a field they haven't reached. */}
-        {!nameGiven && !appleSignIn && (form.country || form.dobMonth) && (
+        {/* Only after Continue has been tapped (3.31.1). It used to wait until the form was
+            "started" — but the country is pre-selected (3.28), so every new person opened the
+            form to an orange warning about a field they hadn't reached. */}
+        {!nameGiven && !appleSignIn && tried && (
           <p className="px-1 -mt-1 text-xs font-semibold" style={{ color: "#B85F1D" }}>
             Add a name so people know who's saying hello.
           </p>
@@ -1448,13 +1456,17 @@ function Onboarding({ onContinue, loading, initialData = null, errorMessage = ""
           {tooYoung && (
             <p className="mt-2 text-xs font-semibold text-rose-600">You need to be 13 or older to use Seen.</p>
           )}
+          {tried && !dobComplete && (
+            <p className="mt-2 text-xs font-semibold" style={{ color: "#B85F1D" }}>Add your date of birth — Seen is for people 13 and older.</p>
+          )}
         </div>
 
         {/* v2: the "little about you" glimpse questions moved out of signup — they arrive
             as a gentle in-app prompt after a couple of days (GlimpsePromptSheet). */}
 
-        <button type="submit" disabled={!valid}
-          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400"} disabled:cursor-not-allowed`}>
+        {/* Not `disabled`: a tap on a grey Continue now says what's missing (see `tried`). */}
+        <button type="submit" aria-disabled={!valid} onClick={() => setTried(true)}
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xl font-semibold text-white transition-colors ${valid ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-400 cursor-not-allowed"}`}>
           Continue <ArrowRight size={18} />
         </button>
         <p className="pt-1 text-center text-[11px] leading-relaxed" style={{ color: "#7A6558" }}>
@@ -2364,7 +2376,7 @@ export default function App() {
     if (seenConsent && seenChat && seenState) ensureQuestion(db, currentUser?.uid, seenChat, seenState, Date.now(), kindLog);
   }, [seenConsent, seenChat, seenState, currentUser?.uid, kindLog]);
   const seenJournal = profile?.seenAI?.journal === true;
-  const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent, journal: seenJournal }), [seenChat, seenState, seenConsent, seenJournal]);
+  const seenForTab = useMemo(() => ({ chat: seenChat, state: seenState, consent: seenConsent, journal: seenJournal, kindLog }), [seenChat, seenState, seenConsent, seenJournal, kindLog]);
   const messagesUnread = useMemo(() => conversations.reduce((n, c) => n + c.unread, 0) + seenUnread(seenChat), [conversations, seenChat]);
   const [messagesOpenUid, setMessagesOpenUid] = useState(null);
   const openConversation = useCallback((uid) => { setActiveTab("messages"); setMessagesOpenUid(uid || null); }, []);

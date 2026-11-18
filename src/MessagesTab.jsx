@@ -130,7 +130,7 @@ function SeenRow({ seen, onOpen }) {
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className={`text-[14px] ${unread ? "font-extrabold text-slate-900" : "font-semibold text-slate-800"}`}>Seen</span>
-          <AiTag />
+          {seen.consent && <AiTag />}
           {lastSeen && <span className="ml-auto flex-shrink-0 text-[11px] text-slate-400">{when(lastSeen.createdAt)}</span>}
         </span>
         <span className={`block truncate text-[12px] ${unread ? "font-semibold text-slate-700" : "text-slate-500"}`}>{preview}</span>
@@ -146,7 +146,7 @@ export default function MessagesTab({ conversations = [], myUid, followUids = ne
   db, currentUser, seen = null, onWriteTo, onOpenSupport, onSeenAction }) {
   if (openUid === SEEN_ID && seen && currentUser) {
     return (
-      <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent} journal={seen.journal}
+      <SeenConversation db={db} currentUser={currentUser} chat={seen.chat} state={seen.state} consent={seen.consent} journal={seen.journal} kindEntries={seen.kindLog}
         onBack={onClose} onWriteTo={onWriteTo} onOpenSupport={onOpenSupport} onAction={onSeenAction} />
     );
   }

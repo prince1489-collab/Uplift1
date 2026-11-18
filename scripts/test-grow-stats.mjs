@@ -2,7 +2,7 @@
 //   node scripts/test-grow-stats.mjs
 
 import {
-  tierFor, longestRun, bestStreakOf, weekDots, restDayReady, heartsThisWeek, mergeCountries, planBadges, doneToday,
+  tierFor, longestRun, bestStreakOf, weekDots, restDayReady, restDayShown, firstLevelLabel, heartsThisWeek, mergeCountries, planBadges, doneToday,
   STREAK_TIERS, HEART_TIERS, MILESTONES, WORLD_COUNTRIES,
 } from "../src/growStats.js";
 
@@ -93,6 +93,14 @@ p = planBadges({ prev: { streak: 1, hearts: 4, countries: 3 }, values: { streak:
 check("a jump of several levels announces only the highest", p.announce.length === 1 && p.announce[0].level === 4 && p.announce[0].threshold === 30, J(p));
 p = planBadges({ prev: { streak: 4, hearts: 5, countries: 3 }, values: { streak: 30, hearts: 240, countries: 12 }, ready });
 check("a number that falls announces nothing and lowers nothing", p.announce.length === 0 && !p.changed && p.next.hearts === 5, J(p));
+
+// ── 3.31.1: day one ─────────────────────────────────────────────────────────────────────────
+check("no rest-day note on a 1- or 2-day run", !restDayShown({ streakDays: 1, lastGreetingDate: today }, today) && !restDayShown({ streakDays: 2, lastGreetingDate: today }, today));
+check("…shown from 3 days", restDayShown({ streakDays: 3, lastGreetingDate: today }, today));
+check("…and not once the rest day has been used", !restDayShown({ streakDays: 5, lastGreetingDate: today, graceUsedAt: "2026-11-15" }, today));
+check("before the first level, a goal — never \"Level 0\"",
+  firstLevelLabel("streak") === "Level 1 at 3 days" && firstLevelLabel("hearts") === "Level 1 at 10 hearts" && firstLevelLabel("countries") === "Level 1 at 1 country",
+  [firstLevelLabel("streak"), firstLevelLabel("hearts"), firstLevelLabel("countries")].join(" | "));
 
 let failed = 0;
 for (const [ok, line] of results) { console.log(`  ${ok ? "ok  " : "FAIL"}  ${line}`); if (!ok) failed++; }

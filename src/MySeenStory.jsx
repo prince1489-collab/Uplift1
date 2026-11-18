@@ -17,7 +17,7 @@ import { useBackLayer } from "./backStack";
 import { todayGrowth, GROWTH_EVENT } from "./todayGrowth";
 import { liveStreak } from "./rhythm";
 import { todayKey as localDayKey } from "./hytPrompts";
-import { TIERS, WORLD_COUNTRIES, tierFor, bestStreakOf, weekDots, doneToday, restDayReady, mergeCountries } from "./growStats";
+import { TIERS, WORLD_COUNTRIES, tierFor, bestStreakOf, weekDots, doneToday, restDayShown, firstLevelLabel, mergeCountries } from "./growStats";
 
 const REPLAY_MS = 4200;      // grow-from-seed replay
 // The spray window opens ~1s in and droplets take ~1.3s to fall, so the first water lands
@@ -105,13 +105,14 @@ const MEDALS = [
   ["#fff1b8", "#f2b705", "#7a5a00"], ["#fff1b8", "#e09a00", "#6b4700"],
   ["#d6f4fb", "#38bdf8", "#075985"], ["#ede4ff", "#8b5cf6", "#4c1d95"],
 ];
-function Medal({ level, size = 44 }) {
-  const [hi, mid, ink] = MEDALS[Math.min(level, MEDALS.length - 1)];
+// `locked`: the first level, not reached yet — a faint "1" to aim for rather than a "0" (3.31.1).
+function Medal({ level, size = 44, locked = false }) {
+  const [hi, mid, ink] = MEDALS[locked ? 0 : Math.min(level, MEDALS.length - 1)];
   return (
     <span aria-hidden className="grid flex-shrink-0 place-items-center rounded-full font-extrabold tabular-nums"
       style={{ width: size, height: size, fontSize: size * 0.4, color: ink,
         background: `radial-gradient(circle at 32% 28%, ${hi}, ${mid})`, boxShadow: `inset 0 -2px 0 rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.12)` }}>
-      {level}
+      {locked ? 1 : level}
     </span>
   );
 }
@@ -146,7 +147,7 @@ function StatCard({ stat, value, levelValue = value, sub = null, children, celeb
       <button onClick={onOpen} className="block w-full px-4 pb-3 pt-3.5 text-left active:scale-[0.99] transition-transform"
         aria-label={`${look.title}: ${value}. Level ${t.level}. Open levels`}>
         <div className="flex items-center gap-3">
-          <Medal level={t.level} />
+          <span style={{ opacity: t.level ? 1 : 0.5 }}><Medal level={t.level} locked={!t.level} /></span>
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{look.emoji} {look.title}</p>
             <p className="flex items-baseline gap-1.5">
@@ -156,7 +157,7 @@ function StatCard({ stat, value, levelValue = value, sub = null, children, celeb
           </div>
           <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${celebrate ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}
             style={celebrate ? { animation: "seenStageReveal 900ms cubic-bezier(0.2,0.9,0.3,1) both" } : undefined}>
-            {celebrate ? `Level ${t.level}!` : `Level ${t.level}`}
+            {celebrate ? `Level ${t.level}!` : t.level ? `Level ${t.level}` : firstLevelLabel(stat)}
           </span>
         </div>
         <div className="mt-3"><Bar pct={pct} color={look.color} /></div>
@@ -262,7 +263,7 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
   const best = bestStreakOf(profile, dayKey);
   const dots = useMemo(() => weekDots(profile, dayKey), [profile, dayKey]);
   const didToday = doneToday(profile, dayKey);
-  const restReady = restDayReady(profile, dayKey);
+  const restShown = restDayShown(profile, dayKey);
 
   const balance = sparkBalance + localPts;
   const stage = treeStageFor(balance);
@@ -400,10 +401,12 @@ export default function MySeenStory({ db, currentUser, profile, sparkBalance = 0
                 {d.done ? "🔥" : d.letter}
               </span>
             ))}
-            {restReady && <span className="ml-auto whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10.5px] font-bold text-sky-700" title="One rest day in any seven keeps a run going">🛡️ Rest day</span>}
           </div>
           {didToday ? (
-            <p className="mt-2 text-[12px] font-bold text-emerald-700">✓ Today's done</p>
+            <p className="mt-2 text-[12px] font-bold text-emerald-700">
+              ✓ Today's done
+              {restShown && <span className="font-semibold text-slate-500" title="One rest day in any seven keeps a run going"> · 🛡️ 1 rest day in hand</span>}
+            </p>
           ) : (
             <button onClick={onMakeSeen} className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-extrabold text-white active:scale-[0.99] transition-transform"
               style={{ background: "linear-gradient(90deg,#fb923c,#ef4444)" }}>

@@ -224,7 +224,7 @@ function Consent({ onStart, onBack, busy }) {
   );
 }
 
-export default function SeenConversation({ db, currentUser, chat, state, consent, journal = false, onBack, onWriteTo, onOpenSupport, onAction }) {
+export default function SeenConversation({ db, currentUser, chat, state, consent, journal = false, onBack, onWriteTo, onOpenSupport, onAction, kindEntries = [] }) {
   const uid = currentUser.uid;
   const [text, setText] = useState("");
   // Talk instead of type (3.23): talking about your week is far easier than typing it.
@@ -250,7 +250,8 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   // The app's updates (3.30) don't count as Seen answering: judged on the last message that isn't one.
   const last = [...(chat || [])].reverse().find((m) => m.kind !== "update");
   const waiting = consent && (sending || last?.role === "me"); // Seen hasn't answered yet
-  const start = async () => { setStarting(true); try { await enableSeen(db, uid); } finally { setStarting(false); } };
+  // The first question is about today's kind act when there is one (seenChat.firstQuestion, 3.31.1).
+  const start = async () => { setStarting(true); try { await enableSeen(db, uid, Date.now(), kindEntries); } finally { setStarting(false); } };
   // Before the AI is on, the conversation is the app's updates — or, with none yet, the welcome.
   const showConsent = !consent && !(chat || []).some((m) => m.kind === "update");
   const lastQ = [...(chat || [])].reverse().find((m) => m.role === "seen" && m.kind === "question");

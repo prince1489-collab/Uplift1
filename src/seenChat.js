@@ -119,13 +119,28 @@ export async function swapQuestion(db, uid, chat, msg, now = Date.now()) {
   await addDoc(collection(db, "users", uid, "seenChat"), { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now, read: true });
 }
 
+// The first question when someone switches Seen on (3.31.1): about a kind act from the last week
+// if there is one — "Today, your words reached someone in Egypt. How did sending them feel?",
+// with one-tap answers, the easiest first thing to answer — otherwise the bank's first question.
+export function firstQuestion({ uid = "anon", now = Date.now(), kindEntries = [] } = {}) {
+  const kf = kindFeelQuestion({ entries: kindEntries, chat: [], now });
+  const data = kf
+    ? { role: "seen", kind: "question", qid: kf.id, text: kf.q, options: kf.options, createdAt: now + 1, read: false }
+    : (() => { const q = pickQuestion({ uid, now, answered: 0, asked: [] }); return { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now + 1, read: false }; })();
+  return { id: questionIdFor(now), data };
+}
+
 // Turning Seen on: consent recorded, a hello, and the first question straight away.
-export async function enableSeen(db, uid, now = Date.now()) {
+// The slot is claimed FIRST (3.31.1). Since 3.30 the conversation is loaded for everyone, so the
+// moment consent is saved the regular asker (ensureQuestion, in App) runs too — and used to write
+// its own question into the same slot while this one was still awaiting. Two questions raced, and
+// the one on screen changed under the person a second after they pressed Start.
+export async function enableSeen(db, uid, now = Date.now(), kindEntries = []) {
+  lastSlot = slotOf(now); // this slot's question is this one — nobody else asks it
+  const first = firstQuestion({ uid, now, kindEntries });
   await setDoc(doc(db, "users", uid), { seenAI: { consent: true, at: now } }, { merge: true });
   await addDoc(collection(db, "users", uid, "seenChat"), { role: "seen", kind: "intro", text: FIRST_MESSAGE, createdAt: now, read: true });
-  const q = pickQuestion({ uid, now, answered: 0, asked: [] });
-  lastSlot = slotOf(now); // this slot's question is this one — nobody else asks it
-  await setDoc(doc(db, "users", uid, "seenChat", questionIdFor(now)), { role: "seen", kind: "question", qid: q.id, text: q.q, createdAt: now + 1, read: false })
+  await setDoc(doc(db, "users", uid, "seenChat", first.id), first.data)
     .catch(() => { /* already asked in this slot */ });
 }
 
