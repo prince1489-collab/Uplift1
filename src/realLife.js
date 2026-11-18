@@ -125,6 +125,34 @@ export function planFor(item, moment, dateKey) {
   };
 }
 
+// ── One act, everywhere (3.30.1) ──────────────────────────────────────────────────────────────
+// The act on today's card used to be worked out on each phone from that phone's own record of the
+// day — including whether the one swap had been used — while the reminder was sent from the plan
+// saved on the account. When a phone's record was reset (another account signed in, signing out, a
+// reinstall), the card went back to the unswapped act and the reminder named the other one: "Your
+// kind thing for this evening: Apologise…" opening on "Learn the name… ✓ Done today".
+//
+// So a plan for today on the account is the act, on every device: the card shows it, "Done it"
+// clears it, and changing the moment keeps it. Without one, the phone's own pick as before.
+export function todaysRealLife({ item = null, plan = null, day = null } = {}) {
+  if (plan && typeof plan.text === "string" && plan.text.trim() && plan.date === day && momentById(plan.moment)) {
+    return { ...(item || {}), text: plan.text, say: typeof plan.say === "string" && plan.say.trim() ? plan.say : null, moment: plan.moment, fromPlan: true };
+  }
+  return item ? { ...item, moment: null, fromPlan: false } : null;
+}
+
+// "Done it" on today's real-life card always clears the saved plan — not only when this phone
+// remembers making it, which is what let a reminder arrive after the act was done. Other slots
+// (yesterday's "who's next") clear only a plan they made.
+export const clearsPlanOnDone = (slot, state) => slot === "kindness" || Boolean(state?.planned?.[slot]);
+
+// What was actually done, kept on the day's record so "✓ Done today" names it rather than
+// re-working out today's pick (which can differ after a swap).
+export function withDoneText(state, slot, text) {
+  const t = typeof text === "string" ? text.trim() : "";
+  return t ? { ...state, doneText: { ...(state?.doneText || {}), [slot]: t.slice(0, 160) } } : state;
+}
+
 // "Thank someone who's just doing their job — …." → "thank someone who's just doing their job —
 // a driver, a cashier, a cleaner", for "Today you did something kind in real life (…)".
 export function actAsPhrase(text) {

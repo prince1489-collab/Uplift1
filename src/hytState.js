@@ -13,6 +13,7 @@
 import { playCheckIn } from "./sounds";
 import { awardPoints } from "./points";
 import { markDone } from "./invitations";
+import { clearsPlanOnDone, withDoneText } from "./realLife";
 
 export const SLOTS = ["kindness", "self"];
 
@@ -88,22 +89,24 @@ export const feltSkippedFor = (state, n) => Boolean(state?.feltSkipped?.[n]);
 // Everything that happens when somebody says they did it, in one place. Returns the next state;
 // the caller stores it. `onKindAct` counts the day as shown up (activeDays, certificates); a kept
 // plan clears tonight's cue so no reminder arrives about something already done.
-export function completeSlot(state, slot, { onKindAct, onPlanChange } = {}) {
+// `text` (3.30.1): the act as it was shown, kept as `doneText` for the "✓ Done today" row.
+export function completeSlot(state, slot, { onKindAct, onPlanChange, text = null } = {}) {
   if (state.done?.[slot]) return state;
   try { playCheckIn(); } catch { /* ignore */ }
   awardPoints("practice");
   try { onKindAct?.(); } catch { /* ignore */ }
   try { markDone("practice"); } catch { /* ignore */ }
-  if (state.planned?.[slot]) { try { onPlanChange?.(null); } catch { /* ignore */ } }
+  if (clearsPlanOnDone(slot, state)) { try { onPlanChange?.(null); } catch { /* ignore */ } }
   const done = { ...state.done, [slot]: true };
   const seenCount = (state.seenCount || 0) + 1; // one more person made to feel seen today
   const lastAct = { route: "act", name: null };
   const routeCounts = bumpRoute(state, "act");
+  const base = withDoneText(state, slot, text);
   if (SLOTS.every((s) => done[s]) && !state.bonus) {
     awardPoints("practiceAll");
-    return { ...state, done, seenCount, lastAct, routeCounts, bonus: true };
+    return { ...base, done, seenCount, lastAct, routeCounts, bonus: true };
   }
-  return { ...state, done, seenCount, lastAct, routeCounts };
+  return { ...base, done, seenCount, lastAct, routeCounts };
 }
 
 // Turn a stored dob string ("January 5, 1990") into an age; null if unknown.

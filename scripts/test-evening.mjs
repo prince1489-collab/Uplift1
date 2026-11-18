@@ -15,7 +15,7 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, PLAN_FOR, WEEKLY_MESSAGE_LITE } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, realLifeDoneIn, PLAN_FOR, WEEKLY_MESSAGE_LITE } from "../api/send-reminder.js";
 import { linkFor } from "../api/_auth.js";
 import { MOMENTS, planFor } from "../src/realLife.js";
 import { cueDateKey } from "../src/eveningCue.js";
@@ -153,6 +153,20 @@ check("hearts while away say so", newsMessage({ replies: 0, hearts: 3 }, 4)?.tit
 const GUILT = /streak|don't lose|running out|last chance|still haven't|should have|failed|miss(ed)? out|lose|losing/i;
 for (const m of [awayMessage(5), whosNextMessage({ whosNext: { name: "Sam", day: "2026-10-05" } }, D), newsMessage({ replies: 0, hearts: 2 }, 5)]) {
   check(`no guilt in "${m.title}"`, !GUILT.test(`${m.title} ${m.body}`));
+}
+
+// ── 3.30.1: once per plan, and not once it's done ───────────────────────────────────────────
+{
+  const plan = { text: "Apologise without adding a \"but\" on the end.", say: "I'm sorry. That wasn't fair of me.", moment: "evening", hour: 19, date: "2026-11-17", at: 1000 };
+  const due = (p) => realLifeDue({ hour: 19, plan: p }, "2026-11-17");
+  check("real life: due before it's been sent", due(plan) === true);
+  check("real life: not sent a second time in the same hour", due({ ...plan, sentAt: 5000 }) === false);
+  check("real life: a new plan is due even with an old sentAt left on it", due({ ...plan, at: 9000, sentAt: 5000 }) === true);
+  check("real life: an old plan with no `at` that was sent stays quiet", due({ ...plan, at: undefined, sentAt: 5000 }) === false);
+  check("real life: \"Done it\" in today's log stops it", realLifeDoneIn([{ route: "sent" }, { route: "act", text: "Learn the name of someone…" }]) === true);
+  check("real life: making a named person feel seen is a different act", realLifeDoneIn([{ route: "act", toName: "Sam" }]) === false);
+  check("real life: messages and hearts don't count as the real-life act", realLifeDoneIn([{ route: "sent" }, { route: "heart", toName: "Vidhi" }, { route: "reply" }]) === false);
+  check("real life: an empty or missing log doesn't stop it", realLifeDoneIn([]) === false && realLifeDoneIn(null) === false);
 }
 
 // ── Today, in real life (3.25): the reminder at the moment they chose ────────────────────────

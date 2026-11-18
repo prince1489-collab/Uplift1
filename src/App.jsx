@@ -5245,6 +5245,8 @@ export default function App() {
                 // "When will you do it?" (3.25): the plan the bar built, sent back at that moment by
                 // api/send-reminder.js — or null once it is done.
                 onPlanChange={(plan) => setRealLifePlan(db, currentUser?.uid, plan || null)}
+                // The plan saved on the account (3.30.1): the card shows its act on every device.
+                realLifePlan={profile?.realLifePlan || null}
                 // Whether a reminder can actually arrive: a device to send to and a timezone to
                 // know when "lunch" is. Without them the card still lets you plan, and says only that.
                 canRemind={Boolean(profile?.timezone) && Boolean(profile?.fcmToken || Object.values(profile?.fcmTokens || {}).some((v) => v?.token))}

@@ -29,7 +29,7 @@
 // State is the per-day record in hytState.js — the same one the old Practice tab used — so
 // nothing about a day already in progress is lost in the move.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { readPublicProfile } from "./publicProfile";
@@ -37,7 +37,7 @@ import { useVisibleViewport, sheetBox, sheetCap } from "./viewport";
 import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe, Footprints, Sprout } from "lucide-react";
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob } from "./hytState";
-import { momentsLeft, momentById, planFor, actAsPhrase } from "./realLife";
+import { momentsLeft, momentById, planFor, actAsPhrase, todaysRealLife } from "./realLife";
 import { logKindAct } from "./kindLog";
 import { whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
@@ -204,7 +204,7 @@ export default function SeenBar({
   inboxReply, followMessage, follows = [], delivery = null, kindnessIn = null, onOpenKindness,
   openRequest = 0, coach = false, sendLimitReached = false, onOpened,
   onSend, onReplyTo, onOpenReply, onNote, onSeeAllFollows, onFindPeople,
-  onKindAct, onPlanChange, onSayMore, canRemind = false,
+  onKindAct, onPlanChange, onSayMore, canRemind = false, realLifePlan = null,
 }) {
   const uid = currentUser?.uid ?? "anon";
   const view = useVisibleViewport();
@@ -265,6 +265,9 @@ export default function SeenBar({
     [uid, state.swaps, state.evening, ageBand]
   );
 
+  // The act on today's card: the plan saved on the account for today, on every device, or this
+  // phone's own pick (realLife.todaysRealLife, 3.30.1) — so the reminder names what the card shows.
+  const today = useMemo(() => todaysRealLife({ item, plan: realLifePlan, day }), [item, realLifePlan, day]);
   const actDone = Boolean(state.done?.kindness);
   const whoDone = Boolean(state.done?.who);
   const done = actDone || whoDone || Boolean(state.sent);
@@ -275,7 +278,7 @@ export default function SeenBar({
   const toName = state.lastAct ? state.lastAct.name : whoDone ? state.whoName : state.sentTo;
   // When they said they'd do it (3.25): a moment id from realLife.MOMENTS. A day planned before
   // 3.25 ("Later today") has `planned` with no moment, and is simply asked when.
-  const planMoment = state.planned?.kindness ? state.planMoment ?? null : null;
+  const planMoment = today.fromPlan ? today.moment : state.planned?.kindness ? state.planMoment ?? null : null;
   // ONE replacement a day, no more — and not once it is planned, so the reminder never quotes an
   // act that is no longer on the card. The area picker went with the Practice tab.
   const canSwap = !state.swaps?.kindness && !actDone && !planMoment;
@@ -288,7 +291,7 @@ export default function SeenBar({
   const what = route === "reply" ? `told ${toName || "someone"} how their words landed`
     : route === "note" ? `sent ${toName || "someone"} a kind note`
     : route === "sent" ? "sent a kind message to someone in the world"
-    : toName ? `made ${toName} feel seen` : `did something kind in real life (${actAsPhrase(item.text)})`;
+    : toName ? `made ${toName} feel seen` : `did something kind in real life (${actAsPhrase(state.doneText?.kindness || today.text)})`;
 
 
   const sayMore = () => {
@@ -302,9 +305,9 @@ export default function SeenBar({
   // "Done it" is one tap and one warm line (the summary above the card); nothing to fill in. A
   // plan's reminder is cleared by completeSlot through onPlanChange(null).
   const doneIt = () => {
-    const after = completeSlot(state, "kindness", { onKindAct, onPlanChange });
+    const after = completeSlot(state, "kindness", { onKindAct, onPlanChange, text: today.text });
     update(after);
-    logKindAct(db, currentUser?.uid, { route: "act", text: item.text }); // the private log (3.29)
+    logKindAct(db, currentUser?.uid, { route: "act", text: today.text }); // the private log (3.29)
     setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
@@ -321,8 +324,18 @@ export default function SeenBar({
   const planIt = (m) => {
     if (actDone || !m) return;
     update({ ...state, planned: { ...(state.planned ?? {}), kindness: true }, planMoment: m.id });
-    try { onPlanChange?.(planFor(item, m, day)); } catch { /* ignore */ }
+    try { onPlanChange?.(planFor(today, m, day)); } catch { /* ignore */ }
   };
+  // Done on this phone, but a plan for today is still saved (done before 3.30.1, or the clearing
+  // write didn't arrive): clear it, so no reminder comes about something already done. Once per plan.
+  const healedRef = useRef("");
+  useEffect(() => {
+    if (!actDone || !realLifePlan || realLifePlan.date !== day) return;
+    const key = `${day}|${realLifePlan.at ?? ""}`;
+    if (healedRef.current === key) return;
+    healedRef.current = key;
+    try { onPlanChange?.(null); } catch { /* ignore */ }
+  }, [actDone, realLifePlan, day, onPlanChange]);
   const swap = () => { if (canSwap) update({ ...state, swaps: { ...state.swaps, kindness: 1 } }); };
 
   const pickTime = (h) => { setNudgeHour(db, currentUser?.uid, h); setAskTime(false); setSection(null); };
@@ -416,7 +429,7 @@ export default function SeenBar({
                 {/* Today, in real life — first until it is done (3.25). */}
                 {!actDone && (
                   <div className="pb-1.5">
-                    <RealLifeCard item={item} planMoment={planMoment} canRemind={canRemind} canSwap={canSwap}
+                    <RealLifeCard item={today} planMoment={planMoment} canRemind={canRemind} canSwap={canSwap}
                       onDone={doneIt} onPlan={planIt} onSwap={swap} />
                   </div>
                 )}
@@ -496,12 +509,12 @@ export default function SeenBar({
                     <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-teal-50 text-teal-600"><Footprints size={15} /></span>
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-semibold leading-snug text-slate-800">In real life <span className="text-teal-600">· ✓ Done today</span></p>
-                      <p className="mt-0.5 text-[12px] leading-snug text-slate-500">{item.text}</p>
+                      <p className="mt-0.5 text-[12px] leading-snug text-slate-500">{state.doneText?.kindness || today.text}</p>
                     </div>
                   </div>
                 )}
                 <button onClick={() => setSection("time")} className="flex items-center gap-1 px-1 pt-1 text-[10px] text-slate-500 hover:text-slate-600">
-                  <Clock size={10} /> {nudgeLabel(nudgeHour) ? `Reminder: ${nudgeLabel(nudgeHour)}` : "Reminder: 9am"} · One is enough — anything more is a bonus.
+                  <Clock size={10} /> {nudgeLabel(nudgeHour) ? `Daily reminder: ${nudgeLabel(nudgeHour)}` : "Daily reminder: 9am"} · One is enough — anything more is a bonus.
                 </button>
               </div>
             )}

@@ -129,15 +129,27 @@ export function plannedForDaily(e, todayKey) {
 // arrives when the thing can be done, not at eight when the chances have gone. It is their own
 // plan, so it is not thinned for drifting or held back for having already acted today, and it
 // is the only push that hour (the daily and evening ones step aside). The plan carries the LOCAL
-// date it was made on and is cleared when they tap "Done it", so a plan nobody finished simply
-// stops matching at their midnight. The ids mirror realLife.js MOMENTS (scripts/test-evening.mjs).
+// date it was made on and is cleared when they tap "Done it" (on any device, since 3.30.1), so a
+// plan nobody finished simply stops matching at their midnight. It is sent once, and not at all
+// if today's real-life act is already in their kindness log. The ids mirror realLife.js MOMENTS (scripts/test-evening.mjs).
 export const PLAN_FOR = { morning: "this morning", lunch: "lunch", home: "the way home", evening: "this evening" };
 
+// Once per plan (3.30.1). The cron runs once an hour but, on this plan, at any minute in it — so
+// with a half-hour offset like India's, two runs can both fall in the same local hour, and nothing
+// recorded that the first had sent it. `sentAt` is written after sending; a new plan has a newer
+// `at`, so an old `sentAt` left behind by the client's merge write doesn't stop it.
 export function realLifeDue(e, todayKey) {
   const p = e?.plan;
   return Boolean(p && typeof p.text === "string" && p.text.trim()
-    && p.date === todayKey && Number.isInteger(p.hour) && p.hour === e.hour);
+    && p.date === todayKey && Number.isInteger(p.hour) && p.hour === e.hour
+    && !(Number(p.sentAt) >= Number(p.at || 0)));
 }
+
+// Whether today's real-life act is already done, from the kindness log's entries for today
+// (src/kindLog.js): an "act" with no name is the real-life card's "Done it" — one with a name is
+// "make Sam feel seen", a different thing. Checked before sending, so a "Done it" whose clearing
+// write never reached the account still stops the reminder (3.30.1).
+export const realLifeDoneIn = (entries) => (entries || []).some((x) => x?.route === "act" && !x.toName);
 
 export function realLifeMessage(plan) {
   const text = String(plan?.text || "").trim().slice(0, 120);
@@ -441,9 +453,19 @@ export default async function handler(req, res) {
     // First of all: each of these is a time the person picked themselves, today.
     let realLifeSent = 0;
     for (const e of planEntries) {
+      const userRef = db.collection("users").doc(e.uid);
+      let doneToday = false;
+      try {
+        const logged = await userRef.collection("kindLog").where("day", "==", e.today).limit(30).get();
+        doneToday = realLifeDoneIn(logged.docs.map((d) => d.data()));
+      } catch { /* unreadable: send as planned */ }
+      if (doneToday) { await userRef.update({ realLifePlan: null }).catch(() => {}); continue; }
       const before = sent;
       await pushTo(e.uid, e.rows, realLifeMessage(e.plan));
-      if (sent > before) realLifeSent += 1;
+      if (sent > before) {
+        realLifeSent += 1;
+        await userRef.update({ "realLifePlan.sentAt": Date.now() }).catch(() => {});
+      }
     }
 
     // ── The evening pass ────────────────────────────────────────────────────────────────────

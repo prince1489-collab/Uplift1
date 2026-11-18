@@ -5,7 +5,7 @@
 //
 //   node scripts/test-real-life.mjs
 
-import { REAL_LIFE, MOMENTS, momentsLeft, momentById, planFor, actAsPhrase, hourLabel } from "../src/realLife.js";
+import { REAL_LIFE, MOMENTS, momentsLeft, momentById, planFor, actAsPhrase, hourLabel, todaysRealLife, clearsPlanOnDone, withDoneText } from "../src/realLife.js";
 import { pickDaily } from "../src/hytPrompts.js";
 
 const results = [];
@@ -70,6 +70,29 @@ check("an area's prompts are still plain lines", pickDaily({ uid: "u1", date: at
 check("the act reads inside a sentence", actAsPhrase("Thank someone who's just doing their job — a driver.") === "thank someone who's just doing their job — a driver");
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────
+// ── 3.30.1: one act, everywhere ─────────────────────────────────────────────────────────────
+{
+  const pick = { slot: "kindness", text: "Learn the name of someone you see all the time — and use it.", say: null };
+  const swapped = { text: "Apologise without adding a \"but\" on the end.", say: "I'm sorry. That wasn't fair of me." };
+  const plan = { ...planFor(swapped, momentById("evening"), "2026-11-17"), at: 1 };
+  let t = todaysRealLife({ item: pick, plan, day: "2026-11-17" });
+  check("today's plan on the account is the card's act, even on a phone that lost the swap", t.text === swapped.text && t.say === swapped.say && t.moment === "evening" && t.fromPlan === true, JSON.stringify(t));
+  t = todaysRealLife({ item: pick, plan, day: "2026-11-18" });
+  check("yesterday's plan doesn't replace today's act", t.text === pick.text && t.moment === null && t.fromPlan === false);
+  t = todaysRealLife({ item: pick, plan: null, day: "2026-11-17" });
+  check("no plan: the phone's own pick", t.text === pick.text && !t.fromPlan);
+  check("a plan with no act, or an unknown moment, is ignored",
+    todaysRealLife({ item: pick, plan: { ...plan, text: " " }, day: "2026-11-17" }).text === pick.text
+    && todaysRealLife({ item: pick, plan: { ...plan, moment: "x" }, day: "2026-11-17" }).text === pick.text);
+  check("changing the moment keeps the plan's act", planFor(todaysRealLife({ item: pick, plan, day: "2026-11-17" }), momentById("home"), "2026-11-17").text === swapped.text);
+
+  check("\"Done it\" on the real-life card always clears the plan", clearsPlanOnDone("kindness", {}) === true && clearsPlanOnDone("kindness", { planned: {} }) === true);
+  check("…\"who's next\" clears only a plan it made", clearsPlanOnDone("who", {}) === false && clearsPlanOnDone("who", { planned: { who: true } }) === true);
+  const s1 = withDoneText({ done: {}, swaps: {} }, "kindness", swapped.text);
+  check("what was done is kept for the \"✓ Done today\" row", s1.doneText?.kindness === swapped.text && s1.swaps);
+  check("…and nothing is stored without text", withDoneText({ a: 1 }, "kindness", "  ").doneText === undefined);
+}
+
 let failed = 0;
 for (const [ok, n] of results) { console.log(`${ok ? "  ok  " : "  FAIL"}  ${n}`); if (!ok) failed++; }
 console.log(`\n  ${results.length - failed}/${results.length} real-life tests passed.`);
