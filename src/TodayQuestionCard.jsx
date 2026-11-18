@@ -8,7 +8,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { collection, deleteDoc, doc, limit, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { MoreHorizontal } from "lucide-react";
-import { questionFor, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER } from "./todayQuestion";
+import { shownQuestion, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER } from "./todayQuestion";
 import { authedPost } from "./apiBase";
 import { useDictation } from "./dictation";
 import MicButton from "./MicButton";
@@ -51,10 +51,11 @@ const joinNames = (n) => (n.length === 1 ? n[0] : n.length === 2 ? `${n[0]} and 
 
 export default function TodayQuestionCard({ db, currentUser, profile, day, blocked, sparkBalance = 0, onKindAct, onTell }) {
   const uid = currentUser?.uid;
-  const question = questionFor(day);
   const answers = useTodayAnswers(db, day, Boolean(uid));
   const myId = uid ? answerIdFor(day, uid) : null;
   const mine = (answers || []).find((a) => a.id === myId) || null;
+  // Once you've answered, the question your answer was for, and only answers to it (3.36.2).
+  const question = shownQuestion(day, mine);
   const heartsOnMine = useMyAnswerHearts(db, mine ? myId : null);
   const [text, setText] = useState("");
   // The box grows with the answer (3.36) — about seven lines, then it scrolls — so a longer answer
@@ -105,8 +106,8 @@ export default function TodayQuestionCard({ db, currentUser, profile, day, block
     }
   };
 
-  const so = answersSoFar(answers || []);
-  const others = othersAnswers(answers || [], { myUid: uid, blocked });
+  const so = answersSoFar(answers || [], { qid: question.id });
+  const others = othersAnswers(answers || [], { myUid: uid, blocked, qid: question.id });
 
   return (
     <section className="seen-today-q mb-3 rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white px-3.5 pb-3 pt-3 shadow-sm"

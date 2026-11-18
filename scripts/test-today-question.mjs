@@ -1,7 +1,7 @@
-// test-today-question.mjs — one question a day, the same for everyone (3.33), simple to answer (3.36.1).
+// test-today-question.mjs — one question a day, the same for everyone (3.33), simple to answer (3.36.1), and a day keeps its question (3.36.2).
 //   node scripts/test-today-question.mjs
 
-import { QUESTIONS, questionFor, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER, SHOWN } from "../src/todayQuestion.js";
+import { QUESTIONS, FIRST_QUESTIONS, BANKS, questionFor, questionById, shownQuestion, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER, SHOWN } from "../src/todayQuestion.js";
 
 const results = [];
 const check = (name, ok, detail = "") => results.push([ok, ok ? name : `${name}  — ${detail}`]);
@@ -27,9 +27,33 @@ check("ids are unique", new Set(QUESTIONS.map((x) => x.id)).size === QUESTIONS.l
 check("no guilt, nothing clinical or sensitive", QUESTIONS.every((x) => !GUILT.test(x.q) && !SENSITIVE.test(x.q)), QUESTIONS.filter((x) => GUILT.test(x.q) || SENSITIVE.test(x.q)).map((x) => x.q).join(" | "));
 check("the same day gives everyone the same question", questionFor("2026-11-18").id === questionFor("2026-11-18").id);
 check("the next day gives a different one", questionFor("2026-11-18").id !== questionFor("2026-11-19").id);
-const ids = new Set(); for (let d = 0; d < QUESTIONS.length; d++) ids.add(questionFor(new Date(Date.UTC(2026, 10, 18 + d)).toISOString().slice(0, 10)).id);
+const ids = new Set(); for (let d = 0; d < QUESTIONS.length; d++) ids.add(questionFor(new Date(Date.UTC(2026, 10, 19 + d)).toISOString().slice(0, 10)).id);
 check("every question comes round before any repeats", ids.size === QUESTIONS.length, String(ids.size));
 check("a bad date still gives a question", typeof questionFor("nope").q === "string");
+
+// A day keeps its question (3.36.2). These days have been shown to people: their questions are
+// frozen here, so a change to a list that moves any of them fails.
+const SHOWN_DAYS = { "2026-06-01": "word", "2026-11-17": "eased", "2026-11-18": "smile", "2026-11-19": "weather", "2026-11-20": "window" };
+const moved = Object.entries(SHOWN_DAYS).filter(([d, id]) => questionFor(d).id !== id).map(([d, id]) => `${d}: ${questionFor(d).id}, was ${id}`).join(" | ");
+check("a day that has been shown keeps its question", !moved, moved);
+check("18 Nov keeps the question it started with", questionFor("2026-11-18").q === "What small thing made you smile today?", questionFor("2026-11-18").q);
+check("the new list starts on 19 Nov", questionFor("2026-11-19").id === "weather" && QUESTIONS.includes(questionFor("2026-12-25")));
+check("the lists start in date order", BANKS.every((b, i) => i === 0 || b.from > BANKS[i - 1].from));
+const allIds = BANKS.flatMap((b) => b.questions.map((x) => x.id));
+check("ids are unique across every list, so an answer always finds its question", new Set(allIds).size === allIds.length, allIds.filter((id, i) => allIds.indexOf(id) !== i).join(", "));
+check("…an answer from the first list finds its words", questionById("smile")?.q === FIRST_QUESTIONS[1].q && questionById("ate")?.q === "What's the best thing you ate today?");
+check("…and an unknown id finds nothing", questionById("nope") === null && questionById(undefined) === null);
+check("no question shows two days running where the lists meet", questionFor("2026-11-18").q !== questionFor("2026-11-19").q);
+check("the card shows the day's question before you answer", shownQuestion("2026-11-18", null).id === "smile");
+check("…and the question you answered, after", shownQuestion("2026-11-18", { qid: "ate" }).id === "ate" && shownQuestion("2026-11-18", { qid: "smile" }).id === "smile");
+check("…or the day's question if your answer's id is unknown", shownQuestion("2026-11-18", { qid: "gone" }).id === "smile");
+const mixed = [
+  { uid: "a", qid: "smile", text: "a kitten", country: "UK", createdAt: 1 },
+  { uid: "b", qid: "ate", text: "good coffee", country: "Mexico", createdAt: 2 },
+  { uid: "c", qid: "smile", text: "my mum", country: "India", createdAt: 3 },
+];
+check("others' answers are only to the same question", JSON.stringify(othersAnswers(mixed, { myUid: "a", qid: "smile" }).map((x) => x.uid)) === '["c"]' && JSON.stringify(othersAnswers(mixed, { myUid: "a", qid: "ate" }).map((x) => x.uid)) === '["b"]');
+check("…and so is the count so far", answersSoFar(mixed, { qid: "smile" }).count === 2 && answersSoFar(mixed, { qid: "smile" }).countries === 2 && answersSoFar(mixed).count === 3);
 check("one answer per person per day, at a fixed id", answerIdFor("2026-11-18", "u1") === "2026-11-18_u1");
 
 const doc = answerDoc({ dayKey: "2026-11-18", uid: "u1", text: "  My   neighbour Raj   carried my shopping  ", firstName: "Mona Patel", country: "India", now: 5 });
