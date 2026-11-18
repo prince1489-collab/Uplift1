@@ -95,10 +95,6 @@
     {
       "path": "/api/send-reminder",
       "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/rotate-champions",
-      "schedule": "0 0 * * 0"
     }
   ],
   "rewrites": [

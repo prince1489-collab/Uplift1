@@ -50,6 +50,7 @@ export const MARKERS = [
   "seen_v2_certificates_seen", "seen_v2_tree_stage_seen", "seen_send_coach_seen", "seen_v2_nudge_asked",
   "seen_globe_prompt_at", "seen_km_collapsed", "seen_notif_dismissed", "seen-likes-at", "seen-ripples-at",
   "seen_last_active", "seen_visit_start", "seen_last_send_time",
+  "seen_home_seen_at", // when you were last on the home screen (3.32, useSinceMarker.js)
 ];
 const stashKey = (k, uid) => `${k}__${uid}`;
 

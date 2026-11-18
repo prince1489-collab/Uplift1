@@ -21,8 +21,7 @@ import { useBackLayer } from "./backStack";
 import SeenBar from "./SeenBar";
 import MessagesTab from "./MessagesTab";
 import UpdateNote from "./UpdateNote";
-import AwayNote from "./AwayNote";
-import { onReactionGiven } from "./reactions";
+import { onReactionGiven, setMyReaction, announceReaction, HEART } from "./reactions";
 import { couldHaveLanded, readLandedOffer, rememberLandedOffer, offeredOn } from "./landed";
 import { inCountry } from "./countryName";
 import { KindnessNote, KindnessSheet } from "./KindnessForYou";
@@ -76,14 +75,13 @@ import { pickDailyGreetings } from "./greetings";
 import { pickDailyProverb, proverbAsGreeting } from "./proverbs";
 import { getResources, getEmergency } from "./SupportData.js";
 import { sweepWellbeing } from "./wellbeingSweep";
+import SinceLastCard from "./SinceLastCard";
+import { useSinceMarker } from "./useSinceMarker";
+import { sinceLastItems } from "./sinceLast";
 import JournalPanel from "./Journal";
 import ModerationQueue from "./ModerationQueue";
 import UserGlimpse from "./UserGlimpse";
-import {
-  useLeaderboardCandidates,
-  CommunityArena,
-  recordCommunitySend,
-} from "./CommunityGreetings";
+import { recordCommunitySend } from "./CommunityGreetings";
 
 import { initializeApp } from "firebase/app";
 import {
@@ -1002,10 +1000,13 @@ function WelcomeMoment({ firstName, onClose, onStart }) {
 // above actual messages from actual people. Standing status belongs on Grow; congratulation for
 // nothing belongs nowhere. If a row isn't something a person did or something the app is asking
 // of you, it does not go in the bell.
-function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenReply, openOnMount = false }) {
+function NotificationBell({ db, currentUser, nudges = [], replies = [], onOpenReply, openOnMount = false, openRequest = 0 }) {
   // Initial state rather than an effect: when a notification tap brings you here, the bell should
   // already be open on the first paint. Opening it a frame later reads as the app twitching.
   const [open, setOpen] = useState(openOnMount);
+  // Something else asked for the bell (3.32: "Since you were last here" → who felt your words).
+  const [seenOpenRequest, setSeenOpenRequest] = useState(openRequest);
+  if (openRequest !== seenOpenRequest) { setSeenOpenRequest(openRequest); setOpen(true); }
   // Resolved once per mount — the boundary must not move under the user mid-session.
   const [visitStart] = useState(resolveVisitStart);
   // Keep the "last active" stamp fresh while the tab is open, so a long session that is
@@ -2563,33 +2564,10 @@ export default function App() {
   const [adminResetConfirm, setAdminResetConfirm] = useState(false);
   const [adminResetting, setAdminResetting] = useState(false);
   const [adminResetError, setAdminResetError] = useState("");
-  // Community greetings: live approved pool (for the picker) + pending count (admin badge)
-  const candidates = useLeaderboardCandidates(db, currentUser);        // approved pool → voting arena
   const userProfileRef = (uid) => doc(db, "users", uid);
 
-  // ── Back after a while (3.11) ──────────────────────────────────────────────────────────────
-  // Once per session, when the profile first arrives: record today as a day they opened Seen
-  // (the reminder thins out for people drifting away, and needs to know who isn't), and if the
-  // last sign of them was two days ago or more, offer "While you were away…" above the bar.
-  const [awayNote, setAwayNote] = useState(null);
-  const awayCheckedRef = useRef(false);
-  useEffect(() => {
-    if (!db || !isRealSignedInUser || !profile || awayCheckedRef.current) return;
-    awayCheckedRef.current = true;
-    const today = localDayKey();
-    if (profile.lastOpenDay === today) return;
-    const seen = [...(Array.isArray(profile.activeDates) ? profile.activeDates : []), profile.lastOpenDay]
-      .filter((k) => typeof k === "string" && k < today).sort();
-    const last = seen[seen.length - 1];
-    const days = last ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / 86400000) : 0;
-    if (days < 2) return;
-    // The hearts their words got while they were gone — one small, bounded read.
-    const since = Date.parse(`${last}T00:00:00`);
-    getDocs(query(collection(db, "users", currentUser.uid, "reactionsReceived"), orderBy("reactedAt", "desc"), limit(50)))
-      .then((snap) => snap.docs.filter((d) => Number(d.data()?.reactedAt) >= since).length)
-      .catch(() => 0)
-      .then((hearts) => setAwayNote({ days, since, hearts }));
-  }, [isRealSignedInUser, profile, currentUser?.uid]);
+  // "While you were away…" (3.11) was a footer note after two days away; "Since you were last
+  // here" (3.32, sinceLast.js) says the same at the top of the home screen, every visit.
 
   // ── Which days they opened Seen (3.26, openDays.js) ──────────────────────────────────────────
   // Every open adds today (local) to `openDates`, and to `pushOpenDates` when a tapped
@@ -3334,6 +3312,40 @@ export default function App() {
         if (recap) queueSeenUpdate(recap);
       });
   }, [realUid, profile, seenChat, kindLogState.ready, heartsInfo, kindLog, inboxReplies, treeStage, paceFor, queueSeenUpdate, currentUser]);
+
+  // ── Since you were last here (3.32, sinceLast.js) ─────────────────────────────────────────
+  // The first thing on the home screen: what happened for you since your last visit — who wrote
+  // back, who felt your words, where they reached, kind words delivered to you, Seen's news.
+  const sinceAt = useSinceMarker(realUid);
+  const sinceItems = useMemo(() => (sinceAt == null ? [] : sinceLastItems({
+    since: sinceAt, myUid: realUid, replies: inboxReplies, hearts: heartsDocsRef.current,
+    acts: kindLog, kindness: kindnessItems, updates: seenChat || [],
+  // heartsInfo stands in for the hearts ref: it changes on every snapshot of the same listener.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [sinceAt, realUid, inboxReplies, heartsInfo, kindLog, kindnessItems, seenChat]);
+  const [bellRequest, setBellRequest] = useState(0);
+  const onSinceAction = useCallback((a) => {
+    if (!a) return;
+    if (a.type === "conversation") openConversation(a.uid);
+    else if (a.type === "kindness") setKindnessOpened(a.item);
+    else if (a.type === "hearts") setBellRequest((n) => n + 1);
+    else if (a.type === "globe") setShowMap(true);
+    else if (a.type === "seen") openConversation(SEEN_ID);
+  }, [openConversation]);
+
+  // A heart from the Worldwide card (3.32): a real one, the same write as a heart in the feed, so
+  // it reaches the person who wrote it. It replaces whatever reaction you had on that message.
+  const heartFromWorld = useCallback((m, on) => {
+    if (!db || !m?.id || !realUid || !m.uid || m.uid === realUid) return;
+    const fromId = reactionIdFor(m.id);
+    const toId = on ? HEART : null;
+    if (fromId === toId) return;
+    setLocalReaction((prev) => ({ ...prev, [m.id]: toId }));
+    const country = profile?.country ?? null;
+    setMyReaction({ db, uid: realUid, messageId: m.id, fromId, toId, country })
+      .then(() => announceReaction({ db, currentUser, messageId: m.id, senderUid: m.uid, reaction: toId ? { id: HEART, emoji: HEART } : null, country, reactorName: profile?.fullName || "" }))
+      .catch((err) => console.error("[world heart]", err?.code, err?.message));
+  }, [realUid, reactionIdFor, profile?.country, profile?.fullName, currentUser]);
 
   // What an update's button does (seenUpdates.parseAction): the tree, a certificate, or Grow.
   const onSeenAction = useCallback((action) => {
@@ -4285,7 +4297,7 @@ export default function App() {
                       Still stated as a fact and nothing more: no countdown, no warning, nothing
                       about losing it. The roadmap is firm that guilt is not a mechanic here. */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <LiveGreeterCount db={db} currentUser={currentUser} compact />
+                    <LiveGreeterCount db={db} currentUser={currentUser} compact hidden />
                     <StreakBadge streak={streak} />
                   </div>
                 </div>
@@ -4310,7 +4322,7 @@ export default function App() {
                   <div onClick={(e) => e.stopPropagation()}>
                     <NotificationBell db={db} currentUser={currentUser}
                       nudges={bellNudges} replies={inboxReplies} onOpenReply={(r) => openConversation(r?.fromUid)}
-                      openOnMount={openTarget === "hearts"} />
+                      openOnMount={openTarget === "hearts"} openRequest={bellRequest} />
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <MeatballMenu
@@ -4481,7 +4493,8 @@ export default function App() {
                 onOpenStory={(s) => setOpenStory(s)}
                 onToggleFocus={toggleFocus}
                 onReplyPrivately={(m) => setReplyTarget(m)}
-                onOpenGlobe={() => setShowMap(true)} />
+                onOpenGlobe={() => setShowMap(true)}
+                onHeart={heartFromWorld} />
             )}
 
             {/* Between the two feeds, because that is where the difference is visible. */}
@@ -4554,6 +4567,11 @@ export default function App() {
                     Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Tap “Make Someone Feel Seen” below, and someone, somewhere, will feel it.
                   </p>
                 </div>
+              )}
+              {/* Since you were last here (3.32) — once you've done something here, so a brand-new
+                  account isn't greeted by an empty list. */}
+              {isRealSignedInUser && hasSent && sinceAt != null && (
+                <SinceLastCard items={sinceItems} onAction={onSinceAction} />
               )}
               {/* Post-send map prompt.
 
@@ -4984,7 +5002,7 @@ export default function App() {
                                           )}
                                           </div>
                                         </div>
-                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); offerReplyNudge(m, group.sender); }} onViewReactors={() => setReactorsFor(m)} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} myReactionId={reactionIdFor(m.id)} onServerReaction={noteServerReaction} onMyReactionChange={(rid) => setLocalReaction((prev) => ({ ...prev, [m.id]: rid }))} messageTs={m.timestamp} />
+                                        <ReactionSideBadges db={db} messageId={m.id} senderUid={m.uid} currentUser={currentUser} mine={mine} onReact={(e) => { triggerReactionBurst(e); playHeart(); offerReplyNudge(m, group.sender); }} onViewReactors={mine ? () => setReactorsFor(m) : undefined} reactorCountry={profile?.country} reactorName={profile?.fullName} lastGreetingAt={profile?.lastGreetingAt} myReactionId={reactionIdFor(m.id)} onServerReaction={noteServerReaction} onMyReactionChange={(rid) => setLocalReaction((prev) => ({ ...prev, [m.id]: rid }))} messageTs={m.timestamp} />
                                       </div>
                                       <GiftOverlay db={db} messageId={m.id} />
                                     </div>
@@ -5017,6 +5035,8 @@ export default function App() {
                 );
               })()}
               <SendingIndicator visible={isSending} />
+              {/* The page ends (3.32). Infinite feeds have no bottom on purpose; this one does. */}
+              <p className="seen-up-to-date mt-6 mb-2 text-center text-[12.5px] font-semibold text-slate-400">You're up to date 🌱 — see you tomorrow.</p>
             </main>
             )} {/* end activeTab === "feed" */}
 
@@ -5092,17 +5112,6 @@ export default function App() {
                   onOpen={() => setKindnessOpened(kindnessWaiting)}
                   onDismiss={() => markKindness(db, currentUser?.uid, kindnessWaiting.id, { dismissed: true, seen: true }).catch(() => {})} />
               )}
-              {!appUpdate && !(kindnessWaiting && !kindnessWaiting.dismissed) && awayNote && (() => {
-                const first = conversations.find((c) => c.unread > 0);
-                return (
-                  <AwayNote note={awayNote}
-                    hearts={awayNote.hearts}
-                    unread={messagesUnread > 0 ? { count: messagesUnread, name: first?.name?.split(" ")[0] || null } : null}
-                    onRead={() => { setAwayNote(null); openConversation(first?.uid); }}
-                    onStart={() => { setAwayNote(null); openSeenBar(); }}
-                    onDismiss={() => setAwayNote(null)} />
-                );
-              })()}
               <SeenBar db={db} currentUser={currentUser} dob={profile?.dob}
                 nudgeHour={profile?.nudgeHour} activeDates={profile?.activeDates}
                 streak={{ days: profile?.streakDays, last: profile?.lastGreetingDate }}

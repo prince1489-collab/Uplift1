@@ -15,6 +15,10 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { cors, requireCaller, pushEnvelope, tokensFor, dropDeadToken, linkFor } from "./_auth.js";
 
+// The gap between two "your words landed" pushes to one person (3.32).
+export const HEART_PUSH_GAP_MS = 3 * 60 * 60 * 1000;
+export const heartPushDue = (lastAt, now = Date.now()) => !(Number(lastAt) > 0) || now - Number(lastAt) >= HEART_PUSH_GAP_MS;
+
 export default async function handler(req, res) {
   if (!cors(req, res)) return;
 
@@ -41,10 +45,22 @@ export default async function handler(req, res) {
     // Belt and braces: the rules already require reactorUid == the writer.
     if (reaction.reactorUid !== callerUid) return res.status(403).json({ error: "not your reaction" });
 
-    const userSnap = await db.collection("users").doc(ownerUid).get();
+    // At most one of these every few hours (3.32). Every heart used to buzz the phone — the
+    // trickle of little rewards that makes social apps compulsive. The rest are still on the bell
+    // and in "Since you were last here"; the phone just isn't pinged for each one.
+    const userRef = db.collection("users").doc(ownerUid);
+    let userData = {};
+    const allowed = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(userRef);
+      userData = snap.data() || {};
+      if (!heartPushDue(userData.heartPushAt, Date.now())) return false;
+      tx.set(userRef, { heartPushAt: Date.now() }, { merge: true });
+      return true;
+    });
+    if (!allowed) return res.status(200).json({ skipped: "batched" });
     // Every device they have, not just whichever registered most recently. Each row carries its
     // own platform, which is what decides the envelope shape.
-    const rows = tokensFor(userSnap.data());
+    const rows = tokensFor(userData);
     if (!rows.length) return res.status(200).json({ skipped: "no token" });
 
     const name = String(reaction.reactorName || "Someone").trim() || "Someone";

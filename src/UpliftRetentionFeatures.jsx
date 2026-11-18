@@ -733,7 +733,9 @@ export function SparkGiftButton({ db, senderUid, currentUser, profile, onGift })
 
 const PRESENCE_TTL_MS = 5 * 60 * 1000;
 
-export function LiveGreeterCount({ db, currentUser, compact = false }) {
+// `hidden` (3.32): keep the heartbeat (the World Map's "people near you" reads it) but show no
+// number. "N online" in the header was a crowd count — with few people it said "nobody's here".
+export function LiveGreeterCount({ db, currentUser, compact = false, hidden = false }) {
   const [count, setCount] = useState(1);
   const [ticking, setTicking] = useState(false);
   const prevCountRef = useRef(1);
@@ -749,7 +751,7 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
   }, [db, currentUser]);
 
   useEffect(() => {
-    if (!db) return;
+    if (!db || hidden) return;
     const q = query(collection(db, "presence"), where("lastSeen", ">=", Date.now() - PRESENCE_TTL_MS));
     return onSnapshot(q, (snap) => {
       const newCount = snap.size;
@@ -760,7 +762,9 @@ export function LiveGreeterCount({ db, currentUser, compact = false }) {
       prevCountRef.current = newCount;
       setCount(newCount);
     }, () => {});
-  }, [db]);
+  }, [db, hidden]);
+
+  if (hidden) return null;
 
   // Compact: tiny inline dot + count, no pill — for use in collapsed header
   if (compact) return (
@@ -888,17 +892,10 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     .slice(STICKER_SLOTS)
     .reduce((n, x) => n + x.count, 0);
 
-  // Invite the FIRST real heart on a recent, un-reacted greeting from someone else — so a post
-  // that would otherwise get no response gets a GENUINE reaction (never a fabricated one).
-  //
-  // Stickers count as a response. Offering "be the first" under a message someone has already
-  // answered with a hug told the sender their message was ignored when it was not.
-  const BE_FIRST_WINDOW_MS = 3 * 60 * 60 * 1000;
-  const showBeFirst = !mine && displayCount === 0 && stickers.length === 0
-    && senderUid && senderUid !== currentUser?.uid
-    && messageTs && (Date.now() - messageTs < BE_FIRST_WINDOW_MS);
+  // A quiet heart to tap on someone else's recent message (3.32: it used to say "🤍 Be first").
+  const HEART_OFFER_MS = 3 * 60 * 60 * 1000;
 
-  if (active.length === 0 && displayCount === 0 && stickers.length === 0 && !showBeFirst) return null;
+  if (mine && active.length === 0 && displayCount === 0 && stickers.length === 0) return null;
 
   // The heart chip. Tapping it either sets the heart as my one reaction — replacing a sticker if
   // I had one — or, if the heart already IS my reaction, takes it back.
@@ -981,21 +978,32 @@ export function ReactionSideBadges({ db, messageId, senderUid, currentUser, mine
     }).catch((err) => { console.error("[outgoingReactions write]", err?.code, err?.message); });
   };
 
-  // Zero reactions but recent + not mine → invite the first (real) heart.
-  //
-  // Keyed on showBeFirst rather than on "no hearts", which is what it used to test. Those were
-  // the same condition until stickers joined this row: a message answered with a hug but no
-  // heart would otherwise take this branch and render "Be first" INSTEAD of the hug — telling
-  // the sender nobody had responded, on top of hiding the response.
-  if (showBeFirst) {
+  // ── Someone else's message: no numbers (3.32) ───────────────────────────────────────────────
+  // Counts on other people's words turned kindness into a scoreboard — how many hearts theirs got
+  // next to how many yours did — and "Be first" told you a message was being ignored. So on
+  // someone else's message you see only your own reaction (or a quiet heart to tap on a recent
+  // one). The person who wrote it still sees every heart, and who sent it, on their own message.
+  if (!mine) {
+    const myHeart = myReactionId === HEART;
+    const mySticker = STICKERS.find((d) => d.id === myReactionId) || null;
+    const recent = Boolean(messageTs) && Date.now() - messageTs < HEART_OFFER_MS;
+    if (!myHeart && !mySticker && !recent) return null;
     return (
-      <button
-        onClick={(e) => { e.stopPropagation(); toggle("❤️"); }}
-        className="ml-auto flex items-center gap-1 rounded-full border border-rose-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-400 shadow-sm active:scale-90 transition-all"
-        style={{ zIndex: 3, height: REACTION_STRIP_H, marginTop: REACTION_STRIP_MT }}
-        title="Be the first to send a heart">
-        🤍 Be first
-      </button>
+      <div className="flex flex-nowrap items-center justify-end gap-0.5"
+        style={{ zIndex: 3, height: REACTION_STRIP_H, marginTop: REACTION_STRIP_MT }}>
+        {mySticker ? (
+          <span className="seen-react-badge is-mine flex items-center rounded-full border border-teal-300 bg-teal-50 px-1.5 py-1 text-[13px] leading-none shadow-sm" title={mySticker.label}>
+            {mySticker.emoji}
+          </span>
+        ) : (
+          <button onClick={(e) => { e.stopPropagation(); toggle(HEART); }} aria-pressed={myHeart}
+            title={myHeart ? "Take your heart back" : "Send a heart"}
+            className={`seen-react-badge relative flex items-center rounded-full border px-2 py-1 text-[11px] shadow-sm transition-all active:scale-90 before:absolute before:-inset-2 before:content-[''] ${
+              myHeart ? "is-mine border-teal-300 bg-teal-50" : "border-slate-200 bg-white/90"}`}>
+            {myHeart ? "❤️" : "🤍"}
+          </button>
+        )}
+      </div>
     );
   }
 

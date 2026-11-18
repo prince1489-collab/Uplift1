@@ -333,14 +333,14 @@ const flagFor = (c) => (c && FLAG_MAP[c] ? FLAG_MAP[c] : "🌍");
 const firstName = (n) => (n || "Someone").split(" ")[0];
 
 // ── Worldwide Feed — a compact, single-broadcast rotator ──────────────────────
-// One stranger's message shows at a time (~2 lines), auto-rotating every few seconds.
-// Tap the message to reveal Like / Reply / Follow — collapsed by default to save space.
+// One stranger's message shows at a time (~2 lines), and moves on only when you press an arrow
+// (3.32 — it used to change every five seconds, so nothing could be read at your own pace).
+// Tap the message to reveal ❤️ / Reply / Follow — collapsed by default to save space.
 // Tinted + pinned above the scroller so it reads as a distinct band, separate from the
 // Focused Feed below it.
-const ROTATE_MS = 5000;
 // Fewer than this in 24 hours and the pulse counts the week instead (see `pulse` below).
 const PULSE_THIN = 5;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe }) {
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe, onHeart }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   // Blocking has to hold here too. It used to be applied only to the Focused Feed, so a
   // blocked person's messages kept rotating through the Worldwide strip.
@@ -414,39 +414,28 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
   const [likes, setLikes] = useState(() => readJSON(LIKES_KEY, {}));
   const [idx, setIdx] = useState(0);
   const [open, setOpen] = useState(false); // actions revealed for the current message
-  // Set the first time somebody presses an arrow, and never cleared while the card is mounted.
-  // See the rotation effect below for why it is one-way.
-  const [manual, setManual] = useState(false);
 
   // Keep the index in range as the list changes.
   useEffect(() => { if (idx >= items.length) setIdx(0); }, [items.length, idx]);
-
-  // Auto-rotate — paused while the actions are open so people can act without it moving, and
-  // stopped outright once somebody has taken the wheel.
-  //
-  // `manual` is deliberately one-way. Somebody who presses an arrow is reading, not watching, and
-  // a timer that pulls the card forward two seconds later is precisely what they pressed a button
-  // to escape — a timeout that "resumes after a while" is the same bug with a delay on it. It
-  // resets when the card unmounts, so leaving the tab and coming back starts the rotation again.
-  useEffect(() => {
-    if (manual || open || items.length <= 1) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), ROTATE_MS);
-    return () => clearInterval(t);
-  }, [manual, open, items.length]);
 
   // Wraps, so back from the first is the last. Without that, the two arrows are dead ends at both
   // ends of a list nobody can see the shape of.
   const step = (d) => {
     if (items.length <= 1) return;
-    setManual(true);
     setOpen(false);
     setIdx((i) => (i + d + items.length) % items.length);
   };
 
-  const like = (id) => {
+  // A heart that reaches them (3.32). It used to be kept only on this phone — the person who wrote
+  // it never learned that a stranger felt it, which is the one moment Seen exists for. Now it is a
+  // real heart (onHeart → reactions.js), on their bell and their globe like any other; this
+  // device's record only remembers which ones you hearted.
+  const like = (msg) => {
+    const id = msg.id;
     const nowLiked = !likes[id];
     const next = { ...likes, [id]: nowLiked }; setLikes(next); writeJSON(LIKES_KEY, next);
-    if (nowLiked) { try { awardPoints("like"); } catch { /* ignore */ } } // waters the tree (device-local)
+    if (nowLiked) { try { awardPoints("like"); } catch { /* ignore */ } } // waters the tree
+    try { onHeart?.(msg, nowLiked); } catch { /* the heart on screen stays */ }
   };
 
   const item = items[Math.min(idx, Math.max(0, items.length - 1))];
@@ -562,16 +551,16 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
               <span className="text-sm">{flagFor(m.country)}</span>
               <span className="text-[11px] font-semibold text-teal-700 truncate flex-1">{firstName(m.sender)}</span>
               {likes[m.id] && <Heart size={11} className="text-rose-500 flex-shrink-0" fill="currentColor" />}
-              <span className="text-[10px] text-teal-700 opacity-70 flex-shrink-0">{open ? "tap to close" : "tap to like or reply"}</span>
+              <span className="text-[10px] text-teal-700 opacity-70 flex-shrink-0">{open ? "tap to close" : "tap to heart or reply"}</span>
             </div>
             <p className="text-[13px] leading-snug text-teal-900 font-medium line-clamp-2">“{stripQuotes(m.text)}”</p>
           </button>
 
           {open && (
             <div className="mt-1.5 flex items-center gap-2" style={{ animation: "seenFadeUp 200ms ease both" }}>
-              <button onClick={() => like(m.id)}
+              <button onClick={() => like(m)}
                 className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${likes[m.id] ? "bg-rose-50 text-rose-600" : "bg-white border border-slate-200 text-slate-500"}`}>
-                <Heart size={12} fill={likes[m.id] ? "currentColor" : "none"} /> {likes[m.id] ? "Liked" : "Like"}
+                <Heart size={12} fill={likes[m.id] ? "currentColor" : "none"} /> {likes[m.id] ? "Sent ❤️" : "Heart"}
               </button>
               {/* Once it is liked, Reply becomes the invitation it should have been all along:
                   a heart says it landed, a word says how — and the second is what makes the
