@@ -93,9 +93,14 @@ the deletion answer below: removing the profile document does not remove the ima
 |---|---|---|---|---|
 | Device or other IDs | Yes | Optional | App functionality | FCM registration token in `users/{uid}.fcmToken`, for notifications only |
 
-**Health and fitness — a judgement call, and I'd declare it**
+**Health and fitness — removed in 3.31**
 
-The wellbeing check-in writes `wellbeing` and `wellbeingAt` to the profile. The app is careful
+3.31 removed the wellbeing check-in (WHO-5) and the questionnaires in Support: Seen no longer
+collects any health information, and the app deletes check-ins saved by earlier versions the next
+time each person opens it (`src/wellbeingSweep.js`). Once most people are on 3.31, change Health
+info to **No** in the Data safety form. The history below is kept for reference.
+
+The wellbeing check-in wrote `wellbeing` and `wellbeingAt` to the profile. The app is careful
 to say it is *"not a medical test"* (`App.jsx:3282`), and it is a self-reported mood reflection
 rather than clinical data — so a "No" here is arguable.
 

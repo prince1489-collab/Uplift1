@@ -10,7 +10,7 @@
 //
 // WHAT GOES (everything that is theirs or about them):
 //   users/{uid} and every subcollection under it (journal, feelings, follows, Seen conversation
-//   and what it noticed, wellbeing, reactions received, …) · publicProfiles/{uid} ·
+//   and what it noticed, old wellbeing check-ins, reactions received, …) · publicProfiles/{uid} ·
 //   presence/{uid} · the legacy top-level feelings/{uid} · their referral marker ·
 //   their public messages, with the reactions, gifts and media under them · private replies and
 //   kind notes they sent OR received · waves either way · kind moments either side ·

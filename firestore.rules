@@ -137,7 +137,7 @@ service cloud.firestore {
     }
 
     // ── User profiles ──
-    // The private profile. Holds email, date of birth, WHO-5 wellbeing scores, FCM push
+    // The private profile. Holds email, date of birth, FCM push
     // token and timezone — so reads are the OWNER only (plus admin). This used to be
     // readable by any signed-in account, which was survivable only while there was no way
     // to enumerate members. Search-to-follow removes that, so the fields other people
@@ -281,17 +281,11 @@ service cloud.firestore {
         allow read, delete: if request.auth != null && request.auth.uid == userId;
       }
 
-      // Wellbeing check-ins — private to the owner only, for the user's own reflection.
-      // Create validates the check-in shape (raw score 0–25). Not used for clinical
-      // screening, monitoring or efficacy claims.
+      // Wellbeing check-ins (WHO-5) — removed in 3.31: a non-clinical app shouldn't score anyone's
+      // wellbeing. Nothing new can be written; the owner can still read and delete, which is how
+      // the app removes what earlier versions saved (src/wellbeingSweep.js).
       match /wellbeing/{id} {
-        allow read: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null && request.auth.uid == userId
-            && request.resource.data.scores is map
-            && request.resource.data.who5Raw is number
-            && request.resource.data.who5Raw >= 0
-            && request.resource.data.who5Raw <= 25;
-        allow update, delete: if request.auth != null && request.auth.uid == userId;
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
       }
 
       // Encouragement replies and kindness echoes — both belonged to the "how you're

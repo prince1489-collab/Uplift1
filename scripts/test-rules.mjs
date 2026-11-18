@@ -351,6 +351,19 @@ await check("you can forget everything",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "understanding", "state"))));
 await check("…and delete Seen's messages",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "seenChat", "refl"))));
+// ── 3.31: no more wellbeing scores ──────────────────────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users", "uidA", "wellbeing", "old1"), { scores: { calm: 3 }, who5Raw: 15, createdAt: NOWT });
+});
+await check("a new wellbeing check-in can't be saved",
+  assertFails(setDoc(doc(A, "users", "uidA", "wellbeing", "w-new"), { scores: { calm: 3 }, who5Raw: 15, createdAt: NOWT })));
+await check("…nor an old one changed",
+  assertFails(updateDoc(doc(A, "users", "uidA", "wellbeing", "old1"), { who5Raw: 20 })));
+await check("…nobody else can read one",
+  assertFails(getDoc(doc(B, "users", "uidA", "wellbeing", "old1"))));
+await check("…and the owner can delete what was saved",
+  assertSucceeds(deleteDoc(doc(A, "users", "uidA", "wellbeing", "old1"))));
+
 // ── 3.30: the app's own updates in Seen ─────────────────────────────────────────────────────
 const UPD = { role: "seen", kind: "update", text: "Your week 🌱\nYou made someone feel seen on 4 days.", createdAt: NOWT, read: false };
 await check("an update at its fixed id can be written",

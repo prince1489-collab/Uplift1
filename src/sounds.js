@@ -106,7 +106,7 @@ export const playFirstSend = guard(() => {                  // memorable first-k
 
 // playMystery lived here — the reveal sparkle for the mystery greeting, now removed.
 
-export const playCheckIn = guard(() => {                    // grounding resolve (wellbeing/journal)
+export const playCheckIn = guard(() => {                    // grounding resolve (journal, Done it)
   note(392, { dur: 0.6, peak: 0.16 });
   note(587.33, { start: 0.1, dur: 0.7, peak: 0.12 });
 });

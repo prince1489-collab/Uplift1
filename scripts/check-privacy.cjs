@@ -1,6 +1,6 @@
 // check-privacy.cjs — guards the users/publicProfiles split.
 //
-// `users/{uid}` holds email, date of birth, WHO-5 wellbeing scores, the FCM push token and
+// `users/{uid}` holds email, date of birth, the FCM push token and
 // the timezone. firestore.rules restricts reads to the owner (plus admin). That means any
 // code path that reads ANOTHER member's `users` document is now a silent runtime failure —
 // the read is denied, the catch swallows it, and a name renders as "Someone" forever.

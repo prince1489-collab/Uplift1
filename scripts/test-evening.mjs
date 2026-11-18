@@ -15,7 +15,7 @@
 //
 // Pure functions, no emulator, no network:  node scripts/test-evening.mjs
 
-import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, realLifeDoneIn, PLAN_FOR, WEEKLY_MESSAGE_LITE } from "../api/send-reminder.js";
+import { eveningMessage, dailyHourFor, eveningDue, plannedForDaily, greetingFor, worldMessage, alreadyActed, daysAway, dueToday, whosNextMessage, awayMessage, newsMessage, realLifeDue, realLifeMessage, realLifeDoneIn, PLAN_FOR, WEEKLY_MESSAGE_LITE, sundayMessage } from "../api/send-reminder.js";
 import { linkFor } from "../api/_auth.js";
 import { MOMENTS, planFor } from "../src/realLife.js";
 import { cueDateKey } from "../src/eveningCue.js";
@@ -198,6 +198,14 @@ for (const m of [awayMessage(5), whosNextMessage({ whosNext: { name: "Sam", day:
 check("Sunday's push opens Seen", WEEKLY_MESSAGE_LITE.open === "seen" && /Your week in Seen/.test(WEEKLY_MESSAGE_LITE.title));
 check("…with no guilt in it", !GUILT.test(`${WEEKLY_MESSAGE_LITE.title} ${WEEKLY_MESSAGE_LITE.body}`));
 check("…and its link lands on Seen, counted as a push open", /\/\?open=seen&via=push$/.test(linkFor("seen")), linkFor("seen"));
+
+// 3.31 — every Sunday is "Your week in Seen"; the fortnightly wellbeing check-in is gone.
+check("Sunday's push is the week in Seen, every Sunday", sundayMessage("Sun") === WEEKLY_MESSAGE_LITE);
+check("…and other days have no weekly message", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].every((d) => sundayMessage(d) === null));
+{
+  const src = (await import("node:fs")).readFileSync(new URL("../api/send-reminder.js", import.meta.url), "utf8");
+  check("…and no push asks for a wellbeing check-in any more", !/fortnightly check-in|WEEKLY_MESSAGE_WELLBEING|wellbeingWeek/.test(src));
+}
 
 let failed = 0;
 for (const [ok, name] of results) {

@@ -21,7 +21,7 @@ const GOES = [
   "Every message you've posted, and its reactions",
   "Private replies and kind notes — sent and received",
   "Your conversation with Seen and everything it noticed",
-  "Your journal, feelings and wellbeing check-ins",
+  "Your journal and feelings",
   "Your tree, drops, streak and certificates",
 ];
 

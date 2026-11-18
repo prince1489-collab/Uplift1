@@ -14,10 +14,10 @@ function initAdmin() {
 // copies of a base URL drift exactly once — silently, in whichever file nobody remembered. Since
 // 3.26 every one of them also carries via=push, so the app can count opens a notification caused.
 
-// One daily push, at the hour the person chose (9am by default). On Sundays we replace the daily kindness nudge with a combined
-// weekly check-in. The Wellbeing Score uses the WHO-5 (a two-week recall window), so we only
-// prompt the wellbeing part on ALTERNATE Sundays — nudging it weekly would ask for a check-in
-// that isn't due yet. Off-weeks keep the community-vote + journal prompts.
+// One daily push, at the hour the person chose (9am by default). On Sundays, when there's nothing
+// more personal to say, it's "Your week in Seen" (sundayMessage). Until 3.31 alternate Sundays
+// asked for a fortnightly WHO-5 wellbeing check-in instead; the check-in was removed, because a
+// non-clinical app shouldn't score anyone's wellbeing.
 // Two evergreen lines rather than one, alternating by day. The second names PRACTICE, which no
 // notification this app has ever sent has mentioned — so the tab built to be a daily habit has
 // had no daily cue, while the one push a day pointed at Connect six mornings out of seven.
@@ -43,10 +43,6 @@ export function greetingFor(hour) {
 // community category was retired. So every user was sent to a feature that does not exist,
 // twice a month, for as long as they had notifications on. A reminder must only ever name
 // something the app can actually do.
-const WEEKLY_MESSAGE_WELLBEING = {
-  title: "Your fortnightly check-in 🌱",
-  body: "Add a line to your journal, and see how the last two weeks have felt.",
-};
 // 3.30: the other Sundays point at "Your week" — written in the Seen conversation by the app the
 // first time it opens from Sunday on (src/seenUpdates.js), so the tap lands on it.
 export const WEEKLY_MESSAGE_LITE = {
@@ -54,6 +50,8 @@ export const WEEKLY_MESSAGE_LITE = {
   body: "See what your kindness did this week.",
   open: "seen",
 };
+// Every Sunday since 3.31 (no more alternate-week wellbeing check-in).
+export const sundayMessage = (day) => (day === "Sun" ? WEEKLY_MESSAGE_LITE : null);
 
 // ── The evening slot ─────────────────────────────────────────────────────────────────────────
 // Seen sends ONE notification a day, at the hour each person chose, and that number is deliberate: a
@@ -409,8 +407,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ sent: 0, total: snap.size, matched: 0, evening: 0, realLife: 0 });
     }
 
-    // Fortnightly parity (UTC week index) decides whether this Sunday includes the wellbeing prompt.
-    const wellbeingWeek = Math.floor(now.getTime() / (7 * 24 * 60 * 60 * 1000)) % 2 === 0;
     const since = now.getTime() - 24 * 60 * 60 * 1000;
 
     let sent = 0;
@@ -496,7 +492,7 @@ export default async function handler(req, res) {
         if (personal) await pushTo(e.uid, e.rows, personal); else quiet += 1;
         continue;
       }
-      const weekly = e.day === "Sun" ? (wellbeingWeek ? WEEKLY_MESSAGE_WELLBEING : WEEKLY_MESSAGE_LITE) : null;
+      const weekly = sundayMessage(e.day);
       // Alternates by day so neither evergreen line becomes wallpaper. UTC day number is fine
       // here: it only has to change once a day, not align with anybody's midnight.
       const line = DAILY_MESSAGES[Math.floor(now.getTime() / 86400000) % DAILY_MESSAGES.length];

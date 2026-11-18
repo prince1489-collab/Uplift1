@@ -17,7 +17,7 @@
 //
 // 3. "NOT NOW" IS NOT "NEVER". Dismissals are timestamps, not booleans, so an invitation comes
 //    back after its cooldown. The old code used permanent flags: one accidental tap on ✕ and
-//    the wellbeing check-in was gone for the lifetime of the install.
+//    an invitation was gone for the lifetime of the install.
 //
 // 4. DECLINING TEACHES IT TO STOP. Each time an invitation is dismissed its cooldown doubles,
 //    and after MAX_DECLINES it is never shown again. This rule exists because the first version
@@ -32,7 +32,7 @@ const STORE_KEY = "seen_invitations_v1"; // { [id]: { at, declines } } plus { _l
 const ACTIVITY_KEY = "seen_activity_at_v1"; // { [id]: ts } — when you last DID a thing
 const DAY = 24 * 60 * 60 * 1000;
 
-// Raised from 3 days when the set grew from five invitations to eight. The floor, not the
+// Raised from 3 days when the set grew from five invitations to eight (six since 3.31). The floor, not the
 // per-invitation cooldowns, is what actually sets the rhythm once several are eligible at
 // once — so adding invitations without raising this silently doubles how often the app speaks.
 // Simulated, not guessed: at a 3-day floor eight invitations gave a passive user 24 asks in
@@ -108,7 +108,7 @@ const QUIET_MS = 10 * DAY;
 // Lower `priority` wins. Ordered by what unblocks the most: an empty Focused Feed makes half
 // the app look broken, so following someone comes first, and finding the composer is close
 // behind — both are "you haven't discovered this yet". Then the two repeatable practices, then
-// discovery and profile polish, and a wellbeing re-check is the least urgent thing here.
+// discovery and profile polish.
 //
 // `earliest` is measured from the account's start, so day one is never a checklist.
 // `cooldown` is how long after being shown-and-dismissed it may return.
@@ -160,23 +160,8 @@ export const INVITATIONS = [
     cooldown: 14 * DAY,
     when: (ctx) => !ctx.hasGlimpse,
   },
-  {
-    id: "wellbeing",
-    priority: 7,
-    earliest: 3 * DAY,
-    cooldown: 14 * DAY,
-    when: (ctx) => !ctx.hasWellbeing,
-  },
-  {
-    id: "wellbeing_recheck",
-    priority: 8,
-    earliest: 30 * DAY,
-    cooldown: 30 * DAY,
-    // Only for people who HAVE done one, and not for a month. Distinct from `wellbeing` so the
-    // copy can differ: a first check-in and a re-check are different invitations.
-    when: (ctx) => ctx.hasWellbeing && ctx.lastWellbeingAt > 0
-      && (ctx.now - ctx.lastWellbeingAt) > 30 * DAY,
-  },
+  // 3.31: the wellbeing check-in and its re-check were removed with the WHO-5 score — a
+  // non-clinical app shouldn't score anyone's wellbeing. Their stored dismissals are ignored.
 ];
 
 // Pick the one invitation to show, or null. Exported pure and side-effect free so the pacing

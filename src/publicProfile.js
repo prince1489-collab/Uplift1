@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS
 // `users/{uid}` was readable by any signed-in account, and it holds email, date of birth,
-// WHO-5 wellbeing scores, FCM push token, timezone and spark balance. Nothing in the UI
+// FCM push token, timezone and spark balance. Nothing in the UI
 // showed those to anyone else, but the rule allowed it, so the exposure was one `getDoc`
 // away for anybody with the app open and a console.
 //

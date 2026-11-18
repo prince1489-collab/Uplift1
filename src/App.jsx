@@ -75,10 +75,10 @@ import {
 import { pickDailyGreetings } from "./greetings";
 import { pickDailyProverb, proverbAsGreeting } from "./proverbs";
 import { getResources, getEmergency } from "./SupportData.js";
+import { sweepWellbeing } from "./wellbeingSweep";
 import JournalPanel from "./Journal";
 import ModerationQueue from "./ModerationQueue";
 import UserGlimpse from "./UserGlimpse";
-import { WellbeingCheckin, WellbeingPanel, saveCheckin } from "./Wellbeing";
 import {
   useLeaderboardCandidates,
   CommunityArena,
@@ -100,7 +100,7 @@ import {
   addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, getFirestore,
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   increment, limit, onSnapshot, orderBy, query,
-  runTransaction, serverTimestamp, setDoc, updateDoc, where,
+  runTransaction, serverTimestamp, setDoc, updateDoc, where, deleteField, writeBatch,
 } from "firebase/firestore";
 
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
@@ -309,16 +309,12 @@ function InputRow({ icon, children, rightIcon = null }) {
 // Mood taglines and the per-mood bubble palette lived here. Both belonged to the
 // "how you're feeling" feature, retired in the V2 review pass.
 
-function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, onDeleteAccount, globePulse, db, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminStats, onAdminClearFeed, onAdminFullReset }) {
+function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollowing, followCount = 0, onUpgrade, onManageSubscription, onSupport, onChangePassword, onKindnessTree, onSignOut, isSigningOut, onDeleteAccount, globePulse, currentUser, profile, isPremium, streak, sparkBalance, treeStageName = "", rightNow = null, open: openProp, onOpenChange, isAdmin = false, onAdminReports, onAdminStats, onAdminClearFeed, onAdminFullReset }) {
   const installedVersion = useInstalledVersion();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOpenInternal(v); };
-  const [showWellbeingHub, setShowWellbeingHub] = useState(false); // hub listing Check-in + Support
-  const [showWellbeing, setShowWellbeing] = useState(false);       // the WHO-5 check-in panel
   // Android back closes these menu sub-panels instead of exiting the app (QA #2)
-  useBackLayer(showWellbeingHub, () => setShowWellbeingHub(false));
-  useBackLayer(showWellbeing, () => setShowWellbeing(false));
 
   const firstName = profile?.fullName?.trim()?.split(" ")?.[0]
     || currentUser?.displayName?.split(" ")?.[0]
@@ -447,12 +443,15 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
                   label="Your journal"
                   sub="Everything you've written about kind moments"
                 />
+                {/* 3.31: was "Wellbeing — Wellbeing check-in & Support", a WHO-5 score and clinical
+                    questionnaires. A non-clinical app shouldn't score anyone's wellbeing; what stays
+                    is someone to talk to (Support.jsx — helplines only). */}
                 <Row
-                  tourId="m-wellbeing"
-                  onClick={() => { setShowWellbeingHub(true); close(); }}
-                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>💚</span></IconBox>}
-                  label="Wellbeing"
-                  sub="Wellbeing check-in & Support"
+                  tourId="m-support"
+                  onClick={() => { onSupport?.(); close(); }}
+                  icon={<IconBox className="bg-teal-50"><span style={{ fontSize: "15px", lineHeight: 1 }}>🛟</span></IconBox>}
+                  label="Support"
+                  sub="Someone to talk to, if you need it"
                 />
                 {/* A real row, not a line in the legal microtext at the bottom. Someone who goes
                     looking for why an app exists is exactly the person worth answering properly,
@@ -565,52 +564,7 @@ function MeatballMenu({ onWorld, onShare, onInvite, onStory, onJournal, onFollow
         </div>,
         document.body
       )}
-      {showWellbeingHub && (
-        <WellbeingHubSheet
-          onCheckin={() => { setShowWellbeingHub(false); setShowWellbeing(true); }}
-          onSupport={() => { setShowWellbeingHub(false); onSupport(); }}
-          onClose={() => setShowWellbeingHub(false)}
-        />
-      )}
-      {showWellbeing && (
-        <WellbeingPanel db={db} currentUser={currentUser} onClose={() => setShowWellbeing(false)} onSupport={() => { setShowWellbeing(false); onSupport(); }} />
-      )}
     </>
-  );
-}
-
-// Wellbeing hub — two clear sub-categories: a check-in and support resources.
-function WellbeingHubSheet({ onCheckin, onSupport, onClose }) {
-  const HubRow = ({ emoji, label, sub, onClick }) => (
-    <button onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">
-      <span className="text-xl">{emoji}</span>
-      <span className="flex-1 min-w-0">
-        <span className="block text-sm font-semibold text-slate-800">{label}</span>
-        <span className="block text-[12px] text-slate-500">{sub}</span>
-      </span>
-      <ChevronRight size={18} className="text-slate-300" />
-    </button>
-  );
-  return createPortal(
-    <div data-portal className="fixed inset-0 z-[160] flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
-        <div className="px-5 pb-2 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">💚 Wellbeing</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
-        </div>
-        <p className="px-5 pb-3 text-[12px] text-slate-500 leading-relaxed">
-          A gentle place to check in with yourself, and to find support whenever you need it.
-        </p>
-        <div className="px-4 pb-8 space-y-2">
-          <HubRow emoji="🌤️" label="Wellbeing check-in" sub="A private WHO-5 reflection & your trend" onClick={onCheckin} />
-          <HubRow emoji="🛟" label="Support" sub="Helplines and supportive resources" onClick={onSupport} />
-        </div>
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -1022,7 +976,7 @@ function WelcomeMoment({ firstName, onClose, onStart }) {
   );
 }
 
-// `nudges` are the app's own invitations — "check in on your wellbeing", "follow someone",
+// `nudges` are the app's own invitations — "add two lines to your profile", "follow someone",
 // "see the Kindness globe" — chosen and paced by src/invitations.js, which guarantees at most
 // one at a time. They differ from every other row here in three ways:
 //   - device-local and computed, not Firestore events;
@@ -1693,7 +1647,6 @@ export default function App() {
   const [chatRetryCount, setChatRetryCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sendError, setSendError] = useState("");
-  const [wellbeingError, setWellbeingError] = useState("");
   // Buddy invite: detect ?add=UID in URL
   const [pendingBuddyUid] = useState(() => {
     try { return new URLSearchParams(window.location.search).get("add") || null; } catch { return null; }
@@ -1776,7 +1729,6 @@ export default function App() {
   const [onboardingStep, setOnboardingStep] = useState("entry");
   const [showWelcomeMoment, setShowWelcomeMoment] = useState(false);
   const [pendingProfileData, setPendingProfileData] = useState(null);
-  const [pendingOnboardingDetails, setPendingOnboardingDetails] = useState(null); // details awaiting wellbeing baseline step
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isEmailActionLoading, setIsEmailActionLoading] = useState(false);
@@ -2489,13 +2441,6 @@ export default function App() {
     if (showMap && !hasOpenedGlobe) { setHasOpenedGlobe(true); safeLocalSet("seen_globe_opened", "1"); }
   }, [showMap, hasOpenedGlobe]);
 
-  // v2: wellbeing check-in moved out of onboarding, now invited from the bell.
-  // Also hoisted above INVITATION_COPY, which closes over the setter. That closure is only
-  // called on a tap, so it would work either way — but "safe because it's deferred" is the
-  // kind of reasoning that stops being true the moment someone inlines the call, so the
-  // declaration just goes before its use.
-  const [showWellbeingSheet, setShowWellbeingSheet] = useState(false);
-
   // Copy lives here rather than in invitations.js: that file decides WHEN to ask, this decides
   // what the ask says and what tapping it does.
   const INVITATION_COPY = {
@@ -2536,16 +2481,6 @@ export default function App() {
       text: <><span className="font-semibold">Help people see the person behind the kindness</span> — add two playful lines to your profile</>,
       open: () => setShowGlimpseSheet(true),
     },
-    wellbeing: {
-      icon: "🌤️",
-      text: <><span className="font-semibold">How have you been feeling lately?</span> — a quick, private check-in, just for your own reflection</>,
-      open: () => setShowWellbeingSheet(true),
-    },
-    wellbeing_recheck: {
-      icon: "🌤️",
-      text: <><span className="font-semibold">It's been a while since your last check-in</span> — see how the past few weeks compare</>,
-      open: () => setShowWellbeingSheet(true),
-    },
   };
 
   const bellNudges = useMemo(() => {
@@ -2558,8 +2493,6 @@ export default function App() {
       followCount: follows.length,
       hasOpenedGlobe,
       hasGlimpse: Boolean(profile.mostDays || profile.anotherLife),
-      hasWellbeing: Boolean(profile.wellbeing),
-      lastWellbeingAt: Number(profile.wellbeingAt) || 0,
       // Your own-words posts are device-local, same as the follow cache, so the count is
       // simply the list length rather than anything that needs fetching.
       localPostCount: localPosts.length,
@@ -2585,7 +2518,6 @@ export default function App() {
     }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, follows.length, hasOpenedGlobe, firstFeedVisitAt, invitationTick, localPosts.length]);
-  useBackLayer(showWellbeingSheet, () => setShowWellbeingSheet(false));
   const [newMessageIds, setNewMessageIds] = useState(new Set());
   const [seenCountries, setSeenCountries] = useState(new Set());
   const prevMessagesRef = useRef([]);
@@ -2681,6 +2613,14 @@ export default function App() {
       .catch(() => { openRecordedRef.current = null; });
   }, [currentUser?.uid, currentUser?.isAnonymous]);
   useEffect(() => { if (isRealSignedInUser && profile) recordOpen(); }, [isRealSignedInUser, profile, recordOpen]);
+  // The wellbeing scores earlier versions saved are deleted, once per session (3.31 — see
+  // wellbeingSweep.js: the WHO-5 check-in was removed, and its saved scores go with it).
+  const wellbeingSweptRef = useRef("");
+  useEffect(() => {
+    if (!isRealSignedInUser || !profile || !currentUser?.uid || wellbeingSweptRef.current === currentUser.uid) return;
+    wellbeingSweptRef.current = currentUser.uid;
+    sweepWellbeing(db, currentUser.uid, profile, { doc, collection, getDocs, updateDoc, deleteField, writeBatch }).catch(() => {});
+  }, [isRealSignedInUser, profile, currentUser?.uid]);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === "visible") recordOpen(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -3556,11 +3496,6 @@ export default function App() {
         mostDays: (data.mostDays || "").trim(), anotherLife: (data.anotherLife || "").trim(),
       });
 
-      // Wellbeing baseline — recorded from the onboarding check-in step
-      if (data.wellbeing) {
-        try { await saveCheckin(db, user.uid, data.wellbeing); } catch (_) {}
-      }
-
       // Referral reward — award +50 Sparks to both users
       const pendingRef = localStorage.getItem("seen_ref");
       if (pendingRef && pendingRef !== user.uid) {
@@ -3588,7 +3523,7 @@ export default function App() {
         } catch (err) { console.error("Referral award error:", err); }
       }
 
-      setPendingProfileData(null); setPendingOnboardingDetails(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
+      setPendingProfileData(null); setHasCompletedOnboarding(true); setOnboardingStep("done"); setShowWelcomeMoment(true);
     } catch (error) {
       setShowWelcomeMoment(false); // save failed — drop the welcome overlay, show the form + error
       if (error?.code === "permission-denied") { setOnboardingError("Firestore rules are blocking profile save."); return; }
@@ -4269,57 +4204,14 @@ export default function App() {
           </div>,
           document.body
         )}
-        {showWellbeingSheet && currentUser && createPortal(
-          <div data-portal className="fixed inset-0 z-[240] flex flex-col justify-end">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowWellbeingSheet(false)} />
-            <div className="relative sheet-slide-up rounded-t-3xl bg-white shadow-2xl max-h-[90dvh] overflow-y-auto flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-center pt-3 pb-2 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-slate-200" /></div>
-              <div className="px-5 pb-2 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-800">A quick wellbeing check-in</h2>
-                <button onClick={() => setShowWellbeingSheet(false)} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
-              </div>
-              <div className="px-5 pb-8">
-                <p className="text-[13px] text-slate-500 leading-relaxed mb-3">Just for your own reflection — it's not a medical test, and you can look back on it over time.</p>
-                {wellbeingError && (
-                  <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-600" role="alert">{wellbeingError}</p>
-                )}
-                <WellbeingCheckin
-                  submitLabel="Save check-in"
-                  onComplete={async (scores) => {
-                    // Only dismiss on success. This used to swallow the error and dismiss
-                    // regardless, so a failed save lost five answered questions AND stopped
-                    // the prompt ever returning.
-                    try {
-                      setWellbeingError("");
-                      await saveCheckin(db, currentUser.uid, scores);
-                      // wellbeingAt is what the re-check invitation measures against. The
-                      // scores map alone carries no date, and the subcollection copy would
-                      // need a separate query just to answer "how long ago was this?".
-                      await setDoc(userProfileRef(currentUser.uid), { wellbeing: scores, wellbeingAt: Date.now() }, { merge: true });
-                    } catch {
-                      setWellbeingError("Couldn't save your check-in — check your connection and try again.");
-                      return;
-                    }
-                    // No dismissal flag to set: the invitation's own `when` predicate reads
-                    // `profile.wellbeing`, so saving a check-in retires the invitation by
-                    // making it ineligible. A separate boolean would be a second source of
-                    // truth that could disagree with the profile.
-                    setShowWellbeingSheet(false);
-                  }}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
         {showGlimpseSheet && currentUser && (
           <GlimpsePromptSheet
             initial={{ mostDays: profile?.mostDays, anotherLife: profile?.anotherLife }}
             onSave={async (fields) => {
               await setDoc(userProfileRef(currentUser.uid), fields, { merge: true });
               syncPublicProfile(db, currentUser.uid, { ...profile, ...fields });
-              // Same as the wellbeing sheet: answering retires the invitation because its
-              // `when` reads profile.mostDays / profile.anotherLife.
+              // Answering retires the invitation: its `when` reads profile.mostDays /
+              // profile.anotherLife, so there's no separate flag to set.
             }}
             onClose={() => setShowGlimpseSheet(false)}
           />
@@ -4346,27 +4238,6 @@ export default function App() {
                   onPasswordSignUp={signUpWithPassword} onForgotPassword={forgotPassword} onGoogleSignIn={signInWithGoogle} onAppleSignIn={isNativeIOS() ? signInWithApple : undefined}
                   loading={isEmailActionLoading} googleLoading={isGoogleSigningIn} googleError={authError}
                   emailLinkMessage={emailLinkMessage} authError={authError} />
-              ) : pendingOnboardingDetails ? (
-                <div className="seen-auth-bg h-full w-full overflow-y-auto bg-gradient-to-b from-[#FFF6EF] via-[#f7f7f6] to-[#f6f5f2] px-6 pt-8 pb-10">
-                  <div className="mx-auto w-full max-w-sm">
-                    <div className="flex justify-center pb-3">
-                      <img src="/icon-192.png" alt="" width={68} height={68} className="rounded-[19px] shadow-md" />
-                    </div>
-                    <h1 className="seen-auth-title font-display text-center text-[34px] leading-[1.08] font-normal tracking-[-0.04em]">A quick wellbeing check-in</h1>
-                    <p className="seen-auth-sub pb-4 text-center text-[16px] leading-tight">A quick, gentle check-in (it asks about the past two weeks) — just for your own reflection, not a medical test. You can look back on it over time. You're welcome to skip it.</p>
-                    <WellbeingCheckin
-                      submitLabel="Finish & enter Seen"
-                      onComplete={async (scores) => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails, wellbeing: scores }); }}
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => { setOnboardingError(""); await completeOnboarding({ ...pendingOnboardingDetails }); }}
-                      className="mt-3 w-full text-center text-[13px] font-semibold text-slate-400 hover:text-slate-600 transition-colors">
-                      Skip for now
-                    </button>
-                    {onboardingError && <p className="px-1 mt-2 text-center text-sm text-rose-600">{onboardingError}</p>}
-                  </div>
-                </div>
               ) : (
                 <Onboarding onContinue={async (data) => { setOnboardingError(""); await completeOnboarding(data); }}
                   loading={isSavingProfile} initialData={onboardingInitial}
@@ -4795,10 +4666,9 @@ export default function App() {
                   It now arrives through the 🔔 bell after three days — see `nudges` below.
                   It was landing on day one, in the middle of the feed, before anyone had a
                   reason to care about their profile. */}
-              {/* The wellbeing check-in prompt used to sit here. It was the app talking to you,
-                  wearing the same clothes as a message from another person, in the one place
-                  reserved for other people. Restyling it wouldn't have fixed that — it now
-                  arrives through the 🔔 bell alongside every other app-to-user message. */}
+              {/* A wellbeing check-in prompt used to sit here (the check-in itself was removed in
+                  3.31). App-to-user messages arrive through the 🔔 bell, never in the space
+                  reserved for other people's messages. */}
               {/* Crisis-support banner — surfaced when something you have written in your own
                   words reads as distressed. Shows live helplines inline (not just a deep-link)
                   so a heavy moment never requires navigating away to find a number.
