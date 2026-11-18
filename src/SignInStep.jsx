@@ -4,12 +4,11 @@ import React, { useMemo, useState } from "react";
 import {
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
   Lock,
   Mail,
 } from "lucide-react";
-import { canUseSavedPasswords, offerToSavePassword, pickSavedPassword, markSavedPasswordUsed } from "./savedPassword";
+import { offerToSavePassword } from "./savedPassword";
 
 export default function SignInStep({
   onEmailLinkSignIn,
@@ -31,7 +30,6 @@ export default function SignInStep({
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
   const [localMessage, setLocalMessage] = useState("");
-  const [looking, setLooking] = useState(false);
 
   const busy = loading || googleLoading;
 
@@ -63,24 +61,12 @@ export default function SignInStep({
     else offerToSavePassword(normalizedEmail, password);
   };
 
-  // "Use a saved password" (3.36, Android): pick it from the phone's saved passwords and sign in.
-  const useSaved = async () => {
-    resetMessages();
-    setLooking(true);
-    // Some phones take a while to answer, and some never do. Say so, rather than leave the button
-    // looking dead. If the answer comes later, sign-in carries on as normal.
-    const slow = setTimeout(() => setLocalMessage("Still waiting on your phone. If a list of saved passwords opened, choose Seen. If nothing opens, check that a password manager is turned on in your phone's settings."), 8000);
-    const saved = await pickSavedPassword();
-    clearTimeout(slow);
-    setLooking(false);
-    setLocalMessage("");
-    if (!saved) return; // closed the picker
-    if (saved.error) { setLocalError(saved.detail ? `${saved.error} (${saved.detail})` : saved.error); return; }
-    setEmail(saved.email); setPassword(saved.password);
-    markSavedPasswordUsed(saved.email.trim().toLowerCase());
-    const result = await onPasswordSignIn(saved.email.trim().toLowerCase(), saved.password);
-    if (result?.error) setLocalError(result.error);
-  };
+  // "Use a saved password" was here (3.36 – 3.36.3) and is gone in 3.36.4. On a Samsung phone with
+  // Google as its password service, Android never answered the request: the button sat on
+  // "Looking…" and the sign-in screen stopped responding, "Forgot password?" included. A button
+  // that can stall sign-in is worse than typing. The website and app are now linked for passwords
+  // (3.36.3), so the keyboard's own suggestions can offer the saved one instead.
+  // savedPassword.js keeps pickSavedPassword for if it comes back.
 
   const handleForgotPassword = async () => {
     resetMessages();
@@ -174,12 +160,6 @@ export default function SignInStep({
               <button type="button" onClick={handleForgotPassword} className="text-sm font-medium text-teal-700 hover:text-teal-800">
                 Forgot password?
               </button>
-              {canUseSavedPasswords() && (
-                <button type="button" onClick={useSaved} disabled={busy}
-                  className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60">
-                  {looking ? <><Loader2 className="animate-spin" size={14} /> Looking…</> : <><KeyRound size={14} /> Use a saved password</>}
-                </button>
-              )}
             </div>
           )}
 

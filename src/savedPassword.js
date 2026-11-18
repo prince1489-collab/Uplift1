@@ -8,8 +8,9 @@
 // directly (@capgo/capacitor-autofill-save-password):
 //   • after a successful email sign-in or sign-up, Android offers to save it. It keeps offering
 //     (up to MAX_TRIES times) until the save actually goes through;
-//   • on the sign-in screen, "Use a saved password" lets you pick it and signs you in. If there
-//     is nothing saved yet, it says so instead of doing nothing.
+//   • "Use a saved password" on the sign-in screen (pickSavedPassword) is switched off in 3.36.4:
+//     on a Samsung phone the request never came back and the sign-in screen stopped responding.
+//     See SignInStep.jsx.
 // Android only: iPhone needs extra Apple set-up (associated domains) and the web has the
 // browser's own password manager.
 //
