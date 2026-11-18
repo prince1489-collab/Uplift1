@@ -29,6 +29,7 @@ import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, r
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
 import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
 import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion, postSeenUpdate, SEEN_ID } from "./seenChat";
+import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
