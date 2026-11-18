@@ -1,4 +1,4 @@
-// test-today-question.mjs — one question a day, the same for everyone (3.33).
+// test-today-question.mjs — one question a day, the same for everyone (3.33), simple to answer (3.36.1).
 //   node scripts/test-today-question.mjs
 
 import { QUESTIONS, questionFor, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER, SHOWN } from "../src/todayQuestion.js";
@@ -10,7 +10,19 @@ const GUILT = /streak|don't lose|running out|last chance|still haven't|should ha
 const SENSITIVE = /depress|anxi|lonel|sad\b|struggl|mental|therap|diagnos|suicid|religio|politic|sexual|weight|money|debt/i;
 
 check("at least 30 questions", QUESTIONS.length >= 30, String(QUESTIONS.length));
-check("each one is a question, under 90 characters", QUESTIONS.every((x) => x.q.endsWith("?") && x.q.length <= 90), QUESTIONS.filter((x) => !x.q.endsWith("?") || x.q.length > 90).map((x) => x.id).join());
+// Simple and easy to answer (3.36.1): short, one question, about now or everyday things.
+const failing = (test) => QUESTIONS.filter((x) => !test(x.q)).map((x) => x.q).join(" | ");
+const ONE_QUESTION = (q) => q.endsWith("?") && q.indexOf("?") === q.length - 1;
+const NOT_TWO_PART = (q) => !/\band why\b|, and |, or |\bif you could\b/i.test(q);
+const NOT_THE_PAST = (q) => !/\bever\b|\bonce\b|\bstill\b|\bremember\b|\bmemory\b|\bused to\b|\bchildhood\b|\bgrowing up\b/i.test(q);
+const NOT_HOMEWORK = (q) => !/\bcould do\b|\bshould\b|\bwill you\b|\bplan to\b|\bgoing to do\b/i.test(q);
+const NOT_DEEP = (q) => !/\bbelieved\b|\balone\b|\bmatters?\b|\bdifference\b|\bunsung\b|\bhard (week|day|time)\b|\bpatient\b/i.test(q);
+check("each one is a single question", QUESTIONS.every((x) => ONE_QUESTION(x.q)), failing(ONE_QUESTION));
+check("each one is short — 60 characters or fewer", QUESTIONS.every((x) => x.q.length <= 60), failing((q) => q.length <= 60));
+check("none asks two things (no 'and why', no 'or')", QUESTIONS.every((x) => NOT_TWO_PART(x.q)), failing(NOT_TWO_PART));
+check("none digs into the past", QUESTIONS.every((x) => NOT_THE_PAST(x.q)), failing(NOT_THE_PAST));
+check("none sets homework", QUESTIONS.every((x) => NOT_HOMEWORK(x.q)), failing(NOT_HOMEWORK));
+check("none is deep or heavy", QUESTIONS.every((x) => NOT_DEEP(x.q)), failing(NOT_DEEP));
 check("ids are unique", new Set(QUESTIONS.map((x) => x.id)).size === QUESTIONS.length);
 check("no guilt, nothing clinical or sensitive", QUESTIONS.every((x) => !GUILT.test(x.q) && !SENSITIVE.test(x.q)), QUESTIONS.filter((x) => GUILT.test(x.q) || SENSITIVE.test(x.q)).map((x) => x.q).join(" | "));
 check("the same day gives everyone the same question", questionFor("2026-11-18").id === questionFor("2026-11-18").id);
