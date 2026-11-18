@@ -12,6 +12,11 @@
 //     is nothing saved yet, it says so instead of doing nothing.
 // Android only: iPhone needs extra Apple set-up (associated domains) and the web has the
 // browser's own password manager.
+//
+// Passwords saved from Chrome are filed under seenapp.app, and Android gives an app only its own
+// passwords unless the site and the app say they belong together (3.36.3): the site in
+// public/.well-known/assetlinks.json (delegate_permission/common.get_login_creds), the app in an
+// asset_statements entry the Android build adds to the manifest (codemagic.yaml).
 
 import { Capacitor } from "@capacitor/core";
 
@@ -20,6 +25,13 @@ import { Capacitor } from "@capacitor/core";
 const SAVED_KEY = "seen_pw_saved";      // emails the phone has confirmed it saved
 const TRIES_KEY = "seen_pw_save_tries"; // offers that didn't save, per email
 const MAX_TRIES = 3;
+// What happened the last time Android was asked to save (3.36.3): "saved", "closed", or the
+// reason it failed. Kept through sign-out (deviceOwner.js KEEP) so that when "Use a saved
+// password" finds nothing, the message can say whether a save was ever attempted on this phone.
+const LAST_KEY = "seen_pw_last_save";
+const readLast = () => { try { return localStorage.getItem(LAST_KEY) || ""; } catch { return ""; } };
+const writeLast = (v) => { try { localStorage.setItem(LAST_KEY, String(v).slice(0, 160)); } catch { /* private mode */ } };
+const withLast = (detail) => [detail, `last save: ${readLast() || "not tried on this phone"}`].filter(Boolean).join("; ");
 const NONE_SAVED = "No saved password for Seen on this phone yet. Sign in with your password once, and if Android offers to save it, tap Save.";
 
 const isAndroid = () => { try { return Capacitor.getPlatform() === "android"; } catch { return false; } };
@@ -36,10 +48,12 @@ export async function offerToSavePassword(email, password) {
   const tries = readObj(TRIES_KEY);
   if ((tries[email] || 0) >= MAX_TRIES) return;
   let done = false;
+  let why = "";
   try {
     await (await plugin()).promptDialog({ username: email, password });
     done = true;
-  } catch { /* declined, or no password manager on this phone */ }
+  } catch (e) { why = String(e?.message || e || "unknown"); } // declined, or no password manager
+  writeLast(done ? "saved" : /cancel/i.test(why) ? "closed" : `failed (${why})`);
   if (done) writeObj(SAVED_KEY, { ...saved, [email]: true });
   else writeObj(TRIES_KEY, { ...tries, [email]: (tries[email] || 0) + 1 });
 }
@@ -53,11 +67,11 @@ export async function pickSavedPassword() {
   try {
     const r = await (await plugin()).readPassword();
     if (r?.username && r?.password) return { email: String(r.username), password: String(r.password) };
-    return { error: NONE_SAVED };
+    return { error: NONE_SAVED, detail: withLast("") };
   } catch (e) {
     const detail = String(e?.message || e || "");
     if (/cancel/i.test(detail)) return null;
-    return { error: NONE_SAVED, detail };
+    return { error: NONE_SAVED, detail: withLast(detail) };
   }
 }
 

@@ -35,6 +35,7 @@ const KEEP = new Set([
   "seen-install-dismissed",  // "add to home screen" notice
   "seenEmailForSignIn",      // an email-link sign-in in progress
   "seen_ref",                // who invited this device
+  "seen_pw_last_save",       // what happened when Android was last asked to save the password (3.36.3)
 ]);
 const KEEP_PREFIXES = ["seen_update_dismissed_"]; // "a new version is ready", per version
 
