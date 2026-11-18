@@ -66,7 +66,8 @@ export default function SignInStep({
   const useSaved = async () => {
     resetMessages();
     const saved = await pickSavedPassword();
-    if (!saved) return;
+    if (!saved) return; // closed the picker
+    if (saved.error) { setLocalError(saved.detail ? `${saved.error} (${saved.detail})` : saved.error); return; }
     setEmail(saved.email); setPassword(saved.password);
     markSavedPasswordUsed(saved.email.trim().toLowerCase());
     const result = await onPasswordSignIn(saved.email.trim().toLowerCase(), saved.password);
