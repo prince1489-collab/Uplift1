@@ -29,7 +29,6 @@ import { useKindnessInbox, waitingKindness, deliverKindness, rememberDelivery, r
 import DeleteAccount, { AccountDeletedScreen } from "./DeleteAccount";
 import { accountDeletionInProgress, deviceForgotten } from "./accountDeletion";
 import { useSeenChat, useUnderstanding, seenUnread, ensureQuestion, postSeenUpdate, SEEN_ID } from "./seenChat";
-import { useUpdateAvailable, useInstalledVersion } from "./appVersion";
 import { buildConversations, useMySentReplies } from "./conversations";
 import { rhythmOf } from "./rhythm";
 import { markSentToday } from "./hytState";
@@ -80,6 +79,8 @@ import TodayQuestionCard from "./TodayQuestionCard";
 import OneThingCard from "./OneThingCard";
 import TodayTab from "./TodayTab";
 import { doneToday } from "./growStats";
+import UpdatePrompt from "./UpdatePrompt";
+import { checkForUpdate } from "./updateCheck";
 import { useSinceMarker } from "./useSinceMarker";
 import { sinceLastItems } from "./sinceLast";
 import JournalPanel from "./Journal";
@@ -1690,6 +1691,13 @@ export default function App() {
   // a tapped notification — counted as such in pushOpenDates (openDays.js, 3.26).
   const [openedViaPush] = useState(() => { try { return isPushOpen(window.location.search); } catch { return false; } });
   const [isSending, setIsSending] = useState(false);
+  // ── Update check (3.36.2) ──
+  const [updateAvailable, setUpdateAvailable] = useState(null);
+  useEffect(() => {
+    checkForUpdate().then((result) => {
+      if (result?.available) setUpdateAvailable(result.version);
+    });
+  }, []);
   // ── Tap-to-reveal timestamp / long-press reaction bar ──
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [reactionBarId, setReactionBarId] = useState(null);
@@ -4080,6 +4088,14 @@ export default function App() {
 
       <AnimationLayer controller={anim} />
       <ReactionBurstLayer burst={reactionBurst} />
+
+      {/* Update prompt: check for new version available (3.36.2) */}
+      {updateAvailable && (
+        <UpdatePrompt
+          version={updateAvailable}
+          onDismiss={() => setUpdateAvailable(null)}
+        />
+      )}
 
       {showMap && (
         <div className="fixed inset-0 z-[200]">
