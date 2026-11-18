@@ -332,6 +332,14 @@ await check("…and words of a sensible length",
   assertFails(setDoc(doc(A, "users", "uidA", "kindLog", "bad3"), { route: "reply", at: NOWT, text: "x".repeat(241) })));
 await check("you can delete an entry",
   assertSucceeds(deleteDoc(KL(A))));
+// 3.36 — where the kindness went, sorted by the AI
+const KA = doc(A, "users", "uidA", "kindLog", "act_1");
+await check("a kind act in your own words can be logged",
+  assertSucceeds(setDoc(KA, { route: "act", at: NOWT, day: "2026-11-18", text: "Helped my neighbour carry her shopping" })));
+await check("…and given its area afterwards",
+  assertSucceeds(setDoc(KA, { area: "community" }, { merge: true })));
+await check("…but only one of the known areas",
+  assertFails(setDoc(KA, { area: "enemies" }, { merge: true })));
 
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), "users", "uidA", "seenChat", "refl"), { role: "seen", kind: "reflection", text: "You've mentioned…", theme: "running", feedback: null, createdAt: NOWT, read: false });

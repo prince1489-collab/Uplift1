@@ -22,6 +22,7 @@
 // never counts what was missed (scripts/check-reflect.cjs's GUILT rule).
 
 import { weekMoments } from "./growMoments.js";
+import { areasLine } from "./kindAreas.js";
 import { CERTIFICATES } from "./certificates.js";
 
 export const UPDATE_KIND = "update";
@@ -80,6 +81,9 @@ export function weeklyRecap({ weekKey, now = Date.now(), activeDates = [], acts 
   if (days) lines.push(`You made someone feel seen on ${plural(days, "day")}.`);
   for (const m of moments) lines.push(`${m.icon} ${m.text}`);
   const tail = [];
+  // Where the kindness went this week (3.36, kindAreas.js) — kept through any trimming.
+  const areas = areasLine(acts, { from, to });
+  if (areas) tail.push(`🧭 ${areas}`);
   if (wrote) tail.push(`📓 You wrote in your journal ${times(wrote)}.`);
   if (pace && nextStage) tail.push(`🌳 ${nextStage} in ${pace} at your pace.`);
   return { id: `u-week-${weekKey}`, text: fit([...lines, ...tail], tail.length) };

@@ -220,19 +220,23 @@ service cloud.firestore {
       // was, who for, the words, where it landed, and later how it felt. Read by the owner (the
       // Grow tab) and by the server for Seen, which uses the Admin SDK. Owner only, fields checked
       // so it stays what it says it is; deleted with the account (recursiveDelete of users/{uid}).
+      // `area` (3.36): where the kindness went — family, friends, community, strangers, work or
+      // online — sorted by the AI from the words (src/kindAreas.js, api/_sort.js).
       match /kindLog/{entryId} {
         allow read, delete: if request.auth != null && request.auth.uid == userId;
         allow create: if request.auth != null && request.auth.uid == userId
-            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling'])
+            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling','area'])
             && request.resource.data.route in ['sent','reply','note','act','heart']
             && request.resource.data.at is number
             && (!('text' in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 240))
-            && (!('toName' in request.resource.data) || (request.resource.data.toName is string && request.resource.data.toName.size() <= 40));
+            && (!('toName' in request.resource.data) || (request.resource.data.toName is string && request.resource.data.toName.size() <= 40))
+            && (!('area' in request.resource.data) || request.resource.data.area in ['family','friends','community','strangers','work','online']);
         allow update: if request.auth != null && request.auth.uid == userId
-            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling'])
+            && request.resource.data.keys().hasOnly(['route','at','day','toName','toUid','text','country','delivered','feeling','area'])
             && request.resource.data.route in ['sent','reply','note','act','heart']
             && (!('feeling' in request.resource.data) || (request.resource.data.feeling is string && request.resource.data.feeling.size() <= 60))
-            && (!('country' in request.resource.data) || (request.resource.data.country is string && request.resource.data.country.size() <= 60));
+            && (!('country' in request.resource.data) || (request.resource.data.country is string && request.resource.data.country.size() <= 60))
+            && (!('area' in request.resource.data) || request.resource.data.area in ['family','friends','community','strangers','work','online']);
       }
 
       // "Seen" — the AI conversation pinned in Messages (3.15). Private to the owner. They write

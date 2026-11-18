@@ -21,6 +21,7 @@
 //          so a retry can't log the same act twice, and a delivery can find its entry later.
 
 import { collection, doc, setDoc } from "firebase/firestore";
+import { authedPost } from "./apiBase.js";
 
 export const ROUTES = new Set(["sent", "reply", "note", "act", "heart"]);
 
@@ -50,6 +51,19 @@ export function logKindAct(db, uid, { id = null, ...fields } = {}) {
   const col = collection(db, "users", uid, "kindLog");
   const ref = id ? doc(col, String(id).slice(0, 120)) : doc(col);
   return setDoc(ref, entry, { merge: true }).catch(() => {});
+}
+
+// A real-life act, sorted by the AI into where the kindness went (3.36, api/_sort.js via
+// /api/moderate-message): family, friends, community, strangers, work or online. Written onto the
+// same entry as `area` for Seen's weekly message (kindAreas.js). Never awaited by callers; a
+// failure leaves the act unsorted, which just means it isn't counted in an area.
+export function sortKindAct(db, currentUser, id, text) {
+  const uid = currentUser?.uid;
+  const words = clip(text, 240);
+  if (!db || !uid || !id || !words) return Promise.resolve();
+  return authedPost(currentUser, "/api/moderate-message", { sort: "kind_act", text: words })
+    .then((r) => (r?.area ? setDoc(doc(db, "users", uid, "kindLog", String(id).slice(0, 120)), { area: r.area }, { merge: true }) : null))
+    .catch(() => {});
 }
 
 // A message to a stranger reached someone: where, on the same entry.

@@ -29,7 +29,7 @@
 // State is the per-day record in hytState.js — the same one the old Practice tab used — so
 // nothing about a day already in progress is lost in the move.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { readPublicProfile } from "./publicProfile";
@@ -38,7 +38,9 @@ import { Check, RefreshCw, Clock, ChevronDown, Send, MessageCircle, Heart, Globe
 import { pickDaily, todayKey, ageBandFor } from "./hytPrompts";
 import { loadDayState, saveDayState, onDayState, completeSlot, ageFromDob } from "./hytState";
 import { momentsLeft, momentById, planFor, actAsPhrase, todaysRealLife } from "./realLife";
-import { logKindAct } from "./kindLog";
+import { logKindAct, sortKindAct } from "./kindLog";
+import { useDictation } from "./dictation";
+import MicButton from "./MicButton";
 import { whosNext } from "./reflectPrompts";
 import { NUDGE_CHOICES, nudgeLabel, nudgeAsked, markNudgeAsked, setNudgeHour } from "./nudgeTime";
 import { rhythmOf } from "./rhythm";
@@ -134,11 +136,33 @@ function consequence(route, echo, name, delivery = null, n = 0) {
 // evening — and Seen sends the act and the words at that moment (api/send-reminder.js), so the
 // reminder arrives when it can be acted on rather than hours later. Done is one tap and one warm
 // line; nothing to fill in (3.28: nothing is asked after any act).
-function RealLifeCard({ item, planMoment, canRemind, canSwap, onDone, onPlan, onSwap }) {
+//
+// "Or tell us what you did" (3.36): the idea is a suggestion, not a limit. The founder found the
+// prompts "restricting users being able to input something kind they did" — so anything kind, in
+// your own words (typed or said), counts the same as the idea, and Seen sorts it into where the
+// kindness went (kindLog.sortKindAct) for its weekly message.
+const OWN_MAX = 200;
+function RealLifeCard({ item, planMoment, canRemind, canSwap, onDone, onPlan, onSwap, onOwn }) {
   const [changing, setChanging] = useState(false);
   const moment = momentById(planMoment);
   const left = momentsLeft(new Date());
   const choosing = !moment || changing;
+  const [own, setOwn] = useState("");
+  const dictation = useDictation({ text: own, setText: setOwn, max: OWN_MAX });
+  const ownRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = ownRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [own]);
+  const logOwn = () => {
+    dictation.stop();
+    const t = own.replace(/\s+/g, " ").trim();
+    if (!t) return;
+    setOwn("");
+    onOwn?.(t);
+  };
   return (
     // bg-gradient-to-br + from-orange-50: the pair index.css already turns into the warm night tint.
     <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white px-3.5 pb-3 pt-2.5 shadow-sm"
@@ -190,6 +214,22 @@ function RealLifeCard({ item, planMoment, canRemind, canSwap, onDone, onPlan, on
       {!moment && left.length === 0 && (
         <p className="mt-2 text-center text-[11px] text-slate-500">Any time before bed counts.</p>
       )}
+      <div className="mt-3 border-t border-orange-100 pt-2.5">
+        <p className="text-[11.5px] font-semibold text-slate-500">Did something else kind? Tell us what you did</p>
+        <div className="mt-1.5 flex items-end gap-2 rounded-xl border border-slate-200 bg-white py-1 pl-3 pr-1">
+          <textarea ref={ownRef} value={own} rows={1} maxLength={OWN_MAX} onChange={(e) => setOwn(e.target.value.slice(0, OWN_MAX))}
+            placeholder="e.g. Carried my neighbour's shopping up the stairs" aria-label="A kind thing you did, in your own words"
+            className="min-h-[34px] flex-1 resize-none overflow-y-auto bg-transparent py-1.5 text-[13.5px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
+          <MicButton dictation={dictation} variant="icon" />
+        </div>
+        {dictation.listening && <p className="mt-1 text-[11px] font-semibold text-red-600" role="status">Listening… tap ■ when you're done</p>}
+        {own.trim() && (
+          <button onClick={logOwn}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-2 text-[13.5px] font-bold text-white active:scale-[0.99]">
+            <Check size={14} strokeWidth={3} /> Log it
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -304,13 +344,18 @@ export default function SeenBar({
   // ── The real-life ways ─────────────────────────────────────────────────────────────────────
   // "Done it" is one tap and one warm line (the summary above the card); nothing to fill in. A
   // plan's reminder is cleared by completeSlot through onPlanChange(null).
-  const doneIt = () => {
-    const after = completeSlot(state, "kindness", { onKindAct, onPlanChange, text: today.text });
+  // The idea's "Done it", or the same thing in your own words (3.36). Either is today's real-life
+  // act; the log entry gets a fixed id so Seen's sorting can put its area on the same entry.
+  const actDoneWith = (text) => {
+    const after = completeSlot(state, "kindness", { onKindAct, onPlanChange, text });
     update(after);
-    logKindAct(db, currentUser?.uid, { route: "act", text: today.text }); // the private log (3.29)
+    const id = `act_${day}_${Date.now().toString(36)}`;
+    logKindAct(db, currentUser?.uid, { id, route: "act", text }); // the private log (3.29)
+    sortKindAct(db, currentUser, id, text); // where it went: family, friends, community… (3.36)
     setJustActed(true);
     try { navigator.vibrate?.([8]); } catch { /* ignore */ }
   };
+  const doneIt = () => actDoneWith(today.text);
   const doneWho = () => {
     // Done — so tomorrow's push shouldn't still be about them.
     if (db && currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { whosNext: null }).catch(() => {});
@@ -430,7 +475,7 @@ export default function SeenBar({
                 {!actDone && (
                   <div className="pb-1.5">
                     <RealLifeCard item={today} planMoment={planMoment} canRemind={canRemind} canSwap={canSwap}
-                      onDone={doneIt} onPlan={planIt} onSwap={swap} />
+                      onDone={doneIt} onPlan={planIt} onSwap={swap} onOwn={actDoneWith} />
                   </div>
                 )}
                 <p className="px-1 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">

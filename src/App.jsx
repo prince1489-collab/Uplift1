@@ -1763,6 +1763,16 @@ export default function App() {
     try { return parseInt(localStorage.getItem("seen_last_send_time") || "0", 10) || 0; } catch (_) { return 0; }
   });
   const [hasSent, setHasSent] = useState(() => !!localStorage.getItem("seen_has_sent"));
+  // The account's own record says too (3.36). `seen_has_sent` is kept on the device, and signing out
+  // reloads the app with it set aside (deviceOwner.js), so after signing back in it read as "never
+  // sent" until the next reload — the first-visit cards came back and "Since you were last here"
+  // stayed hidden. Anyone whose profile shows a kind act has sent.
+  useEffect(() => {
+    if (hasSent || !profile) return undefined;
+    if (!(Number(profile.activeDays) > 0 || profile.lastGreetingDate || Number(profile.greetingsSentCount) > 0)) return undefined;
+    const t = setTimeout(() => { setHasSent(true); try { localStorage.setItem("seen_has_sent", "1"); } catch { /* ignore */ } }, 0);
+    return () => clearTimeout(t);
+  }, [hasSent, profile]);
   // Countries that reacted to MY messages → { [country]: { emoji, at } }, persisted 5h
   const [reactedCountries, setReactedCountries] = useState(() => {
     try {
@@ -2205,7 +2215,6 @@ export default function App() {
   const [showMap, setShowMap] = useState(false);
   const [showLevels, setShowLevels] = useState(false); // "about kindness levels" sheet
   const [autoWaterTree, setAutoWaterTree] = useState(false); // v2: first-send routes globe→tree with a watering animation
-  const [welcomeDismissed, setWelcomeDismissed] = useState(() => { try { return localStorage.getItem("seen_welcome_dismissed") === "1"; } catch { return false; } }); // transparent "Seen · official" welcome card
   const [coachSeen, setCoachSeen] = useState(() => { try { return localStorage.getItem("seen_send_coach_seen") === "1"; } catch { return false; } }); // first-time "tap to send" coach-mark
   const markCoachSeen = () => { setCoachSeen(true); try { localStorage.setItem("seen_send_coach_seen", "1"); } catch { /* ignore */ } };
   // First-time "tap to send" coach-mark: once it has shown for ~8s, mark it seen so it
@@ -4543,8 +4552,6 @@ export default function App() {
               </Suspense>
             ) : activeTab === "today" ? (
               <TodayTab
-                showWelcome={!hasSent && !welcomeDismissed}
-                onDismissWelcome={() => { setWelcomeDismissed(true); try { localStorage.setItem("seen_welcome_dismissed", "1"); } catch { /* ignore */ } }}
                 since={isRealSignedInUser && hasSent && sinceAt != null ? <SinceLastCard items={sinceItems} onAction={onSinceAction} /> : null}
                 question={isRealSignedInUser ? (
                   <TodayQuestionCard db={db} currentUser={currentUser} profile={profile} day={localDayKey()} blocked={blockedUids}

@@ -36,6 +36,7 @@ check("…with the reply's words and the people who felt it", /Mona wrote back: 
 check("…a heart from before Monday isn't this week's", !/Old/.test(r.text), r.text);
 check("…the journal as a count, and the tree's pace", /You wrote in your journal twice\./.test(r.text) && /Young tree in about 4 weeks at your pace\./.test(r.text), r.text);
 check("…no guilt words", !GUILT.test(r.text), r.text);
+check("…and where the kindness went (3.36)", /🧭 Your kindness went to strangers \(1\)\./.test(r.text), r.text);
 
 check("nothing happened: no recap", weeklyRecap({ ...base, activeDates: [], acts: [], replies: [], hearts: [], journalCount: 0 }) === null);
 check("a week before the kindness log began: no recap", weeklyRecap({ ...base, weekKey: "2026-11-09", now: at(2026, 11, 15, 18) }) === null);

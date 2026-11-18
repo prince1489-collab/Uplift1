@@ -4,10 +4,12 @@ import React, { useMemo, useState } from "react";
 import {
   Eye,
   EyeOff,
+  KeyRound,
   Loader2,
   Lock,
   Mail,
 } from "lucide-react";
+import { canUseSavedPasswords, offerToSavePassword, pickSavedPassword, markSavedPasswordUsed } from "./savedPassword";
 
 export default function SignInStep({
   onEmailLinkSignIn,
@@ -52,9 +54,22 @@ export default function SignInStep({
     if (mode === "signin") {
       const result = await onPasswordSignIn(normalizedEmail, password);
       if (result?.error) setLocalError(result.error);
+      else offerToSavePassword(normalizedEmail, password); // Android remembers it (3.36)
       return;
     }
     const result = await onPasswordSignUp({ email: normalizedEmail, password, fullName: fullName.trim() });
+    if (result?.error) setLocalError(result.error);
+    else offerToSavePassword(normalizedEmail, password);
+  };
+
+  // "Use a saved password" (3.36, Android): pick it from the phone's saved passwords and sign in.
+  const useSaved = async () => {
+    resetMessages();
+    const saved = await pickSavedPassword();
+    if (!saved) return;
+    setEmail(saved.email); setPassword(saved.password);
+    markSavedPasswordUsed(saved.email.trim().toLowerCase());
+    const result = await onPasswordSignIn(saved.email.trim().toLowerCase(), saved.password);
     if (result?.error) setLocalError(result.error);
   };
 
@@ -129,13 +144,13 @@ export default function SignInStep({
 
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" autoComplete="email"
+            <input type="email" name="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" autoComplete="username"
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-3 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
           </div>
 
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+            <input type={showPassword ? "text" : "password"} name="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="Password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pr-12 pl-11 text-base text-slate-700 placeholder:text-slate-400" />
             <button type="button" onClick={() => setShowPassword((p) => !p)}
@@ -146,9 +161,17 @@ export default function SignInStep({
           </div>
 
           {mode === "signin" && (
-            <button type="button" onClick={handleForgotPassword} className="text-sm font-medium text-teal-700 hover:text-teal-800">
-              Forgot password?
-            </button>
+            <div className="flex items-center justify-between gap-2">
+              <button type="button" onClick={handleForgotPassword} className="text-sm font-medium text-teal-700 hover:text-teal-800">
+                Forgot password?
+              </button>
+              {canUseSavedPasswords() && (
+                <button type="button" onClick={useSaved} disabled={busy}
+                  className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60">
+                  <KeyRound size={14} /> Use a saved password
+                </button>
+              )}
+            </div>
           )}
 
           {localError && <p className="text-sm text-rose-600">{localError}</p>}

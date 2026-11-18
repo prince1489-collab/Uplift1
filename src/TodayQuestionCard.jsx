@@ -5,7 +5,7 @@
 // Answer first, then see the world's answers: a heart reaches the person privately, "Tell them"
 // sends them a private word, ⋯ reports or blocks. Ten answers, then "New question tomorrow".
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { collection, deleteDoc, doc, limit, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { MoreHorizontal } from "lucide-react";
 import { questionFor, answerIdFor, othersAnswers, answersSoFar, answerDoc, MAX_ANSWER } from "./todayQuestion";
@@ -57,6 +57,15 @@ export default function TodayQuestionCard({ db, currentUser, profile, day, block
   const mine = (answers || []).find((a) => a.id === myId) || null;
   const heartsOnMine = useMyAnswerHearts(db, mine ? myId : null);
   const [text, setText] = useState("");
+  // The box grows with the answer (3.36) — about seven lines, then it scrolls — so a longer answer
+  // is never squeezed into two lines you can't read back.
+  const boxRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 168)}px`;
+  }, [text]);
   const dictation = useDictation({ text, setText, max: MAX_ANSWER });
   const [anon, setAnon] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -108,9 +117,9 @@ export default function TodayQuestionCard({ db, currentUser, profile, day, block
       {!mine ? (
         <>
           <div className="mt-2.5 flex items-end gap-2 rounded-2xl border border-slate-200 bg-white py-1.5 pl-3 pr-1.5">
-            <textarea value={text} rows={2} maxLength={MAX_ANSWER} onChange={(e) => setText(e.target.value.slice(0, MAX_ANSWER))}
+            <textarea ref={boxRef} value={text} rows={2} maxLength={MAX_ANSWER} onChange={(e) => setText(e.target.value.slice(0, MAX_ANSWER))}
               placeholder="A sentence is plenty…" aria-label="Your answer"
-              className="min-h-[44px] flex-1 resize-none bg-transparent py-1 text-[14px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
+              className="min-h-[44px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[14px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
             <MicButton dictation={dictation} variant="icon" />
           </div>
           {dictation.listening && <p className="mt-1 text-[11px] font-semibold text-red-600" role="status">Listening… tap ■ when you're done</p>}

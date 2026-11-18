@@ -129,8 +129,10 @@ export function buildDigest({ answers = [], feelings = [], user = {}, now = Date
   realActs.slice(-12).forEach((a, i) => {
     const words = a.text && a.route !== "act" ? `: "${clip(a.text, 140)}"` : "";
     const felt = a.feeling ? ` (afterwards they said it felt: ${clip(a.feeling, 40)})` : "";
+    // Where the kindness went (3.36, api/_sort.js), so Seen can notice patterns across areas.
+    const area = typeof a.area === "string" && /^(family|friends|community|strangers|work|online)$/.test(a.area) ? ` [area: ${a.area}]` : "";
     items.push({ id: `K${i + 1}`, kind: "did", date: Number(a.at),
-      text: `On ${dateLabel(a.at)} they ${ACT[a.route](a)}${words}${felt}`,
+      text: `On ${dateLabel(a.at)} they ${ACT[a.route](a)}${words}${felt}${area}`,
       label: `${actLabel(a)} on ${dateLabel(a.at)}` });
   });
 

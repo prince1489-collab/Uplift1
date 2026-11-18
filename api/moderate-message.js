@@ -30,6 +30,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { screenText } from "./_screen.js";
+import { sortKindAct, SORT_MODEL, MAX_ACT } from "./_sort.js";
+
+// The model call behind sorting a kind act (3.36). No key, or any failure: not sorted.
+async function sortWithModel({ system, user }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return "";
+  const client = new Anthropic({ apiKey });
+  const response = await client.messages.create({ model: SORT_MODEL, max_tokens: 10, system, messages: [{ role: "user", content: user }] });
+  return response.content[0]?.text ?? "";
+}
 
 function initAdmin() {
   if (!getApps().length) {
@@ -158,6 +168,12 @@ export default async function handler(req, res) {
   if (req.body?.image) {
     const { status, body } = await reviewImage(req.body.image);
     return res.status(status).json(body);
+  }
+
+  // Sorting a kind act into an area (3.36, api/_sort.js) — not a check, nothing is published.
+  if (req.body?.sort === "kind_act") {
+    const area = await sortKindAct(String(req.body?.text ?? "").slice(0, MAX_ACT), sortWithModel);
+    return res.status(200).json({ area });
   }
 
   const text = String(req.body?.text ?? "").trim().slice(0, MAX_LEN);
