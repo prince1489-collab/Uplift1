@@ -3430,7 +3430,11 @@ export default function App() {
   const [certUp, setCertUp] = useState(null);
   const [openCert, setOpenCert] = useState(null);
   useEffect(() => {
-    const won = claimCertificate(Number(profile?.activeDays ?? 0));
+    // Not until the profile has loaded (3.36.3). Before that, activeDays reads as 0, and a 0 written
+    // here lands on sign-out and sign-in before the device's "already shown" marker is put back, so
+    // the marker is skipped and every sign-in looks like a new certificate.
+    if (!profile) return;
+    const won = claimCertificate(Number(profile.activeDays ?? 0));
     if (!won) return;
     queueSeenUpdate(certUpdate(won));
     // Inside the timeout rather than called straight out: a synchronous setState in an effect is

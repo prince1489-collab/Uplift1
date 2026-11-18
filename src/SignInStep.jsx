@@ -31,6 +31,7 @@ export default function SignInStep({
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
   const [localMessage, setLocalMessage] = useState("");
+  const [looking, setLooking] = useState(false);
 
   const busy = loading || googleLoading;
 
@@ -65,7 +66,14 @@ export default function SignInStep({
   // "Use a saved password" (3.36, Android): pick it from the phone's saved passwords and sign in.
   const useSaved = async () => {
     resetMessages();
+    setLooking(true);
+    // Some phones take a while to answer, and some never do. Say so, rather than leave the button
+    // looking dead. If the answer comes later, sign-in carries on as normal.
+    const slow = setTimeout(() => setLocalMessage("Still waiting on your phone. If a list of saved passwords opened, choose Seen. If nothing opens, check that a password manager is turned on in your phone's settings."), 8000);
     const saved = await pickSavedPassword();
+    clearTimeout(slow);
+    setLooking(false);
+    setLocalMessage("");
     if (!saved) return; // closed the picker
     if (saved.error) { setLocalError(saved.detail ? `${saved.error} (${saved.detail})` : saved.error); return; }
     setEmail(saved.email); setPassword(saved.password);
@@ -169,7 +177,7 @@ export default function SignInStep({
               {canUseSavedPasswords() && (
                 <button type="button" onClick={useSaved} disabled={busy}
                   className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60">
-                  <KeyRound size={14} /> Use a saved password
+                  {looking ? <><Loader2 className="animate-spin" size={14} /> Looking…</> : <><KeyRound size={14} /> Use a saved password</>}
                 </button>
               )}
             </div>
