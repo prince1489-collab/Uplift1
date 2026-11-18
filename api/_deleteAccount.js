@@ -85,6 +85,13 @@ export async function deleteAccountData({ db, uid, deleteAuthUser, deleteStorage
   await gone("kindMomentsB", await where("kindMoments", "bUid"));
   await gone("sharedReflections", await where("sharedReflections", "authorUid"));
   await gone("greetingSubmissions", await where("greetingSubmissions", "authorUid"));
+  // Their answers to Today's question (3.33), with the hearts on them — recursively, because
+  // hearts are a subcollection of each answer.
+  await soft("dailyAnswers", async () => {
+    const refs = await where("dailyAnswers", "uid");
+    for (const ref of refs) await db.recursiveDelete(ref);
+    counts.dailyAnswers = refs.length;
+  });
   // Their reactions on other people's messages. A reaction document is one per KIND of reaction
   // ("❤️", "sticker_hug", …) and holds everyone who gave it — { count, uids, countries,
   // reactedAt }, see src/reactions.js — so this person is taken OUT of it; the document is
@@ -105,6 +112,8 @@ export async function deleteAccountData({ db, uid, deleteAuthUser, deleteStorage
   await soft("reactionsReceivedByOthers", async () => gone("reactionsReceivedByOthers", await group("reactionsReceived", "reactorUid")));
   await soft("ripplesOnOthers", async () => gone("ripplesOnOthers", await group("ripples", "responderUid")));
   await soft("followedByOthers", async () => gone("followedByOthers", await group("follows", "uid")));
+  // Hearts they gave on other people's answers to Today's question (3.33) — they carry a first name.
+  await soft("answerHeartsGiven", async () => gone("answerHeartsGiven", await group("hearts", "uid")));
   // Their messages delivered to strangers (3.21) — pointers in other people's inboxes. The
   // messages themselves went above, so these would show nothing; they still name the sender.
   await soft("deliveredToOthers", async () => gone("deliveredToOthers", await group("kindnessInbox", "fromUid")));

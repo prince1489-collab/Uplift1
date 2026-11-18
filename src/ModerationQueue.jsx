@@ -24,6 +24,7 @@ const COLLECTION_FOR = {
   message: "publicMessages",
   reflection: "sharedReflections",
   reply: "privateReplies",
+  answer: "dailyAnswers", // Today's question (3.33)
 };
 
 const timeAgo = (ts) => {

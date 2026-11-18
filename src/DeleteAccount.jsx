@@ -22,6 +22,7 @@ const GOES = [
   "Private replies and kind notes — sent and received",
   "Your conversation with Seen and everything it noticed",
   "Your journal and feelings",
+  "Your answers to Today's question, and hearts you gave on others'",
   "Your tree, drops, streak and certificates",
 ];
 

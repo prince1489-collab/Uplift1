@@ -76,6 +76,7 @@ import { pickDailyProverb, proverbAsGreeting } from "./proverbs";
 import { getResources, getEmergency } from "./SupportData.js";
 import { sweepWellbeing } from "./wellbeingSweep";
 import SinceLastCard from "./SinceLastCard";
+import TodayQuestionCard from "./TodayQuestionCard";
 import { useSinceMarker } from "./useSinceMarker";
 import { sinceLastItems } from "./sinceLast";
 import JournalPanel from "./Journal";
@@ -4572,6 +4573,12 @@ export default function App() {
                   account isn't greeted by an empty list. */}
               {isRealSignedInUser && hasSent && sinceAt != null && (
                 <SinceLastCard items={sinceItems} onAction={onSinceAction} />
+              )}
+              {/* Today's question (3.33, todayQuestion.js): answer, then see the world's answers. */}
+              {isRealSignedInUser && hasSent && (
+                <TodayQuestionCard db={db} currentUser={currentUser} profile={profile} day={localDayKey()} blocked={blockedUids}
+                  sparkBalance={sparkBalance + treePoints} onKindAct={creditKindAct}
+                  onTell={(a) => setReplyTarget({ uid: a.uid, sender: a.name || "Someone", country: a.country ?? null, id: null, text: a.text, note: true })} />
               )}
               {/* Post-send map prompt.
 

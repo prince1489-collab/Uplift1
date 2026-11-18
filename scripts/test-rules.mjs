@@ -15,7 +15,7 @@ import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebas
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { doc, setDoc, getDoc, addDoc, collection, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, addDoc, collection, updateDoc, deleteDoc } from "firebase/firestore";
 
 const RULES = join(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
 const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080").split(":");
@@ -351,6 +351,37 @@ await check("you can forget everything",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "understanding", "state"))));
 await check("…and delete Seen's messages",
   assertSucceeds(deleteDoc(doc(A, "users", "uidA", "seenChat", "refl"))));
+// ── 3.33: Today's question ──────────────────────────────────────────────────────────────────
+const ANS = { uid: "uidA", day: "2026-11-18", qid: "eased", text: "My neighbour carried my shopping", name: "Ann", country: "India", createdAt: NOWT };
+await check("you can answer today's question at your own id",
+  assertSucceeds(setDoc(doc(A, "dailyAnswers", "2026-11-18_uidA"), ANS)));
+await check("…not at someone else's id",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-18_uidB"), { ...ANS })));
+await check("…not as someone else",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-19_uidB"), { ...ANS, uid: "uidB", day: "2026-11-19" })));
+await check("…not longer than 200 characters",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-20_uidA"), { ...ANS, day: "2026-11-20", text: "x".repeat(201) })));
+await check("…with no extra fields",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-21_uidA"), { ...ANS, day: "2026-11-21", hearts: 99 })));
+await check("…and it can't be edited afterwards",
+  assertFails(updateDoc(doc(A, "dailyAnswers", "2026-11-18_uidA"), { text: "changed" })));
+await check("someone signed in can read an answer",
+  assertSucceeds(getDoc(doc(B, "dailyAnswers", "2026-11-18_uidA"))));
+await check("a heart from someone else, at their own id",
+  assertSucceeds(setDoc(doc(B, "dailyAnswers", "2026-11-18_uidA", "hearts", "uidB"), { uid: "uidB", name: "Ben", at: NOWT })));
+await check("…not on your own answer",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-18_uidA", "hearts", "uidA"), { uid: "uidA", name: "Ann", at: NOWT })));
+await check("…not in someone else's name",
+  assertFails(setDoc(doc(A, "dailyAnswers", "2026-11-18_uidA", "hearts", "uidC"), { uid: "uidC", name: "C", at: NOWT })));
+await check("the writer sees who felt their answer",
+  assertSucceeds(getDocs(collection(A, "dailyAnswers", "2026-11-18_uidA", "hearts"))));
+await check("…nobody else can list them",
+  assertFails(getDocs(collection(env.authenticatedContext("uidC").firestore(), "dailyAnswers", "2026-11-18_uidA", "hearts"))));
+await check("you can take your heart back",
+  assertSucceeds(deleteDoc(doc(B, "dailyAnswers", "2026-11-18_uidA", "hearts", "uidB"))));
+await check("the writer can delete their answer",
+  assertSucceeds(deleteDoc(doc(A, "dailyAnswers", "2026-11-18_uidA"))));
+
 // ── 3.31: no more wellbeing scores ──────────────────────────────────────────────────────────
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), "users", "uidA", "wellbeing", "old1"), { scores: { calm: 3 }, who5Raw: 15, createdAt: NOWT });

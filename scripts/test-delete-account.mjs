@@ -58,7 +58,12 @@ function seed() {
     put(db, `publicMessages/m_${who}/media/item`, { url: "x" });
     put(db, `sharedReflections/s_${who}`, { authorUid: who });
     put(db, `greetingSubmissions/g_${who}`, { authorUid: who });
+    put(db, `dailyAnswers/2026-11-18_${who}`, { uid: who, day: "2026-11-18", text: "x" });
   }
+  // Today's question (3.33): hearts on each other's answers, and a third person's on mine.
+  put(db, "dailyAnswers/2026-11-18_me/hearts/third", { uid: "third", name: "T" });
+  put(db, "dailyAnswers/2026-11-18_other/hearts/me", { uid: "me", name: "Me" });
+  put(db, "dailyAnswers/2026-11-18_other/hearts/third", { uid: "third", name: "T" });
   // Across people: me ↔ other.
   put(db, "privateReplies/p1", { fromUid: "me", toUid: "other", text: "x" });
   put(db, "privateReplies/p2", { fromUid: "other", toUid: "me", text: "x" });
@@ -121,6 +126,10 @@ check("their messages delivered to strangers leave those inboxes, others' stay",
   !db.store.has("users/other/kindnessInbox/m_me") && db.store.has("users/other/kindnessInbox/m_third"));
 check("their own inbox and delivery ledger go; other people's ledgers stay",
   !db.store.has("users/me/kindnessInbox/m_other") && !db.store.has("kindnessLedger/me") && db.store.has("kindnessLedger/other"));
+
+check("their answers to Today's question go, with the hearts on them", !db.store.has("dailyAnswers/2026-11-18_me") && !db.store.has("dailyAnswers/2026-11-18_me/hearts/third"));
+check("their hearts on other people's answers go; other hearts stay",
+  !db.store.has("dailyAnswers/2026-11-18_other/hearts/me") && db.store.has("dailyAnswers/2026-11-18_other/hearts/third") && db.store.has("dailyAnswers/2026-11-18_other"));
 
 // 2. Nobody else's does.
 const otherOk = ["users/other", "users/other/journal/j1", "users/other/seenChat/c1", "publicProfiles/other", "publicMessages/m_other",
