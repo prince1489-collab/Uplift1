@@ -50,7 +50,7 @@ import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setRealLifePlan } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
 import { claimCertificate, sinceLabel } from "./certificates";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 // "How Seen is doing" (3.26) — admin only, so it never ships in anyone else's first load.
@@ -78,6 +78,7 @@ import { sweepWellbeing } from "./wellbeingSweep";
 import SinceLastCard from "./SinceLastCard";
 import TodayQuestionCard from "./TodayQuestionCard";
 import OneThingCard from "./OneThingCard";
+import TodayTab from "./TodayTab";
 import { doneToday } from "./growStats";
 import { useSinceMarker } from "./useSinceMarker";
 import { sinceLastItems } from "./sinceLast";
@@ -1755,7 +1756,8 @@ export default function App() {
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   // After "Delete account" succeeds, the confirmation replaces everything (accountDeletion.js).
   const [accountDeleted, setAccountDeleted] = useState(false);
-  const [activeTab, setActiveTab] = useState("feed");
+  // Seen opens on Today (3.35): what's for you, then it ends. Connect is the feeds.
+  const [activeTab, setActiveTab] = useState("today");
   const [showMapPrompt, setShowMapPrompt] = useState(false);
   const [lastSendTime, setLastSendTime] = useState(() => {
     try { return parseInt(localStorage.getItem("seen_last_send_time") || "0", 10) || 0; } catch (_) { return 0; }
@@ -2210,7 +2212,7 @@ export default function App() {
   // never returns (also marked seen the moment the user opens the picker). Placed AFTER
   // coachSeen/markCoachSeen are declared to avoid a temporal-dead-zone crash on render.
   useEffect(() => {
-    if (!(activeTab === "feed" && !hasSent && !coachSeen && !tourActive && !pickerOpen)) return;
+    if (!((activeTab === "feed" || activeTab === "today") && !hasSent && !coachSeen && !tourActive && !pickerOpen)) return;
     const t = setTimeout(markCoachSeen, 8000);
     return () => clearTimeout(t);
   }, [activeTab, hasSent, coachSeen, tourActive, pickerOpen]);
@@ -2241,7 +2243,8 @@ export default function App() {
   useBackLayer(showJournal, () => setShowJournal(false));
   // Bumped to ask the bar on Connect to open (a notification, a bell item, Grow's button).
   const [seenBarRequest, setSeenBarRequest] = useState(0);
-  const openSeenBar = useCallback(() => { setActiveTab("feed"); setSeenBarRequest((n) => n + 1); }, []);
+  // The bar is on Today and on Connect (3.35): it opens where you are, or on Today.
+  const openSeenBar = useCallback(() => { setActiveTab((t) => (t === "today" || t === "feed" ? t : "today")); setSeenBarRequest((n) => n + 1); }, []);
   useBackLayer(showFollowing, () => setShowFollowing(false));
   const [reactorsFor, setReactorsFor] = useState(null); // my message whose "who felt this" is open
   useBackLayer(Boolean(reactorsFor), () => setReactorsFor(null));
@@ -2553,7 +2556,7 @@ export default function App() {
   useBackLayer(showUpgrade, () => setShowUpgrade(false));
   useBackLayer(showMap, () => setShowMap(false));
   useBackLayer(showGlimpseSheet, () => setShowGlimpseSheet(false));
-  useBackLayer(activeTab !== "feed", () => setActiveTab("feed"));
+  useBackLayer(activeTab !== "today", () => setActiveTab("today"));
 
   const isRealSignedInUser = Boolean(currentUser && !currentUser.isAnonymous);
   // v2 preview: award the daily first-open once per day (defined after isRealSignedInUser to avoid TDZ)
@@ -4085,7 +4088,7 @@ export default function App() {
         {showWelcomeMoment && (
           <WelcomeMoment firstName={String(profile?.fullName || "").trim().split(/\s+/)[0]}
             onClose={() => setShowWelcomeMoment(false)}
-            onStart={() => { setShowWelcomeMoment(false); setActiveTab("feed"); setPickerOpen(true); markCoachSeen(); }} />
+            onStart={() => { setShowWelcomeMoment(false); setActiveTab("today"); setPickerOpen(true); markCoachSeen(); }} />
         )}
         {showProfileCard && (
           <ProfileCard profile={profile} onClose={() => setShowProfileCard(false)} db={db} currentUser={currentUser}
@@ -4443,6 +4446,15 @@ export default function App() {
             {/* Tab bar */}
             <div data-tour="tab-nav" className="flex items-center justify-evenly border-b border-slate-100 bg-white flex-shrink-0">
               <button
+                onClick={() => setActiveTab("today")}
+                className={`relative py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
+                  activeTab === "today"
+                    ? "border-teal-500 text-teal-600"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}>
+                ☀️ Today
+              </button>
+              <button
                 onClick={() => setActiveTab("feed")}
                 className={`relative py-2.5 px-1 text-[12px] font-semibold transition-colors border-b-2 ${
                   activeTab === "feed"
@@ -4483,9 +4495,26 @@ export default function App() {
             </div>
 
 
-            {/* 3.34: the Worldwide card and the two-feeds note were pinned here, above everything —
-                a stranger's message was the first thing on the home screen. The world now comes
-                after the people you know, as "The world today", near the end of the page. */}
+            {/* Connect (3.35, as before 3.34): the world band pinned at the top — moving only on its
+                arrows, its hearts reaching the writer — then the two-feeds note. The daily cards
+                that 3.34 put above the feeds are on the Today tab. */}
+            {activeTab === "feed" && (
+              <WorldwideBoard
+                messages={messages}
+                myUid={currentUser?.uid}
+                focusedUids={focusedUids}
+                blockedUids={blockedUids}
+                moments={worldwideMoments}
+                stories={worldwideStories}
+                onOpenStory={(s) => setOpenStory(s)}
+                onToggleFocus={toggleFocus}
+                onReplyPrivately={(m) => setReplyTarget(m)}
+                onOpenGlobe={() => setShowMap(true)}
+                onHeart={heartFromWorld} />
+            )}
+            {activeTab === "feed" && (
+              <TwoFeedsIntro onFindPeople={() => setShowFollowing(true)} />
+            )}
 
             {activeTab === "messages" ? (
               <MessagesTab conversations={conversations} myUid={currentUser?.uid}
@@ -4512,6 +4541,17 @@ export default function App() {
               <Suspense fallback={<div className="flex-1 flex items-center justify-center py-16"><Loader2 className="animate-spin text-teal-500" size={28} /></div>}>
                 <Support country={profile?.country} />
               </Suspense>
+            ) : activeTab === "today" ? (
+              <TodayTab
+                showWelcome={!hasSent && !welcomeDismissed}
+                onDismissWelcome={() => { setWelcomeDismissed(true); try { localStorage.setItem("seen_welcome_dismissed", "1"); } catch { /* ignore */ } }}
+                since={isRealSignedInUser && hasSent && sinceAt != null ? <SinceLastCard items={sinceItems} onAction={onSinceAction} /> : null}
+                question={isRealSignedInUser ? (
+                  <TodayQuestionCard db={db} currentUser={currentUser} profile={profile} day={localDayKey()} blocked={blockedUids}
+                    sparkBalance={sparkBalance + treePoints} onKindAct={creditKindAct}
+                    onTell={(a) => setReplyTarget({ uid: a.uid, sender: a.name || "Someone", country: a.country ?? null, id: null, text: a.text, note: true })} />
+                ) : null}
+                oneThing={isRealSignedInUser ? <OneThingCard done={doneToday(profile, localDayKey())} onOpen={openSeenBar} /> : null} />
             ) : activeTab === "impact" ? (
               <MySeenStory db={db} currentUser={currentUser} profile={profile} sparkBalance={sparkBalance} darkMode={darkMode} onOpenTree={() => setShowLevels(true)} onMakeSeen={openSeenBar}
                 heartsTotal={heartsValue} heartsWeek={heartsInfo.uid === realUid ? heartsInfo.week : 0} countries={countriesMerge.all} onCountriesSeen={onCountriesSeen}
@@ -4533,41 +4573,6 @@ export default function App() {
               {/* Transparent "Seen · official" welcome — shown to new users (before their first
                   send). NOT a fake human/account: a clearly-labelled system message that warms
                   the cold-start. Disappears once they send, or on dismiss. */}
-              {!hasSent && !welcomeDismissed && (
-                <div className="seen-welcome-card relative mb-3 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3.5 pr-9"
-                  style={{ animation: "seenFadeUp 400ms ease both" }}>
-                  <button
-                    onClick={() => { setWelcomeDismissed(true); try { localStorage.setItem("seen_welcome_dismissed", "1"); } catch { /* ignore */ } }}
-                    aria-label="Dismiss welcome"
-                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-white/60 hover:text-slate-600">
-                    <X size={13} />
-                  </button>
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-400 text-white shadow-sm">
-                      <Sparkles size={16} />
-                    </div>
-                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Seen · official</span>
-                  </div>
-                  <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    Welcome to Seen 💛 — a little corner of the internet whose only job is kindness. Tap “Make Someone Feel Seen” below, and someone, somewhere, will feel it.
-                  </p>
-                </div>
-              )}
-              {/* Since you were last here (3.32) — once you've done something here, so a brand-new
-                  account isn't greeted by an empty list. */}
-              {isRealSignedInUser && hasSent && sinceAt != null && (
-                <SinceLastCard items={sinceItems} onAction={onSinceAction} />
-              )}
-              {/* Today's question (3.33, todayQuestion.js): answer, then see the world's answers. */}
-              {isRealSignedInUser && hasSent && (
-                <TodayQuestionCard db={db} currentUser={currentUser} profile={profile} day={localDayKey()} blocked={blockedUids}
-                  sparkBalance={sparkBalance + treePoints} onKindAct={creditKindAct}
-                  onTell={(a) => setReplyTarget({ uid: a.uid, sender: a.name || "Someone", country: a.country ?? null, id: null, text: a.text, note: true })} />
-              )}
-              {/* Your one thing today (3.34) — and "that's enough" once it's done. */}
-              {isRealSignedInUser && hasSent && (
-                <OneThingCard done={doneToday(profile, localDayKey())} onOpen={openSeenBar} />
-              )}
               {/* Post-send map prompt.
 
                   IN FLOW, NOT STICKY, and the comment that used to be here is why it went wrong:
@@ -5030,21 +5035,6 @@ export default function App() {
                 );
               })()}
               <SendingIndicator visible={isSending} />
-              {/* The world today (3.34): after the people you know, at your own pace. */}
-              <div className="mt-4">
-                <WorldwideBoard inline
-                  messages={messages}
-                  myUid={currentUser?.uid}
-                  focusedUids={focusedUids}
-                  blockedUids={blockedUids}
-                  moments={worldwideMoments}
-                  stories={worldwideStories}
-                  onOpenStory={(s) => setOpenStory(s)}
-                  onToggleFocus={toggleFocus}
-                  onReplyPrivately={(m) => setReplyTarget(m)}
-                  onOpenGlobe={() => setShowMap(true)}
-                  onHeart={heartFromWorld} />
-              </div>
               {/* The page ends (3.32). Infinite feeds have no bottom on purpose; this one does. */}
               <p className="seen-up-to-date mt-6 mb-2 text-center text-[12.5px] font-semibold text-slate-400">You're up to date 🌱 — see you tomorrow.</p>
             </main>
@@ -5108,10 +5098,10 @@ export default function App() {
                 the bottom of Connect (3.7): where the thumb is, and where Seen's orange button has
                 always lived. Hidden while the send picker (which it opens) is up. */}
             {/* A failed send must be visible. It used to live in the bottom Send footer. */}
-            {activeTab === "feed" && sendError && (
+            {(activeTab === "feed" || activeTab === "today") && sendError && (
               <p className="flex-shrink-0 px-4 pt-1.5 text-center text-xs font-semibold text-red-500" role="alert">{sendError}</p>
             )}
-            {activeTab === "feed" && (
+            {(activeTab === "feed" || activeTab === "today") && (
               // Hidden, not unmounted, while the picker is up: the bar has to be listening when
               // the send lands, so it can open on the day's question.
               <footer className={`flex-shrink-0 border-t border-slate-100 bg-white px-3 pt-2${pickerOpen ? " hidden" : ""}`} style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
