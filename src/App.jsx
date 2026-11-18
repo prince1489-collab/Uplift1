@@ -50,7 +50,7 @@ import { pickInvitation, snoozeInvitation, lastDoneAt } from "./invitations";
 import { setRealLifePlan } from "./eveningCue";
 import { claimStageUp } from "./treeMilestone";
 import { claimCertificate, sinceLabel } from "./certificates";
-import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, TwoFeedsIntro, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
+import { WorldwideBoard, PostComposer, LocalPostCard, PrivateReplySheet, KindMomentsDay, FocusedFeedEmpty, FocusedFeedHeader, FollowingPanel, MessageReactionsPanel, SharedJournalCard, FeaturedStoryReader, loadLocalPosts, useFollows, useInboxReplies, followUser, unfollowUser, setFollowLabelRemote, splitKindMoments, useKindMoments, loadLocalStories, splitStories, purgeDemoContent } from "./Feed2";
 const Support   = React.lazy(() => import("./Support"));
 const KindnessBoard = React.lazy(() => import("./KindnessBoard"));
 // "How Seen is doing" (3.26) — admin only, so it never ships in anyone else's first load.
@@ -77,6 +77,8 @@ import { getResources, getEmergency } from "./SupportData.js";
 import { sweepWellbeing } from "./wellbeingSweep";
 import SinceLastCard from "./SinceLastCard";
 import TodayQuestionCard from "./TodayQuestionCard";
+import OneThingCard from "./OneThingCard";
+import { doneToday } from "./growStats";
 import { useSinceMarker } from "./useSinceMarker";
 import { sinceLastItems } from "./sinceLast";
 import JournalPanel from "./Journal";
@@ -4481,27 +4483,9 @@ export default function App() {
             </div>
 
 
-            {/* Kindness loop — a rotating card of someone who could use encouragement right now
-                (composing your own feeling lives by the header name + in your profile) */}
-            {activeTab === "feed" && (
-              <WorldwideBoard
-                messages={messages}
-                myUid={currentUser?.uid}
-                focusedUids={focusedUids}
-                blockedUids={blockedUids}
-                moments={worldwideMoments}
-                stories={worldwideStories}
-                onOpenStory={(s) => setOpenStory(s)}
-                onToggleFocus={toggleFocus}
-                onReplyPrivately={(m) => setReplyTarget(m)}
-                onOpenGlobe={() => setShowMap(true)}
-                onHeart={heartFromWorld} />
-            )}
-
-            {/* Between the two feeds, because that is where the difference is visible. */}
-            {activeTab === "feed" && (
-              <TwoFeedsIntro onFindPeople={() => setShowFollowing(true)} />
-            )}
+            {/* 3.34: the Worldwide card and the two-feeds note were pinned here, above everything —
+                a stranger's message was the first thing on the home screen. The world now comes
+                after the people you know, as "The world today", near the end of the page. */}
 
             {activeTab === "messages" ? (
               <MessagesTab conversations={conversations} myUid={currentUser?.uid}
@@ -4579,6 +4563,10 @@ export default function App() {
                 <TodayQuestionCard db={db} currentUser={currentUser} profile={profile} day={localDayKey()} blocked={blockedUids}
                   sparkBalance={sparkBalance + treePoints} onKindAct={creditKindAct}
                   onTell={(a) => setReplyTarget({ uid: a.uid, sender: a.name || "Someone", country: a.country ?? null, id: null, text: a.text, note: true })} />
+              )}
+              {/* Your one thing today (3.34) — and "that's enough" once it's done. */}
+              {isRealSignedInUser && hasSent && (
+                <OneThingCard done={doneToday(profile, localDayKey())} onOpen={openSeenBar} />
               )}
               {/* Post-send map prompt.
 
@@ -5042,6 +5030,21 @@ export default function App() {
                 );
               })()}
               <SendingIndicator visible={isSending} />
+              {/* The world today (3.34): after the people you know, at your own pace. */}
+              <div className="mt-4">
+                <WorldwideBoard inline
+                  messages={messages}
+                  myUid={currentUser?.uid}
+                  focusedUids={focusedUids}
+                  blockedUids={blockedUids}
+                  moments={worldwideMoments}
+                  stories={worldwideStories}
+                  onOpenStory={(s) => setOpenStory(s)}
+                  onToggleFocus={toggleFocus}
+                  onReplyPrivately={(m) => setReplyTarget(m)}
+                  onOpenGlobe={() => setShowMap(true)}
+                  onHeart={heartFromWorld} />
+              </div>
               {/* The page ends (3.32). Infinite feeds have no bottom on purpose; this one does. */}
               <p className="seen-up-to-date mt-6 mb-2 text-center text-[12.5px] font-semibold text-slate-400">You're up to date 🌱 — see you tomorrow.</p>
             </main>

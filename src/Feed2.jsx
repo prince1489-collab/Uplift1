@@ -340,7 +340,9 @@ const firstName = (n) => (n || "Someone").split(" ")[0];
 // Focused Feed below it.
 // Fewer than this in 24 hours and the pulse counts the week instead (see `pulse` below).
 const PULSE_THIN = 5;
-export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe, onHeart }) {
+// `inline` (3.34): drawn as "The world today", a section near the end of the home screen, rather
+// than a band pinned above everything — people you know come first, the wider world after.
+export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blockedUids, moments = [], stories = [], onOpenStory, onToggleFocus, onReplyPrivately, onOpenGlobe, onHeart, inline = false }) {
   const focusedSet = useMemo(() => new Set(focusedUids), [focusedUids]);
   // Blocking has to hold here too. It used to be applied only to the Focused Feed, so a
   // blocked person's messages kept rotating through the Worldwide strip.
@@ -450,7 +452,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
     // the two feed headings looked like parts of two different apps stacked on each other.
     // The heading keeps its own accent colour: that is what tells the two feeds apart, and it
     // is information rather than decoration.
-    <div className="seen-feed-header border-b border-slate-200 px-3 py-2 flex-shrink-0">
+    <div className={inline ? "seen-world-today mb-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm" : "seen-feed-header border-b border-slate-200 px-3 py-2 flex-shrink-0"}>
       <div className="flex items-center justify-between px-1 pb-1">
         {/* The globe is the best thing in the app and it was three taps deep in an overflow
             menu, next to Sign out. This heading is already the word "worldwide" sitting on the
@@ -472,7 +474,7 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
               : "seen-feed-title--world"
           }`}>
           <span aria-hidden>🌍</span>
-          <span className={onOpenGlobe ? "seen-attract" : undefined}>Worldwide Feed</span>
+          <span className={onOpenGlobe ? "seen-attract" : undefined}>{inline ? "The world today" : "Worldwide Feed"}</span>
           {onOpenGlobe && (
             <span aria-hidden
               className="seen-world-pill__chev flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] leading-none text-white">
@@ -511,6 +513,13 @@ export function WorldwideBoard({ messages = [], myUid, focusedUids = [], blocked
         </span>
       </div>
 
+      {/* One calm line about everyone (3.34) — a measure of the world, never a comparison. */}
+      {inline && item && pulse.count > 0 && (
+        <p className="px-1 pb-1.5 text-[12px] leading-snug text-slate-500">
+          🌍 <span className="font-bold">{pulse.count}</span> kind {pulse.count === 1 ? "message" : "messages"}
+          {pulse.countries > 1 ? <> across <span className="font-bold">{pulse.countries}</span> countries</> : null} {pulse.window}.
+        </p>
+      )}
       {!item ? (
         pulse.count > 0 ? (
           // Never a live number that reads as zero: this branch only renders when count > 0.
@@ -1529,7 +1538,7 @@ export function TwoFeedsIntro({ onFindPeople }) {
 export function FocusedFeedHeader({ count = 0, onManage }) {
   return (
     <div className="seen-feed-header seen-feed-header--pinned -mx-3.5 mb-2 flex items-center gap-2 border-b border-slate-200 px-3.5 pb-1.5 pt-3.5">
-      <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 Focused Feed</p>
+      <p className="seen-feed-title--focus text-[11px] font-bold uppercase tracking-wide">👥 People you follow</p>
       <span className="seen-feed-meta text-[10px] font-semibold">
         {count === 0 ? "· just you for now" : `· ${count} ${count === 1 ? "person" : "people"} you follow`}
       </span>
