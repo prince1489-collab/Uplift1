@@ -18,6 +18,7 @@ import { expandEvidence } from "./growMoments";
 import { parseAction } from "./seenUpdates";
 import { useDictation } from "./dictation";
 import MicButton from "./MicButton";
+import { stripEvidenceIds, isJunkText } from "./seenText";
 
 export function SeenAvatar({ size = 44 }) {
   return (
@@ -45,7 +46,7 @@ function Reflection({ m, uid, db, chat = [] }) {
   return (
     <div className="seen-reflection max-w-[90%] self-start rounded-[18px] rounded-bl-md border-[1.5px] border-amber-300 bg-white px-3.5 py-2.5 shadow-[0_3px_12px_rgba(245,180,40,0.15)]">
       <p className="text-[10px] font-extrabold uppercase tracking-wider text-orange-700">✨ Seen noticed</p>
-      <p className="mt-1 text-[14px] leading-snug text-slate-800">{m.text}</p>
+      <p className="mt-1 text-[14px] leading-snug text-slate-800">{stripEvidenceIds(m.text)}</p>
       <button onClick={() => setWhy((v) => !v)} className="mt-1.5 text-[11.5px] font-semibold text-orange-700">
         {why ? "Hide why" : "Why I think this ›"}
       </button>
@@ -257,11 +258,14 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
   const lastQ = [...(chat || [])].reverse().find((m) => m.role === "seen" && m.kind === "question");
   const lastQOpen = lastQ && !(chat || []).some((m) => m.role === "me" && Number(m.createdAt) > Number(lastQ.createdAt));
 
+  // `said` is a one-tap answer's words. Anything else — the Send button's click event, which is
+  // what it was handed until 3.36.5 and arrived as "[object Object]" — means "what's in the box".
   const send = async (said = null) => {
     dictation.stop();
-    const t = String(said ?? text).trim();
+    const preset = typeof said === "string" ? said : null;
+    const t = (preset ?? text).trim();
     if (!t || sending) return;
-    if (said == null) setText("");
+    if (preset == null) setText("");
     setSending(true);
     try { await sendToSeen(db, currentUser, chat, t); } finally { setSending(false); }
   };
@@ -286,6 +290,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
           <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain seen-chat-bg px-3.5 py-3">
             {!chat && <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-slate-300" /></div>}
             {(chat || []).map((m) => {
+              if (m.role === "me" && isJunkText(m.text)) return null; // see seenText.js
               const d = dayLabel(m.createdAt);
               const sep = d !== prevDay ? <p key={`d-${m.id}`} className="py-1 text-center text-[10.5px] font-semibold text-slate-400">{d}</p> : null;
               prevDay = d;
@@ -321,7 +326,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                 body = (
                   <div className="max-w-[84%] self-start">
                     <div className="seen-bubble rounded-[18px] rounded-bl-md border border-orange-200 bg-orange-50 px-3 py-2 text-[14px] leading-snug text-slate-700">
-                      <p className={m.kind === "question" ? "font-bold text-slate-800" : ""}>{m.text}</p>
+                      <p className={m.kind === "question" ? "font-bold text-slate-800" : ""}>{stripEvidenceIds(m.text)}</p>
                     </div>
                     {/* One-tap answers (3.29: "How did that feel?"). Saying more is still the box below. */}
                     {isOpenQ && Array.isArray(m.options) && m.options.length > 0 && (
@@ -357,7 +362,7 @@ export default function SeenConversation({ db, currentUser, chat, state, consent
                 placeholder={lastQOpen ? "Your answer…" : "Reply to Seen, or ask it something…"}
                 className="min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[14px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none" />
               <MicButton dictation={dictation} variant="icon" />
-              <button onClick={send} disabled={!text.trim() || sending} aria-label="Send"
+              <button onClick={() => send()} disabled={!text.trim() || sending} aria-label="Send"
                 className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-teal-600 text-white disabled:opacity-40"><Send size={14} /></button>
             </div>
             {dictation.error && <p className="mt-1 text-center text-[11px] text-slate-500" role="status">{dictation.error}</p>}

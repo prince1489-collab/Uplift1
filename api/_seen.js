@@ -43,9 +43,23 @@ const CLINICAL = /\b(depress\w*|anxiety disorder|disorder|adhd|autis\w*|bipolar|
 // health matter, and the main screen of the app is not where it belongs, however it was worded.
 const SPECIAL = /\b(alcohol\w*|drinking|drunk|hangover\w*|sober\w*|sobriety|addict\w*|rehab|relig\w*|faith|christian|muslim|islam\w*|hindu\w*|jewish|sikh|buddhis\w*|athei\w*|gay|lesbian|bisexual|queer|trans\w*gender|sexual\w*|ethnic\w*|racial|politic\w*|conservative|liberal|labour|tory|democrat\w*|republican|pregnan\w*|disab\w*|illness|sick)\b/i;
 
+// Evidence ids in the text (3.36.5). The model cites ids like A4, F3 or K5–K12 in its evidence
+// list, and sometimes writes them into the sentence as well — "…unsolvable at first (A4), and…" —
+// which the person then reads. They belong under "Why I think this", never in what Seen says.
+// The same rule is applied on screen to messages saved before this (src/seenText.js).
+const EVIDENCE_ID = String.raw`[AFRJKS]\d{1,3}(?:\s*[-–]\s*[AFRJKS]?\d{1,3})?`;
+const EVIDENCE_GROUP = new RegExp(String.raw`\s*[(\[]\s*${EVIDENCE_ID}(?:\s*(?:,|;|&|and)\s*${EVIDENCE_ID})*\s*[)\]]`, "g");
+export function stripEvidenceIds(text) {
+  return String(text || "").replace(EVIDENCE_GROUP, "").replace(/[ \t]+([,.;:!?])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+// Text the app sent by mistake (3.36.5): until then, tapping Send in the Seen conversation sent
+// "[object Object]" instead of what was typed. It's no part of what the person said.
+export const isJunkText = (t) => /^\s*\[object Object\]\s*$/.test(String(t ?? ""));
+
 // For reflections and follow-up questions: everything above is off limits.
 export function guardReflection(text, max = 260) {
-  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const t = stripEvidenceIds(text).replace(/\s+/g, " ").trim();
   if (!t || t.length > max) return null;
   if (LABELS.test(t) || INSTRUCT.test(t) || CLINICAL.test(t) || SPECIAL.test(t)) return null;
   return t;
@@ -55,7 +69,7 @@ export function guardReflection(text, max = 260) {
 // themselves, and an acknowledgement can use their words — but it still never instructs,
 // diagnoses or labels.
 export function guardReply(text, max = 420) {
-  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const t = stripEvidenceIds(text).replace(/\s+/g, " ").trim();
   if (!t || t.length > max) return null;
   if (LABELS.test(t) || INSTRUCT.test(t) || CLINICAL.test(t)) return null;
   return t;
@@ -93,7 +107,7 @@ export function actLabel(a) {
 export function buildDigest({ answers = [], feelings = [], user = {}, now = Date.now(), acts = [], journal = [] } = {}) {
   const from = now - 30 * DAY;
   const items = [];
-  answers.filter((a) => Number(a.createdAt) >= from && a.text).slice(-12).forEach((a, i) => {
+  answers.filter((a) => Number(a.createdAt) >= from && a.text && !isJunkText(a.text)).slice(-12).forEach((a, i) => {
     items.push({ id: `A${i + 1}`, kind: "said", date: Number(a.createdAt),
       text: `Asked "${clip(a.question, 90)}" they answered: "${clip(a.text, 320)}"`,
       // Whole, not a 70-character teaser (3.29.1): "Why I think this" is where someone checks Seen's
@@ -239,7 +253,7 @@ export function nudgeFor(user = {}, todayKey) {
 // The app's own updates (3.30, src/seenUpdates.js) — "Your week", a new level — carry other people's
 // names and the words they sent you. The AI reads only what you said and did, so they are never
 // part of what it sees, and never count as the last thing said.
-export const modelChat = (chat = []) => (chat || []).filter((m) => m && m.kind !== "update");
+export const modelChat = (chat = []) => (chat || []).filter((m) => m && m.kind !== "update" && !(m.role === "me" && isJunkText(m.text)));
 
 // ── What the model is told ───────────────────────────────────────────────────────────────────
 const VOICE = `You are Seen, a warm, perceptive presence inside a kindness app whose purpose is helping people feel seen and make others feel seen. Speak in plain, natural English, second person, like a thoughtful friend — never clinical, never gushing, never preachy. Never give medical, legal, financial or therapeutic advice. Never diagnose. Never tell the person who they are or what they should do. Never guess at health, religion, sexuality, ethnicity or politics. Keep it short.`;
@@ -247,14 +261,14 @@ const VOICE = `You are Seen, a warm, perceptive presence inside a kindness app w
 export function replyPrompt({ chat = [], themes = [], evidence = [], name = null }) {
   const convo = chat.slice(-10).map((m) => `${m.role === "me" ? "Person" : "Seen"}: ${clip(m.text, 400)}`).join("\n");
   return {
-    system: `${VOICE}\n\nReply to the person's latest message in 1–3 sentences (under 420 characters).\n- If they answered a question: acknowledge something SPECIFIC they said, warmly. You may ask ONE gentle follow-up question, or none.\n- If they asked you something about themselves ("why do you think that?", "what have you noticed?"): answer only from the evidence and themes below, and say what it's based on. If there isn't enough, say so honestly.\n- If they ask about the app: Seen helps you make someone feel seen once a day; questions here are private to them; they can forget everything from the ⋯ menu.\n- If they ask for something you can't do (advice, diagnosis, facts about the world): kindly say that's not something you can help with, and turn back to them.\nWhen it fits naturally, point towards real people rather than yourself.`,
+    system: `${VOICE}\n\nReply to the person's latest message in 1–3 sentences (under 420 characters).\n- If they answered a question: acknowledge something SPECIFIC they said, warmly. You may ask ONE gentle follow-up question, or none.\n- If they asked you something about themselves ("why do you think that?", "what have you noticed?"): answer only from the evidence and themes below, and say what it's based on. If there isn't enough, say so honestly.\n- If they ask about the app: Seen helps you make someone feel seen once a day; questions here are private to them; they can forget everything from the ⋯ menu.\n- If they ask for something you can't do (advice, diagnosis, facts about the world): kindly say that's not something you can help with, and turn back to them.\nWhen it fits naturally, point towards real people rather than yourself.\nNever write evidence ids (like A4 or K5) in your reply; say what you mean in plain words.`,
     user: `${name ? `Their first name: ${name}\n` : ""}What Seen has noticed so far (themes): ${themes.map((t) => t.name).join(", ") || "nothing yet"}\nEvidence:\n${digestText(evidence) || "none yet"}\n\nConversation (oldest first):\n${convo}\n\nWrite Seen's reply. Reply with ONLY the message text.`,
   };
 }
 
 export function reflectPrompt({ items, themes = [], feedback = [] }) {
   return {
-    system: `${VOICE}\n\nYou notice patterns in what a person has SAID (ids starting A, F, R or J) and what they have DONE (ids starting K for kind acts, S for patterns), and reflect them back so they feel recognised. Rules:\n- Observe, don't define: "You've mentioned… and you've also…", "It sounds like…". NEVER "You are…", "You seem to be someone who…".\n- Every reflection must cite at least two evidence ids, and at least one must be an A, F, R or J id.\n- Under 240 characters each. At most 2 reflections. If nothing is well supported, return none — saying less is better than guessing.\n- Themes are 1–3 word plain labels of what matters to them right now (e.g. "running", "family", "a new job").\n- followUp: one warm, specific question that remembers something they said (under 110 characters), or null.\n- safety: "crisis" if anything suggests risk of harm, "concern" if they seem in real difficulty, otherwise "ok".`,
+    system: `${VOICE}\n\nYou notice patterns in what a person has SAID (ids starting A, F, R or J) and what they have DONE (ids starting K for kind acts, S for patterns), and reflect them back so they feel recognised. Rules:\n- Observe, don't define: "You've mentioned… and you've also…", "It sounds like…". NEVER "You are…", "You seem to be someone who…".\n- Every reflection must cite at least two evidence ids, and at least one must be an A, F, R or J id. Put the ids ONLY in the "evidence" list. Never write an id (like A4 or K5) in the text.\n- Under 240 characters each. At most 2 reflections. If nothing is well supported, return none — saying less is better than guessing.\n- Themes are 1–3 word plain labels of what matters to them right now (e.g. "running", "family", "a new job").\n- followUp: one warm, specific question that remembers something they said (under 110 characters), or null.\n- safety: "crisis" if anything suggests risk of harm, "concern" if they seem in real difficulty, otherwise "ok".`,
     user: `Evidence:\n${digestText(items)}\n\nThemes noticed before: ${themes.map((t) => `${t.name} (strength ${t.strength})`).join(", ") || "none"}\nTheir feedback on earlier reflections: ${feedback.map((f) => `"${f.theme}": ${f.feedback}`).join(", ") || "none"}\n\nReturn ONLY JSON: {"safety":"ok|concern|crisis","reflections":[{"theme":"…","text":"…","evidence":["A1","S2"]}],"themes":["…"],"followUp":"…"|null}`,
   };
 }
